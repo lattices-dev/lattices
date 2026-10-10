@@ -16,6 +16,7 @@ import { Router } from "./router.ts";
 import { serve } from "./server.ts";
 import { DaemonPairing, registerPairingEndpoints } from "./pairing.ts";
 import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/server.ts";
+import { visitControlDir } from "./bridge/visit-control.ts";
 
 const DEFAULT_PORT = 9399;
 
@@ -143,6 +144,7 @@ async function main() {
       hosts: bridgeHosts,
       port: opts.bridgePort,
       stateDir: opts.bridgeStateDir,
+      controlDir: visitControlDir(),
       name: self?.hostname,
       version: VERSION,
       trackpadAvailable: () => capabilities.has("input.pointer"),

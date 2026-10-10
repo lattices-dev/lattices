@@ -11,6 +11,7 @@ import * as deck from "./deck.ts";
 import { join } from "node:path";
 import { BridgeSecurity, BridgeSecurityError, CAPABILITIES, DEFAULT_CAPABILITIES, loadOrCreateBridgeKey, type AuthorizedRequest, type PairingRequest } from "./security.ts";
 import { VisitChannel, Visits } from "./visit-channel.ts";
+import { ENDED_HERE, startVisitControl } from "./visit-control.ts";
 import { QuickshellVisitorOverlay } from "./visitor-overlay.ts";
 import type { VisitDependencies, VisitorOverlay } from "./visit.ts";
 
@@ -31,6 +32,8 @@ export interface BridgeOptions {
   stateDir?: string;
   visitOverlay?: VisitorOverlay;
   visitDependencies?: VisitDependencies;
+  /** Where to listen for this machine's own "end every visit". Off when unset. */
+  controlDir?: string;
   /** Only tests shorten the six-second production timeout. */
   visitSilenceMs?: number;
   /** Tests inject a snapshot instead of reading Hyprland. */
@@ -159,6 +162,14 @@ export function startBridge(options: BridgeOptions) {
     })
   );
 
+  const endVisits = async () => {
+    const channels = [...visits.channels];
+    await Promise.all(channels.map((channel) => channel.finish(1000, ENDED_HERE)));
+    if (channels.length) options.log(`ended ${channels.length} visit channel(s) from this machine`);
+    return channels.length;
+  };
+  const control = options.controlDir ? startVisitControl(options.controlDir, boundPort(), endVisits) : null;
+
   // Bonjour, as the Mac publishes it, so a phone on the same LAN finds this
   // host. Only when the bridge listens on a LAN address: the tailnet and
   // loopback are not reachable from what Bonjour would resolve.
@@ -174,6 +185,8 @@ export function startBridge(options: BridgeOptions) {
     approvals,
     port: boundPort(),
     advertised: advert !== null,
+    controlPath: control?.path ?? null,
+    endVisits,
     async revoke(deviceID: string) {
       if (!security.revoke(deviceID)) return false;
       await Promise.all([...visits.channels]
@@ -184,6 +197,7 @@ export function startBridge(options: BridgeOptions) {
     async stop() {
       stopping = true;
       advert?.kill();
+      control?.stop();
       await visits.stop();
       for (const s of servers) s.stop(true);
     },

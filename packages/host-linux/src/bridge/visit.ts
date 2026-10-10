@@ -143,6 +143,7 @@ export class VisitSession {
   private edge!: Edge;
   private name = "";
   private held = new Set<Button>();
+  private landed = false;
   constructor(private overlay: VisitorOverlay, private deps = visitDependencies) {}
 
   private state(): VisitorState { return { visible: true, name: this.name, ...this.point, screens: this.area.screens }; }
@@ -155,6 +156,7 @@ export class VisitSession {
     // including virtual outputs. Only the visitor's movement excludes them.
     this.pointerExtent = extentFor(monitors.filter((m) => !m.disabled && (!m.mirrorOf || m.mirrorOf === "none")).map(screenFor));
     this.home = await this.deps.cursor();
+    this.landed = false;
     this.edge = message.edge;
     this.name = message.name.trim().slice(0, 24);
     this.point = this.area.enter(message.edge, message.at);
@@ -201,6 +203,7 @@ export class VisitSession {
   }
 
   private async land() {
+    this.landed = true;
     await this.pointer!.move(this.point.x, this.point.y, this.pointerExtent);
     // follow_mouse=1: warping home here would focus the host's old window.
     // Keep the real pointer at the click/scroll; ordinary moves are overlay-only.
@@ -216,8 +219,10 @@ export class VisitSession {
     };
     for (const button of this.held) await recover(() => pointer.button(button, false));
     this.held.clear();
-    // Always restore the captured location, even if the host moved during a visit.
-    if (this.home) {
+    // Only a click or scroll moved the host's cursor. A visit that never landed
+    // has nothing to put back, and a motion event would un-hide a hidden cursor
+    // and drag it away from wherever the host's own mouse has taken it since.
+    if (this.home && this.landed) {
       try { await pointer.move(this.home.x, this.home.y, this.pointerExtent); }
       catch { await recover(() => this.deps.restore(this.home!)); }
     }

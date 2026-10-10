@@ -146,6 +146,10 @@ lattices-host mouse-home                 # if the package's bin is on PATH
 lats --host archie call mouse.home       # when this host version is running
 ```
 
+From the command line it first ends any visiting cursor on every host running
+on this machine (see `docs/visit.md`), and reports that as `visits` in its
+receipt. The `mouse.home` RPC leaves visits alone.
+
 The target is the focused real
 monitor, otherwise the first real monitor, excluding LATS/headless/virtual,
 disabled and mirrored outputs. Coordinates account for scaling and rotation.
