@@ -3,6 +3,7 @@ enum AppServicesBootstrap {
         let diagnosticLog = DiagnosticLog.shared
         let timedBoot = diagnosticLog.startTimed("Daemon services boot")
         DesktopModel.shared.start()
+        StateHistory.shared.start()
         BundleModules.startServices()
         // After the bundle, so its history is in place before the first scan.
         ScreenText.shared.install(OcrModel.shared)

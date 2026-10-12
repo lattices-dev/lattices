@@ -27,13 +27,18 @@ This produces a signed app bundle at:
 
 ## Check Native Health
 
-Use the doctor wrapper before debugging anything capture-related:
+On an authorized development host, use the doctor wrapper before debugging capture:
 
 ```bash
 bun run native:doctor
 ```
 
-This is the safest high-signal command because it:
+This command changes the native build. Do not use it as read-only preflight on
+an installation target; install a matched app/runtime with rollback there.
+For private layers, read [Agent layer](agent-layer.md) and verify capabilities,
+host quarantine, and desktop-preservation acceptance before opening.
+
+The development-host doctor command:
 
 - builds the app if needed
 - signs it

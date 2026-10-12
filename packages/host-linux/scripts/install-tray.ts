@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { changeUnit, managerCall, withUserBus } from "../src/systemd.ts";
 
 // systemd links rendered units from this checkout. It owns the user unit
-// symlinks; the installer never edits Omarchy, Hyprland or lan-mouse config.
+// symlinks; the installer never edits Omarchy or Hyprland config.
 export function unitArgument(value: string): string {
   if (/[\r\n\0]/.test(value)) throw new Error("Invalid service path");
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%").replaceAll("$", () => "$$")}"`;

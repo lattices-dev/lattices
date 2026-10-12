@@ -2,6 +2,25 @@ import AppKit
 import Combine
 import CoreGraphics
 
+/// Keeps native desktop navigation available whenever the interceptor cannot
+/// own it. Dependencies are injectable so failure paths need no real event tap.
+struct SpaceSwitchInputOwnership {
+    var makeTapReady: () -> Bool
+    var removeTap: () -> Void
+    var disableSystemHotkeys: () -> Void
+    var restoreSystemHotkeys: () -> Void
+
+    func reconcile(isRunning: Bool, featureEnabled: Bool, accessibilityGranted: Bool, breakerArmed: Bool) {
+        guard isRunning, featureEnabled, accessibilityGranted, breakerArmed,
+              makeTapReady() else {
+            removeTap()
+            restoreSystemHotkeys()
+            return
+        }
+        disableSystemHotkeys()
+    }
+}
+
 /// Intercepts Ctrl+← / Ctrl+→ before Mission Control sees them and routes the
 /// press through `WindowTiler.performSpaceSwitch` — a synthetic Dock swipe
 /// under a screen-update freeze, so the Space cuts over instead of sliding. A small
@@ -29,7 +48,14 @@ final class SpaceSwitchInterceptor: ObservableObject {
     private var runLoopSource: CFRunLoopSource?
     private var subscriptions: Set<AnyCancellable> = []
     private var installedObservers = false
+    private var isRunning = false
     private let breaker = EventTapBreaker(label: "SpaceSwitch")
+    private lazy var inputOwnership = SpaceSwitchInputOwnership(
+        makeTapReady: { [weak self] in self?.makeEventTapReady() ?? false },
+        removeTap: { [weak self] in self?.removeEventTap() },
+        disableSystemHotkeys: SpaceSwitchHotkeys.disable,
+        restoreSystemHotkeys: SpaceSwitchHotkeys.restore
+    )
     /// Serializes the actual Space swap. `switchToSpace` can poll the CGS
     /// display list for ~0.45s on a miss — that must never run on the tap
     /// thread or on main.
@@ -46,31 +72,24 @@ final class SpaceSwitchInterceptor: ObservableObject {
     private init() {
         breaker.onStateChanged = { [weak self] newState in
             self?.breakerState = newState
+            self?.refresh()
         }
     }
 
     func start() {
+        isRunning = true
         installObserversIfNeeded()
         refresh()
     }
 
     func stop() {
-        removeEventTap()
-        SpaceSwitchHotkeys.restore()
+        isRunning = false
+        refresh()
     }
 
     func resetForSystemInputBoundary(reason: String) {
         dispatchPrecondition(condition: .onQueue(.main))
-        switch breaker.state {
-        case .armed:
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            } else {
-                refresh()
-            }
-        case .paused, .disabled:
-            return
-        }
+        refresh()
         DiagnosticLog.shared.warn("SpaceSwitch: reset for \(reason)")
     }
 
@@ -78,9 +97,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
     func reArmAfterBreakerTrip() {
         dispatchPrecondition(condition: .onQueue(.main))
         breaker.reset()
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
+        refresh()
     }
 
     private func installObserversIfNeeded() {
@@ -99,32 +116,28 @@ final class SpaceSwitchInterceptor: ObservableObject {
     }
 
     private func refresh() {
-        guard Preferences.shared.spaceSwitchKeysEnabled,
-              PermissionChecker.shared.accessibility else {
+        dispatchPrecondition(condition: .onQueue(.main))
+        inputOwnership.reconcile(
+            isRunning: isRunning,
+            featureEnabled: Preferences.shared.spaceSwitchKeysEnabled,
+            accessibilityGranted: PermissionChecker.shared.accessibility,
+            breakerArmed: breaker.state == .armed
+        )
+    }
+
+    private func makeEventTapReady() -> Bool {
+        if let eventTap, !CFMachPortIsValid(eventTap) {
             removeEventTap()
-            SpaceSwitchHotkeys.restore()
-            return
         }
-
-        SpaceSwitchHotkeys.disable()
-
-        switch breaker.state {
-        case .paused, .disabled:
-            return
-        case .armed:
-            break
-        }
-
         if eventTap == nil {
             installEventTap()
-        } else if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: true)
         }
+        guard let eventTap, let runLoopSource, CFRunLoopSourceIsValid(runLoopSource) else { return false }
+        CGEvent.tapEnable(tap: eventTap, enable: true)
+        return CGEvent.tapIsEnabled(tap: eventTap)
     }
 
     private func installEventTap() {
-        breaker.reset()
-
         var mask = CGEventMask(0)
         mask |= CGEventMask(1) << CGEventType.keyDown.rawValue
         mask |= CGEventMask(1) << CGEventType.keyUp.rawValue
@@ -154,18 +167,15 @@ final class SpaceSwitchInterceptor: ObservableObject {
             return
         }
 
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            DiagnosticLog.shared.warn("SpaceSwitch: failed to install keyboard event tap source")
+            return
+        }
         eventTap = tap
         runLoopSource = source
 
-        if let source {
-            EventTapThread.overlay.add(source: source)
-        }
-        CGEvent.tapEnable(tap: tap, enable: true)
-        breaker.rearm = { [weak self] in
-            guard let self, let tap = self.eventTap else { return }
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
+        EventTapThread.overlay.add(source: source)
         DiagnosticLog.shared.info("SpaceSwitch: keyboard event tap installed (\(installedLabel))")
     }
 
@@ -194,9 +204,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
         if type == .tapDisabledByUserInput {
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
+            DispatchQueue.main.async { [weak self] in self?.refresh() }
             return Unmanaged.passUnretained(event)
         }
 

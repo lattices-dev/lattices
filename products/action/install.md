@@ -8,7 +8,11 @@ installation commands.
 
 ## OBJECTIVE
 
-Build the signed Action.app bundle and verify the native host is in a healthy state.
+On an authorized development host, build the signed Action.app bundle and verify
+native health. Installation targets receive a matched app/runtime with rollback;
+this source-build flow does not prove desktop isolation. Before private-layer
+use, follow [Agent layer](docs/agent-layer.md) for fresh capability discovery,
+host quarantine, and acceptance checks. `native:doctor` rebuilds and signs.
 
 ## DONE WHEN
 
@@ -19,7 +23,7 @@ Build the signed Action.app bundle and verify the native host is in a healthy st
 - [ ] Clone the repository
 - [ ] Install JavaScript dependencies
 - [ ] Build and sign the native app
-- [ ] Verify the native host and current permission state
+- [ ] Rebuild, sign, and verify native health on the development host
 - [ ] Run a screenshot smoke test
 
 ## Prerequisites
@@ -47,7 +51,7 @@ bun install
 bun run native:app:build
 ```
 
-## Step 4: Verify the native host and current permission state
+## Step 4: Rebuild, sign, and verify native health on the development host
 
 ```bash
 bun run native:doctor

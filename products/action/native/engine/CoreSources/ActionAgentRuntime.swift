@@ -248,6 +248,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 "startedAt": ISO8601DateFormatter().string(from: runtimeState.startedAt),
                 "methods": ActionAgentMethod.allCases.map(\.rawValue).joined(separator: ","),
                 "protocolVersion": Self.protocolVersion,
+                "capabilitiesJson": ActionBuildProvenance.current.json,
+                "capabilityDiscovery": "Action MCP action.capabilities or lats action capabilities; private layers are orchestration, not raw agent RPCs",
                 "authentication": "capability-token",
                 "authTokenFile": authentication.tokenFile.path,
             ]

@@ -122,6 +122,14 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model().scope, OverviewScope(display: 0, spaceId: 3, layerId: "tideline", search: "zed", preset: "Editors"))
     }
 
+    func testASavedPickOfAGoneLayerIsDropped() {
+        OverviewScope(layerIds: ["terms", "mail"], scopedWindowIds: []).save(to: defaults)
+        let model = model()
+        model.update(inputs())
+        XCTAssertEqual(model.scope.layerIds, ["mail"])
+        XCTAssertFalse(model.workingRows.isEmpty)
+    }
+
     func testScopeChangesKeepTheSelectionAndSayWhyRowsAreOutside() {
         let model = model()
         model.setSelection([1, 3])

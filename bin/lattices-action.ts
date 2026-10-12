@@ -98,6 +98,7 @@ function findCheckout(): string | null {
   const candidates: string[] = [];
   if (process.env.ACTION_ROOT) candidates.push(process.env.ACTION_ROOT);
   candidates.push(resolve(__dirname, "../products/action"));
+  candidates.push(join(homedir(), "Library/Application Support/Lattices/runtime/current/products/action"));
   try {
     const top = execFileSync("git", ["rev-parse", "--show-toplevel"], {
       encoding: "utf8",
@@ -195,7 +196,8 @@ async function install(shouldLaunch: boolean): Promise<void> {
   const version = release.tag_name.slice(ACTION_TAG_PREFIX.length);
   const existing = installedPath();
   if (existing && installedVersion(existing) === version) {
-    console.log(`Action ${version} is already installed at ${existing}.`);
+    console.log(`Action ${version} is already installed at ${existing} (matches published release version).`);
+    console.log("This does not verify source-build or MCP parity. Run `lats action capabilities` and reconnect MCP after runtime updates.");
     if (shouldLaunch) launchApp();
     return;
   }
@@ -261,6 +263,7 @@ async function status(json: boolean): Promise<void> {
   console.log(`  running     ${running ? "yes" : "no"}`);
   console.log(`  agent       ${agent ? "reachable (ws://127.0.0.1:4319)" : "not reachable"}`);
   console.log(`  checkout    ${checkout ?? "none (products/action not found)"}`);
+  console.log("  capability  Run `lats action capabilities`; version alone does not prove layer support.");
   if (!appPath) {
     console.log(`\nInstall with: lattices action install`);
   }
@@ -307,11 +310,15 @@ Usage:
   lattices action launch       Open Action.app (use --launch with install)
   lattices action quit         Quit Action.app
   lattices action call <m> [j] Raw Action agent call (ws://127.0.0.1:4319)
+  lattices action mcp          Start the installed Action MCP server over stdio
+  lattices action capabilities Read-only build fingerprints, native capability manifest, and MCP routing
+  lattices action layer <verb> Private Action display lifecycle (requires runtime checkout/install)
   lattices action status --json
   lattices action <cmd> [args] Forward to the Action CLI (monorepo checkout)
 
-Without a checkout, install gives you the signed Action.app; the agent API
-stays reachable via \`lattices action call\`. Docs: ${ACTION_SITE_URL}
+Runtime lookup: ACTION_ROOT, a checkout, or the managed runtime install.
+The published app-only installer does not include MCP orchestration.
+Raw agent RPC stays available via \`lattices action call\`. Docs: ${ACTION_SITE_URL}
 `);
 }
 
@@ -343,6 +350,21 @@ switch (first) {
   case "stop":
     console.log(quitApp() ? "Action stopped." : "Action is not running.");
     break;
+  case "mcp": {
+    const checkout = findCheckout();
+    if (!checkout) {
+      console.error("Action MCP runtime not installed. A native app alone does not include MCP orchestration; install a matching runtime bundle or set ACTION_ROOT.");
+      process.exit(1);
+    }
+    try {
+      execFileSync("bun", [resolve(checkout, "packages/mcp/src/index.ts")], {
+        stdio: "inherit", env: { ...process.env, ACTION_ROOT: checkout },
+      });
+    } catch {
+      process.exit(1);
+    }
+    break;
+  }
   case "call":
     await callAgent(rest[0], rest[1]);
     break;

@@ -82,6 +82,35 @@ Keep these rules intact:
 - keep the agent useful for orchestration and transport
 - keep AppKit-owned concerns in the app process
 
+## Private-layer discovery
+
+Use `lats action capabilities` and the active MCP `capabilities` / `tools/list`
+for build provenance and routing. Check host quarantine before opening a private
+display. Native support, runtime health, and version strings do not establish
+physical desktop preservation. See [Agent layer](agent-layer.md).
+
+`native:doctor` builds and signs. Run it on an authorized development host.
+On an installation target, preserve the installed bundle and rollback; deploy
+a matched app and MCP runtime instead of rebuilding implicitly. Reconnect MCP
+after runtime changes.
+
+To assemble a matched runtime candidate on the development host, use:
+
+```bash
+bun scripts/package-agent-runtime.ts --app /path/Action.app --output /new/action-runtime --instructions-root /path/to/lattices-docs-checkout
+```
+
+The command verifies the signed app's recorded MCP source fingerprint, bundles
+the source and locked production dependencies, and includes the selected layer
+docs and Action skill. It rejects a mismatched pair or existing output and does
+not install anything. `runtime-provenance.json` records the artifact identities
+and marks host desktop-isolation acceptance as uncertified. Keep the previous
+runtime for rollback and preserve host quarantine when installing a candidate.
+
+The extracted archive contains sibling `bin/` and `products/` directories.
+Set `ACTION_ROOT=<extract>/products/action`, not the extraction root, and keep
+`bin/host-pairing.ts` in place; the runtime imports that canonical dependency.
+
 ## Scripts And Helpers
 
 Call native work through package.json scripts from `products/action`:

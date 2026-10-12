@@ -236,7 +236,7 @@ struct HUDTopBar: View {
     private func layerStrip(_ layers: [Layer]) -> some View {
         HStack(spacing: 3) {
             ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
-                let isActive = idx == workspace.activeLayerIndex
+                let isActive = idx == workspace.activeLayerSelection
 
                 Button {
                     workspace.focusLayer(index: idx)

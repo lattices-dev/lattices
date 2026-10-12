@@ -8,12 +8,17 @@ function displayArg(value: string): number | string {
 export async function displayCommand(sub?: string, ...rest: string[]): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
     if (!sub || sub === "list" || sub === "ls") {
-      const result = await daemonCall("displays.list", {}) as any;
+      const result = await daemonCall("displays.list", {}).catch(async error => {
+        if (!(error as Error).message.includes("Unknown method")) throw error;
+        const displays = await daemonCall("spaces.list") as any[];
+        return {displays: displays.map(d => ({index: d.displayIndex, name: d.name ?? d.displayId,
+          main: d.isMain, width: d.frame?.w, height: d.frame?.h, windows: d.spaces?.reduce((n: number, s: any) => n + (s.windowCount ?? s.windows?.length ?? 0), 0)}))};
+      }) as any;
       for (const d of result.displays) {
         const main = d.main ? " (main)" : "";
         console.log(`  ${d.index}  ${d.name}${main}  ${d.width}×${d.height}  ${d.windows} window(s)`);
       }
-      for (const g of result.gathered) {
+      for (const g of result.gathered ?? []) {
         console.log(`  Gathered ${g.windows} window(s) off ${g.display}${g.here ? "" : " (not here)"} — lats display restore`);
       }
       return;

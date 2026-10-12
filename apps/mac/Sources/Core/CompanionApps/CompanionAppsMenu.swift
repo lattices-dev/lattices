@@ -106,7 +106,7 @@ final class CompanionAppsMenuController: NSObject, NSMenuDelegate {
             let parent = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
             let submenu = NSMenu()
             if let state = CompanionInstallerBridge.shared.states[item.productID] {
-                let labels = ["checking": "Checking…", "downloading": "Downloading…", "verifying": "Verifying…", "installing": "Installing…", "installed": "Installed", "already-installed": "Installed", "cancelled": "Cancelled", "failed": "Installation failed"]
+                let labels = ["checking": "Checking…", "downloading": "Downloading…", "verifying": "Verifying…", "installing": "Installing…", "installed": "Installed", "already-installed": "Installed", "cancelled": "Cancelled", "failed": "Installation failed", "needs-bun": "Needs Bun"]
                 let status = NSMenuItem(title: labels[state.phase] ?? state.phase, action: nil, keyEquivalent: "")
                 status.isEnabled = false
                 status.toolTip = state.message
@@ -115,6 +115,11 @@ final class CompanionAppsMenuController: NSObject, NSMenuDelegate {
                     let detail = NSMenuItem(title: message, action: nil, keyEquivalent: "")
                     detail.isEnabled = false
                     submenu.addItem(detail)
+                }
+                if state.phase == "needs-bun" {
+                    let install = NSMenuItem(title: "Install Bun…", action: #selector(installBun(_:)), keyEquivalent: "")
+                    install.target = self
+                    submenu.addItem(install)
                 }
                 if state.active {
                     let cancel = NSMenuItem(title: "Cancel", action: #selector(cancelInstallation(_:)), keyEquivalent: "")
@@ -153,6 +158,10 @@ final class CompanionAppsMenuController: NSObject, NSMenuDelegate {
                 self?.present(result, productID: ref.productID)
             }
         }
+    }
+
+    @objc private func installBun(_ sender: NSMenuItem) {
+        CompanionInstallerBridge.installBun()
     }
 
     @objc private func cancelInstallation(_ sender: NSMenuItem) {

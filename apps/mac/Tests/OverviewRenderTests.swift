@@ -179,8 +179,8 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertEqual(differing, 0, "opening the list moved the stage at \(width)", file: file, line: line)
     }
 
-    /// Selecting a window on the right-hand map may paint its capsule, but
-    /// must not reserve a toolbar row and shift any other display map.
+    /// Selecting a window on the right-hand map puts its actions in the row
+    /// under the maps, and must not shift any display map.
     private func assertSelectionActionsOverlay(width: CGFloat, height: CGFloat,
                                                file: StaticString = #filePath, line: UInt = #line) throws {
         func pixels(selected: Bool) throws -> NSBitmapImageRep {
@@ -193,7 +193,7 @@ final class OverviewRenderTests: XCTestCase {
         let unselected = try pixels(selected: false)
         let selected = try pixels(selected: true)
         // The left monitor and its Desktop strip, clear of the right map's
-        // capsule, scope bar and selection tray, must be pixel-identical.
+        // scope bar, actions row and tray, must be pixel-identical.
         let clearWidth = Int(width * 0.22)
         let clearHeight = Int(height - OverviewTray.height - OverviewStage.hintHeight - 12)
         var differing = 0
@@ -257,6 +257,8 @@ final class OverviewRenderTests: XCTestCase {
     func testWideSidebar() throws { try render("wide-sidebar", width: 1590, height: 688, sidebar: true) }
     func testLaptop() throws { try render("laptop", width: 1110, height: 648, sidebar: false) }
     func testLaptopSidebar() throws { try render("laptop-sidebar", width: 1110, height: 648, sidebar: true) }
+    func testWideSelected() throws { try render("wide-selected", width: 1760, height: 760, sidebar: false) { $0.select(15) } }
+    func testLaptopSelected() throws { try render("laptop-selected", width: 1110, height: 648, sidebar: false) { $0.select(15) } }
     func testWideFullWindow() throws { try render("wide-full", width: 1760, height: 760, sidebar: false) }
     func testWideLayerSidebar() throws {
         try render("wide-layer-sidebar", width: 1590, height: 688, sidebar: true) { model in

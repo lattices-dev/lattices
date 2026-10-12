@@ -1,6 +1,6 @@
 import * as hypr from "../hyprland.ts";
 import * as input from "../input.ts";
-import { realMonitors, type Monitor } from "../mouse.ts";
+import { realMonitors, type Monitor } from "../cursor-home.ts";
 import { PointerSession, type Button, type Extent } from "../wayland.ts";
 
 export type Edge = "left" | "right" | "top" | "bottom";

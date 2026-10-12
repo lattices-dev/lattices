@@ -111,9 +111,10 @@ final class DisplayGather {
     }
 
     /// A display by its index or a piece of its name.
-    static func screen(named query: String) -> Screen? {
-        let all = screens()
+    static func screen(named query: String, among all: [Screen]? = nil) -> Screen? {
+        let all = all ?? screens()
         if let index = Int(query) { return all.first { $0.index == index } }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return all.first { $0.name.localizedCaseInsensitiveContains(query) }
     }
 

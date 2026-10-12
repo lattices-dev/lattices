@@ -82,3 +82,54 @@ The plaintext is one JSON object with a type in `t`.
   and key events and forwards them, so nothing on the Mac reacts.
 - ⌃⌥⌘ Home ends the visit from inside that tap, so it works however the channel
   is doing.
+
+## Machines
+
+Open **Workspace → Machines** (`hosts` remains a page-name alias). The page
+merges visit pairings and Lattices hosts by name or
+address. Selecting a Lattices host retains its still, live view and window list.
+Opening the page does not arm visiting. Connections and status
+reads stop when the page is hidden; arrangement safety timers remain independent.
+
+Drag displays and machines on the scaled arrangement canvas. A machine owns only
+the stretch of an edge touched by its rectangle; several machines can share a
+side. `Side` is a shortcut that puts a machine beside the outermost display.
+Older side-only pairings migrate without replacing their trust keys. Newly added
+machines remain unplaced until arranged.
+
+Moving a local display edits a draft. **Apply** starts a 15-second trial; **Keep**
+accepts it and **Revert** restores the previous origins. Leaving Machines does not
+cancel the rollback timer. Display configuration is never changed by a drag.
+
+Every display, including the main display, has an **Elsewhere** checkbox. Drop a
+machine onto an elsewhere display to record what it shows. Pushing toward that
+display visits its assigned machine, using the same deliberate push threshold.
+
+**Add machine** adds a Lattices host, pairs a visit host, or does both. Lattices
+hosts are stored in `~/.lattices/hosts.json`; visit pairing still requires approval
+on the other machine. Monitor geometry from `host.describe` is cached for offline
+arrangement. Hosts without display information use a generic 1920 × 1080 screen.
+
+The bundle app can receive visits through its companion bridge. **Let other
+machines visit this Mac** is off by default. Enabling it enables the existing
+bridge. `/visit` requires signed, replay-checked authentication and the paired
+`input.trackpad` capability. Its encrypted binary frames bind direction, device,
+upgrade nonce and sequence. One visitor is accepted at a time; disabling visits,
+disconnecting, leaving, or a six-second heartbeat timeout releases held buttons
+and restores the host cursor. No Mac deployment or remote setup is automatic.
+
+```bash
+lats hosts add arts-mini arts-mini
+lats visit place archie 3440 0
+lats visit side archie left
+lats visit elsewhere 2 arts-mini
+lats visit host on        # bundle: explicitly allow receiving visits
+lats visit forget archie
+lats mouse home           # ends the visit and returns the cursor
+```
+
+Visit bridge reachability is checked on page appearance, Refresh and state
+changes, with no recurring probe timer. Display-to-machine labels are stored by
+display UUID. Arrangement coordinates use the same top-left global point space
+as `CGDisplayBounds`. The exit fraction is measured along the touching span,
+not the whole local display. No pairing or visiting starts on page open.

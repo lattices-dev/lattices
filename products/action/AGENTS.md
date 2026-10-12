@@ -9,6 +9,9 @@
 - Migration is complete: the original Action main history was merged into arach/lattices at products/action on August 27, 2026 (import commit b1ad511adf509c0c60d7f3edce7cd15257601db2). Use arach/lattices for ongoing development; arach/action is historical.
 - On Arach's Mac, /Users/arach/dev/action is a compatibility symlink to /Users/arach/dev/lattices/products/action. Both paths share the Lattices Git checkout and its uncommitted work. Verify the Git root and status before changing files.
 - Read ../../AGENTS.md for Lattices workspace rules before applying these product instructions. Keep Action.app, its local agent, and its recording lifecycle independent from the Lattices menu bar app.
+- Private layers: read docs/agent-layer.md. Check CLI/MCP capabilities, native/source provenance, host quarantine and `acceptance.privateLayer.state=accepted` before opening. MCP `layer_open {browser:true}` binds a CDP-only session; input failures never authorize native fallback. Reconnect after updates. Version and raw WS methods do not prove feature parity.
+- Persistent monitor: `layer prepare` explicitly connects a display and may change desktop topology. Tasks attach with `layer open`; `layer close` restores task windows but leaves the monitor connected. Only explicit `layer release` disconnects it. Check `layer display-status`; never provision or release silently during a task.
+- Installation targets use a matched signed app and MCP runtime with rollback. `native:doctor` rebuilds; use it only on an authorized development host.
 - Use bun as the JavaScript package manager for this repo.
 - Action lives at `products/action/` inside the Lattices monorepo. Run product-local commands from this directory or use the root `action:*` scripts.
 - The public product page and published Action documentation live at `https://lattices.dev/action`; source links point into `arach/lattices`.
@@ -39,7 +42,7 @@
 - Working with **record**? → Read docs/recording.md and native/engine/CoreSources/ActionRecordingProbeLauncher.swift before changing recording behavior.
 - Working with **agent**? → Read docs/native-runtime.md and native/engine/CoreSources/ActionAgentRuntime.swift for the current app/agent split.
 - Working with **permission**? → Check native/engine/Sources/ActionLauncherViewModel.swift and the native wrapper scripts in native/engine/scripts/.
-- Working with **build**? → Use bun run native:doctor or native/engine/scripts/build-app.sh to produce a signed app bundle.
+- Working with **build**? → On the authorized development host, use native/engine/scripts/build-app.sh. `native:doctor` rebuilds; it is not read-only installation-target QA.
 
 ## Overview
 
@@ -130,13 +133,18 @@ This produces a signed app bundle at:
 
 ## Check Native Health
 
-Use the doctor wrapper before debugging anything capture-related:
+On an authorized development host, use the doctor wrapper before debugging capture:
 
 ```bash
 bun run native:doctor
 ```
 
-This is the safest high-signal command because it:
+This command changes the native build. Do not use it as read-only preflight on
+an installation target; install a matched app/runtime with rollback there.
+For private layers, read [Agent layer](agent-layer.md) and verify capabilities,
+host quarantine, and desktop-preservation acceptance before opening.
+
+The development-host doctor command:
 
 - builds the app if needed
 - signs it
@@ -289,13 +297,50 @@ Keep these rules intact:
 - keep the agent useful for orchestration and transport
 - keep AppKit-owned concerns in the app process
 
+## Private-layer discovery
+
+Use `lats action capabilities` and the active MCP `capabilities` / `tools/list`
+for build provenance and routing. Check host quarantine before opening a private
+display. Native support, runtime health, and version strings do not establish
+physical desktop preservation. See [Agent layer](agent-layer.md).
+
+`native:doctor` builds and signs. Run it on an authorized development host.
+On an installation target, preserve the installed bundle and rollback; deploy
+a matched app and MCP runtime instead of rebuilding implicitly. Reconnect MCP
+after runtime changes.
+
+To assemble a matched runtime candidate on the development host, use:
+
+```bash
+bun scripts/package-agent-runtime.ts --app /path/Action.app --output /new/action-runtime --instructions-root /path/to/lattices-docs-checkout
+```
+
+The command verifies the signed app's recorded MCP source fingerprint, bundles
+the source and locked production dependencies, and includes the selected layer
+docs and Action skill. It rejects a mismatched pair or existing output and does
+not install anything. `runtime-provenance.json` records the artifact identities
+and marks host desktop-isolation acceptance as uncertified. Keep the previous
+runtime for rollback and preserve host quarantine when installing a candidate.
+
+The extracted archive contains sibling `bin/` and `products/` directories.
+Set `ACTION_ROOT=<extract>/products/action`, not the extraction root, and keep
+`bin/host-pairing.ts` in place; the runtime imports that canonical dependency.
+
 ## Scripts And Helpers
 
-Useful native scripts live in:
+Call native work through package.json scripts from `products/action`:
 
-- [native/engine/scripts](native/engine/scripts)
+```bash
+bun run native:app:build
+bun run native:doctor
+bun run native:launch
+bun run native:relaunch
+bun run native:host -- status
+bun run native:test:screenshot
+bun run native:test:record
+```
 
-The most important ones right now are:
+The scripts wrap helpers in [native/engine/scripts](native/engine/scripts). The most important wrappers are:
 
 - `build-app.sh`
 - `doctor.sh`
@@ -4074,7 +4119,7 @@ one. Shipped conventions:
 Create and prepare one with the companion extension loaded:
 
 ```bash
-# from repo root
+# from the Action product root (`products/action`)
 bun run chrome:companion:profile -- setup work
 ```
 
@@ -4098,7 +4143,7 @@ Environment aliases (shared between companion tooling and Action Browser MCP):
 | `ACTION_BROWSER_PROFILE_DIR` / `ACTION_CHROME_COMPANION_PROFILE_DIR` | Absolute user-data-dir override |
 | `ACTION_BROWSER_PROFILE_ROOT` / `ACTION_CHROME_COMPANION_PROFILE_ROOT` | Root for named identities |
 | `ACTION_BROWSER_DEBUG_PORT` | CDP port (MCP default `9334`) |
-| `ACTION_ROOT` | Monorepo root (needed for cookie tools when MCP is not cwd-rooted) |
+| `ACTION_ROOT` | Action product root (`<lattices-checkout>/products/action`); cookie tools use it when the MCP process starts elsewhere |
 
 ## Cookie seeding
 
@@ -4160,7 +4205,7 @@ unpacked install inside the Action-owned identity.
 
 Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root — the
 browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
-See [docs/mcp.md](../../docs/mcp.md).
+See [the lattices MCP doc](../../../docs/mcp.md).
 
 ### Tools
 
@@ -4183,20 +4228,21 @@ See [docs/mcp.md](../../docs/mcp.md).
 - **Browser MCP** (the `browser` toolset of `lattices mcp`): Action-owned Chrome
   identities plus DOM-level tools over CDP.
 
-Register it — no path, in any harness:
+Register it. The entry names the `lattices` binary and no path, so a repo move or
+a version bump cannot break it:
 
 ```bash
 claude mcp add lattices -s user -- lattices mcp
 ```
 
-To pin a default identity, add the environment variable to that entry:
+To pin a default identity, add the environment variable to that same entry:
 
 ```bash
 claude mcp add lattices -s user -e ACTION_BROWSER_PROFILE=work -- lattices mcp
 ```
 
-`ACTION_ROOT` is only needed for the Chrome Companion paths, when the tools run
-from a published `lattices` install rather than a checkout.
+`ACTION_ROOT` is only needed for the Chrome Companion paths below, and only when
+the tools run from a published `lattices` install rather than a checkout.
 
 ### Agent workflow
 
@@ -4220,20 +4266,60 @@ Regular mode is deliberately not controllable, and the result says so:
 `controlAvailable: false`, plus the native control path. Snapshot, click, fill,
 and screenshot continue to target the Action browser.
 
+### Responsive breakpoints
+
+`browser_resize` gives an already-open tab an explicit viewport, so a narrow
+layout can be captured instead of assumed.
+
+```text
+browser_open   { url: "http://localhost:3000" }
+browser_resize { width: 1440, height: 900 }
+browser_screenshot
+browser_resize { width: 390, height: 844, mobile: true, matchMedia: ["(max-width: 767px)"] }
+browser_screenshot
+browser_resize { reset: true }
+```
+
+Two targets, deliberately not interchangeable:
+
+| | What moves | Cost |
+|---|---|---|
+| `target: "tab"` (default) | CSS emulation for that one tab | Exact to the pixel, other tabs unaffected, fully reversible |
+| `target: "window"` | The real Chrome window hosting the tab | Every tab in that window moves, the display is a hard ceiling, and the tab's emulated viewport is dropped first |
+
+A device-metrics override belongs to the CDP session that set it, and Action
+Browser opens a fresh session per tool call. Two consequences shape the design:
+
+- The server keeps the requested viewport in memory and re-applies it on every
+  session, so a resize survives the later `browser_screenshot` that is the whole
+  point of it. It is per-tab, in-memory only, and dropped when the tab or the
+  browser closes — nothing is written to the profile.
+- `reset` cannot simply call `clearDeviceMetricsOverride`: a foreign session's
+  clear is accepted and does nothing, leaving Chrome stuck at the stale size. The
+  reset re-sets the metrics to adopt ownership first, then clears them.
+
+`deviceScaleFactor` defaults to `1`, which makes screenshot pixels equal CSS
+pixels — a 390-wide viewport returns a 390px-wide PNG. Read `exact` in the reply
+before trusting a capture: a page with a hard `min-width` can refuse to lay out
+as narrow as it was asked to.
+
 ## Plugin versioning
 
-Harnesses cache installed plugin metadata — skills, interface copy, MCP entry —
-by version. Bumping one manifest and not the others leaves an install serving
-stale tool descriptions, so all of them move together:
+Harnesses cache the Action Browser skill and interface metadata by plugin
+version. Bump all seven manifests together when that metadata changes:
 
 ```bash
 bun run plugin:version              # check that every manifest agrees
-bun run plugin:version -- 0.3.0     # set them all
+bun run plugin:version -- 0.4.1     # set them all
 ```
 
-Covers `.claude-plugin/marketplace.json`, the Claude/Codex/Kimi plugin manifests,
-and `SERVER_VERSION` in the MCP server. After a bump, reinstall or refresh the
-plugin in each harness so the cached copy is replaced.
+The check covers the root and Action product marketplace/Kimi manifests, plus
+the browser plugin's Claude, Codex, and Kimi manifests. Reinstall or refresh the
+plugin in each harness so its cached skill is replaced.
+
+The plugin no longer carries an MCP server or a `SERVER_VERSION`. Browser tools
+ship with the lattices CLI; updating that CLI and restarting its MCP process
+updates the server separately from refreshing this skill-only plugin.
 
 ## What is intentionally not done
 
@@ -4246,6 +4332,25 @@ plugin in each harness so the cached copy is replaced.
 - [packages/chrome-companion/README.md](../packages/chrome-companion/README.md)
 - [ACT-001 surface adapter architecture](decisions/ACT-001-surface-adapter-architecture.md)
 - [plugins/action-browser/skills/action-browser/SKILL.md](../plugins/action-browser/skills/action-browser/SKILL.md)
+
+## Browser request deadlines
+
+`browser_open.waitMs` is the total operation budget (15,000 ms by default),
+including profile selection, Chrome startup, HTTP/CDP connection, navigation,
+and readiness checks. Zero fails immediately without opening a tab. Expiry
+returns an MCP tool error and cancels pending transport work; increasing
+`waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
+
+Configure the MCP server as `command: "lattices", args: ["mcp"]` — no path, so it
+cannot be pinned to a stale checkout or plugin cache. On the next MCP process
+start, `initialize` reports the lattices version, and `tools/list` exposes
+`browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their
+loaded implementation until reloaded.
+
+The `lattices` launcher resolves Bun from `LATTICES_BUN_BIN`, PATH, or the
+standard user and Homebrew locations, so it survives the bare system PATH a
+GUI-launched harness hands it. An explicit invalid override fails with an
+actionable error.
 
 ## Native-runtime.agent
 

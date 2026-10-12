@@ -17,13 +17,12 @@ The `browser_*` tools are served by the lattices MCP, which ships with the
 { "command": "lattices", "args": ["mcp"] }
 ```
 
-If the tools are missing, the fix is `lattices mcp --list` (does the CLI serve
-them?) and then the harness's MCP config — not a plugin reinstall. This plugin
-carries the skill; it no longer carries the server.
+If the tools are missing, check `lattices mcp --list`, then the harness's MCP
+configuration. This plugin carries the skill; it no longer carries the server.
 
 ## Which browser are we talking about?
 
-Four different browsers can be in play. Pick deliberately, and say which one
+Three different browsers can be in play. Pick deliberately, and say which one
 you picked.
 
 | | What it is | How you control it |
@@ -31,7 +30,6 @@ you picked.
 | **The user's regular Chrome** | Their everyday browser — real profiles (`Default`, `Profile 1` / "Work"), their tabs, history, extensions, logins | `browser_open { mode: "regular" }` opens a URL and stops there. **No DOM tools.** Drive that window with Action's native macOS control: `action.observe.snapshot` (screen + accessibility), `action.resolve.target`, `action.act.execute` |
 | **An Action browser** | Real, non-headless Chrome that Action owns, on its own user-data-dir. Default identity `agent-browser` is blank and signed into nothing | Full DOM tools over CDP: `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot` |
 | **An Action browser identity seeded from a regular Chrome profile** | The same Action-owned Chrome under a name like `work`, carrying cookies copied from one of the user's real profiles for an allowlist of domains | Full DOM tools, on sites the user is already signed in to |
-| **An Action browser on the agent layer** | `action.layer.open { browser: true }` puts an Action browser on Action's hidden virtual display, watched through a PiP. Same profile and port as these tools | `action.layer.go`, `action.layer.click`, `action.layer.type`, `action.layer.js` (Action MCP) |
 
 The tradeoff in one line: **regular Chrome gives you their real session but only
 screen-and-accessibility control; an Action browser gives you DOM control but
@@ -42,19 +40,54 @@ remote-debugging switches for the user's default data
 directory](https://developer.chrome.com/blog/remote-debugging-port), and Action
 does not attempt to bypass that boundary.
 
-## Default workflow
+## Choose the surface
 
-1. If the user names an identity, call `browser_use_profile` or pass `profile`
-   to `browser_open`. Otherwise the blank `agent-browser` identity is used.
-2. Call `browser_open` with the requested URL. It reuses this agent session's
-   current tab by default. Leave `background: true` unless the user asks to see
-   the Chrome window, and set `newTab: true` only when parallel page state is
-   intentional.
-3. Call `browser_screenshot` and show the returned image to the user. To check a
-   responsive layout, call `browser_resize` with an explicit width and height first.
-4. Call `browser_snapshot` before interacting with unfamiliar pages.
-5. Use selectors returned by the snapshot for `browser_click` and `browser_fill`.
-6. Take another screenshot after an action when visual confirmation matters.
+Use HTTP retrieval when reading public content is sufficient. Use this plugin
+when the task needs a real page, DOM interaction, or a browser screenshot.
+
+`background: true` controls how Action requests browser opening; it does not
+create a private display or prove continuous desktop preservation. If the user
+requires private-display isolation, route to Action MCP `layer_open
+{ browser: true }` after the capability, quarantine, and acceptance checks in
+the [agent-layer guide](https://github.com/arach/lattices/blob/main/products/action/docs/agent-layer.md).
+Missing tools or acceptance means stop and report the gap. Do not silently
+substitute this plugin for a requested private layer.
+
+## Inspect, act, verify, close
+
+1. Pick the requested identity with `browser_use_profile` or `browser_open`'s
+   `profile`; otherwise use `agent-browser`. Retain the identity and session
+   reported by `browser_open`.
+2. Open the URL with `background: true`, unless the user requests visibility.
+   Opening reuses this session's current tab. Use `newTab: true` only for
+   intentional parallel page state. Retain the returned tab `id` and pass it
+   as `tabId` to subsequent inspection, input, screenshots, and closure.
+3. Inspect with `browser_snapshot`. Use observed selectors for `browser_click`
+   and `browser_fill`; refresh the snapshot after navigation or page changes.
+4. Verify the resulting URL, content, or application state. Capture and show a
+   `browser_screenshot` when visual confirmation matters. Input success alone
+   does not establish task completion.
+5. Close task-created tabs with `browser_close { tabId }`. When finished with
+   the identity, release this session with `browser_close { scope: "browser" }`.
+   Check `closed` and `liveOwners`; another live owner can keep Chrome running.
+
+## Ownership and recovery
+
+- `browser_tabs` lists the active identity's tabs, including tabs this task
+  did not create. Listing a tab does not authorize navigating or closing it.
+  Reuse a user-designated tab; otherwise retain ownership of your created tabs.
+- Serialize profile switches, opens, and actions on this MCP connection. The
+  active identity and current-tab default are shared mutable state. Parallel
+  callers must coordinate ownership and pass explicit `tabId` values.
+- After a timeout, inspect `browser_tabs` and the intended tab before retrying:
+  navigation or a submitted action may already have succeeded. Do not repeat
+  consequential input until its outcome is known.
+- After disconnect or profile change, confirm the identity, tab ID, and URL
+  again. A missing tab is not permission to act on whichever tab is now current.
+- CDP errors, unavailable selectors, native dialogs, or login failures do not
+  authorize foregrounding Chrome or switching to native pointer/keyboard
+  input. Report the blocked operation; use another surface only when the
+  user's task authorizes its effects.
 
 ## Responsive checks: resize, then screenshot
 
@@ -140,9 +173,9 @@ switch to Action's native tools rather than the browser tools.
 - `browser_companion_status` reports the Chrome Companion extension dist and
   localhost bridge. Richer DOM tooling lives in Action's
   `packages/chrome-companion`; load its `dist` unpacked once per identity when
-  the user wants that path. It needs an Action checkout — set `ACTION_ROOT` if
-  the tools are running from a published `lattices` install, where the companion
-  is not present and status truthfully reports it missing.
+  the user wants that path. It needs an Action checkout: set `ACTION_ROOT` if
+  the tools run from a published `lattices` install, where the companion is not
+  included and status reports it missing.
 
 ## Important behavior
 
@@ -155,9 +188,9 @@ switch to Action's native tools rather than the browser tools.
   response, and reports the `viewport` it was captured at.
 - `browser_resize` needs a tab already open; it changes size, never navigation.
 - Prefer a stable CSS selector from `browser_snapshot` over text matching.
-- Chrome belongs to the agent session that started it. It quits when that
-  session ends, after fifteen idle minutes, or on `browser_close` with
-  `scope: "browser"` — whichever comes first.
+- The session releases its browser claim on exit, after fifteen idle minutes,
+  or on `browser_close { scope: "browser" }`. Chrome may remain while another
+  live session owns it.
 - Call `browser_close` with `scope: "browser"` when a browsing task is finished
   and nothing further is expected.
 

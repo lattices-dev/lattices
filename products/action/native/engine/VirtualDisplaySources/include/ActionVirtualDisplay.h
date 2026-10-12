@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) unsigned int maxPixelsWide;
 @property (nonatomic) CGSize sizeInMillimeters;
 @property (nonatomic) unsigned int serialNum;
+@property (nonatomic) unsigned int serialNumber;
 @property (nonatomic) unsigned int productID;
 @property (nonatomic) unsigned int vendorID;
 @property (copy, nonatomic, nullable) void (^terminationHandler)(id _Nullable, CGVirtualDisplay * _Nullable);

@@ -2,8 +2,15 @@
 
 > Native-first macOS demo automation with an AppKit UI and a local agent runtime
 
+## Private-layer preflight
+
+Use CLI and fresh MCP capabilities plus tools/list to verify the matching app/runtime and required layer tools. Require acceptance.privateLayer.state=accepted and check host quarantine before opening. Use MCP layer_open {browser:true}, layer_snapshot, layer_click/type/js, and layer_close; retain the returned session. Browser input is CDP-only and errors never authorize native fallback. Ordinary background browser opening is not private display isolation. Reconnect MCP after updates. Build/doctor belongs on the authorized development host. See docs/agent-layer.md for acceptance lookup and deployment diagnostics.
+
+Check layer display-status for the persistent monitor. Explicit layer prepare connects it and may change desktop topology. Task open attaches; task close restores windows and leaves the monitor connected. Explicit layer release closes the task and disconnects the monitor. Never turn missing monitor state into silent provisioning during a task.
+
 ## Documentation
 
+- Agent layer: /docs/agent-layer
 - Overview: /docs/overview
 - Getting-started: /docs/getting-started
 - Native-runtime: /docs/native-runtime

@@ -4,10 +4,25 @@
   "sourceDirty": false,
   "files": {
     "editor.css": "03030223e03fcbf78dd7ff78ad996e794255a71afdddd20b5a58f6a2c765cd10",
-    "editor.js": "95d3c5363ea4196f0037cd6abc0f466773fe64337bffc2f9bfd328c8ff788707",
+    "editor.js": "1df72b621f1b0f05c599c630a4927400fdfc070b3cc23f70b5845223acf2b070",
     "index.html": "6ceb52eedcfc21964230e4e1793d4e9703b7d76393b8a3808229b6c30c19c208",
     "jetbrains-mono-LICENSE.txt": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
     "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",
     "jetbrains-mono-latin-600-normal.woff2": "400c6bfda18d5d14acad1c15d6dcb9f8e13c015e7286317e0b9a482539bef147"
-  }
+  },
+  "localPatches": [
+    {
+      "id": "layer-window-presence-wording",
+      "file": "editor.js",
+      "source": "arach/hudson:apps/lattices-editor/overview.tsx:53",
+      "sourceRevision": "9d20c99394b50e834cfe56014fe343f39f5fa27a",
+      "sourceDirty": true,
+      "sourceSHA256": "536f65feebd5edfdd5554f59d4411deb13db7b2948789f6d17aae012c6716a0f",
+      "oldLiteral": "rows.length?\"Active\":\"Idle\"",
+      "newLiteral": "rows.length?\"Windows open\":\"No windows\"",
+      "originalBundleSHA256": "95d3c5363ea4196f0037cd6abc0f466773fe64337bffc2f9bfd328c8ff788707",
+      "patchedBundleSHA256": "1df72b621f1b0f05c599c630a4927400fdfc070b3cc23f70b5845223acf2b070",
+      "reason": "Clarify that the header describes open windows, not active layer focus. Applied as a single literal replacement backed by the source edit; the full editor build was not imported."
+    }
+  ]
 }

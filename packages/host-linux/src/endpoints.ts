@@ -7,7 +7,7 @@ import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
-import { bringCursorHome, keepPointerSharing, pointerStatus, startPointerTrial, type MouseDependencies } from "./mouse.ts";
+import { bringCursorHome, type CursorHomeDependencies } from "./cursor-home.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
 import { closeSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
@@ -105,43 +105,15 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext, mouseDeps?: MouseDependencies) {
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies) {
   registerLayerEndpoints(router, ctx.emit);
   router.register({
-    method: "mouse.share",
-    description: "Share the pointer for a trial (five minutes by default)",
-    access: "mutate",
-    capability: "spaces.read",
-    params: [{ name: "for", type: "string", description: "Trial duration: 90, 30s, 5m or 1h" }],
-    returns: "Object with sharing and until (ISO 8601 deadline)",
-    handler: async (params) => {
-      if (params.for !== undefined && typeof params.for !== "string") throw new RouterError("for must be a duration string");
-      return asJson(await startPointerTrial(params.for as string | undefined, mouseDeps));
-    },
-  });
-  router.register({
-    method: "mouse.keep",
-    description: "Keep pointer sharing and cancel the trial deadline and watchdog",
-    access: "mutate",
-    capability: "spaces.read",
-    returns: "Object with sharing and until=null",
-    handler: async () => asJson(await keepPointerSharing(mouseDeps)),
-  });
-  router.register({
-    method: "mouse.status",
-    description: "Pointer sharing, lan-mouse clients and an optional trial deadline",
-    access: "read",
-    capability: "spaces.read",
-    returns: "Object with sharing, clients and until (ISO 8601 or null)",
-    handler: async () => asJson(await pointerStatus(mouseDeps)),
-  });
-  router.register({
     method: "mouse.home",
-    description: "Release lan-mouse clients and bring the cursor to the focused real monitor",
+    description: "Bring the cursor to the focused real monitor",
     access: "mutate",
     capability: "spaces.read",
-    returns: "Object with ok, monitor, x, y and lan-mouse release receipt",
-    handler: async () => asJson(await bringCursorHome(mouseDeps)),
+    returns: "Object with ok, monitor, x and y",
+    handler: async () => asJson(await bringCursorHome(cursorDeps)),
   });
   // ── Host ────────────────────────────────────────────────────────────
   router.register({

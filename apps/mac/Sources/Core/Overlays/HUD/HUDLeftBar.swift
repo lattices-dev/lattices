@@ -806,7 +806,7 @@ struct HUDLeftBar: View {
 
             let windowCounts = workspace.layerWindowCounts()
             ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
-                let isActive = idx == workspace.activeLayerIndex
+                let isActive = idx == workspace.activeLayerSelection
                 let count = windowCounts.indices.contains(idx) ? windowCounts[idx] : 0
                 let isHovered = hoveredLayerID == layer.id
 

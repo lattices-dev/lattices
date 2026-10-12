@@ -63,7 +63,7 @@ export function scopeOf(capabilities: string[]): Scope {
  * accepts an arbitrary command.
  */
 export function scopeFor(info: Pick<MethodInfo, "method" | "access">): Scope {
-  if (["capture.live", "apps.open", "mouse.share", "mouse.keep"].includes(info.method)) return "drive";
+  if (["capture.live", "apps.open"].includes(info.method)) return "drive";
   if (info.access === "read") return "read";
   return info.method.startsWith("computer.") ? "drive" : "act";
 }

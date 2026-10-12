@@ -1,7 +1,7 @@
 {
   "name": "action",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Native-first macOS capture and demo workstation",
   "homepage": "https://lattices.dev/action",
   "repository": {

@@ -38,6 +38,8 @@ echo "==> Building Lattices v$VERSION (release)..."
 # builders. In particular, this enables Hudson Voice when apps/mac/build.json
 # declares the voice feature.
 eval "$(bun "$ROOT/bin/lattices-build-env.ts" shell)"
+build_metadata="$(bun "$ROOT/bin/lattices-build-metadata.ts")"
+eval "$build_metadata"
 cd "$APP_DIR"
 # Stream the full build (tee) so CI surfaces real compiler errors; on failure,
 # re-print just the error: lines for a quick scan. (Previously `| tail -3`
@@ -50,6 +52,10 @@ if ! swift build -c release 2>&1 | tee "$build_log"; then
     exit 1
 fi
 rm -f "$build_log"
+if [ "$(bun "$ROOT/bin/lattices-build-metadata.ts" digest)" != "$LATTICES_BUILD_SOURCEDIGEST" ] || [ "$(git -C "$ROOT" rev-parse HEAD)" != "$LATTICES_BUILD_REVISION" ]; then
+    echo "Error: Build inputs changed during compilation; rebuild from a stable checkout." >&2
+    exit 1
+fi
 
 echo "==> Creating app bundle..."
 rm -rf "$BUILD_DIR"
@@ -95,6 +101,11 @@ done
 cp "$APP_DIR/Info.plist" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildChannel string release" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildTrack string latest" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildRevision string $LATTICES_BUILD_REVISION" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildTimestamp string $LATTICES_BUILD_TIMESTAMP" "$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :LatticesBuildSourceDigest string $LATTICES_BUILD_SOURCEDIGEST" "$BUNDLE/Contents/Info.plist"
 
 ASSISTANT_KNOWLEDGE="$ROOT/docs/assistant-knowledge.md"
 if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
@@ -102,7 +113,7 @@ if [ -f "$ASSISTANT_KNOWLEDGE" ]; then
     cp "$ASSISTANT_KNOWLEDGE" "$BUNDLE/Contents/Resources/docs/assistant-knowledge.md"
 fi
 
-bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/MacOS/CompanionInstaller"
+bun "$ROOT/bin/build-companion-installer.ts" "$BUNDLE/Contents/Resources/companion-installer.js"
 
 # Helper apps (Voice) go in Contents/Helpers, built by their products' own
 # packaging scripts. See bin/embedded-helpers.ts.
@@ -117,10 +128,6 @@ else
     # Inside out: embedded helpers first, then nested executables, then the
     # bundle. No --deep, which would re-sign the helpers as Lattices.
     bun "$ROOT/bin/embedded-helpers.ts" sign "$BUNDLE" "$SIGN_IDENTITY" --timestamp
-
-    codesign --force --options runtime --timestamp \
-        --entitlements "$ROOT/tools/release/CompanionInstaller.entitlements" \
-        --sign "$SIGN_IDENTITY" "$BUNDLE/Contents/MacOS/CompanionInstaller"
 
     codesign --force --options runtime --timestamp \
         --entitlements "$APP_DIR/Lattices.entitlements" \

@@ -113,20 +113,20 @@ extension DisplayGather {
         ))
     }
 
-    private static func onMain<T>(_ body: () throws -> T) rethrows -> T {
+    static func onMain<T>(_ body: () throws -> T) rethrows -> T {
         if Thread.isMainThread { return try body() }
         return try DispatchQueue.main.sync(execute: body)
     }
 
-    private static func resolve(_ value: JSON?, _ name: String) throws -> Screen {
+    static func resolve(_ value: JSON?, _ name: String, among all: [Screen]? = nil) throws -> Screen {
         let query: String
         switch value {
         case .int(let index): query = String(index)
-        case .double(let index): query = String(Int(index))
+        case .double(let index) where index.isFinite && index.rounded() == index && index >= 0 && index < Double(Int.max): query = String(Int(index))
         case .string(let text) where !text.isEmpty: query = text
         default: throw RouterError.missingParam(name)
         }
-        guard let screen = screen(named: query) else { throw RouterError.notFound("display \(query)") }
+        guard let screen = screen(named: query, among: all ?? screens()) else { throw RouterError.notFound("display \(query)") }
         return screen
     }
 }

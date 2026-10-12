@@ -87,7 +87,7 @@ final class LayerAim {
         guard let index = target, phase == .aiming, !LayerPreview.shared.isFrozen else { return false }
         stopWatch()
         let workspace = WorkspaceManager.shared
-        guard workspace.layers.indices.contains(index), index != workspace.activeLayerIndex else {
+        guard workspace.layers.indices.contains(index), index != workspace.activeLayerSelection else {
             // ⌘⌥N on the layer you're on puts it back in order, as it always
             // has; browsing back to it leaves it be.
             let reconcile = steps == 1 && workspace.layers.indices.contains(index)
@@ -152,13 +152,13 @@ final class LayerAim {
         let workspace = WorkspaceManager.shared
         let layers = workspace.layers
         guard let index = target, layers.indices.contains(index) else { return }
-        let current = layers.indices.contains(workspace.activeLayerIndex) ? layers[workspace.activeLayerIndex].label : nil
+        let current = workspace.activeLayer?.label
         guard let forecast = workspace.forecast(for: index) else {
             workspace.showBezel(for: index, in: layers, edge: edge)
             return
         }
         let decision = phase == .deciding ? LayerBezelView.Decision(
-            target: layers[index].label, current: current ?? "this layer",
+            target: layers[index].label, current: current ?? "the desktop",
             limit: Self.decideLimit, started: decideStarted,
             choose: { [weak self] choice in
                 switch choice {

@@ -169,7 +169,7 @@ extension LayerOverview {
     static func build(
         _ layers: [Layer],
         resolution: LayerMembership.Resolution,
-        active: Int,
+        active: Int?,
         main: CGRect,
         place: ([Int]) -> LayerRoster.Place?,
         groupLabel: (String) -> String? = { _ in nil },
@@ -239,7 +239,7 @@ extension WorkspaceManager {
         return LayerOverview.build(
             layers,
             resolution: layerMembership(in: windows),
-            active: activeLayerIndex,
+            active: activeLayerSelection,
             main: CGDisplayBounds(CGMainDisplayID()),
             place: context.place(of:),
             groupLabel: { self.group(byId: $0)?.label },
@@ -261,6 +261,7 @@ final class LayerOverviewStore: ObservableObject {
         // The publishers fire before the change lands; rebuild after it has.
         watch = DesktopModel.shared.$windows.map { _ in () }
             .merge(with: workspace.$config.map { _ in () }, workspace.$activeLayerIndex.map { _ in () })
+            .merge(with: workspace.$layerFocus.map { _ in () })
             .debounce(for: .milliseconds(120), scheduler: DispatchQueue.main)
             .sink { [weak self] in self?.rebuild() }
         rebuild()
@@ -281,7 +282,9 @@ extension WorkspaceManager {
     func layersContextPayload(in desktop: DesktopModel = .shared) -> [String: Any] {
         [
             "file": "\(NSHomeDirectory())/.lattices/workspace.json",
-            "active": activeLayerIndex,
+            "active": activeLayerSelection.map { $0 as Any } ?? NSNull(),
+            "focusActive": isLayerFocusActive,
+            "rememberedIndex": activeLayerIndex,
             "layers": overviews(in: desktop.allWindows()).map { layerContextPayload($0) },
         ]
     }

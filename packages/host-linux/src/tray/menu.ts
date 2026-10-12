@@ -4,14 +4,6 @@ const { Interface } = dbus.interface;
 type Properties = Record<string, dbus.Variant>;
 export interface MenuItem { id: number; label?: string; enabled?: boolean; separator?: boolean; checked?: boolean }
 
-export function pointerMenu(pointer: { sharing: boolean; available: boolean; until: string | null }, busy: boolean): MenuItem[] {
-  return [
-    { id: 1, label: "Bring Cursor Home", enabled: !busy },
-    { id: 2, label: "Share Pointer", checked: pointer.sharing, enabled: !busy && pointer.available },
-    ...(pointer.until ? [{ id: 8, label: "Keep Sharing", enabled: !busy }] : []),
-  ];
-}
-
 export function menuProperties(item: MenuItem): Properties {
   if (item.separator) return { type: new dbus.Variant("s", "separator") };
   const properties: Properties = {

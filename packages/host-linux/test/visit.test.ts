@@ -8,7 +8,7 @@ import { VisitTestClient, openVisitSocket, visitHeaders } from "../src/bridge/vi
 import { VISIT_SILENCE_MS } from "../src/bridge/visit-channel.ts";
 import { VisitArea, VisitSession, clampToScreens, parseVisitMessage, type VisitDependencies, type VisitorOverlay, type VisitorState } from "../src/bridge/visit.ts";
 import { wtypeKeysymArgs } from "../src/input.ts";
-import type { Monitor } from "../src/mouse.ts";
+import type { Monitor } from "../src/cursor-home.ts";
 
 const monitor = (name: string, extra: Partial<Monitor> = {}): Monitor => ({ id: 1, name, description: "Dell", x: 1920, y: 0, width: 3440, height: 1440, scale: 1, transform: 0,
   reserved: [0, 24, 0, 0], activeWorkspace: { id: 1, name: "1" }, focused: true, ...extra });

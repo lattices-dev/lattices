@@ -320,35 +320,55 @@ export function devToolsKey(chord: string): { modifiers: number; key: string; co
   return undefined;
 }
 
-export async function pressKey(page: DevToolsPage, key: NonNullable<ReturnType<typeof devToolsKey>>): Promise<void> {
+type InputGuard = () => Promise<void>;
+
+export async function pressKey(page: DevToolsPage, key: NonNullable<ReturnType<typeof devToolsKey>>, guard?: InputGuard): Promise<void> {
   const base = { modifiers: key.modifiers, key: key.key, code: key.code, windowsVirtualKeyCode: key.keyCode };
-  await page.call("Input.dispatchKeyEvent", { type: key.text ? "keyDown" : "rawKeyDown", ...base, ...(key.text ? { text: key.text, unmodifiedText: key.text } : {}) });
-  await page.call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
-}
-
-export async function clickAt(page: DevToolsPage, point: LayerPoint, holdMs = 0): Promise<void> {
-  await page.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
-  await page.call("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1 });
-  if (holdMs > 0) await new Promise((done) => setTimeout(done, holdMs));
-  await page.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", buttons: 0, clickCount: 1 });
-}
-
-export async function dragBetween(page: DevToolsPage, from: LayerPoint, to: LayerPoint, durationMs = 200): Promise<void> {
-  const steps = Math.max(4, Math.round(durationMs / 16));
-  await page.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: from.x, y: from.y });
-  await page.call("Input.dispatchMouseEvent", { type: "mousePressed", x: from.x, y: from.y, button: "left", buttons: 1, clickCount: 1 });
-  for (let step = 1; step <= steps; step += 1) {
-    const t = step / steps;
-    await page.call("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: from.x + (to.x - from.x) * t,
-      y: from.y + (to.y - from.y) * t,
-      button: "left",
-      buttons: 1,
-    });
-    await new Promise((done) => setTimeout(done, durationMs / steps));
+  await guard?.();
+  try {
+    await page.call("Input.dispatchKeyEvent", { type: key.text ? "keyDown" : "rawKeyDown", ...base, ...(key.text ? { text: key.text, unmodifiedText: key.text } : {}) });
+  } finally {
+    await page.call("Input.dispatchKeyEvent", { type: "keyUp", ...base });
   }
-  await page.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, button: "left", buttons: 0, clickCount: 1 });
+}
+
+export async function clickAt(page: DevToolsPage, point: LayerPoint, holdMs = 0, guard?: InputGuard): Promise<void> {
+  await guard?.();
+  await page.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+  await guard?.();
+  try {
+    await page.call("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1 });
+    if (holdMs > 0) await new Promise((done) => setTimeout(done, holdMs));
+    await guard?.();
+  } finally {
+    await page.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", buttons: 0, clickCount: 1 });
+  }
+}
+
+export async function dragBetween(page: DevToolsPage, from: LayerPoint, to: LayerPoint, durationMs = 200, guard?: InputGuard): Promise<void> {
+  const steps = Math.max(4, Math.round(durationMs / 16));
+  let lastPoint = from;
+  await guard?.();
+  await page.call("Input.dispatchMouseEvent", { type: "mouseMoved", x: from.x, y: from.y });
+  await guard?.();
+  try {
+    await page.call("Input.dispatchMouseEvent", { type: "mousePressed", x: from.x, y: from.y, button: "left", buttons: 1, clickCount: 1 });
+    for (let step = 1; step <= steps; step += 1) {
+      await guard?.();
+      const progress = step / steps;
+      lastPoint = { x: from.x + (to.x - from.x) * progress, y: from.y + (to.y - from.y) * progress };
+      await page.call("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        ...lastPoint,
+        button: "left",
+        buttons: 1,
+      });
+      await new Promise((done) => setTimeout(done, durationMs / steps));
+    }
+    await guard?.();
+  } finally {
+    await page.call("Input.dispatchMouseEvent", { type: "mouseReleased", ...lastPoint, button: "left", buttons: 0, clickCount: 1 });
+  }
 }
 
 /** dy as the layer reads it: positive is a wheel turned up. DevTools counts the other way. */
@@ -357,11 +377,14 @@ export async function wheelAt(page: DevToolsPage, point: LayerPoint, dx: number,
 }
 
 /** Text into the focused element; each "\n" is a Return. */
-export async function insertText(page: DevToolsPage, text: string): Promise<void> {
+export async function insertText(page: DevToolsPage, text: string, guard?: InputGuard): Promise<void> {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
-    if (line) await page.call("Input.insertText", { text: line });
-    if (index < lines.length - 1) await pressKey(page, devToolsKey("return")!);
+    if (line) {
+      await guard?.();
+      await page.call("Input.insertText", { text: line });
+    }
+    if (index < lines.length - 1) await pressKey(page, devToolsKey("return")!, guard);
   }
 }
 

@@ -26,9 +26,7 @@ import { primitiveAction, readPoint, readSpace, toGlobal, type LayerPoint, type 
  * tool call, a list of steps, a steps file, or a script that gets the driver as a
  * function argument.
  *
- * Each act picks its route. A Chromium browser on the layer with a DevTools port takes
- * input straight into the page: nothing of the operator's moves. Anything else runs as
- * a blink, through accessibility first and the borrowed pointer last.
+ * Browser sessions only use DevTools. Native sessions use accessibility and blink.
  */
 
 export const LAYER_VERBS = ["click", "type", "press", "go", "drag", "scroll", "js", "wait", "look", "note"] as const;
@@ -53,6 +51,25 @@ export interface LayerDriverDeps {
   mark(act: AgentLayerMark): Promise<void>;
   look(): Promise<AgentLayerSnapshot>;
   note(text: string): Promise<void>;
+  pageOnLayer?: typeof pageOnLayer;
+}
+
+export interface LayerSession {
+  mode: "browser" | "native";
+  pid: number;
+  displayId: number;
+  startedAt: string;
+  browserPid?: number;
+}
+
+export async function guardLayerDispatch(expected: AgentLayerStatus, deps: Pick<LayerDriverDeps, "status" | "guard">): Promise<void> {
+  const current = await deps.status();
+  if (expected.active !== current.active || (expected.active && (!expected.layer || !current.layer
+    || expected.layer.pid !== current.layer.pid || expected.layer.displayId !== current.layer.displayId
+    || expected.layer.startedAt !== current.layer.startedAt))) {
+    throw new Error("The agent layer session ended or was replaced before input dispatch. Refusing to change input routes.");
+  }
+  await deps.guard();
 }
 
 /** How long the viewer's pointer gets to reach a spot before the act lands there. */
@@ -181,36 +198,64 @@ interface BrowserPage {
 }
 
 export class LayerDriver {
+  private session: LayerSession | undefined;
+
   constructor(private readonly deps: LayerDriverDeps) {}
 
-  async step(step: LayerStep): Promise<Record<string, unknown>> {
+  bind(status: AgentLayerStatus, mode: LayerSession["mode"], browserPid?: number): LayerSession {
+    if (!status.active || !status.layer) throw new Error("Cannot bind an inactive agent layer.");
+    if (mode === "browser" && !browserPid) throw new Error("Browser sessions require their owned browser pid.");
+    const { pid, displayId, startedAt } = status.layer;
+    this.session = Object.freeze({ mode, pid, displayId, startedAt, ...(browserPid ? { browserPid } : {}) });
+    return this.session;
+  }
+
+  release(): void {
+    this.session = undefined;
+  }
+
+  identity(): LayerSession | undefined {
+    return this.session ? { ...this.session } : undefined;
+  }
+
+  async assertSession(expected = this.session): Promise<AgentLayerStatus> {
+    if (!expected || this.session !== expected) throw new Error("No bound agent layer session. Open one with action.layer.open.");
+    const status = await this.deps.status();
+    if (this.session !== expected || !status.active || !status.layer || status.layer.pid !== expected.pid
+      || status.layer.displayId !== expected.displayId || status.layer.startedAt !== expected.startedAt) {
+      throw new Error("The agent layer session ended or was replaced. Stop interactions and explicitly open a new session.");
+    }
+    return status;
+  }
+
+  async step(step: LayerStep, session = this.session): Promise<Record<string, unknown>> {
+    const status = await this.assertSession(session);
     if (step.verb === "note") {
       const text = typeof step.args.text === "string" ? step.args.text : "";
       await this.deps.note(text);
-      return { note: text };
+      return { session, note: text };
     }
     if (step.verb === "look") {
-      return { snapshot: await this.deps.look() };
+      return { session, snapshot: await this.deps.look() };
     }
     if (step.verb === "wait") {
-      return this.wait(step.args);
+      return { session, ...await this.wait(step.args, session!) };
     }
     await this.deps.guard();
-    const status = await this.deps.status();
-    if (!status.active || !status.layer) {
-      throw new Error("No agent layer is up. Open one with action.layer.open { bundleId } or { browser: true }.");
+    if (session!.mode === "native") {
+      await this.assertSession(session);
+      return { ...await this.viaBlink(step, status), session };
     }
-    const near = this.pointOf(step, status.layer.bounds);
+    const near = this.pointOf(step, status.layer!.bounds);
     const browser = await this.browser(status, near);
     try {
-      if (browser) {
-        const result = await this.viaDevTools(step, browser, status.layer.bounds);
-        if (result) {
-          await this.deps.touch(step.verb);
-          return { route: "devtools", ...result };
-        }
-      }
-      return await this.viaBlink(step, status);
+      if (!browser) throw new Error("Browser session has no reachable DevTools page on its layer. Native input fallback is disabled.");
+      await this.assertSession(session);
+      const result = await this.viaDevTools(step, browser, status.layer!.bounds, session!);
+      if (!result) throw new Error(`Browser session cannot perform ${step.verb} through DevTools on this page. Native input fallback is disabled; use a page target or layer.go for navigation.`);
+      await this.assertSession(session);
+      await this.deps.touch(step.verb);
+      return { route: "devtools", session, pageTargetId: browser.page.target.id, ...result };
     } finally {
       browser?.page.close();
     }
@@ -218,13 +263,18 @@ export class LayerDriver {
 
   /** The script-file face of the driver. */
   api(): LayerScriptApi {
+    const session = this.session;
+    const step = async (value: LayerStep) => {
+      await this.assertSession(session);
+      return this.step(value, session);
+    };
     const api: Record<string, unknown> = {
-      step: (step: unknown) => this.step(parseLayerStep(step)),
-      status: () => this.deps.status(),
+      step: (value: unknown) => step(parseLayerStep(value)),
+      status: () => this.assertSession(session),
     };
     for (const verb of LAYER_VERBS) {
       api[verb] = (value?: unknown, extra: Args = {}) =>
-        this.step({ verb, args: { ...shorthand(verb, verb === "look" ? true : value), ...extra } });
+        step({ verb, args: { ...shorthand(verb, verb === "look" ? true : value), ...extra } });
     }
     return api as LayerScriptApi;
   }
@@ -233,12 +283,13 @@ export class LayerDriver {
    * Run steps in order. Stops at the first that fails and says which, with a look at
    * the layer, so the caller sees where it got to.
    */
-  async run(steps: LayerStep[]): Promise<{ ok: boolean; steps: Record<string, unknown>[]; failed?: { step: number; verb: LayerVerb; error: string } }> {
+  async run(steps: LayerStep[], session = this.session): Promise<{ ok: boolean; steps: Record<string, unknown>[]; failed?: { step: number; verb: LayerVerb; error: string } }> {
     const results: Record<string, unknown>[] = [];
     for (const [index, step] of steps.entries()) {
       try {
+        await this.assertSession(session);
         const started = Date.now();
-        const result = summarize(await this.step(step));
+        const result = summarize(await this.step(step, session));
         results.push({ [step.verb]: result, ms: Date.now() - started });
       } catch (error) {
         return { ok: false, steps: results, failed: { step: index + 1, verb: step.verb, error: (error as Error).message } };
@@ -249,10 +300,12 @@ export class LayerDriver {
 
   /** A .json file of steps, or a .ts/.js module whose default export is `async (layer) => …`. */
   async runFile(path: string): Promise<Record<string, unknown>> {
+    const session = this.session;
+    const api = this.api();
     const file = isAbsolute(path) ? path : resolve(process.cwd(), path);
     const ext = extname(file).toLowerCase();
     if (ext === ".json") {
-      return this.run(parseLayerSteps(JSON.parse(await readFile(file, "utf8"))));
+      return this.run(parseLayerSteps(JSON.parse(await readFile(file, "utf8"))), session);
     }
     if ([".ts", ".js", ".mjs", ".mts"].includes(ext)) {
       // Cache-busted so an edited script runs as edited.
@@ -261,7 +314,8 @@ export class LayerDriver {
         throw new Error(`${path} needs a default export: export default async (layer) => { await layer.click("Search") }`);
       }
       try {
-        const value = await (module.default as (layer: LayerScriptApi) => unknown)(this.api());
+        await this.assertSession(session);
+        const value = await (module.default as (layer: LayerScriptApi) => unknown)(api);
         return { ok: true, ...(value !== undefined ? { value } : {}) };
       } catch (error) {
         return { ok: false, error: (error as Error).message };
@@ -277,10 +331,10 @@ export class LayerDriver {
 
   private async browser(status: AgentLayerStatus, near?: LayerPoint): Promise<BrowserPage | undefined> {
     const pids = new Set<number>();
-    for (const window of status.layer?.windows ?? []) pids.add(window.pid);
-    if (status.subject?.pid) pids.add(status.subject.pid);
+    if (this.session?.mode === "browser") pids.add(this.session.browserPid!);
+    else return undefined;
     for (const pid of pids) {
-      const found = await pageOnLayer(pid, status.layer!.bounds, near).catch(() => undefined);
+      const found = await (this.deps.pageOnLayer ?? pageOnLayer)(pid, status.layer!.bounds, near).catch(() => undefined);
       if (found) {
         // A background window's page still takes focus and caret as if it were in front.
         await found.page.call("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => undefined);
@@ -290,10 +344,14 @@ export class LayerDriver {
     return undefined;
   }
 
-  /** The act through DevTools, or undefined to leave it to the blink route. */
-  private async viaDevTools(step: LayerStep, { page, geometry }: BrowserPage, bounds: Bounds): Promise<Record<string, unknown> | undefined> {
+  /** The act through DevTools, or undefined when the page cannot handle it. */
+  private async viaDevTools(step: LayerStep, { page, geometry }: BrowserPage, bounds: Bounds, session: LayerSession): Promise<Record<string, unknown> | undefined> {
     const args = step.args;
     const global = (point: LayerPoint) => toGlobal(point, readSpace(args.space), bounds, this.deps.view());
+    const guard = async () => {
+      await this.assertSession(session);
+      await this.deps.guard();
+    };
     switch (step.verb) {
       case "click": {
         let at: LayerPoint;
@@ -307,7 +365,6 @@ export class LayerDriver {
           );
           if (!rect) {
             if (typeof args.selector === "string") throw new Error(`Nothing visible matches ${args.selector}`);
-            // Not in the page: the browser's own chrome, perhaps. Accessibility knows it.
             return undefined;
           }
           const frame = fromPage(geometry, rect);
@@ -321,14 +378,14 @@ export class LayerDriver {
         const inPage = toPage(geometry, at);
         if (!within(geometry, inPage)) return undefined;
         await this.aim(at);
-        await clickAt(page, inPage, finite(args.holdMs) ?? 0);
+        await clickAt(page, inPage, finite(args.holdMs) ?? 0, guard);
         await this.deps.mark({ kind: "click", point: at });
         return { at: round(at), ...(found ? { element: found } : {}) };
       }
       case "type": {
         if (typeof args.text !== "string" || args.text === "") throw new Error('type needs text. End it with "\\n" to submit.');
         await this.markFocused(page, geometry);
-        await insertText(page, args.text);
+        await insertText(page, args.text, guard);
         return { text: args.text };
       }
       case "press": {
@@ -336,12 +393,13 @@ export class LayerDriver {
         const key = devToolsKey(args.key);
         if (!key) return undefined;
         await this.markFocused(page, geometry);
-        await pressKey(page, key);
+        await pressKey(page, key, guard);
         return { key: args.key };
       }
       case "go": {
         if (typeof args.url !== "string" || !args.url.trim()) throw new Error("go needs url");
         const url = normalizeUrl(args.url);
+        await guard();
         const reply = await page.call<{ errorText?: string }>("Page.navigate", { url });
         if (reply.errorText) throw new Error(`${url}: ${reply.errorText}`);
         await waitFor(page, "document.readyState !== 'loading'", 10_000);
@@ -353,9 +411,9 @@ export class LayerDriver {
         if (!from || !to) throw new Error("drag needs from and to: { drag: [[x, y], [x, y]] }");
         const a = global(from);
         const b = global(to);
-        if (!within(geometry, toPage(geometry, a))) return undefined;
+        if (!within(geometry, toPage(geometry, a)) || !within(geometry, toPage(geometry, b))) return undefined;
         await this.aim(a);
-        await dragBetween(page, toPage(geometry, a), toPage(geometry, b), finite(args.durationMs) ?? 200);
+        await dragBetween(page, toPage(geometry, a), toPage(geometry, b), finite(args.durationMs) ?? 200, guard);
         await this.deps.mark({ kind: "drag", point: b, from: a });
         return { from: round(a), to: round(b) };
       }
@@ -370,12 +428,14 @@ export class LayerDriver {
         const inPage = toPage(geometry, at);
         if (!within(geometry, inPage)) return undefined;
         await this.aim(at);
+        await guard();
         await wheelAt(page, inPage, dx, dy);
         await this.deps.mark({ kind: "scroll", point: at, dy });
         return { at: round(at), dy, ...(dx ? { dx } : {}) };
       }
       case "js": {
         if (typeof args.code !== "string" || !args.code.trim()) throw new Error("js needs code");
+        await guard();
         return { value: await page.evaluate(args.code) };
       }
       default:
@@ -412,16 +472,17 @@ export class LayerDriver {
     return { route: "blink", ...(action.input ?? {}), ...(executed.host ? { host: executed.host } : {}) };
   }
 
-  private async wait(args: Args): Promise<Record<string, unknown>> {
+  private async wait(args: Args, session: LayerSession): Promise<Record<string, unknown>> {
     const ms = finite(args.ms);
     if (ms !== undefined) {
       await sleep(Math.min(ms, 30_000));
+      await this.assertSession(session);
       return { ms };
     }
     const budget = Math.min(finite(args.timeoutMs) ?? 8_000, 30_000);
     const started = Date.now();
     if (typeof args.text === "string") {
-      const status = await this.deps.status();
+      const status = await this.assertSession(session);
       const browser = status.layer ? await this.browser(status) : undefined;
       if (!browser) throw new Error("wait for text reads a browser page: open the layer with { browser: true }, or wait for ms.");
       try {
@@ -429,12 +490,14 @@ export class LayerDriver {
       } finally {
         browser.page.close();
       }
+      await this.assertSession(session);
       return { text: args.text, ms: Date.now() - started };
     }
     // Settled: the page done loading, if there is one, and the layer still for a beat.
     // A page's still beat is shorter and capped, since a blinking caret never stops.
-    const status = await this.deps.status();
+    const status = await this.assertSession(session);
     const browser = status.layer ? await this.browser(status) : undefined;
+    if (session.mode === "browser" && !browser) throw new Error("Browser session has no reachable DevTools page. Native input fallback is disabled.");
     if (browser) {
       try {
         await waitFor(browser.page, "document.readyState === 'complete'", budget).catch(() => undefined);
@@ -445,6 +508,7 @@ export class LayerDriver {
     const still = browser ? 250 : 400;
     const deadline = browser ? Math.min(started + budget, Date.now() + 1_500) : started + budget;
     for (;;) {
+      await this.assertSession(session);
       const snapshot = await this.deps.look();
       if ((snapshot.unchangedMs ?? 0) >= still || Date.now() >= deadline) {
         return { until: "settled", ms: Date.now() - started, unchangedMs: snapshot.unchangedMs };

@@ -34,6 +34,8 @@ enum ActionHostCommand: String {
     case guidedCalculatorDemo = "guided-calculator-demo"
     case quitApp = "quit-app"
     case status
+    case capabilities
+    case isolationContext = "isolation-context"
     case request
     case openAccessibilitySettings = "open-accessibility-settings"
     case openScreenRecordingSettings = "open-screen-recording-settings"
@@ -43,6 +45,7 @@ enum ActionHostCommand: String {
     case stageOverlay = "stage-overlay"
     case drape
     case agentLayer = "agent-layer"
+    case agentDisplay = "agent-display"
     case blinkClick = "blink-click"
     case blinkType = "blink-type"
     case blinkKey = "blink-key"
@@ -3905,6 +3908,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         throw ActionHostError.unsupportedOS("drape should be started via runUICommand")
     case .agentLayer:
         throw ActionHostError.unsupportedOS("agent-layer should be started via runUICommand")
+    case .agentDisplay:
+        throw ActionHostError.unsupportedOS("agent-display should be started via runUICommand")
     case .demoCursorOverlay:
         throw ActionHostError.unsupportedOS("demo-cursor-overlay should be started via runUICommand")
     case .agentCursorOverlay:
@@ -3927,6 +3932,10 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
                     : "action-still-running-after-force-terminate"
             )
         )
+    case .capabilities:
+        try writer.write(ActionBuildProvenance.current)
+    case .isolationContext:
+        try writer.write(ActionIsolationContext.capture())
     case .status:
         try writer.write(snapshot(promptAccessibility: false))
     case .request:
@@ -4629,11 +4638,11 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
 @main
 struct ActionHostMain {
     static func main() {
-        if Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
+        let options = CommandOptions(arguments: CommandLine.arguments)
+        if options.command != .isolationContext, Bundle.main.bundleIdentifier == ActionAppIdentity.mainBundleIdentifier {
             ActionPreferenceMigration.migrateIfNeeded()
         }
 
-        let options = CommandOptions(arguments: CommandLine.arguments)
         let writer = ResponseWriter(replyFile: options.options["reply-file"])
         let logger = DebugLogger(path: options.options["debug-log"])
         let command = options.command ?? .launcher
@@ -4707,6 +4716,19 @@ struct ActionHostMain {
                     let controller = try ActionDrapeController(options: options)
                     try controller.run()
                 } catch {
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
+        case .agentDisplay:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionAgentDisplayController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionHostResponse(status: "error", outputPath: nil, detail: error.localizedDescription))
                     FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
                     Darwin.exit(1)
                 }

@@ -12,9 +12,9 @@ enum Palette {
     static let borderLit  = Color.white.opacity(0.14)
 
     // Text
-    static let text       = Color.white.opacity(0.92)
-    static let textDim    = Color.white.opacity(0.58)
-    static let textMuted  = Color.white.opacity(0.40)
+    static let text       = Color.white.opacity(0.96)
+    static let textDim    = Color.white.opacity(0.66)
+    static let textMuted  = Color.white.opacity(0.50)
 
     // Functional accents
     static let running  = Color(red: 0.20, green: 0.78, blue: 0.45)   // Green
@@ -26,20 +26,22 @@ enum Palette {
 // MARK: - Typography
 
 enum Typo {
-    private static let jetbrains = "JetBrains Mono"
     private static let geist     = "GeistMono Nerd Font"
     private static let gohu      = "GohuFontuni14 Nerd Font"
 
+    // UI type is the system face (SF Pro) at light weights; code-ish type is
+    // SF Mono. Bold and semibold read heavy on the dark panels, so the
+    // strongest weight here is semibold, and only for titles.
     static func title(_ size: CGFloat = 15) -> Font {
-        .system(size: size, weight: .bold, design: .rounded)
+        .system(size: size, weight: .semibold)
     }
 
     static func heading(_ size: CGFloat = 13) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+        .system(size: size, weight: .medium)
     }
 
     static func body(_ size: CGFloat = 12) -> Font {
-        .system(size: size, weight: .regular, design: .rounded)
+        .system(size: size, weight: .regular)
     }
 
     /// Reading font for message *content* (assistant/user prose) — SF Mono, the
@@ -51,15 +53,17 @@ enum Typo {
     }
 
     static func caption(_ size: CGFloat = 10) -> Font {
-        .system(size: size, weight: .medium, design: .rounded)
+        .system(size: size, weight: .regular)
     }
 
+    /// SF Mono. Was JetBrains Mono, which read heavier and wider than the
+    /// system type around it.
     static func mono(_ size: CGFloat = 11) -> Font {
-        .custom(jetbrains, size: size)
+        .system(size: size, weight: .regular, design: .monospaced)
     }
 
     static func monoBold(_ size: CGFloat = 11) -> Font {
-        Font.custom(jetbrains, size: size).weight(.semibold)
+        .system(size: size, weight: .medium, design: .monospaced)
     }
 
     static func geistMono(_ size: CGFloat = 11) -> Font {
@@ -246,6 +250,32 @@ enum Chrome {
     static let controlRadius: CGFloat = 6
     /// Hairline between chrome bands and the content they frame.
     static let hairline: CGFloat = 0.5
+}
+
+// MARK: - Boxes
+
+extension View {
+    /// Anything that holds content (a list, a field, a preview) gets a fill
+    /// and the one hairline, at the control radius.
+    func outlinedBox(_ fill: Color = Palette.surface, radius: CGFloat = Chrome.controlRadius) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: radius)
+                .fill(fill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(Palette.border, lineWidth: Chrome.hairline)
+                )
+        )
+    }
+
+    /// Buttons are fill only, so a row of actions doesn't read as a row of
+    /// boxes. The emphasized one is a step brighter.
+    func buttonBox(emphasized: Bool = false) -> some View {
+        background(
+            RoundedRectangle(cornerRadius: Chrome.controlRadius)
+                .fill(Color.white.opacity(emphasized ? 0.11 : 0.06))
+        )
+    }
 }
 
 // MARK: - Page actions

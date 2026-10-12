@@ -1,6 +1,6 @@
 {
   "name": "@arach/lattices",
-  "version": "0.13.3",
+  "version": "0.13.5",
   "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
   "homepage": "https://lattices.dev",
   "bugs": {

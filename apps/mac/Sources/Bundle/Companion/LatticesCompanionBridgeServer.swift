@@ -89,6 +89,7 @@ final class LatticesCompanionBridgeServer: NSObject {
     }
 
     func stop() {
+        MacVisitHost.disconnect()
         acceptSource?.cancel()
         acceptSource = nil
         service?.stop()
@@ -212,6 +213,19 @@ private extension LatticesCompanionBridgeServer {
     @discardableResult
     func route(_ request: HTTPRequest, to fd: Int32) throws -> RouteOutcome {
         switch (request.method, request.path) {
+        case ("GET", "/visit"):
+            let auth = try authorizeProtectedRequest(request, requiredCapability: DeckBridgeCapability.inputTrackpad)
+            guard MacVisitHost.enabled, request.body.isEmpty else {
+                sendError(status: 403, message: "Visits are disabled", to: fd)
+                return .answered
+            }
+            let key = try LatticesCompanionSecurityCoordinator.shared.encryptionKey(for: auth.device)
+            guard MacVisitHost.accept(fd: fd, headers: request.headers, auth: auth, key: key) else {
+                sendError(status: 403, message: "Visit unavailable or invalid upgrade", to: fd)
+                return .answered
+            }
+            return .handedOff
+
         case ("GET", "/health"):
             let security = LatticesDeckHost.shared.securityConfiguration
             let response = HealthResponse(

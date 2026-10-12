@@ -2,10 +2,10 @@ import dbus from "dbus-next";
 const { Interface } = dbus.interface;
 
 /** Network-order ARGB, no icon theme installation or toolkit needed. */
-export function iconPixmap(sharing: boolean): [number, number, Buffer][] {
+export function iconPixmap(): [number, number, Buffer][] {
   const size = 24;
   const pixels = Buffer.alloc(size * size * 4);
-  const rgb = sharing ? [0xef, 0x6a, 0x47] : [0xe8, 0xe8, 0xe8];
+  const rgb = [0xe8, 0xe8, 0xe8];
   for (let y = 3; y < 21; y++) {
     for (let x = 3; x < 21; x++) {
       // A small lattice of four outlined cells.
@@ -32,18 +32,10 @@ export class TrayItem extends Interface {
   readonly AttentionMovieName = "";
   readonly ItemIsMenu = true;
   readonly Menu = "/Menu";
-  private sharing = false;
 
   constructor(private refresh: () => Promise<void>) { super("org.kde.StatusNotifierItem"); }
-  get IconPixmap() { return iconPixmap(this.sharing); }
+  get IconPixmap() { return iconPixmap(); }
   get ToolTip() { return ["", [], "Lattices", ""]; }
-
-  update(sharing: boolean) {
-    if (sharing === this.sharing) return;
-    this.sharing = sharing;
-    Interface.emitPropertiesChanged(this, { IconPixmap: this.IconPixmap }, []);
-    this.NewIcon();
-  }
 
   async Activate(_x: number, _y: number) { await this.refresh(); }
   async SecondaryActivate(_x: number, _y: number) { await this.refresh(); }

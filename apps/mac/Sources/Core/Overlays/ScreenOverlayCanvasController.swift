@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 
 struct ScreenOverlayLayerID: Hashable {
     let rawValue: String
@@ -1701,10 +1702,16 @@ private final class CodexPetAssetCache {
         }
 
         let spritesheetPath: String?
+        /// Bundled pets carry identity here and fetch their art once from a
+        /// versioned URL; the hash keys a cache that never needs to expire.
+        let spritesheetURL: String?
+        let spritesheetSHA256: String?
         let states: [String: State]?
     }
 
     private var cache: [String: (image: NSImage, metadata: Metadata?)] = [:]
+    private var fetching: Set<String> = []
+    private static let downloadHosts: Set<String> = ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"]
 
     private init() {}
 
@@ -1742,14 +1749,48 @@ private final class CodexPetAssetCache {
         let root = bundledPetRoot(petID: petID) ?? codexPetRoot(petID: petID)
         let metadataURL = root.appendingPathComponent("pet.json")
         let metadata = try? JSONDecoder().decode(Metadata.self, from: Data(contentsOf: metadataURL))
-        let spritesheetURL = root.appendingPathComponent(metadata?.spritesheetPath ?? "spritesheet.webp")
-        guard let image = NSImage(contentsOf: spritesheetURL) else {
+        let localSheet = root.appendingPathComponent(metadata?.spritesheetPath ?? "spritesheet.webp")
+        let sheet: URL
+        if FileManager.default.fileExists(atPath: localSheet.path) {
+            sheet = localSheet
+        } else if let hash = metadata?.spritesheetSHA256, let remote = metadata?.spritesheetURL {
+            let cached = Self.cacheDirectory.appendingPathComponent(hash + ".webp")
+            guard FileManager.default.fileExists(atPath: cached.path) else {
+                fetch(remote, hash: hash, to: cached)
+                return nil
+            }
+            sheet = cached
+        } else {
+            return nil
+        }
+        guard let image = NSImage(contentsOf: sheet) else {
             return nil
         }
 
         let asset = (image, metadata)
         cache[petID] = asset
         return asset
+    }
+
+    private static var cacheDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "dev.lattices.app")
+            .appendingPathComponent("Pets")
+    }
+
+    /// Fetches a spritesheet once; the pet appears on the next frame after it lands.
+    private func fetch(_ remote: String, hash: String, to destination: URL) {
+        guard !fetching.contains(hash), let url = URL(string: remote),
+              url.scheme == "https", let host = url.host, Self.downloadHosts.contains(host) else { return }
+        fetching.insert(hash)
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            if ok, let data, SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == hash {
+                try? FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: destination, options: .atomic)
+            }
+            DispatchQueue.main.async { self?.fetching.remove(hash) }
+        }.resume()
     }
 
     private func bundledPetRoot(petID: String) -> URL? {
@@ -1764,7 +1805,7 @@ private final class CodexPetAssetCache {
 
         for petsRoot in candidateRoots {
             let root = petsRoot.appendingPathComponent(petID)
-            if FileManager.default.fileExists(atPath: root.appendingPathComponent("spritesheet.webp").path) {
+            if FileManager.default.fileExists(atPath: root.appendingPathComponent("pet.json").path) {
                 return root
             }
         }

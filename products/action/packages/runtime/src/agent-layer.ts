@@ -1,3 +1,4 @@
+import { assertLayerSafety } from "./layer-safety.js";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -25,6 +26,25 @@ const CONTROL_WAIT_MS = 1500;
 const RECORD_WAIT_MS = 5000;
 
 export type AgentLayerHostRunner = (args: string[]) => Promise<{ stdout: string }>;
+
+export interface AgentLayerDisplayState {
+  schemaVersion: 1;
+  pid: number;
+  displayId: number;
+  startedAt: string;
+  width: number;
+  height: number;
+  serialNumber: number;
+}
+
+export interface AgentLayerDisplayStatus {
+  active: boolean;
+  state: "ready" | "missing" | "stale" | "invalid";
+  display?: AgentLayerDisplayState;
+  stateFile: string;
+  stopFile: string;
+  detail?: string;
+}
 
 export interface AgentLayerOpenInput {
   bundleId?: string;
@@ -85,6 +105,7 @@ interface AgentLayerRequest {
   ownerPid?: number;
   subject?: AgentLayerSubject;
   pid?: number;
+  startedAt?: string;
 }
 
 export interface AgentLayerDirectorOptions {
@@ -96,6 +117,7 @@ export interface AgentLayerDirectorOptions {
   terminate?: (pid: number) => void;
   stateWaitMs?: number;
   closeWaitMs?: number;
+  safetyPath?: string;
 }
 
 export function agentLayerStateDir(): string {
@@ -209,6 +231,8 @@ export class AgentLayerDirector {
   private readonly terminate: (pid: number) => void;
   private readonly stateWaitMs: number;
   private readonly closeWaitMs: number;
+  private readonly safetyPath?: string;
+  private mutation: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly nativeHostPath: string,
@@ -220,6 +244,7 @@ export class AgentLayerDirector {
     this.terminate = options.terminate ?? defaultTerminate;
     this.stateWaitMs = options.stateWaitMs ?? DEFAULT_STATE_WAIT_MS;
     this.closeWaitMs = options.closeWaitMs ?? DEFAULT_CLOSE_WAIT_MS;
+    this.safetyPath = options.safetyPath;
   }
 
   paths() {
@@ -231,28 +256,131 @@ export class AgentLayerDirector {
       controlRequest: resolve(this.root, "control.request.json"),
       controlReply: resolve(this.root, "control.reply.json"),
       handoff: resolve(this.root, "handoff.json"),
+      displayState: resolve(this.root, "display.json"),
+      displayStop: resolve(this.root, "display.stop"),
+      displayLog: resolve(this.root, "display.log"),
     };
   }
 
-  /**
-   * Put one layer up. One layer at a time: an existing layer is closed first, so its
-   * windows go back to their original frames before the new subject moves over.
-   */
-  async open(input: Parameters<typeof parseAgentLayerOpen>[0] = {}): Promise<AgentLayerStatus> {
+  async displayStatus(): Promise<AgentLayerDisplayStatus> {
+    const paths = this.paths();
+    const base = { stateFile: paths.displayState, stopFile: paths.displayStop };
+    let parsed: AgentLayerDisplayState;
+    try {
+      parsed = JSON.parse(await readFile(paths.displayState, "utf8")) as AgentLayerDisplayState;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? { ...base, active: false, state: "missing" }
+        : { ...base, active: false, state: "invalid", detail: "Prepared display manifest is unreadable or invalid JSON." };
+    }
+    if (!parsed || parsed.schemaVersion !== 1 || !positiveInteger(parsed.pid) || parsed.pid <= 1 || !unsignedID(parsed.displayId)
+      || !positiveInteger(parsed.width) || parsed.width < 640 || parsed.width > 8192 || !positiveInteger(parsed.height) || parsed.height < 400 || parsed.height > 8192
+      || !unsignedID(parsed.serialNumber) || typeof parsed.startedAt !== "string" || !Number.isFinite(Date.parse(parsed.startedAt))) {
+      return { ...base, active: false, state: "invalid", detail: "Prepared display manifest has invalid identity or dimensions." };
+    }
+    return this.isAlive(parsed.pid)
+      ? { ...base, active: true, state: "ready", display: parsed }
+      : { ...base, active: false, state: "stale", display: parsed, detail: "Prepared display owner is no longer running." };
+  }
+
+  prepareDisplay(input: { width?: unknown; height?: unknown } = {}): Promise<AgentLayerDisplayStatus> {
+    return this.serialize(async () => {
+      const size = parseAgentLayerOpen({ width: input.width, height: input.height });
+      if ((size.width !== undefined && size.width < 640) || (size.height !== undefined && size.height < 400)) {
+        throw new Error("Prepared display must be at least 640x400");
+      }
+      if ((size.width !== undefined && size.width > 8192) || (size.height !== undefined && size.height > 8192)) {
+        throw new Error("Prepared display dimensions must not exceed 8192");
+      }
+      const existing = await this.displayStatus();
+      if (existing.state === "invalid") throw new Error(existing.detail);
+      if (existing.active && existing.display) {
+        this.assertDisplaySize(existing.display, size);
+        return existing;
+      }
+      if ((await this.status()).active) throw new Error("Close the active agent layer before preparing a display");
+      assertLayerSafety(this.safetyPath);
+      const paths = this.paths();
+      await mkdir(this.root, { recursive: true });
+      await rm(paths.displayStop, { force: true });
+      const width = size.width ?? 1440;
+      const height = size.height ?? 900;
+      const { stdout } = await this.runHost([
+        "agent-display", "--state-file", paths.displayState, "--stop-file", paths.displayStop,
+        "--debug-log", paths.displayLog, "--width", String(width), "--height", String(height),
+      ]);
+      const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
+      const pid = Number(response.detail);
+      if (response.status !== "agent-display-running" || !positiveInteger(pid) || pid <= 1) {
+        throw new Error(`agent-display did not start: ${response.detail ?? response.status ?? "no reply"}`);
+      }
+      const deadline = Date.now() + this.stateWaitMs;
+      try {
+        for (;;) {
+          const status = await this.displayStatus();
+          if (status.active && status.display) {
+            if (status.display.pid !== pid) throw new Error("Prepared display owner changed during setup; refusing to use a different display");
+            this.assertDisplaySize(status.display, { width, height });
+            return status;
+          }
+          if (status.state === "invalid") throw new Error(status.detail);
+          if (Date.now() >= deadline) throw new Error("agent-display replied but never wrote a live prepared display manifest");
+          await delay(STATE_POLL_MS);
+        }
+      } catch (error) {
+        throw new Error(`${error instanceof Error ? error.message : String(error)}. Setup owner PID ${pid} may still be running; inspect display status before retrying. No display owner was removed.`);
+      }
+    });
+  }
+
+  releaseDisplay(): Promise<AgentLayerDisplayStatus> {
+    return this.serialize(async () => {
+      const current = await this.displayStatus();
+      if (current.state === "invalid") throw new Error(current.detail);
+      const closed = await this.closeSession();
+      if (closed.active) throw new Error("Agent layer did not exit; refusing to release its prepared display");
+      if (!current.active || !current.display) return current;
+      const latest = await this.requirePreparedDisplay();
+      this.assertSameDisplay(current.display, latest);
+      await writeFile(this.paths().displayStop, "stop\n");
+      if (!await this.waitForExit(current.display.pid, this.closeWaitMs)) {
+        throw new Error("Prepared display owner did not exit; display remains prepared. No forced display removal was attempted.");
+      }
+      const remaining = await this.displayStatus();
+      if (remaining.display) {
+        this.assertSameDisplay(current.display, remaining.display);
+        await rm(this.paths().displayState, { force: true });
+      }
+      await rm(this.paths().displayStop, { force: true });
+      return this.displayStatus();
+    });
+  }
+
+  open(input: Parameters<typeof parseAgentLayerOpen>[0] = {}): Promise<AgentLayerStatus> {
+    return this.serialize(() => this.openSession(input));
+  }
+
+  private async openSession(input: Parameters<typeof parseAgentLayerOpen>[0]): Promise<AgentLayerStatus> {
     const request = parseAgentLayerOpen(input);
+    const display = await this.requirePreparedDisplay();
+    this.assertDisplaySize(display, request);
     const owner = request.owner ?? DEFAULT_OWNER;
-    const closed = await this.close();
+    const closed = await this.closeSession();
     if (closed.active) {
       throw new Error(`Previous agent layer (pid ${closed.pid}) did not exit; refusing to open another`);
     }
 
     const paths = this.paths();
     await mkdir(this.root, { recursive: true });
+    await rm(paths.handoff, { force: true });
     await rm(paths.stop, { force: true });
     await rm(paths.state, { force: true });
     await rm(paths.log, { force: true });
 
-    const args = ["agent-layer", "--stop-file", paths.stop, "--state-file", paths.state, "--debug-log", paths.log];
+    this.assertSameDisplay(display, await this.requirePreparedDisplay());
+    const args = ["agent-layer", "--stop-file", paths.stop, "--state-file", paths.state, "--debug-log", paths.log,
+      "--display-id", String(display.displayId), "--display-owner-pid", String(display.pid),
+      "--display-started-at", display.startedAt, "--display-state-file", paths.displayState];
     // Same rule as the stage drape: a caller-owned layer watches this process and
     // restores the windows if it dies. A one-shot CLI exits right after open, so it
     // asks for `detached` and relies on `layer close`.
@@ -289,48 +417,72 @@ export class AgentLayerDirector {
       args.push("--windowless", "1");
     }
 
-    const { stdout } = await this.runHost(args);
-    const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
-    if (response.status !== "agent-layer-running") {
-      throw new Error(`agent-layer did not start: ${response.detail ?? response.status ?? "no reply"}`);
-    }
-    const parsedPid = response.detail ? Number(response.detail) : Number.NaN;
-    const replyPid = Number.isFinite(parsedPid) && parsedPid > 0 ? parsedPid : undefined;
-
     const subject: AgentLayerSubject | undefined = request.bundleId
       ? { bundleId: request.bundleId }
       : request.pid !== undefined
         ? { pid: request.pid }
         : undefined;
-    // Record the pid before waiting on the state file, so a layer whose state never
-    // lands can still be closed.
-    const sidecar: AgentLayerRequest = {
-      owner,
-      ...(owner === "caller" ? { ownerPid: process.pid } : {}),
-      ...(subject ? { subject } : {}),
-      ...(replyPid ? { pid: replyPid } : {}),
-    };
-    await writeFile(paths.request, `${JSON.stringify(sidecar, null, 2)}\n`);
-
-    const state = await this.waitForState(this.stateWaitMs);
-    if (!state) {
-      await this.close();
-      throw new Error("agent-layer replied but never wrote its state file");
-    }
-    if (!sidecar.pid) {
-      sidecar.pid = state.pid;
+    let replyPid: number | undefined;
+    try {
+      const { stdout } = await this.runHost(args);
+      const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
+      if (response.status !== "agent-layer-running") {
+        throw new Error(`agent-layer did not start: ${response.detail ?? response.status ?? "no reply"}`);
+      }
+      const parsedPid = Number(response.detail);
+      if (!positiveInteger(parsedPid) || parsedPid <= 1 || parsedPid === display.pid) {
+        throw new Error("Agent layer reply does not identify a distinct session process");
+      }
+      replyPid = parsedPid;
+      const sidecar: AgentLayerRequest = {
+        owner,
+        ...(owner === "caller" ? { ownerPid: process.pid } : {}),
+        ...(subject ? { subject } : {}),
+        pid: replyPid,
+      };
       await writeFile(paths.request, `${JSON.stringify(sidecar, null, 2)}\n`);
+      const state = await this.waitForState(this.stateWaitMs);
+      if (!state) throw new Error("agent-layer replied but never wrote its state file");
+      if (state.pid !== replyPid || state.displayId !== display.displayId || !this.isAlive(state.pid)) {
+        throw new Error("Agent layer state does not match the new session and prepared display identities");
+      }
+      sidecar.startedAt = state.startedAt;
+      await writeFile(paths.request, `${JSON.stringify(sidecar, null, 2)}\n`);
+      this.assertSameDisplay(display, await this.requirePreparedDisplay());
+      return this.describe(sidecar, state, true);
+    } catch (error) {
+      let cleanup = "Session ownership is unconfirmed; inspect layer status before cleanup. The prepared display was retained.";
+      if (replyPid) {
+        const currentRequest = await this.readRequest();
+        const currentState = await readJson<{ pid?: number; startedAt?: string }>(paths.state);
+        if (currentRequest?.pid === replyPid && (!currentState || currentState.pid === replyPid)
+          && (!currentRequest.startedAt || !currentState || currentState.startedAt === currentRequest.startedAt)) {
+          try {
+            const closed = await this.closeSession();
+            cleanup = closed.active ? `Session PID ${replyPid} could not close; inspect layer status. The prepared display was retained.`
+              : `Created session PID ${replyPid} was closed. The prepared display was retained.`;
+          } catch {
+            cleanup = `Session PID ${replyPid} cleanup could not be confirmed; inspect layer status. The prepared display was retained.`;
+          }
+        } else {
+          cleanup = `Session identity changed; refusing to close a replacement. Created PID ${replyPid} may remain running. The prepared display was retained.`;
+        }
+      }
+      throw new Error(`${error instanceof Error ? error.message : String(error)} ${cleanup}`);
     }
-    return this.describe(sidecar, state, true);
   }
 
-  /** Touch the stop file, wait for the layer to restore windows and exit, SIGTERM if not. */
-  async close(): Promise<AgentLayerStatus> {
+  close(): Promise<AgentLayerStatus> {
+    return this.serialize(() => this.closeSession());
+  }
+
+  private async closeSession(): Promise<AgentLayerStatus> {
     const paths = this.paths();
-    // Closing (or opening, which closes first) acknowledges an operator takeover.
-    await rm(paths.handoff, { force: true });
     const request = await this.readRequest();
     const state = await this.readState();
+    if (request?.pid && state?.pid && (request.pid !== state.pid || (request.startedAt && request.startedAt !== state.startedAt))) {
+      throw new Error("Agent layer state and request identify different sessions; refusing to stop a replacement session");
+    }
     const pid = state?.pid ?? request?.pid;
     const owner = request?.owner ?? DEFAULT_OWNER;
 
@@ -491,14 +643,14 @@ export class AgentLayerDirector {
    */
   async actRefusal(): Promise<string | undefined> {
     const status = await this.status();
+    const handoff = await readJson<{ at?: string; action?: string; pid?: number; displayId?: number; startedAt?: string }>(this.paths().handoff);
+    if (handoff && (!status.active || !handoff.pid || (status.layer?.pid === handoff.pid
+      && status.layer.displayId === handoff.displayId && status.layer.startedAt === handoff.startedAt))) {
+      const action = handoff.action === "stop" ? "stopped" : "took over";
+      return `The operator ${action} the agent layer from its preview${handoff.at ? ` at ${handoff.at}` : ""}. Stop interactions and report this to the user. A new session requires fresh user authorization.`;
+    }
     if (status.active && status.layer?.paused) {
       return "The operator paused the agent layer from its viewer. Wait for them to resume it.";
-    }
-    if (!status.active) {
-      const handoff = await readJson<{ at?: string }>(this.paths().handoff);
-      if (handoff) {
-        return `The operator took over the agent layer${handoff.at ? ` at ${handoff.at}` : ""} and the windows are back on their desktop. Stop and tell the user. Close the layer to acknowledge, and open a new one only if they ask you to carry on.`;
-      }
     }
     return undefined;
   }
@@ -557,12 +709,50 @@ export class AgentLayerDirector {
 
   private async readState(): Promise<AgentLayerState | undefined> {
     const parsed = await readJson<AgentLayerState>(this.paths().state);
-    return parsed && typeof parsed.pid === "number" && parsed.bounds ? parsed : undefined;
+    return parsed && positiveInteger(parsed.pid) && parsed.pid > 1 && unsignedID(parsed.displayId)
+      && typeof parsed.startedAt === "string" && Number.isFinite(Date.parse(parsed.startedAt))
+      && parsed.bounds && [parsed.bounds.x, parsed.bounds.y, parsed.bounds.width, parsed.bounds.height].every(Number.isFinite)
+      && parsed.bounds.width > 0 && parsed.bounds.height > 0 ? parsed : undefined;
   }
 
   private async readRequest(): Promise<AgentLayerRequest | undefined> {
     return readJson<AgentLayerRequest>(this.paths().request);
   }
+
+  private async requirePreparedDisplay(): Promise<AgentLayerDisplayState> {
+    const status = await this.displayStatus();
+    if (!status.active || !status.display) {
+      throw new Error(`No prepared agent display is available (${status.state}). Run explicit display preparation before opening a session.${status.detail ? ` ${status.detail}` : ""}`);
+    }
+    return status.display;
+  }
+
+  private assertDisplaySize(display: AgentLayerDisplayState, size: { width?: number; height?: number }): void {
+    if (size.width !== undefined && (size.width !== display.width || size.height !== display.height)) {
+      throw new Error(`Prepared display is ${display.width}x${display.height}; release and explicitly prepare a new display to change its dimensions`);
+    }
+  }
+
+  private assertSameDisplay(expected: AgentLayerDisplayState, actual: AgentLayerDisplayState): void {
+    if (expected.pid !== actual.pid || expected.displayId !== actual.displayId || expected.startedAt !== actual.startedAt || expected.serialNumber !== actual.serialNumber
+      || expected.width !== actual.width || expected.height !== actual.height) {
+      throw new Error("Prepared display identity changed during the operation");
+    }
+  }
+
+  private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
+    const result = this.mutation.then(operation);
+    this.mutation = result.catch(() => undefined);
+    return result;
+  }
+}
+
+function positiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function unsignedID(value: unknown): value is number {
+  return positiveInteger(value) && value <= 0xffffffff;
 }
 
 /** `pid` and its parents, nearest first, stopping before launchd. */

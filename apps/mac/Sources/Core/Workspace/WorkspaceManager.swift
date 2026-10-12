@@ -454,6 +454,7 @@ class WorkspaceManager: ObservableObject {
 
     @Published var config: WorkspaceConfig?
     @Published var activeLayerIndex: Int = 0
+    @Published private(set) var layerFocus = LayerFocusState()
     @Published var isSwitching: Bool = false
     @Published var gridPresets: [String: GridPreset] = [:]
     @Published var gridLayouts: [String: LayoutConfig] = [:]
@@ -472,6 +473,10 @@ class WorkspaceManager: ObservableObject {
     @Published var classicShowing = false
     /// Classic · one space is carrying windows to the showing desktops.
     var classicGathering = false
+    private let layerFocusKey = "lattices.isLayerFocusActive"
+    private let layerRecoveryKey = "lattices.layerRecoveryRemaining"
+    private var layerSpaceObserver: NSObjectProtocol?
+    private var layerRecoveryWork: DispatchWorkItem?
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -479,13 +484,90 @@ class WorkspaceManager: ObservableObject {
         self.gridConfigPath = (home as NSString).appendingPathComponent(".lattices/grid.json")
         self.snapZonesConfigPath = (home as NSString).appendingPathComponent(".lattices/snap-zones.json")
         self.activeLayerIndex = UserDefaults.standard.integer(forKey: activeLayerKey)
+        self.layerFocus = LayerFocusState(
+            // Older versions always retained an active index. Keep that mode
+            // until the first explicit exit, including its hidden-app ledger.
+            persistedActive: UserDefaults.standard.object(forKey: layerFocusKey) as? Bool,
+            hasRememberedLayer: UserDefaults.standard.object(forKey: activeLayerKey) != nil,
+            pendingRestorationCount: UserDefaults.standard.integer(forKey: layerRecoveryKey)
+        )
         loadConfig()
         loadGridConfig()
+        layerSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.scheduleLayerRecovery() }
+        if layerFocus.needsRecovery {
+            DispatchQueue.main.async { [weak self] in self?.scheduleLayerRecovery() }
+        }
+    }
+
+    var isLayerFocusActive: Bool { layerFocus.isActive }
+    var activeLayerSelection: Int? {
+        isLayerFocusActive && layers.indices.contains(activeLayerIndex) ? activeLayerIndex : nil
     }
 
     var activeLayer: Layer? {
-        guard let config, let layers = config.layers, activeLayerIndex < layers.count else { return nil }
+        guard isLayerFocusActive, let config, let layers = config.layers,
+              layers.indices.contains(activeLayerIndex) else { return nil }
         return layers[activeLayerIndex]
+    }
+
+    var layerRecoveryMessage: String? {
+        let count = layerFocus.pendingRestorationCount
+        guard layerFocus.needsRecovery else { return nil }
+        return "Layers off · \(count) still waiting to restore. Visit their desktops to finish."
+    }
+
+    /// The shared exit for menus, the preview, command bar, editor and daemon.
+    /// Keep the layer definitions and desktop assignments; restore only what
+    /// the stage put away. Main-thread ordering makes an exit follow the full
+    /// switch, and the generation cancels its delayed launches and placement.
+    @discardableResult
+    func exitLayers(showFeedback: Bool = true) -> LayerStage.Outcome {
+        if !Thread.isMainThread {
+            return DispatchQueue.main.sync { self.exitLayers(showFeedback: showFeedback) }
+        }
+        dispatchPrecondition(condition: .onQueue(.main))
+        layerRecoveryWork?.cancel()
+        layerFocus.exit()
+        persistLayerFocus()
+        classicShowing = false
+        isSwitching = false
+        LayerAim.shared.cancel()
+        LayerPreview.shared.dismiss()
+        let outcome = restoreExitedLayerWindows()
+        if showFeedback {
+            LayerBezel.shared.acknowledge(outcome.remainingToRestore == 0
+                ? "Layers off" : "Layers off · \(outcome.remainingToRestore) waiting to restore")
+        }
+        // Apps can take a moment to expose AX windows after being unhidden.
+        scheduleLayerRecovery()
+        return outcome
+    }
+
+    private func persistLayerFocus() {
+        UserDefaults.standard.set(layerFocus.isActive, forKey: layerFocusKey)
+        UserDefaults.standard.set(layerFocus.pendingRestorationCount, forKey: layerRecoveryKey)
+    }
+
+    private func restoreExitedLayerWindows() -> LayerStage.Outcome {
+        let generation = layerFocus.generation
+        let outcome = LayerStage.shared.showAll()
+        layerFocus.recovered(remaining: outcome.remainingToRestore, generation: generation)
+        persistLayerFocus()
+        return outcome
+    }
+
+    private func scheduleLayerRecovery() {
+        guard layerFocus.needsRecovery else { return }
+        layerRecoveryWork?.cancel()
+        let generation = layerFocus.generation
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.layerFocus.acceptsRecovery(generation) else { return }
+            _ = self.restoreExitedLayerWindows()
+        }
+        layerRecoveryWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     /// Look up a layer index by id or label (case-insensitive)
@@ -762,17 +844,19 @@ class WorkspaceManager: ObservableObject {
 
     /// Launch a mixed group. Project tabs open in the terminal; app/URL tabs
     /// open as native application windows.
-    func launchGroup(_ group: TabGroup) {
+    func launchGroup(_ group: TabGroup, layerGeneration: UInt64? = nil) {
         let terminal = Preferences.shared.terminal
         let latticesCommand = LatticesRuntime.cliShellCommand
         for (i, tab) in group.tabs.enumerated() {
             guard !isTabRunning(tab) else { continue }
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
+                if let layerGeneration, !self.layerFocus.acceptsLayerWork(layerGeneration) { return }
                 if let path = tab.path {
                     let earlierTerminalTabs = group.tabs[..<i].contains(where: \.isTerminal)
                     if !earlierTerminalTabs {
                         terminal.launch(command: "\(latticesCommand) start", in: path)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            if let layerGeneration, !self.layerFocus.acceptsLayerWork(layerGeneration) { return }
                             terminal.nameTab(tab.displayLabel)
                         }
                     } else {
@@ -991,6 +1075,7 @@ class WorkspaceManager: ObservableObject {
     /// Re-tile the current layer without switching (for "tile all"): the
     /// same switch, to the layer already active.
     func retileCurrentLayer() {
+        guard isLayerFocusActive else { return }
         tileLayer(index: activeLayerIndex)
     }
 
@@ -1046,6 +1131,11 @@ class WorkspaceManager: ObservableObject {
     /// active layer again reconciles it the same way.
     @discardableResult
     func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let outgoing = isLayerFocusActive && layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
+        layerRecoveryWork?.cancel()
+        layerFocus.enter()
+        persistLayerFocus()
         let windows = DesktopModel.shared.refreshNow()
         let resolution = LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
         var members: [String: Set<UInt32>] = [:]
@@ -1053,7 +1143,6 @@ class WorkspaceManager: ObservableObject {
             members[layer.id, default: []].formUnion(held.map(\.entry.wid))
         }
         if persistRebinds { keepRebinds(resolution, of: layers) }
-        let outgoing = layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
         return LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
     }
 
@@ -1075,6 +1164,7 @@ class WorkspaceManager: ObservableObject {
         persistRebinds: Bool = true,
         place: (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
     ) -> LayerStage.Outcome {
+        dispatchPrecondition(condition: .onQueue(.main))
         let layer = layers[index]
         noteSwitch(to: index, in: layers)
         let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds)
@@ -1110,8 +1200,12 @@ class WorkspaceManager: ObservableObject {
     /// up. Windows on a desktop that isn't showing are left there; raising
     /// one would switch Spaces.
     func focusLayer(index: Int) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.focusLayer(index: index) }
+            return
+        }
         guard let config, let layers = config.layers, layers.indices.contains(index) else { return }
-        let switching = index != activeLayerIndex
+        let switching = !isLayerFocusActive || index != activeLayerIndex
 
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
@@ -1180,6 +1274,10 @@ class WorkspaceManager: ObservableObject {
     /// would read as not open. Choosing the active layer again runs the same
     /// switch, which re-tiles it.
     func tileLayer(index: Int, launch: Bool = false) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.tileLayer(index: index, launch: launch) }
+            return
+        }
         guard let config, let layers = config.layers, layers.indices.contains(index) else { return }
 
         let diag = DiagnosticLog.shared
@@ -1197,11 +1295,13 @@ class WorkspaceManager: ObservableObject {
             fallbacks = work.fallbacks
             launchQueue = work.launches
         }
+        let generation = layerFocus.generation
 
         // Phase 3: fallback for running-but-untracked windows
         for (i, fb) in fallbacks.enumerated() {
             let delay = Double(i) * 0.15 + 0.1
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard self.layerFocus.acceptsLayerWork(generation) else { return }
                 diag.info("  tile fallback: \(fb.session) → \(fb.position.wireValue)")
                 WindowTiler.navigateToWindow(session: fb.session, terminal: terminal)
                 WindowTiler.tile(session: fb.session, terminal: terminal, to: fb.position, on: fb.screen)
@@ -1212,6 +1312,7 @@ class WorkspaceManager: ObservableObject {
         for (i, item) in launchQueue.enumerated() {
             let delay = Double(i) * 0.15 + 0.2
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard self.layerFocus.acceptsLayerWork(generation) else { return }
                 item.launchAction()
                 if let pos = item.position {
                     let t = diag.startTimed("tile launched: \(item.session) → \(pos.wireValue)")
@@ -1227,6 +1328,7 @@ class WorkspaceManager: ObservableObject {
         )
         let cleanupDelay = max(0.2, maxDelay)
         DispatchQueue.main.asyncAfter(deadline: .now() + cleanupDelay) {
+            guard self.layerFocus.acceptsLayerWork(generation) else { return }
             scanner.refreshStatus()
             self.isSwitching = false
             diag.finish(overall)
@@ -1251,6 +1353,7 @@ class WorkspaceManager: ObservableObject {
         let diag = DiagnosticLog.shared
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
+        let generation = layerFocus.generation
 
         // Tile debug log (written to ~/.lattices/tile-debug.log)
         let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
@@ -1303,8 +1406,9 @@ class WorkspaceManager: ObservableObject {
                     })
                     expandedGroupIDs.remove(grp.id)
                     if launch, runningTabCount(grp) < grp.tabs.count {
-                        launchGroup(grp)
+                        launchGroup(grp, layerGeneration: generation)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            guard self.layerFocus.acceptsLayerWork(generation) else { return }
                             self.collapseGroup(grp, ofLayer: targetLayer.id)
                         }
                     }
@@ -1312,9 +1416,10 @@ class WorkspaceManager: ObservableObject {
                     diag.info("  launch group: \(grp.label)")
                     launchQueue.append(("group:\(grp.id)", nil, lpScreen, { [weak self] in
                         guard let self else { return }
-                        self.launchGroup(grp)
+                        self.launchGroup(grp, layerGeneration: generation)
                         if position != nil {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                guard self.layerFocus.acceptsLayerWork(generation) else { return }
                                 self.collapseGroup(grp, ofLayer: targetLayer.id)
                             }
                         }
@@ -1352,7 +1457,8 @@ class WorkspaceManager: ObservableObject {
                     if let pos = position {
                         let delay = Double(launchQueue.count) * 0.5 + 1.0
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                            guard let entry = self?.launchedWindow(of: targetLayer, entry: entryIndex) else { return }
+                            guard let self, self.layerFocus.acceptsLayerWork(generation),
+                                  let entry = self.launchedWindow(of: targetLayer, entry: entryIndex) else { return }
                             let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
                             WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
                         }
@@ -1431,7 +1537,8 @@ class WorkspaceManager: ObservableObject {
                         let capturedScreen = cwScreen
                         let delay = Double(launchQueue.count) * 0.5 + 1.0
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                            guard let entry = self?.launchedWindow(of: targetLayer, entry: entryIndex, matching: {
+                            guard let self, self.layerFocus.acceptsLayerWork(generation),
+                                  let entry = self.launchedWindow(of: targetLayer, entry: entryIndex, matching: {
                                 LayerMembership.reads(app: appName, title: capturedTitle, $0)
                             }) else { return }
                             let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
@@ -1487,6 +1594,9 @@ class WorkspaceManager: ObservableObject {
     /// Editor-only confirmed path. Never persists rebound pins or changes the
     /// workspace configuration. Opening entries does not stage or arrange.
     func executeEditorAction(_ operation: EditorActions.Operation) throws -> [String: Any] {
+        if !Thread.isMainThread {
+            return try DispatchQueue.main.sync { try self.executeEditorAction(operation) }
+        }
         let subject = try EditorSubject(data: Data(contentsOf: URL(fileURLWithPath: configPath)))
         guard let index = subject.layers.firstIndex(where: { $0.id == operation.layerId }) else {
             throw EditorBridgeError("stale_plan", "The layer no longer exists.")

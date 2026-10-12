@@ -64,6 +64,9 @@ final class LayerStage {
         var rescued = 0
         var hiddenApps: [String] = []
         var unhiddenApps: [String] = []
+        var stillHiddenApps: [String] = []
+
+        var remainingToRestore: Int { stillParked + stillHiddenApps.count }
 
         var summary: String {
             "shown \(shown.count), parked \(parked.count), unparked \(unparked.count), stayed \(stayed.count), "
@@ -474,6 +477,21 @@ final class LayerStage {
         generation += 1
         var outcome = Outcome()
         pruneLocked(Stage.mainBounds, live: live)
+        // Hidden apps may expose no AX windows. Unhide first, then restore;
+        // keep failed unhides in the ledger so Exit Layers can retry them.
+        var stillHiddenPids: [Int32] = []
+        for pid in state.hiddenPids {
+            guard let app = NSRunningApplication(processIdentifier: pid),
+                  app.isHidden || settlingPids.contains(pid) else { continue }
+            let name = app.localizedName ?? "pid \(pid)"
+            if app.unhide() {
+                outcome.unhiddenApps.append(name)
+            } else {
+                stillHiddenPids.append(pid)
+                outcome.stillHiddenApps.append(name)
+            }
+        }
+        state.hiddenPids = stillHiddenPids
         let restored = Self.restore(state.parked)
         outcome.unparked = restored
         state.parked.removeAll { restored.contains($0.wid) }
@@ -481,13 +499,6 @@ final class LayerStage {
         let strays = Self.rescueStrays(tracked: Set(state.parked.map(\.wid)))
         outcome.rescued = strays.rescued
         outcome.stillParked += strays.found - strays.rescued
-        for pid in state.hiddenPids {
-            guard let app = NSRunningApplication(processIdentifier: pid),
-                  app.isHidden || settlingPids.contains(pid) else { continue }
-            app.unhide()
-            outcome.unhiddenApps.append(app.localizedName ?? "pid \(pid)")
-        }
-        state.hiddenPids.removeAll()
         state.scenes.removeAll()
         settlingPids.removeAll()
         settlingWids.removeAll()

@@ -432,6 +432,9 @@ extension WorkspaceManager {
     /// Returns what it took back, nil with nothing to undo.
     @discardableResult
     func undoLayerEdit() throws -> String? {
+        if !Thread.isMainThread {
+            return try DispatchQueue.main.sync { try self.undoLayerEdit() }
+        }
         guard let last = Self.undoStack.last else { return nil }
         switch last.kind {
         case .edit(let layers):
@@ -450,7 +453,8 @@ extension WorkspaceManager {
     /// Before a switch away from the layer you're on: where the main
     /// screen's windows sit, back to front, for undo.
     func noteSwitch(to index: Int, in layers: [Layer]) {
-        guard index != activeLayerIndex, layers.indices.contains(index),
+        guard let activeIndex = activeLayerSelection,
+              index != activeIndex, layers.indices.contains(index),
               let stage = LayerStage.Stage.current() else { return }
         let showing = DesktopModel.shared.allWindows()
             .filter { LayerStage.isShowing($0, on: stage) }
@@ -460,7 +464,7 @@ extension WorkspaceManager {
             (wid: $0.wid, pid: $0.pid, frame: CGRect(x: $0.frame.x, y: $0.frame.y, width: $0.frame.w, height: $0.frame.h))
         }
         Self.undoStack.append(LayerUndo(
-            kind: .switched(windows: windows), activeIndex: activeLayerIndex,
+            kind: .switched(windows: windows), activeIndex: activeIndex,
             summary: "switching to '\(layers[index].label)'"
         ))
         if Self.undoStack.count > Self.undoLimit { Self.undoStack.removeFirst() }

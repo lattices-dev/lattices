@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
-APP_DIR="$ROOT_DIR/native/dist/Action.app"
+APP_DIR="${ACTION_DIST_DIR:-$ROOT_DIR/native/dist}/Action.app"
 APP_PLIST_PATH="$APP_DIR/Contents/Info.plist"
 AGENT_APP_DIR="$APP_DIR/Contents/Helpers/ActionAgent.app"
 AGENT_PLIST_PATH="$AGENT_APP_DIR/Contents/Info.plist"

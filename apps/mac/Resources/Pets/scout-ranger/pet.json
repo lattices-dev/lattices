@@ -2,5 +2,6 @@
   "id": "scout-ranger",
   "displayName": "Scout Ranger",
   "description": "A tiny chunky robot field-general companion for Scout and Codex sessions.",
-  "spritesheetPath": "spritesheet.webp"
+  "spritesheetURL": "https://github.com/arach/lattices/releases/download/pets-v1/scout-ranger.webp",
+  "spritesheetSHA256": "55299aa68d5bcb053e861df04d8b3ca8012a3fde9c583baaf930fa0c75d0f43a"
 }

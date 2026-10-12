@@ -8,6 +8,7 @@ import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { resolveBuildEnv } from "./lattices-build-env";
 import { embedHelpers, signHelpers } from "./embedded-helpers";
+import { readBuildMetadata } from "./lattices-build-metadata";
 
 const __dirname = import.meta.dir;
 const appDir = resolve(__dirname, "../apps/mac");
@@ -211,18 +212,6 @@ function packageVersion(): string {
   }
 }
 
-function gitRevision(): string {
-  try {
-    return execSync("git rev-parse --short HEAD", {
-      cwd: cliRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return "unknown";
-  }
-}
-
 function xmlEscape(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -361,6 +350,7 @@ function relaunchIfNeeded(shouldLaunch: boolean, extraArgs: string[] = []): void
 }
 
 function resolveSigningIdentity(): string | null {
+  if (process.env.LATTICES_SIGN_IDENTITY) return process.env.LATTICES_SIGN_IDENTITY;
   try {
     const identities = execSync("security find-identity -v -p codesigning", { stdio: "pipe" }).toString();
     return identities.match(/^\s*\d+\)\s+([A-F0-9]{40})\s+"Developer ID Application:[^"]+"/m)?.[1]
@@ -395,7 +385,7 @@ function runCodesign(args: string[]): void {
   }
 }
 
-function signBundle(): void {
+function signBundle(requireDeveloperID = false): void {
   const identity = resolveSigningIdentity();
   const entitlements = existsSync(entitlementsPath) ? entitlementsPath : null;
   const tempBinaryPath = `${binaryPath}.cstemp`;
@@ -406,19 +396,27 @@ function signBundle(): void {
 
   const sign = (signer: string, label: string) => {
     // Inside out: embedded helpers (Contents/Helpers) first, under the same signer.
-    signHelpers(bundlePath, signer);
-    runCodesign(["--force", "--options", "runtime", "--entitlements", resolve(cliRoot, "tools/release/CompanionInstaller.entitlements"), "--sign", signer, resolve(binaryDir, "CompanionInstaller")]);
+    signHelpers(bundlePath, signer, { timestamp: requireDeveloperID });
     // Sign the Mach-O first, then the bundle — more reliable than --deep and
     // keeps a stable TeamIdentifier so macOS TCC grants survive rebuilds.
     const binaryArgs = ["--force", "--options", "runtime", "--sign", signer];
+    if (requireDeveloperID) binaryArgs.push("--timestamp");
     if (entitlements) binaryArgs.push("--entitlements", entitlements);
     binaryArgs.push(binaryPath);
     runCodesign(binaryArgs);
 
     const bundleArgs = ["--force", "--options", "runtime", "--sign", signer];
+    if (requireDeveloperID) bundleArgs.push("--timestamp");
     if (entitlements) bundleArgs.push("--entitlements", entitlements);
     bundleArgs.push("--identifier", "dev.lattices.app", bundlePath);
     runCodesign(bundleArgs);
+    runCodesign(["--verify", "--deep", "--strict", bundlePath]);
+    if (requireDeveloperID) {
+      const details = spawnSync("codesign", ["-dv", "--verbose=4", bundlePath], { encoding: "utf8" });
+      if (details.status !== 0 || !/^Authority=Developer ID Application:/m.test(details.stdout + details.stderr)) {
+        throw new Error("Release builds require a Developer ID Application signature");
+      }
+    }
 
     const team = bundleTeamIdentifier();
     if (team) {
@@ -435,10 +433,12 @@ function signBundle(): void {
       sign(identity, "developer");
       return;
     } catch (error) {
+      if (requireDeveloperID) throw error;
       console.log(`Warning: signing with '${identity}' failed — ${(error as Error).message}`);
       console.log("Warning: falling back to ad-hoc. Privacy permissions will not persist across rebuilds.");
     }
   } else {
+    if (requireDeveloperID) throw new Error("Release builds require a Developer ID Application signing identity");
     console.log("Warning: no local signing identity found — falling back to ad-hoc.");
     console.log("Warning: grant Accessibility/Screen Recording again after each rebuild, or install a signing cert.");
   }
@@ -455,23 +455,27 @@ type BundleBuildMetadata = {
   track?: string;
   revision?: string;
   timestamp?: string;
+  sourceDigest?: string;
 };
 
 function buildMetadataPlist(metadata: BundleBuildMetadata): string {
-  if (metadata.channel !== "dev") return "";
+  if (!metadata.channel) return "";
 
   const track = metadata.track ?? "latest";
-  const revision = metadata.revision ?? gitRevision();
+  const current = metadata.revision && metadata.sourceDigest ? metadata : readBuildMetadata(cliRoot);
+  const revision = current.revision!;
   const timestamp = metadata.timestamp ?? new Date().toISOString();
 
   return `    <key>LatticesBuildChannel</key>
-    <string>dev</string>
+    <string>${metadata.channel}</string>
     <key>LatticesBuildTrack</key>
     <string>${xmlEscape(track)}</string>
     <key>LatticesBuildRevision</key>
     <string>${xmlEscape(revision)}</string>
     <key>LatticesBuildTimestamp</key>
     <string>${xmlEscape(timestamp)}</string>
+    <key>LatticesBuildSourceDigest</key>
+    <string>${xmlEscape(current.sourceDigest!)}</string>
 `;
 }
 
@@ -532,8 +536,9 @@ ${buildMetadata}    <key>LSMinimumSystemVersion</key>
 }
 
 function syncBundleResources(): void {
-  execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(binaryDir, "CompanionInstaller")], { stdio: "inherit" });
   mkdirSync(resourcesDir, { recursive: true });
+  rmSync(resolve(binaryDir, "CompanionInstaller"), { force: true });
+  execFileSync(process.execPath, [resolve(cliRoot, "bin/build-companion-installer.ts"), resolve(resourcesDir, "companion-installer.js")], { stdio: "inherit" });
   if (existsSync(iconPath)) {
     execFileSync("cp", [iconPath, resolve(resourcesDir, "AppIcon.icns")]);
   }
@@ -570,6 +575,10 @@ function syncBundleResources(): void {
 
 function buildFromSource(): boolean {
   console.log("Building lattices app from source...");
+  const channel = process.env.LATTICES_BUILD_CHANNEL ?? "dev";
+  if (channel !== "dev" && channel !== "release") throw new Error("LATTICES_BUILD_CHANNEL must be dev or release");
+  const buildEnv = resolveBuildEnv();
+  const metadata = readBuildMetadata(cliRoot, buildEnv);
   try {
     execSync("swift build -c release", {
       cwd: appDir,
@@ -577,7 +586,7 @@ function buildFromSource(): boolean {
       // Build features are declared in apps/mac/build.json and resolved to the
       // HUDSONKIT_WITH_* env HudsonKit gates on — one source of truth across
       // every build entrypoint (see bin/lattices-build-env.ts).
-      env: { ...process.env, ...resolveBuildEnv() },
+      env: { ...process.env, ...buildEnv },
     });
   } catch {
     return false;
@@ -585,12 +594,15 @@ function buildFromSource(): boolean {
 
   const builtPath = resolve(appDir, ".build/release/Lattices");
   if (!existsSync(builtPath)) return false;
+  const currentMetadata = readBuildMetadata(cliRoot, buildEnv);
+  if (currentMetadata.sourceDigest !== metadata.sourceDigest || currentMetadata.revision !== metadata.revision) {
+    console.error("Build inputs changed during compilation; rebuild from a stable checkout.");
+    return false;
+  }
 
   mkdirSync(binaryDir, { recursive: true });
   execFileSync("cp", [builtPath, binaryPath]);
-  // Source builds are local/dev — stamp channel so Settings shows DEV, not the
-  // release fallback when LatticesBuildChannel is missing from Info.plist.
-  writeInfoPlist({ channel: "dev" });
+  writeInfoPlist({ channel, ...metadata });
   syncBundleResources();
   try {
     embedHelpers(bundlePath);
@@ -603,10 +615,10 @@ function buildFromSource(): boolean {
   // Re-sign the bundle so macOS TCC recognizes a stable identity across rebuilds.
   // Prefer a real local signing identity; only fall back to ad-hoc when necessary.
   try {
-    signBundle();
-  } catch {
-    // Non-fatal — app still works, just permissions won't persist across rebuilds
-    console.log("Warning: code signing failed — permissions may not persist across rebuilds.");
+    signBundle(channel === "release");
+  } catch (error) {
+    console.error(`Code signing failed: ${(error as Error).message}`);
+    return false;
   }
   // Update bundle timestamp so Finder shows the correct modified date
   try { execFileSync("touch", [bundlePath], { stdio: "pipe" }); } catch {}

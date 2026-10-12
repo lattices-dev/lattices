@@ -8,11 +8,15 @@ import AppKit
 /// showing, so everything is on one desktop per monitor.
 extension WorkspaceManager {
     func showClassic() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.showClassic() }
+            return
+        }
         if classicShowing {
             gatherToShowingDesktops()
             return
         }
-        let outcome = LayerStage.shared.showAll()
+        let outcome = exitLayers(showFeedback: false)
         classicShowing = true
         let back = outcome.unparked.count + outcome.rescued
         var note: [String] = []
@@ -48,11 +52,15 @@ extension WorkspaceManager {
             return
         }
         classicGathering = true
+        let generation = layerFocus.generation
         LayerBezel.shared.acknowledge("Classic · one space · moving \(plan.count)")
         DispatchQueue.global(qos: .userInitiated).async {
             var moved = 0
             var failed: [String] = []
             for (window, target) in plan {
+                guard DispatchQueue.main.sync(execute: {
+                    self.classicShowing && self.layerFocus.generation == generation
+                }) else { break }
                 do {
                     let receipt = try ActionRuntime.shared.executeWindowMove(
                         params: .object(["wid": .int(Int(window.wid)), "spaceId": .int(target)]),
@@ -69,6 +77,7 @@ extension WorkspaceManager {
             }
             DispatchQueue.main.async {
                 self.classicGathering = false
+                guard self.classicShowing && self.layerFocus.generation == generation else { return }
                 let tail = failed.isEmpty ? "" : ", \(failed.count) stayed"
                 LayerBezel.shared.acknowledge("Classic · one space · \(moved) moved\(tail)")
                 DiagnosticLog.shared.info("Classic one space: moved \(moved) of \(plan.count)"

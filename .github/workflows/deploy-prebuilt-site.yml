@@ -1,0 +1,94 @@
+name: Deploy locally built site
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full source commit SHA, already merged into main
+        required: true
+        type: string
+      asset_tag:
+        description: GitHub release tag holding the locally built site archive
+        required: true
+        type: string
+      asset_name:
+        description: Static site tar.gz release asset filename
+        required: true
+        type: string
+      asset_sha256:
+        description: SHA-256 of the locally built archive
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify local build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          ASSET_TAG: ${{ inputs.asset_tag }}
+          ASSET_NAME: ${{ inputs.asset_name }}
+          ASSET_SHA256: ${{ inputs.asset_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$ASSET_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$ASSET_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.tar\.gz$ ]]
+          [[ "$ASSET_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
+          comparison=$(gh api "repos/$GH_REPO/compare/$SOURCE_COMMIT...main" --jq .status)
+          [[ "$comparison" == ahead || "$comparison" == identical ]]
+          mkdir download site
+          gh release download "$ASSET_TAG" --pattern "$ASSET_NAME" --dir download
+          printf '%s  %s\n' "$ASSET_SHA256" "download/$ASSET_NAME" | sha256sum --check --strict
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import tarfile
+
+          archive = Path('download') / os.environ['ASSET_NAME']
+          with tarfile.open(archive, 'r:gz') as bundle:
+              members = bundle.getmembers()
+              if len(members) > 100000 or sum(member.size for member in members) > 1024 ** 3:
+                  raise SystemExit('Site archive exceeds Pages limits')
+              for member in members:
+                  name = PurePosixPath(member.name)
+                  if name.is_absolute() or '..' in name.parts or not (member.isfile() or member.isdir()):
+                      raise SystemExit(f'Unsafe archive entry: {member.name}')
+              bundle.extractall('site', members=members, filter='data')
+          manifest = json.loads(Path('site/site-provenance.json').read_text())
+          if manifest.get('sourceCommit') != os.environ['SOURCE_COMMIT']:
+              raise SystemExit('Site provenance does not match the requested source commit')
+          if not Path('site/index.html').is_file():
+              raise SystemExit('Site archive must contain index.html at its root')
+          if Path('site/CNAME').read_text().strip() != 'lattices.dev':
+              raise SystemExit('Unexpected Pages domain')
+          PY
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+        with:
+          path: site
+
+  deploy:
+    needs: verify
+    permissions:
+      pages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

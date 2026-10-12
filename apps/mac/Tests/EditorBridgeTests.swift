@@ -131,7 +131,7 @@ final class EditorBridgeTests: XCTestCase {
     }
 
     func testLayersNavigationAndPageActionSelectionIdentity() {
-        XCTAssertEqual(AppPage.navigationGroups.first?.pages, [.home, .overview, .layers])
+        XCTAssertEqual(AppPage.navigationGroups.first?.pages, [.home, .overview, .layers, .machines])
         XCTAssertEqual(AppPage.named("layers"), .layers)
         let off = PageAction(id: "source", title: "Source", isOn: false) {}
         let on = PageAction(id: "source", title: "Source", isOn: true) {}

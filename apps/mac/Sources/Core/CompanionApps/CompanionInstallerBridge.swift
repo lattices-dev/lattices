@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Owns only installer helpers. Companion apps are launched separately through
 /// NSWorkspace, so quitting Lattices does not terminate them.
@@ -13,6 +13,13 @@ final class CompanionInstallerBridge {
     private var processes: [CompanionProductID: Process] = [:]
     var onChange: (() -> Void)?
 
+    /// Runs Bun's official installer in Terminal, where the user can watch it.
+    static func installBun() {
+        let command = "curl -fsSL https://bun.sh/install | bash"
+        let source = "tell application \"Terminal\" to do script \"\(command)\"\nactivate application \"Terminal\""
+        NSAppleScript(source: source)?.executeAndReturnError(nil)
+    }
+
     func cancel(_ product: CompanionProductID) {
         // SIGINT invokes the helper's cancellation/cleanup path; never signal an app.
         processes[product]?.interrupt()
@@ -20,18 +27,22 @@ final class CompanionInstallerBridge {
 
     func install(_ product: CompanionProductID) {
         guard processes[product] == nil else { return }
-        let process = Process()
-        if let bundled = Bundle.main.url(forAuxiliaryExecutable: "CompanionInstaller") {
-            process.executableURL = bundled
-            process.arguments = [product.rawValue]
-        } else if let root = LatticesRuntime.cliRoot, let bun = LatticesRuntime.bunPath {
-            process.executableURL = URL(fileURLWithPath: bun)
-            process.arguments = [root + "/bin/companion-installer.ts", product.rawValue]
-        } else {
+        // The installer is a small script run with the host's Bun.
+        let script = Bundle.main.url(forResource: "companion-installer", withExtension: "js")?.path
+            ?? LatticesRuntime.cliRoot.map { $0 + "/bin/companion-installer.ts" }
+        guard let bun = LatticesRuntime.bunPath else {
+            states[product] = State(phase: "needs-bun", active: false, message: nil)
+            onChange?()
+            return
+        }
+        guard let script, FileManager.default.fileExists(atPath: script) else {
             states[product] = State(phase: "failed", active: false, message: "The installer is missing from this Lattices build.")
             onChange?()
             return
         }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: bun)
+        process.arguments = [script, product.rawValue]
         let output = Pipe(), errors = Pipe()
         process.standardOutput = output
         process.standardError = errors

@@ -1,5 +1,5 @@
 import actionDownload from '../src/action-download.json' with { type: 'json' }
-import { copyFile, cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
 import { createElement } from 'react'
@@ -14,6 +14,7 @@ import mermaid from 'shiki/langs/mermaid.mjs'
 import swift from 'shiki/langs/swift.mjs'
 import typescript from 'shiki/langs/ts.mjs'
 import { writeAgentArtifacts } from './agent-docs.mjs'
+import { copyActionReferences } from './action-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import { stripMdxImports } from '../src/lib/markdown.ts'
@@ -582,17 +583,8 @@ async function copyDocsAssets() {
 }
 
 async function copyActionDocs() {
-  const sourceDir = join(repoRoot, 'products', 'action', 'docs')
   const targetDir = join(distDir, 'action')
-  const entries = await readdir(sourceDir, { withFileTypes: true })
-
-  await mkdir(targetDir, { recursive: true })
-  for (const entry of entries) {
-    // The React product page owns /action. The old landing media is intentionally
-    // not published with the reference docs.
-    if (entry.name === 'index.html' || entry.name === 'assets') continue
-    await cp(join(sourceDir, entry.name), join(targetDir, entry.name), { recursive: true })
-  }
+  await copyActionReferences({ repoRoot, distDir })
 
   const landingMedia = [
     'action-record-the-work-poster.jpg',

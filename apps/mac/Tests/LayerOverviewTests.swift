@@ -38,7 +38,7 @@ final class LayerOverviewTests: XCTestCase {
         }
     }
 
-    private func build(_ layers: [Layer], _ windows: [WindowEntry], active: Int = 0) -> [LayerOverview] {
+    private func build(_ layers: [Layer], _ windows: [WindowEntry], active: Int? = 0) -> [LayerOverview] {
         LayerOverview.build(
             layers,
             resolution: LayerMembership.resolve(layers, windows: windows),
@@ -47,6 +47,18 @@ final class LayerOverviewTests: XCTestCase {
             place: place,
             missing: { $0.app == "Figma" ? .notOpen : nil }
         )
+    }
+
+    func testExitingFocusLeavesDefinitionsAndMembersWithoutAnActiveLayer() {
+        let layers = [Layer(id: "notes", label: "Notes", projects: [app("Notes")])]
+        let windows = [window(1, "Notes", "Planning", space: 2)]
+        let active = build(layers, windows, active: 0)
+        let exited = build(layers, windows, active: nil)
+        XCTAssertTrue(active[0].isActive)
+        XCTAssertFalse(exited[0].isActive)
+        XCTAssertEqual(exited[0].id, active[0].id)
+        XCTAssertEqual(exited[0].entries, active[0].entries)
+        XCTAssertEqual(exited[0].windows[0].spaceIds, [2])
     }
 
     func testAWindowInThePlaceItsSpacesSay() {

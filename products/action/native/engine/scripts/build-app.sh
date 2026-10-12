@@ -7,7 +7,7 @@ ROOT_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
 PACKAGE_DIR="$ROOT_DIR/native/engine"
 APP_TEMPLATE_DIR="$PACKAGE_DIR/App"
 AGENT_APP_TEMPLATE_DIR="$PACKAGE_DIR/AgentApp"
-DIST_DIR="$ROOT_DIR/native/dist"
+DIST_DIR="${ACTION_DIST_DIR:-$ROOT_DIR/native/dist}"
 APP_DIR="$DIST_DIR/Action.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -189,6 +189,10 @@ if [[ -f "$ROOT_DIR/assets/pets/mira/pet.json" && -f "$ROOT_DIR/assets/pets/expl
 fi
 apply_bundle_version "$CONTENTS_DIR/Info.plist"
 apply_bundle_version "$AGENT_HELPER_CONTENTS_DIR/Info.plist"
+
+python3 "$SCRIPT_DIR/write-build-provenance.py" "$ROOT_DIR" "$RESOURCES_DIR" "$CONTENTS_DIR/Info.plist" "$BUILD_CONFIGURATION"
+mkdir -p "$AGENT_HELPER_CONTENTS_DIR/Resources"
+cp "$RESOURCES_DIR/build-provenance.json" "$AGENT_HELPER_CONTENTS_DIR/Resources/build-provenance.json"
 
 codesign_item "$APP_EXECUTABLE"
 codesign_item "$APP_AGENT_EXECUTABLE"

@@ -1097,7 +1097,7 @@ private extension LatticesDeckHost {
                     subtitle: facts.compactMap { $0 }.joined(separator: " · "),
                     iconToken: "workspace-layer",
                     kind: .task,
-                    isFrontmost: WorkspaceManager.shared.activeLayerIndex == index
+                    isFrontmost: WorkspaceManager.shared.activeLayerSelection == index
                 ))
             }
         }

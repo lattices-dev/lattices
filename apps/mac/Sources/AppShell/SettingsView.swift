@@ -244,7 +244,7 @@ struct SettingsContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
-            HudDivider(color: HudHairline.standard)
+            HudDivider(color: Palette.border)
         }
     }
 
@@ -256,7 +256,7 @@ struct SettingsContentView: View {
                 .frame(width: 196, alignment: .top)
                 .background(Palette.bg)
 
-            HudDivider(color: HudHairline.standard, axis: .vertical)
+            HudDivider(color: Palette.border, axis: .vertical)
                 .frame(maxHeight: .infinity)
 
             selectedSectionContent
@@ -476,11 +476,7 @@ struct SettingsContentView: View {
                     .foregroundColor(Palette.text)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(HudSurface.control)
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.subtle, lineWidth: 0.5))
-                    )
+                    .outlinedBox(HudSurface.control)
 
                 Button {
                     let panel = NSOpenPanel()
@@ -606,10 +602,10 @@ struct SettingsContentView: View {
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("Caps Lock as Hyper")
-                                    .font(Typo.monoBold(12))
+                                    .font(Typo.heading(13))
                                     .foregroundColor(Palette.text)
                                 Text("Hold Caps Lock for Hyper. Tap Caps Lock for Escape.")
-                                    .font(Typo.caption(10))
+                                    .font(Typo.caption(11))
                                     .foregroundColor(Palette.textMuted)
                             }
 
@@ -714,10 +710,10 @@ struct SettingsContentView: View {
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 5) {
                                 Text("Instant Space Switching")
-                                    .font(Typo.monoBold(12))
+                                    .font(Typo.heading(13))
                                     .foregroundColor(Palette.text)
                                 Text("Ctrl+←/→ jumps straight to the next Space — no slide animation — with a small Lattices confirmation. Hold Shift for a landscape of every Space on that display.")
-                                    .font(Typo.caption(10))
+                                    .font(Typo.caption(11))
                                     .foregroundColor(Palette.textMuted)
                             }
 
@@ -773,10 +769,10 @@ struct SettingsContentView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text("Spatial Lens")
-                                        .font(Typo.monoBold(12))
+                                        .font(Typo.heading(13))
                                         .foregroundColor(Palette.text)
                                     Text("Preview and place the window under your pointer without opening a separate mode.")
-                                        .font(Typo.caption(10))
+                                        .font(Typo.caption(11))
                                         .foregroundColor(Palette.textMuted)
                                 }
 
@@ -966,11 +962,7 @@ struct SettingsContentView: View {
                     }
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Palette.surface.opacity(0.48))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.border.opacity(0.65), lineWidth: 0.5))
-            )
+            .outlinedBox(Palette.surface.opacity(0.48))
         }
     }
 
@@ -986,11 +978,7 @@ struct SettingsContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.surface.opacity(0.48))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Palette.border.opacity(0.65), lineWidth: 0.5))
-        )
+        .outlinedBox(Palette.surface.opacity(0.48))
     }
 
     private func mouseShortcutMappingTableRow(_ rule: MouseShortcutRule) -> some View {
@@ -1118,11 +1106,7 @@ struct SettingsContentView: View {
                             .lineLimit(1)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(Palette.surface.opacity(0.55))
-                                    .overlay(Capsule().strokeBorder(Palette.border.opacity(0.55), lineWidth: 0.5))
-                            )
+                            .background(Capsule().fill(Palette.surface.opacity(0.55)))
                     }
                 }
             }
@@ -1147,14 +1131,7 @@ struct SettingsContentView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Palette.surfaceHov.opacity(isEnabled ? 0.88 : 0.38))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .strokeBorder(Palette.borderLit.opacity(isEnabled ? 0.75 : 0.32), lineWidth: 0.5)
-                    )
-            )
+            .buttonBox()
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
@@ -1247,7 +1224,7 @@ struct SettingsContentView: View {
     }
 
     private var generalRule: some View {
-        HudDivider(color: HudHairline.subtle)
+        HudDivider(color: Palette.border)
             .padding(.vertical, 16)
     }
 
@@ -1428,11 +1405,7 @@ struct SettingsContentView: View {
                                     .foregroundColor(Palette.text)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 5)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
+                                    .buttonBox()
                             }
                             .buttonStyle(.plain)
                             .disabled(appUpdater.isUpdating)
@@ -1646,11 +1619,7 @@ struct SettingsContentView: View {
                                     .foregroundColor(Palette.text)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
+                                    .buttonBox()
                             }
                             .buttonStyle(.plain)
 
@@ -1662,11 +1631,7 @@ struct SettingsContentView: View {
                                     .foregroundColor(Palette.text)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Palette.surfaceHov)
-                                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                                    )
+                                    .buttonBox()
                             }
                             .buttonStyle(.plain)
                         }
@@ -2124,11 +2089,7 @@ struct SettingsContentView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(HudSurface.control)
-                                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(HudHairline.subtle, lineWidth: 0.5))
-                        )
+                        .outlinedBox(HudSurface.control)
 
                     Button("Save") {
                         assistantSession.saveSelectedToken()
@@ -2217,14 +2178,7 @@ struct SettingsContentView: View {
             .frame(width: width)
             .padding(.horizontal, 4)
             .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                    )
-            )
+            .outlinedBox(Color.white.opacity(0.06))
     }
 
     private func ocrIntField(_ value: Binding<Int>, width: CGFloat = 36) -> some View {
@@ -2236,14 +2190,7 @@ struct SettingsContentView: View {
             .frame(width: width)
             .padding(.horizontal, 4)
             .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
-                    )
-            )
+            .outlinedBox(Color.white.opacity(0.06))
     }
 
     private func ocrSectionLabel(_ text: String) -> some View {
@@ -2405,11 +2352,7 @@ struct SettingsContentView: View {
                             .foregroundColor(prefs.ocrEnabled ? Palette.text : Palette.textMuted)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(prefs.ocrEnabled ? Palette.surfaceHov : Palette.surface)
-                                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                            )
+                            .buttonBox(emphasized: prefs.ocrEnabled)
                         }
                         .buttonStyle(.plain)
                         .disabled(!prefs.ocrEnabled)
@@ -2566,14 +2509,7 @@ struct SettingsContentView: View {
                     .padding(8)
             }
             .frame(maxHeight: 150)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.black.opacity(0.2))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-                    )
-            )
+            .outlinedBox(Color.black.opacity(0.2))
         }
     }
 
@@ -2618,7 +2554,7 @@ struct SettingsContentView: View {
     }
 
     private var cardDivider: some View {
-        HudDivider(color: HudHairline.subtle)
+        HudDivider(color: Palette.border)
             .padding(.vertical, 3)
     }
 
@@ -2632,14 +2568,7 @@ struct SettingsContentView: View {
         .foregroundColor(emphasized ? Palette.text : Palette.textMuted)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(emphasized ? Palette.surfaceHov : Palette.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(emphasized ? Palette.borderLit : Palette.border, lineWidth: 0.5)
-                )
-        )
+        .buttonBox(emphasized: emphasized)
     }
 
     private func permissionSettingsRow(
@@ -2765,11 +2694,7 @@ struct SettingsContentView: View {
                         .foregroundColor(Palette.text)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 3)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Palette.surfaceHov)
-                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.borderLit, lineWidth: 0.5))
-                        )
+                        .buttonBox()
                 }
                 .buttonStyle(.plain)
             }
@@ -3129,14 +3054,7 @@ struct SettingsContentView: View {
             .foregroundColor(Palette.text)
             .frame(maxWidth: .infinity)
             .frame(height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
+            .outlinedBox()
     }
 
     private func tileCellBadge(_ binding: KeyBinding?) -> String {
@@ -3172,14 +3090,7 @@ struct SettingsContentView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 42)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Palette.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
-                    )
-            )
+            .outlinedBox()
         }
         .buttonStyle(.plain)
         .popover(isPresented: tileCellPopoverBinding(for: action)) {
@@ -3449,14 +3360,7 @@ private struct HyperspaceDisplayTile: View {
             }
         }
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.black.opacity(0.22))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
-                )
-        )
+        .outlinedBox(Color.black.opacity(0.22))
     }
 }
 

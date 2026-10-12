@@ -162,8 +162,8 @@ final class LayersPageModel: ObservableObject {
         if let retainedHost { return retainedHost }
         bridge.actionCapture = { try EditorBridge.liveSnapshot() }
         bridge.actions = EditorActions(execute: { try WorkspaceManager.shared.executeEditorAction($0) }, reveal: {
-            let outcome = LayerStage.shared.showAll()
-            return ["restored": outcome.unparked.count, "skipped": outcome.stillParked]
+            let outcome = WorkspaceManager.shared.exitLayers()
+            return ["restored": outcome.unparked.count, "skipped": outcome.remainingToRestore]
         }, journalFactory: { EditorMutationJournal() })
         bridge.assistantState = { [weak self] requested in
             guard let self, let layerId = requested ?? self.assistantLayerId else {
@@ -245,10 +245,23 @@ final class LayersPageModel: ObservableObject {
 
 struct LayersPage: View {
     @ObservedObject private var model = LayersPageModel.shared
+    @ObservedObject private var workspace = WorkspaceManager.shared
     var body: some View {
-        LayersWebView(host: model.host)
+        VStack(spacing: 0) {
+            if let message = workspace.layerRecoveryMessage {
+                Text(message)
+                    .font(Typo.body())
+                    .foregroundColor(Palette.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            }
+            LayersWebView(host: model.host)
+        }
             .background(Palette.bg)
-            .pageActions(model.actions)
+            .pageActions(model.actions + [PageAction(
+                id: "layers.exit", title: "Exit Layers", icon: "rectangle.portrait.and.arrow.right"
+            ) { workspace.exitLayers() }])
     }
 }
 

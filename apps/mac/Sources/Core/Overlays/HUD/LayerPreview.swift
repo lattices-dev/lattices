@@ -256,7 +256,7 @@ final class LayerPreview {
         let tucked = LayerStage.shared.tucked(layer.id)
         let extras = Self.extras(
             of: layer,
-            active: index == workspace.activeLayerIndex,
+            active: index == workspace.activeLayerSelection,
             tucked: tucked,
             owned: Set(overviews.flatMap(\.windows).map(\.wid)),
             in: windows
@@ -331,6 +331,7 @@ final class LayerPreview {
         close()
 
         let workspace = WorkspaceManager.shared
+        let focusGeneration = workspace.layerFocus.generation
         guard let layers = workspace.config?.layers, layers.indices.contains(target),
               let overview = workspace.overviews(in: DesktopModel.shared.allWindows()).first(where: { $0.index == target })
         else { return }
@@ -365,17 +366,25 @@ final class LayerPreview {
         LayerBezel.shared.acknowledge(carries.count == 1 ? "Bringing 1 window" : "Bringing \(carries.count) windows")
         DispatchQueue.global(qos: .userInitiated).async {
             for carry in carries {
+                guard DispatchQueue.main.sync(execute: { workspace.layerFocus.generation == focusGeneration }) else { return }
                 // A hidden app's windows can't be carried; show it first.
                 if let app = NSRunningApplication(processIdentifier: carry.pid), app.isHidden {
-                    DispatchQueue.main.sync { _ = app.unhide() }
+                    guard DispatchQueue.main.sync(execute: {
+                        guard workspace.layerFocus.generation == focusGeneration else { return false }
+                        _ = app.unhide()
+                        return true
+                    }) else { return }
                     let deadline = Date().addingTimeInterval(1.0)
                     while app.isHidden, Date() < deadline { usleep(30_000) }
                 }
+                // Exit may have happened while waiting for the app to unhide.
+                guard DispatchQueue.main.sync(execute: { workspace.layerFocus.generation == focusGeneration }) else { return }
                 if case .failed(let reason) = WindowSpaceCarry.carry(wid: carry.wid, pid: carry.pid, to: carry.to) {
                     DiagnosticLog.shared.warn("LayerPreview: couldn't carry wid=\(carry.wid): \(reason)")
                 }
             }
             DispatchQueue.main.async {
+                guard workspace.layerFocus.generation == focusGeneration else { return }
                 DesktopModel.shared.refreshNow()
                 self.switchTo(target)
             }
@@ -385,6 +394,9 @@ final class LayerPreview {
     private func switchTo(_ target: Int) {
         WorkspaceManager.shared.focusLayer(index: target)
     }
+
+    /// Also used by Exit Layers to release captured input immediately.
+    func dismiss() { close() }
 
     private func close() {
         unfreeze()
@@ -485,6 +497,7 @@ final class LayerPreview {
         if let panel, let previewView { return (panel, previewView) }
         let frame = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
         let view = LayerPreviewView(frame: CGRect(origin: .zero, size: frame.size))
+        view.onExit = { WorkspaceManager.shared.exitLayers() }
         let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -615,6 +628,10 @@ final class LayerPreview {
         }
         guard holds else { return endAndPass() }
 
+        // Desktop navigation and the app switcher must remain an escape path
+        // even while the preview owns its editing keys.
+        if passesSystemNavigation(key: key, flags: flags) { return endAndPass() }
+
         // Frozen: every key stops here, so nothing types into the app
         // underneath and ⌘⌥Space doesn't open Finder's search. ⌘⌥ arrows
         // and digits browse; bare arrows pick, a bare digit sends, bare
@@ -638,7 +655,9 @@ final class LayerPreview {
             }
             switch key {
             case Key.returnKey, Key.enter: preview.commit()
-            case Key.escape: preview.close()
+            case Key.escape:
+                if modifiers == .maskShift { WorkspaceManager.shared.exitLayers() }
+                else { preview.close() }
             case Key.tab: preview.previewView?.pickNext(backward: backward)
             case Key.delete, Key.forwardDelete: preview.removePicked()
             case Key.space where bare: preview.togglePicked()
@@ -647,6 +666,13 @@ final class LayerPreview {
             }
         }
         return nil
+    }
+
+    static func passesSystemNavigation(key: Int64, flags: CGEventFlags) -> Bool {
+        let modifiers = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+        return (modifiers == .maskControl && Key.arrows[key] != nil)
+            || (key == Key.tab && (modifiers == .maskCommand || modifiers == [.maskCommand, .maskShift]))
+            || (key == Key.escape && modifiers == [.maskCommand, .maskAlternate])
     }
 }
 
@@ -658,6 +684,36 @@ final class LayerPreview {
 /// here. The ones beyond its entries have a dashed edge. Entries that
 /// matched no window are named along the foot.
 final class LayerPreviewView: NSView {
+    var onExit: (() -> Void)?
+    private lazy var exitButton: NSButton = {
+        let button = NSButton(title: "Exit Layers", target: self, action: #selector(exitLayers))
+        button.bezelStyle = .rounded
+        button.toolTip = "Restore windows and leave layer focus (Shift–Escape)."
+        button.setAccessibilityLabel("Exit Layers")
+        addSubview(button)
+        return button
+    }()
+
+    @objc private func exitLayers() { onExit?() }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        _ = exitButton
+        needsLayout = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        _ = exitButton
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let button = exitButton
+        button.sizeToFit()
+        button.frame.origin = CGPoint(x: max(16, bounds.width - button.frame.width - 32), y: 34)
+    }
     private struct Tile {
         let window: LayerOverview.Window
         let icon: NSImage?
@@ -671,7 +727,7 @@ final class LayerPreviewView: NSView {
     private var label = ""
     private var slot: Int?
     private var chord: String?
-    private var layout: String?
+    private var layerLayout: String?
     private var filled: Set<Int> = []
     private var tiles: [Tile] = []
     private var missing: [String] = []
@@ -714,7 +770,7 @@ final class LayerPreviewView: NSView {
         label = overview.label
         slot = overview.slot
         chord = LayerOverview.chord(forIndex: overview.index)
-        layout = overview.layout
+        layerLayout = overview.layout
         self.filled = filled
         self.tucked = tucked
         self.captures = captures
@@ -952,7 +1008,7 @@ final class LayerPreviewView: NSView {
             line.draw(at: CGPoint(x: (bounds.width - line.size().width) / 2, y: bounds.height - 64))
         }
         let space = picked.map(isAway) == true ? "␣ Show" : "␣ Put away"
-        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌘⌥ ← → ↑ ↓ Layers", "esc Cancel"]
+        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌘⌥ ← → ↑ ↓ Layers", "esc Cancel", "⇧esc Exit Layers"]
         let keys = text(hints.joined(separator: "     "), font: .systemFont(ofSize: 11, weight: .medium), color: Self.dim)
         keys.draw(at: CGPoint(x: (bounds.width - keys.size().width) / 2, y: bounds.height - 34))
     }
@@ -979,7 +1035,7 @@ final class LayerPreviewView: NSView {
         let title = text(label, font: titleFont, color: Self.ink)
         let at = CGPoint(x: round((bounds.width - title.size().width) / 2), y: origin.y + padWidth + 12)
         title.draw(at: at)
-        let meta = text([chord, LayerLayout.title(layout)].compactMap { $0 }.joined(separator: " · "), font: metaFont, color: Self.dim)
+        let meta = text([chord, LayerLayout.title(layerLayout)].compactMap { $0 }.joined(separator: " · "), font: metaFont, color: Self.dim)
         meta.draw(at: CGPoint(x: at.x + title.size().width + 12, y: at.y + round(titleFont.ascender - metaFont.ascender)))
         if let note {
             let line = text(note, font: .systemFont(ofSize: 13, weight: .medium), color: Self.coral)

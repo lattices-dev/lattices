@@ -272,18 +272,21 @@ as narrow as it was asked to.
 
 ## Plugin versioning
 
-Harnesses cache installed plugin metadata — skills, interface copy, MCP entry —
-by version. Bumping one manifest and not the others leaves an install serving
-stale tool descriptions, so all of them move together:
+Harnesses cache the Action Browser skill and interface metadata by plugin
+version. Bump all seven manifests together when that metadata changes:
 
 ```bash
 bun run plugin:version              # check that every manifest agrees
-bun run plugin:version -- 0.3.0     # set them all
+bun run plugin:version -- 0.4.1     # set them all
 ```
 
-Covers `.claude-plugin/marketplace.json`, the Claude/Codex/Kimi plugin manifests,
-and `SERVER_VERSION` in the MCP server. After a bump, reinstall or refresh the
-plugin in each harness so the cached copy is replaced.
+The check covers the root and Action product marketplace/Kimi manifests, plus
+the browser plugin's Claude, Codex, and Kimi manifests. Reinstall or refresh the
+plugin in each harness so its cached skill is replaced.
+
+The plugin no longer carries an MCP server or a `SERVER_VERSION`. Browser tools
+ship with the lattices CLI; updating that CLI and restarting its MCP process
+updates the server separately from refreshing this skill-only plugin.
 
 ## What is intentionally not done
 

@@ -122,7 +122,9 @@ final class OmniSearchState: ObservableObject {
     private func quickSearch(_ query: String) {
         let q = query.lowercased()
         let desktop = DesktopModel.shared
-        var all: [OmniResult] = []
+        var all: [OmniResult] = BrowseMenu.machinesSection().filter { row in
+            q.split(separator: " ").allSatisfy { row.title.localizedCaseInsensitiveContains(String($0)) }
+        }
 
         for entry in desktop.allWindows() {
             var score = 0
@@ -153,7 +155,9 @@ final class OmniSearchState: ObservableObject {
 
     private func search(_ query: String) {
         let q = query.lowercased()
-        var all: [OmniResult] = []
+        var all: [OmniResult] = BrowseMenu.machinesSection().filter { row in
+            q.split(separator: " ").allSatisfy { row.title.localizedCaseInsensitiveContains(String($0)) }
+        }
 
         // ── Daemon search: windows, terminals, OCR — single source of truth ──
         // This is synchronous on the daemon's in-process API, not a network call.

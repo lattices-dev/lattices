@@ -51,16 +51,17 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       console.log(result.undone ? `Undid ${result.undone}.` : "Nothing to undo.");
       return;
     }
-    if (sub === "reveal" || sub === "show-all") {
-      const result = await daemonCall("layers.reveal") as any;
+    if (sub === "exit" || sub === "off" || sub === "reveal" || sub === "show-all") {
+      const result = await daemonCall(sub === "reveal" || sub === "show-all" ? "layers.reveal" : "layers.exit") as any;
       const unhidden: string[] = result.unhidden ?? [];
       const rescued: number = result.rescued ?? 0;
-      console.log(`Put back ${result.unparked} parked window${result.unparked === 1 ? "" : "s"}` +
+      console.log(`Layers off. Put back ${result.unparked} parked window${result.unparked === 1 ? "" : "s"}` +
         (rescued ? `, rescued ${rescued} stranded in the corner` : "") +
         (unhidden.length ? `, unhid ${unhidden.join(", ")}` : "") + ".");
       if (result.stillParked > 0) {
-        console.log(`${result.stillParked} still parked on a desktop that isn't showing; run this again from there.`);
+        console.log(`${result.stillParked} still waiting to restore. Lattices will retry when their desktop is shown; use \`lats layer exit\` to retry now.`);
       }
+      if (result.stillHidden?.length) console.log(`Still hidden: ${result.stillHidden.join(", ")}. Use \`lats layer exit\` to retry.`);
       return;
     }
     if (sub === "delete" || sub === "rm") {
@@ -79,6 +80,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
       // Window counts as Studio and the bezel count them; entries without.
       const members = await daemonCall("layers.members").catch(() => null) as any;
       console.log("Layers:\n");
+      if (result.focusActive === false) console.log("  Layer focus is off. Select a layer to enter.\n");
       for (const line of layerListLines(result.layers, result.active, members ? layerWindowCounts(members) : undefined)) {
         console.log(line);
       }
@@ -88,7 +90,7 @@ export async function layerCommand(sub?: string, ...rest: string[]): Promise<voi
         const parts = [];
         if (parked) parts.push(`${parked} window${parked === 1 ? "" : "s"} parked`);
         if (hidden.length) parts.push(`${hidden.join(", ")} hidden`);
-        console.log(`\n  ${parts.join(" · ")} — \`lats layer reveal\` brings them back`);
+        console.log(`\n  ${parts.join(" · ")} — \`lats layer exit\` restores windows and turns layer focus off`);
       }
       return;
     }
@@ -147,7 +149,7 @@ export function layerWindowCounts(members: { layers?: Array<{ index: number; ent
  *  count, or its entry count when `counts` is missing. */
 export function layerListLines(
   layers: Array<{ index: number; label: string; projectCount?: number }>,
-  active: number,
+  active: number | null,
   counts?: Map<number, number>,
 ): string[] {
   const width = Math.max(0, ...layers.map((layer) => layer.label.length));

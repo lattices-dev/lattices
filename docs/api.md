@@ -2644,3 +2644,55 @@ The extension wraps the existing daemon and keeps Lattices' macOS-native
 runtime, run artifacts, action receipts, and computer-use `treatment` semantics.
 It does not bundle `cua-driver` or enable browser automation. See
 [Pi Lattices Extension](/docs/pi-lattices) for the tool list and smoke checks.
+
+### Machines and visiting cursor
+
+The Machines page uses these existing endpoints: `visit.status`, `visit.pair`,
+`visit.arm`, `visit.end`, `visit.screens`, and `visit.elsewhere`.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `visit.forget` | `host: string` | `{ok: boolean}`; false if absent. Ends an active visit to that host. |
+| `visit.side` | `host: string`, `side: left\|right\|top\|bottom` | `{ok: true}`; errors for unknown hosts or invalid sides. Occupied sides swap, preserving both keys. |
+| `mouse.home` | none | Ends the current visit and returns the cursor to this Mac. |
+
+`visit.pair` requires host-side approval of the returned code. A new pairing
+cannot replace an occupied side; move or forget its occupant first.
+
+## Machines and displays
+
+`lats @<host> <command...>` routes daemon-backed CLI commands through `callHost`
+using `~/.lattices/hosts.json` and `LATTICES_HOSTS`. `@local` selects the local
+endpoint. No SSH is used. Commands requiring local files, application lifecycle
+or tmux actions report `local-only`; remote RPC failures never fall back to local
+actions. `lats @host call <method> [params-json]` exposes the host's API directly.
+A host only supports methods present in its installed version.
+
+`lats machines [--json]` merges configured hosts, outbound visit pairings and
+this machine by name/address. It probes `host.describe` and reports reachability,
+OS, version/commit, display count, pairing and placement. Offline/unknown values
+remain explicit. Pairing inventory falls back to the saved visit host list when
+the local daemon is unavailable. JSON returns `{machines, pairingError?}`.
+
+| Method | Parameters | Behavior |
+| --- | --- | --- |
+| `host.describe` | none | Mac/Linux identity: `platform`, `hostname`, `version`, `build` (version/commit), `displays`, capabilities and methods. Unknown build fields are null. |
+| `bring` | `display: int|string`, or `undo: true` | Composes `display.gather` for every other display. Undo delegates to `display.restore`. Returns gather or restore results. |
+| `main` | `display: int|string`, `keep?: bool` | Delegates to `visit.main`; starts its 15-second rollback trial. `keep` calls `visit.arrangement.keep` only after success. |
+| `elsewhere` | `display: int|string`, `name?: string` | Alias of `visit.elsewhere` with `on: true`; optionally records the machine on the display. |
+| `here` | `display: int|string` | Alias of `visit.elsewhere` with `on: false`. |
+| `visit.start` | `host: string` | Starts an explicit visit at the midpoint of a paired machine's touching span, without arming edge crossing. Missing pairing, no touching span, overlap or capture failure is an error. End the current visit before starting another. |
+| `home` | none | Alias of `mouse.home`: ends the visit and returns the cursor home. |
+
+CLI forms: `bring dell`, `bring --undo`, `main u32 --keep`,
+`elsewhere u32 archie`, `here u32`, `visit archie`, and `home`.
+Display selectors use the `display.gather` resolver: display index from
+`display list`, or a case-insensitive name fragment (first match). The existing
+`visit.main` and `visit.elsewhere` `screen` parameters accept these same selectors;
+CLI `--display` flags and `capture display` also accept names.
+
+The Machines page, command bar and Machines menu use these same operations.
+The page shows version/commit and marks a lower numeric release version **Behind**.
+A differing commit without proven version ordering is **Different build**, not a
+claim about commit ancestry. The Machines page's Open action selects the existing
+still/live host view. No deployment, pairing, arming or visit occurs on page open.

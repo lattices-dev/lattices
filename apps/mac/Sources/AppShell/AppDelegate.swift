@@ -71,6 +71,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowDragSnapController.shared.start()
         TilePointerController.shared.start()
         MouseGestureController.shared.start()
+        VisitController.shared.restore()
+        DesktopLong.shared.start()
         BundleModules.start()
         WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()
@@ -160,6 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
                 LayerStage.shared.restoreParked(reason: "signal \(sig)")
+                SpaceSwitchHotkeys.restoreForTermination()
                 exit(128 + sig)
             }
             source.resume()
@@ -331,6 +334,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             handleCompanionDeepLink(action: action)
         case "daemon":
             handleDaemonDeepLink(action: action)
+        case "page":
+            // lattices://page/<name> opens a page of the main window.
+            if let action, let page = AppPage.named(action) {
+                ScreenMapWindowController.shared.showPage(page)
+            } else {
+                ScreenMapWindowController.shared.show()
+            }
         case "settings":
             // lattices://settings/<section> jumps straight to a sidebar tab.
             if let action, !action.isEmpty {

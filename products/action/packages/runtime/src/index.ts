@@ -19,3 +19,9 @@ export * from "./drive-client.js";
 export * from "./drive-cursor.js";
 export * from "./play-log.js";
 export * from "./pointer-events.js";
+
+export * from "./capabilities.js";
+
+export { layerSafety, assertLayerSafety, layerSafetyPath } from "./layer-safety.js";
+export { layerAcceptance, layerAcceptancePath, displayConfigurationDigest } from "./layer-acceptance.js";
+export type { LayerAcceptanceBinding, LayerAcceptanceRecord } from "./layer-acceptance.js";

@@ -10,7 +10,7 @@
       "name": "action-browser",
       "source": "./plugins/action-browser",
       "description": "How to drive the browser_* tools served by `lattices mcp`. Skills only — the MCP server itself ships with the lattices CLI.",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "author": {
         "name": "Arach",
         "url": "https://github.com/arach"

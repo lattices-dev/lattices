@@ -8,9 +8,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { DriverIdentityContext } from "./driver-identity.js";
+import { canRollbackLayerOpen, completeLayerOpen } from "./layer-open-transaction.js";
 import { DriveCursorPresenter, parseDriveCursorStyle } from "./drive-cursor-presenter.js";
 import { type LayerView } from "./layer-primitives.js";
-import { LayerDriver, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
+import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -35,6 +36,8 @@ import type {
   TraceEvent,
 } from "@action/protocol";
 import {
+  actionCapabilities,
+  refreshActionCapabilities,
   analyzeScreenshotVision,
   ensureLayerBrowser,
   spacesBinding,
@@ -49,6 +52,7 @@ import {
   ocrScreenshot,
   StageDirector,
   AgentLayerDirector,
+  agentLayerRouting,
   StageSceneError,
   agentCursorIsLive,
   notePointerFocusAct,
@@ -72,6 +76,8 @@ import {
 } from "@action/runtime";
 
 export const toolFamilies = [
+  "capabilities",
+  "layer",
   "driver",
   "session",
   "drive",
@@ -799,6 +805,7 @@ async function listFiles(root: string): Promise<JsonObject[]> {
 }
 
 const tools: Tool[] = [
+  tool("action.capabilities", "Action Capabilities", "Discover private-layer tools, transport routing, source fingerprints and native build provenance. Read-only; does not open apps or compile. Version alone is not proof of support.", objectSchema(), { readOnlyHint: true, idempotentHint: true }),
   tool(
     "action.driver.identify",
     "Identify Driver",
@@ -1002,21 +1009,22 @@ const tools: Tool[] = [
   tool(
     "action.layer.open",
     "Open Agent Layer",
-    "Move an app's windows onto a private virtual display off in a corner of the arrangement, with a small picture-in-picture viewer on the user's screen. While the layer is up, coordinate clicks on it, type, and press-key run as blink acts: save the cursor and frontmost app, act, restore. One layer at a time; opening again closes the previous one first. "
+    "Check capabilities and layer_status before opening. Requires a persistent monitor explicitly prepared with CLI layer prepare; this tool never creates or reconfigures a display. A compiled feature or missing quarantine is not host desktop-isolation acceptance. Do not bypass a setup quarantine or substitute ordinary background browser opening. "
+      + "Move an app's windows onto the prepared virtual display with a PiP viewer. For browser tasks, prefer {browser:true,url,task}: Action-owned Chrome uses CDP for page input and navigation. Native input can temporarily borrow focus/pointer; restoring them afterward is not continuous isolation. One task session at a time; opening again closes the previous task, not its monitor. "
       + "The app need not be running or have a window: a bundleId that isn't running is launched in the background, an app with no windows gets a new one, "
-      + "and windows the app opens later (cmd+n, pop-ups) move onto the layer by themselves. Pass url to start on a page, e.g. { bundleId: \"com.apple.Safari\", url: \"news.ycombinator.com\" }. "
-      + "The layer is one drive: it begins a lease named for the task (or the app and page), every act on the layer runs under it, and action.layer.close releases it. The reply carries its leaseId.",
+      + "and windows the app opens later (cmd+n, pop-ups) move onto the layer by themselves. For native-app URL opening, pass bundleId or pid with url; this path is distinct from the CDP browser workflow. "
+      + "The layer is one drive: it begins a lease named for the task (or the app and page), every act on the layer runs under it, and action.layer.close releases it. The reply carries its leaseId and bound session identity. Browser sessions refuse native fallback; replacement layers require a new explicit open.",
     objectSchema({
       bundleId: textProperty("App whose windows move onto the layer. Launched in the background if it isn't running."),
-      url: textProperty("A URL, bare host or file path to open in the app once it is on the layer, without bringing it forward. Needs bundleId or pid."),
+      url: textProperty("A URL, bare host or file path. With browser:true, navigate through CDP after layer setup. Native-app opening needs bundleId or pid."),
       pid: numberProperty("Process id instead of bundleId."),
-      width: numberProperty("Layer display width in points. Pass with height."),
-      height: numberProperty("Layer display height in points. Pass with width."),
+      width: numberProperty("Expected prepared display width in points. Pass with height; mismatches refuse rather than resize."),
+      height: numberProperty("Expected prepared display height in points. Pass with width; mismatches refuse rather than resize."),
       pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
       windowId: numberProperty("Move only this window (kCGWindowNumber). Use to borrow one window of an app the user is also using, such as a browser."),
       windowTitle: textProperty("Move only windows whose title contains this text."),
-      browser: booleanProperty("Open Action's own Chrome on the layer instead of an app. Clicks, typing, scrolls and go reach its pages through DevTools, so nothing of the user's moves, and action.layer.js can read the page. Shares its profile and port with the browser_* tools."),
-      profile: textProperty("Action Chrome profile to open with browser: true. Defaults to agent-browser."),
+      browser: booleanProperty("Open Action-owned Chrome on the prepared display. Page interaction uses DevTools; the task workflow still requires host desktop-preservation acceptance. Uses a separate layer browser debugging port from browser_* tools."),
+      profile: textProperty("Action Chrome profile for the layer browser. Supplying it selects the browser workflow. Defaults to agent-layer, or ACTION_LAYER_BROWSER_PROFILE."),
       task: textProperty("What the agent is doing on the layer: the drive's name in runs and the supervision HUD. Defaults to the app and page."),
       leaseId: textProperty("Run the layer under this existing drive lease instead of beginning one."),
     }),
@@ -1025,7 +1033,7 @@ const tools: Tool[] = [
   tool(
     "action.layer.close",
     "Close Agent Layer",
-    "Take the agent layer down. Moved windows return to their original frames and the virtual display is removed. Releases the drive the layer began, with outcome and summary.",
+    "Close the task session. Moved windows return to their original frames; the persistent display remains connected. Releases the drive the layer began, with outcome and summary. Only explicit CLI layer release disconnects the monitor.",
     objectSchema({
       outcome: textProperty("How the layer's drive ended: done (default), failed or cancelled."),
       summary: textProperty("One line on what was done, kept with the drive."),
@@ -1064,8 +1072,8 @@ const tools: Tool[] = [
     "action.layer.click",
     "Click on Agent Layer",
     "Click a point on the agent layer, or a control by its accessibility label. Points are pixels in the last action.layer.snapshot image, so look, then click what you saw. "
-      + "In a browser on the layer (action.layer.open { browser: true }) the click goes into the page through DevTools and nothing of the user's moves. Elsewhere it lands as a blink: pressable controls take an accessibility press, anything else gets a pointer click that leaves the user's screens and comes straight back. "
-      + "Returns how it landed and a fresh snapshot to check the result.",
+      + "Browser sessions use DevTools only: missing page targets or browser chrome coordinates fail without native input fallback. Native sessions use accessibility or a blink that can borrow the pointer. "
+      + "Returns the actual route, bound session identity, and a fresh snapshot to check the result.",
     objectSchema({
       x: numberProperty("Pixels in the last action.layer.snapshot image (what you looked at), or points on the layer display with space: \"layer\"."),
       y: numberProperty("Paired with x."),
@@ -1081,7 +1089,7 @@ const tools: Tool[] = [
   tool(
     "action.layer.type",
     "Type on Agent Layer",
-    "Type text into the focused field of the layer's app. A trailing \\n submits (Return). Inserted through accessibility where the field allows it, so focus never moves.",
+    "Type text into the focused field of the layer's app. A trailing \\n submits (Return). Browser sessions use DevTools only; native sessions use accessibility or blink input that can borrow focus.",
     objectSchema({
       text: textProperty("Text to type. End with \\n to submit."),
       look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
@@ -1092,7 +1100,7 @@ const tools: Tool[] = [
   tool(
     "action.layer.press",
     "Press Key on Agent Layer",
-    "Press a key or shortcut in the layer's app: \"return\", \"escape\", \"cmd+l\", \"cmd+shift+t\", \"⌘N\". Shortcuts that are menu items run through the menu by accessibility; the rest borrow focus for a few milliseconds.",
+    "Press a key in the layer's app. Browser sessions accept page keys through DevTools and refuse browser menu shortcuts such as cmd+l; use layer_go for navigation. Native sessions use menu accessibility or borrow focus.",
     objectSchema({
       key: textProperty("Key or chord."),
       look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
@@ -1103,7 +1111,7 @@ const tools: Tool[] = [
   tool(
     "action.layer.drag",
     "Drag on Agent Layer",
-    "Drag from one point to another on the agent layer: sliders, window edges, list items, selections. Points as in action.layer.click. The pointer is on the layer only for the length of the drag.",
+    "Drag from one point to another on the agent layer. Points as in action.layer.click. Browser sessions require both endpoints inside the page and use DevTools only. Native sessions can borrow the pointer for the drag.",
     objectSchema({
       from: objectProperty("Start point: { x, y } or [x, y]."),
       to: objectProperty("End point: { x, y } or [x, y]."),
@@ -1170,7 +1178,7 @@ const tools: Tool[] = [
   tool(
     "action.layer.status",
     "Agent Layer Status",
-    "Read whether an agent layer is up: its display id, global bounds, PiP state, and the windows on it with their original frames.",
+    "Read the prepared monitor's owner identity and whether a task session is up: display id, global bounds, PiP state, and windows with their original frames. Does not prepare a monitor.",
     objectSchema(),
     { readOnlyHint: true, idempotentHint: true },
   ),
@@ -1399,6 +1407,9 @@ async function layerAct(verb: LayerVerb, args: JsonObject): Promise<JsonObject> 
 }
 
 const handlers: Record<string, ToolHandler> = {
+  async "action.capabilities"() {
+    return { ...refreshActionCapabilities(serverCapabilities), advertisedTools: advertisedTools().map((tool) => tool.name) };
+  },
   async "action.driver.identify"(args) {
     const agent = optionalString(args.agent);
     if (!agent) {
@@ -1422,6 +1433,7 @@ const handlers: Record<string, ToolHandler> = {
       nativeHostPath,
       diagnostics,
       toolFamilies,
+      capabilities: refreshActionCapabilities(serverCapabilities),
     };
   },
 
@@ -1830,6 +1842,7 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.act.execute"(args) {
+    const initialLayer = await agentLayerDirector.status();
     const refusal = await agentLayerDirector.actRefusal();
     if (refusal) {
       throw new Error(refusal);
@@ -1842,7 +1855,7 @@ const handlers: Record<string, ToolHandler> = {
         ? await engine.resolveTarget(action.target)
         : undefined;
 
-    const agentLayer = await agentLayerDirector.routing();
+    const agentLayer = agentLayerRouting(initialLayer);
     const blinkRoute = engine instanceof MacOSCommandEngine ? engine.blinkRoute(action, target, agentLayer) : undefined;
     // Work that never touches the operator's screen: a blink act on the layer, or an app
     // opened in the background (which the layer adopts). No cursor, cues or countdown.
@@ -1923,6 +1936,13 @@ const handlers: Record<string, ToolHandler> = {
 
     let hostDetail: string | undefined;
     try {
+      await guardLayerDispatch(initialLayer, {
+        status: () => agentLayerDirector.status(),
+        guard: async () => {
+          const refusal = await agentLayerDirector.actRefusal();
+          if (refusal) throw new Error(refusal);
+        },
+      });
       hostDetail = engine instanceof MacOSCommandEngine
         ? await engine.performAction(action, target, { agentLayer })
         : (await engine.performAction(action, target)) ?? undefined;
@@ -2239,7 +2259,10 @@ const handlers: Record<string, ToolHandler> = {
     return { ok: true, layer: await agentLayerDirector.showViewer() };
   },
   async "action.layer.open"(args) {
-    // Action's Chrome: DevTools takes the acts, so nothing on the user's screens moves.
+    const prepared = await agentLayerDirector.displayStatus();
+    if (prepared.state !== "ready") {
+      throw new Error(`Prepare the persistent monitor with CLI layer prepare before opening a task: ${prepared.detail ?? prepared.state}`);
+    }
     const browser = args.browser === true || optionalString(args.profile)
       ? await ensureLayerBrowser(optionalString(args.profile))
       : undefined;
@@ -2259,49 +2282,70 @@ const handlers: Record<string, ToolHandler> = {
       // back if the server dies before action.layer.close runs.
       owner: "caller",
     });
-    for (const leaseId of cursorPresenter.presentingLeaseIDs()) {
-      await cursorPresenter.suspend(leaseId);
-    }
-    if (browser && status.layer && status.layer.windows.length === 0) {
-      await openBrowserWindow(browser.port, status.layer.bounds);
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const next = await agentLayerDirector.status();
-        if ((next.layer?.windows.length ?? 0) > 0) break;
-        await new Promise((done) => setTimeout(done, 100));
+    return completeLayerOpen(async () => {
+      const session = layerDriver.bind(status, browser ? "browser" : "native", browser?.pid);
+      layerView = undefined;
+      for (const leaseId of cursorPresenter.presentingLeaseIDs()) {
+        await cursorPresenter.suspend(leaseId);
       }
-    }
-    const leaseId = await beginLayerLease(browser
-      ? { ...args, bundleId: browser.bundleId }
-      : args);
-    // An app assigned to one Desktop keeps its windows there, so the layer shows nothing.
-    const subject = browser?.bundleId ?? optionalString(args.bundleId);
-    const pinned = subject ? await spacesBinding(subject) : undefined;
-    const warning = pinned
-      ? `${subject} is assigned to one Desktop (Dock > Options > Assign To), so macOS keeps its windows there and the layer shows none of them. Set Assign To: None${browser ? ", or install Chrome for Testing: bunx @puppeteer/browsers install chrome@stable --path ~/Library/Application\\ Support/Action/browsers" : ""}.`
-      : undefined;
-    if (browser && optionalString(args.url)) {
-      const went = await layerDriver.step({ verb: "go", args: { url: optionalString(args.url) } });
-      return { ok: true, leaseId, browser, go: went, ...(warning ? { warning } : {}), layer: await agentLayerDirector.status() };
-    }
-    if (browser) {
-      return { ok: true, leaseId, browser, ...(warning ? { warning } : {}), layer: status };
-    }
-    if (warning) {
-      return { ok: true, leaseId, warning, layer: status };
-    }
-    if (status.active && status.layer && status.layer.windows.length === 0) {
-      return {
-        ok: true,
-        leaseId,
-        layer: status,
-        hint: "The layer is up but holds no windows yet. Windows the app opens from here move over by themselves: press-key \"cmd+n\", or open-app with input.url.",
-      };
-    }
-    return { ok: true, leaseId, layer: status };
+      if (browser && status.layer && status.layer.windows.length === 0) {
+        await openBrowserWindow(browser.port, status.layer.bounds);
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const next = await layerDriver.assertSession(session);
+          if ((next.layer?.windows.length ?? 0) > 0) break;
+          await new Promise((done) => setTimeout(done, 100));
+        }
+      }
+      const leaseId = await beginLayerLease(browser
+        ? { ...args, bundleId: browser.bundleId }
+        : args);
+      await layerDriver.assertSession(session);
+      // An app assigned to one Desktop keeps its windows there, so the layer shows nothing.
+      const subject = browser?.bundleId ?? optionalString(args.bundleId);
+      const pinned = subject ? await spacesBinding(subject) : undefined;
+      const warning = pinned
+        ? `${subject} is assigned to one Desktop (Dock > Options > Assign To), so macOS keeps its windows there and the layer shows none of them. Set Assign To: None${browser ? ", or install Chrome for Testing: bunx @puppeteer/browsers install chrome@stable --path ~/Library/Application\\ Support/Action/browsers" : ""}.`
+        : undefined;
+      if (browser && optionalString(args.url)) {
+        await layerDriver.assertSession(session);
+        const went = await layerDriver.step({ verb: "go", args: { url: optionalString(args.url) } });
+        return { ok: true, leaseId, session, browser, go: went, ...(warning ? { warning } : {}), layer: await layerDriver.assertSession(session) };
+      }
+      if (browser) {
+        return { ok: true, leaseId, session, browser, ...(warning ? { warning } : {}), layer: await layerDriver.assertSession(session) };
+      }
+      if (warning) {
+        return { ok: true, leaseId, session, warning, layer: status };
+      }
+      if (status.active && status.layer && status.layer.windows.length === 0) {
+        return {
+          ok: true,
+          leaseId,
+          session,
+          layer: status,
+          hint: "The layer is up but holds no windows yet. Windows the app opens from here move over by themselves: press-key \"cmd+n\", or open-app with input.url.",
+        };
+      }
+      return { ok: true, leaseId, session, layer: status };
+    }, async () => {
+      const current = await agentLayerDirector.status();
+      // Another owner may have replaced the layer while navigation was pending.
+      // Never turn this open's rollback into teardown of somebody else's display.
+      if (!canRollbackLayerOpen(status, current)) return false;
+      const closed = await handlers["action.layer.close"]({
+        outcome: "failed", summary: "Layer open setup failed; closing the created display",
+      });
+      return closed.ok === true;
+    });
   },
 
   async "action.layer.close"(args) {
+    if (layerDriver.identity() && (await agentLayerDirector.status()).active) await layerDriver.assertSession();
     const status = await agentLayerDirector.close();
+    if (!status.active) {
+      layerDriver.release();
+      layerView = undefined;
+    }
     const lease = layerLease;
     layerLease = undefined;
     if (lease?.owned) {
@@ -2316,7 +2360,7 @@ const handlers: Record<string, ToolHandler> = {
 
   async "action.layer.status"() {
     const status = await agentLayerDirector.status();
-    return { ok: true, layer: status };
+    return { ok: true, session: layerDriver.identity(), layer: status, display: await agentLayerDirector.displayStatus() };
   },
 
   async "action.artifacts.list"(args) {
@@ -2369,32 +2413,38 @@ function advertisedTools(): Tool[] {
   return specTools;
 }
 
+// Capture provenance when this MCP process starts, not from files changed beneath it.
+const serverCapabilities = actionCapabilities(actionRoot, { sourceRoot: defaultActionRoot, nativeHostPath, mcpTools: advertisedTools().map((tool) => tool.name) });
+
 function createServer(): Server {
   const server = new Server(
     {
       name: "@action/mcp",
-      version: "0.0.0",
+      version: String(serverCapabilities.orchestration.version),
     },
     {
       capabilities: {
         tools: { listChanged: true },
       },
       instructions: [
+        "Use the active tools/list names. By default these are underscore names (capabilities, layer_open, drive_begin); dotted action.* names below denote optional compatibility aliases.",
+        "Call capabilities before private-layer work. Check source/native fingerprints, this server's advertised tools and safety.privateLayer. An unverified native build/override must be resolved before use. Reconnect MCP after updates and repeat discovery; semver alone is not capability proof.",
+        "Monitor provisioning is explicit: CLI layer prepare connects a stable persistent display and can change desktop topology. Task layer_open requires it; layer_close leaves it connected. CLI layer release disconnects it after closing the task. Do not clear or bypass a provisioning quarantine; missing quarantine is not host acceptance.",
+        "Private browser workflow on an accepted host/build/display configuration: layer_open {browser:true,url,task}, layer_snapshot, layer_click/type/js/go, layer_close. Open begins a drive lease unless an existing leaseId is supplied; close releases it. Do not begin a second drive or use desktop observe/aim for this path. Coordinates come from the last layer_snapshot.",
+        "CLI layer supports lifecycle, snapshot, PiP and recording only. Browser flags, URL navigation, input and JavaScript require MCP. Raw Action WebSocket and the Lattices daemon do not orchestrate private layers; Lattices workspace layers are a separate feature.",
+        "Physical modes, scale, arrangement and unrelated window frames must remain unchanged throughout open, interaction and close. Native input can temporarily borrow focus/pointer. Restoration after a disruption does not establish continuous isolation. Verify acceptance on an authorized test host; use a matched signed app and orchestration runtime with rollback on installation targets.",
+        "If a layer is paused, wait for resume. After operator takeover, stop and report it; a new layer requires new user authority. Close your layer on completion or failure; inspect layer_status when cleanup is unconfirmed and never close another owner's layer.",
         "Call action.driver.identify once when the connection label is not already supplied by the environment.",
         "Use Action tools to observe, resolve, act, record, and inspect native macOS surfaces.",
-        "Before multi-step UI work, call action.drive.begin with an agent identity and short task.",
+        "For multi-step UI work on the user's desktop, call action.drive.begin with an agent identity and short task.",
         "Pass the returned leaseId to observe and act calls, then call action.drive.release when the work ends.",
         "Background is the supported drive mode; attention approval is not available yet.",
         "Treat action.record.start as asynchronous; completion is represented by action.record.status and the finished file.",
-        "Prefer action.observe.snapshot and action.resolve.target before action.act.execute.",
+        "For desktop work, prefer action.observe.snapshot and action.resolve.target before action.act.execute. For private layers, use layer_snapshot and layer_* primitives.",
         "Use action.drive.note before each beat so the supervision HUD shows what you are doing.",
-        "Use action.drive.aim to move the synthetic cursor and highlight a region before acting. Move, then do the thing.",
+        "For desktop work, use action.drive.aim to highlight a region before acting.",
         "Use action.drive.play to run a named list of beats (note, aim, wait, act) as one sequence.",
         "Use action.stage.set to declare the world for a take: a color drape plus the windows that sit on it. Never write the desktop picture.",
-        "Use action.layer.open to work an app on a hidden virtual display the user watches through a small PiP; clicks and typing there run as blink acts in a background lease. Close it with action.layer.close.",
-        "Reach for the layer when the user keeps working while you act, says not to touch their screen, or you need one window of an app they are using (windowId / windowTitle). Act on their screen when they point at something in front of them or want to watch it happen.",
-        "On the layer, look with action.layer.snapshot and act with the action.layer.* primitives; their points are pixels in that snapshot.",
-        "The operator can pause the layer or take it over from the PiP. Paused: wait. Taken over: stop, tell the user, close the layer, and do not reopen it unless they ask.",
         "These tools are also how you control the user's regular Chrome: it is a native window like any other, observed through screen capture and accessibility. The action-browser plugin's DOM tools (browser_snapshot / click / fill / screenshot) reach only Action-owned Chrome identities, never the user's own browser.",
       ].join("\n"),
     },

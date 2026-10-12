@@ -35,7 +35,7 @@ bun bin/lattices-app.ts quit     # Quit the running app
 - **Swift Version**: 5.9+
 - **App Type**: Menu bar application (LSUIElement)
 - **Config**: `~/.lattices/` for user config, `.lattices.json` per project
-- **Bundle ID**: `com.arach.lattices`
+- **Bundle ID**: `dev.lattices.app` (dev builds `dev.lattices.app.dev`; defaults live in those domains)
 - **tmux tags**: `[lattices:session-name]` in window titles
 
 ## Search Architecture

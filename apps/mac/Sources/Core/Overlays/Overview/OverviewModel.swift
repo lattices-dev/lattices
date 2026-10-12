@@ -141,7 +141,7 @@ struct LiveOverviewActions: OverviewActions {
         guard let index = workspace.layers.firstIndex(where: { $0.id == layerId }) else {
             throw OverviewEditError.layerGone(layerId)
         }
-        guard index == workspace.activeLayerIndex else { throw OverviewEditError.notActive(layerId) }
+        guard index == workspace.activeLayerSelection else { throw OverviewEditError.notActive(layerId) }
         workspace.focusLayer(index: index)
     }
 }
@@ -280,7 +280,17 @@ final class OverviewModel: ObservableObject {
         aliveWindows = Dictionary(alive.map { ($0.wid, $0) }, uniquingKeysWith: { a, _ in a })
         let kept = selection.filter { aliveWindows[$0] != nil }
         if kept != selection { setSelection(kept) }
+        dropGoneLayerPicks()
         recompute()
+    }
+
+    /// The scope is saved, so an index pick can outlive its layer (renamed
+    /// or deleted). It would hide every window; drop it instead.
+    private func dropGoneLayerPicks() {
+        guard !inputs.layers.isEmpty, let ids = scope.layerIds, !ids.isEmpty else { return }
+        let known = Set(inputs.layers.map(\.id))
+        let kept = ids.filter { known.contains($0) || $0.hasPrefix("__unassigned__") }
+        if kept != ids { chooseIndex(kept, rows: layerIndexRows) }
     }
 
     private func recompute() {

@@ -1,4 +1,3 @@
-import ActionVirtualDisplay
 import AppKit
 import ApplicationServices
 import AVFoundation
@@ -9,21 +8,18 @@ import Foundation
 import ImageIO
 import ScreenCaptureKit
 
-/// The agent layer: a private virtual display the operator never looks at, holding the
-/// subject app's windows while an agent drives them, and a picture-in-picture panel on
-/// the operator's screen that streams it.
-///
-/// The display sits diagonally off the bottom-right corner of the arrangement, touching
-/// the nearest display only at a corner, so the operator's pointer almost never wanders
-/// onto it. Everything that happens there, including blink clicks, reaches the operator
-/// only through the panel.
-///
-/// Lifecycle mirrors the drape: a stop file, the parent pid, or SIGTERM tears it down.
-/// A detached layer has no parent to watch, so it also leaves once its owners are gone
-/// or it has sat idle past its lease; otherwise it holds a display nobody is using.
-/// Teardown puts every moved window back where it was before the display goes away.
 @MainActor
 final class ActionAgentLayerController: NSObject {
+    private struct DisplayManifest: Decodable, Equatable {
+        let schemaVersion: Int
+        let pid: pid_t
+        let displayId: CGDirectDisplayID
+        let startedAt: String
+        let width: Double
+        let height: Double
+        let serialNumber: UInt32
+    }
+
     private struct MovedWindow {
         let element: AXUIElement
         let pid: pid_t
@@ -35,7 +31,11 @@ final class ActionAgentLayerController: NSObject {
         let born: Bool
     }
 
-    private let size: CGSize
+    private let displayManifest: DisplayManifest
+    private let displayStateFile: URL
+    private let displaySessionLock: Int32
+    private let requestedWidth: String?
+    private let requestedHeight: String?
     private var showsPiP: Bool
     private let startedAt = Date()
     /// The subject app. Nil until launched when the layer was asked for a bundle id
@@ -70,8 +70,7 @@ final class ActionAgentLayerController: NSObject {
     private let writer: ResponseWriter
     private let logger: DebugLogger
 
-    private var display: CGVirtualDisplay?
-    private var displayID: CGDirectDisplayID = 0
+    private var displayID: CGDirectDisplayID { displayManifest.displayId }
     private var bounds: CGRect = .zero
     private var moved: [MovedWindow] = []
     private var feed: ActionAgentLayerFeed?
@@ -88,10 +87,40 @@ final class ActionAgentLayerController: NSObject {
     init(options: CommandOptions) throws {
         self.writer = ResponseWriter(replyFile: options.options["reply-file"])
         self.logger = DebugLogger(path: options.options["debug-log"])
-        self.size = CGSize(
-            width: max(640, options.double("width", default: 1440)),
-            height: max(400, options.double("height", default: 900))
-        )
+        let displayID = try options.required("display-id")
+        let displayOwnerPID = try options.required("display-owner-pid")
+        let displayStartedAt = try options.required("display-started-at")
+        let displayStateFile = URL(fileURLWithPath: try options.required("display-state-file"))
+        let lockPath = displayStateFile.deletingLastPathComponent().appendingPathComponent("display-session.lock").path
+        let lockDescriptor = Darwin.open(lockPath, O_WRONLY | O_CREAT | O_CLOEXEC, mode_t(S_IRUSR | S_IWUSR))
+        guard lockDescriptor >= 0 else {
+            throw ActionHostError.unsupportedOS("could not open the persistent display session lock")
+        }
+        var initialized = false
+        defer {
+            if !initialized { Darwin.close(lockDescriptor) }
+        }
+        guard flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
+            throw ActionHostError.unsupportedOS("the persistent display already has a session or is being released")
+        }
+        let manifest = try JSONDecoder().decode(DisplayManifest.self, from: Data(contentsOf: displayStateFile))
+        let fractionalDateFormatter = ISO8601DateFormatter()
+        fractionalDateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard manifest.schemaVersion == 1,
+              manifest.pid > 1, manifest.pid == pid_t(displayOwnerPID),
+              manifest.displayId != 0, manifest.displayId == CGDirectDisplayID(displayID),
+              manifest.startedAt == displayStartedAt,
+              ISO8601DateFormatter().date(from: manifest.startedAt) != nil || fractionalDateFormatter.date(from: manifest.startedAt) != nil,
+              manifest.width.isFinite, manifest.width > 0,
+              manifest.height.isFinite, manifest.height > 0,
+              manifest.serialNumber != 0 else {
+            throw ActionHostError.unsupportedOS("the persistent display manifest does not match the requested display owner")
+        }
+        self.displayManifest = manifest
+        self.displayStateFile = displayStateFile
+        self.displaySessionLock = lockDescriptor
+        self.requestedWidth = options.options["width"]
+        self.requestedHeight = options.options["height"]
         self.showsPiP = !["off", "false", "0", "no"].contains(options.options["pip"]?.lowercased() ?? "on")
         self.stopFile = options.options["stop-file"]
         self.stateFile = options.options["state-file"]
@@ -115,6 +144,11 @@ final class ActionAgentLayerController: NSObject {
             self.targetBundleId = nil
             self.target = nil
         }
+        initialized = true
+    }
+
+    deinit {
+        Darwin.close(displaySessionLock)
     }
 
     func run() throws {
@@ -168,20 +202,20 @@ final class ActionAgentLayerController: NSObject {
     // MARK: Start
 
     private func start() async throws {
-        try createDisplay()
-        try await waitForDisplay()
-        placeOffCorner()
-        bounds = CGDisplayBounds(displayID)
-        logger.log("agent-layer: display \(displayID) at \(bounds)")
+        bounds = try validateDisplayAttachment()
+        logDisplayDiagnostic("attached-to-persistent-display")
+        logger.log("agent-layer: attached to display \(displayID), owner \(displayManifest.pid), at \(bounds)")
 
         if target == nil, let targetBundleId {
             target = try await ActionBackgroundOpen.open(bundleId: targetBundleId, url: openURL)
             openedOnLaunch = true
             logger.log("agent-layer: launched \(targetBundleId) in the background")
         }
+        _ = try validateDisplayAttachment()
         if let target {
             await takeWindows(of: target)
         }
+        _ = try validateDisplayAttachment()
         let feed = ActionAgentLayerFeed(
             displayID: displayID,
             displayBounds: bounds,
@@ -195,6 +229,7 @@ final class ActionAgentLayerController: NSObject {
             // The layer still works without it; only the viewer and snapshots go dark.
             logger.log("agent-layer: feed failed: \(error.localizedDescription)")
         }
+        _ = try validateDisplayAttachment()
         try writeState()
         layerReady = true
         try writer.write(
@@ -232,6 +267,7 @@ final class ActionAgentLayerController: NSObject {
         let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger)
         pip.hasOwner = !ownerPIDs.isEmpty
         pip.onTogglePause = { [weak self] in self?.togglePause() }
+        pip.onStop = { [weak self] in self?.stopByOperator() }
         pip.onTakeOver = { [weak self] in self?.takeOver() }
         pip.onGoToOwner = { [weak self] in self?.goToOwner() }
         pip.onDismiss = { [weak self] in
@@ -260,19 +296,38 @@ final class ActionAgentLayerController: NSObject {
         logger.log("agent-layer: \(paused ? "paused" : "resumed") by the operator")
     }
 
-    /// The operator takes the windows back. The handoff note outlives the layer, so the
-    /// agent's next act is refused with a reason instead of silently opening a new one.
-    private func takeOver() {
+    private func writeHandoff(action: String, reason: String) {
         if let stateFile {
             let url = URL(fileURLWithPath: stateFile).deletingLastPathComponent().appendingPathComponent("handoff.json")
             let note: [String: Any] = [
                 "at": ISO8601DateFormatter().string(from: Date()),
                 "bundleId": target?.bundleIdentifier ?? NSNull(),
+                "action": action,
+                "reason": reason,
+                "pid": Int(ProcessInfo.processInfo.processIdentifier),
+                "displayId": Int(displayID),
+                "startedAt": ISO8601DateFormatter().string(from: startedAt),
             ]
             if let data = try? JSONSerialization.data(withJSONObject: note, options: [.sortedKeys]) {
                 try? data.write(to: url, options: .atomic)
             }
         }
+    }
+
+    private func stopByOperator() {
+        paused = true
+        pip?.state = liveState
+        try? writeState()
+        writeHandoff(action: "stop", reason: "The operator stopped this layer task.")
+        logger.log("agent-layer: stopped by the operator")
+        shutdown()
+    }
+
+    private func takeOver() {
+        paused = true
+        pip?.state = liveState
+        try? writeState()
+        writeHandoff(action: "takeover", reason: "The operator took over this layer task.")
         logger.log("agent-layer: taken over by the operator")
         shutdown()
         // Bring the subject forward on the operator's display once it's back.
@@ -303,56 +358,35 @@ final class ActionAgentLayerController: NSObject {
         }
     }
 
-    private func createDisplay() throws {
-        let descriptor = CGVirtualDisplayDescriptor()
-        descriptor.queue = DispatchQueue.main
-        descriptor.name = "Action Agent Layer"
-        descriptor.maxPixelsWide = UInt32(size.width)
-        descriptor.maxPixelsHigh = UInt32(size.height)
-        // ~110 ppi, so the system picks a sane default scale.
-        descriptor.sizeInMillimeters = CGSize(width: size.width / 110 * 25.4, height: size.height / 110 * 25.4)
-        descriptor.vendorID = ActionAgentLayerDisplay.vendorID
-        descriptor.productID = ActionAgentLayerDisplay.productID
-        descriptor.serialNum = UInt32(ProcessInfo.processInfo.processIdentifier)
-
-        guard let display = CGVirtualDisplay(descriptor: descriptor) else {
-            throw ActionHostError.unsupportedOS("could not create the agent layer's virtual display")
-        }
-        let settings = CGVirtualDisplaySettings()
-        settings.hiDPI = 0
-        settings.modes = [CGVirtualDisplayMode(width: UInt(size.width), height: UInt(size.height), refreshRate: 60)]
-        guard display.apply(settings) else {
-            throw ActionHostError.unsupportedOS("the agent layer's virtual display refused its mode")
-        }
-        self.display = display
-        self.displayID = display.displayID
+    private func logDisplayDiagnostic(_ stage: String, displayID: CGDirectDisplayID? = nil, result: String? = nil) {
+        logger.log(ActionAgentLayerDiagnostics.snapshot(stage: stage, layerDisplayID: displayID ?? self.displayID, requestedSize: bounds.size, result: result))
     }
 
-    private func waitForDisplay() async throws {
-        for _ in 0..<60 {
-            if ActionAgentLayerDisplay.displays().contains(displayID) { return }
-            try await Task.sleep(for: .milliseconds(50))
+    private func validateDisplayAttachment() throws -> CGRect {
+        guard !shuttingDown else {
+            throw ActionHostError.unsupportedOS("the agent layer session is closing")
         }
-        throw ActionHostError.unsupportedOS("the agent layer's virtual display never came online")
-    }
-
-    /// Diagonal to the bottom-right-most display, touching it only at the corner.
-    private func placeOffCorner() {
-        var count: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &count)
-        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        CGGetActiveDisplayList(count, &ids, &count)
-        let others = ids.prefix(Int(count)).filter { $0 != displayID && !ActionAgentLayerDisplay.isAgentLayer($0) }
-        guard let anchor = others.map(CGDisplayBounds).max(by: { ($0.maxX + $0.maxY) < ($1.maxX + $1.maxY) }) else {
-            return
+        let current = try JSONDecoder().decode(DisplayManifest.self, from: Data(contentsOf: displayStateFile))
+        guard current == displayManifest, kill(displayManifest.pid, 0) == 0,
+              CGDisplayIsOnline(displayID) != 0,
+              ActionAgentLayerDisplay.isAgentLayer(displayID),
+              CGDisplaySerialNumber(displayID) == displayManifest.serialNumber else {
+            throw ActionHostError.unsupportedOS("the persistent display owner is unavailable or its identity changed")
         }
-
-        var config: CGDisplayConfigRef?
-        guard CGBeginDisplayConfiguration(&config) == .success else { return }
-        CGConfigureDisplayOrigin(config, displayID, Int32(anchor.maxX), Int32(anchor.maxY))
-        // .forAppOnly: the arrangement reverts when this process exits, whatever happens to it.
-        let result = CGCompleteDisplayConfiguration(config, .forAppOnly)
-        logger.log("agent-layer: placed off \(anchor) result=\(result.rawValue)")
+        let currentBounds = CGDisplayBounds(displayID)
+        guard currentBounds.width == displayManifest.width,
+              currentBounds.height == displayManifest.height,
+              bounds == .zero || bounds == currentBounds else {
+            throw ActionHostError.unsupportedOS("the persistent display geometry changed; the session cannot attach or continue")
+        }
+        for (name, requested, actual) in [("width", requestedWidth, currentBounds.width), ("height", requestedHeight, currentBounds.height)] {
+            if let requested {
+                guard let dimension = Double(requested), dimension.isFinite, dimension > 0, dimension == actual else {
+                    throw ActionHostError.unsupportedOS("requested \(name) does not match the persistent display; configure the display explicitly before opening a session")
+                }
+            }
+        }
+        return currentBounds
     }
 
     // MARK: Windows
@@ -398,7 +432,7 @@ final class ActionAgentLayerController: NSObject {
     /// nothing more. Returns how many moved.
     @discardableResult
     private func adoptWindows(of app: NSRunningApplication) -> Int {
-        guard !app.isTerminated else { return 0 }
+        guard !shuttingDown, !app.isTerminated, (try? validateDisplayAttachment()) != nil else { return 0 }
         let application = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(application, 0.25)
         let windows = (copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter(isSelected)
@@ -506,6 +540,8 @@ final class ActionAgentLayerController: NSObject {
         let state: [String: Any] = [
             "pid": Int(ProcessInfo.processInfo.processIdentifier),
             "displayId": Int(displayID),
+            "displayOwnerPid": Int(displayManifest.pid),
+            "displayStartedAt": displayManifest.startedAt,
             "bounds": rectJSON(bounds),
             "pip": showsPiP,
             "paused": paused,
@@ -601,6 +637,14 @@ final class ActionAgentLayerController: NSObject {
     // MARK: Teardown
 
     private func tick() {
+        guard !shuttingDown else { return }
+        do {
+            _ = try validateDisplayAttachment()
+        } catch {
+            logger.log("agent-layer: display attachment lost: \(error.localizedDescription)")
+            shutdown(exitCode: 1)
+            return
+        }
         if let stopFile, FileManager.default.fileExists(atPath: stopFile) {
             logger.log("agent-layer: stop file received")
             shutdown()
@@ -645,8 +689,7 @@ final class ActionAgentLayerController: NSObject {
 
     private func finishShutdown(exitCode: Int32) {
         restoreWindows()
-        // Releasing the object removes the display; macOS reflows anything left on it.
-        display = nil
+        logDisplayDiagnostic("detached-from-persistent-display")
         if let stateFile { try? FileManager.default.removeItem(atPath: stateFile) }
         if let stopFile { try? FileManager.default.removeItem(atPath: stopFile) }
 
@@ -1022,10 +1065,6 @@ enum ActionAgentLayerLiveState {
     case paused
 }
 
-/// A floating panel in the operator's bottom-right corner, drawing the layer's feed.
-/// It frames the subject's windows, so a small app fills the panel instead of floating
-/// in an empty desktop; the frame follows them as they move and resize. Hovering shows
-/// its controls; double-clicking enlarges it.
 @MainActor
 final class ActionAgentLayerPiP {
     private static let width: CGFloat = 380
@@ -1051,6 +1090,7 @@ final class ActionAgentLayerPiP {
     /// The operator's controls. `onDismiss` fires after the viewer has gone.
     var onDismiss: (() -> Void)?
     var onTogglePause: (() -> Void)?
+    var onStop: (() -> Void)?
     var onTakeOver: (() -> Void)?
     var onGoToOwner: (() -> Void)?
     var hasOwner = false
@@ -1163,7 +1203,7 @@ final class ActionAgentLayerPiP {
 
     private func showPanel() {
         guard let screen = operatorScreen else { return }
-        let height = (Self.width * crop.height / max(crop.width, 1)).rounded()
+        let height = (Self.width * crop.height / max(crop.width, 1)).rounded() + ActionAgentLayerPreviewView.chromeHeight
         let visible = screen.visibleFrame
         let frame = CGRect(
             x: visible.maxX - Self.width - Self.margin,
@@ -1188,9 +1228,12 @@ final class ActionAgentLayerPiP {
         panel.hasShadow = true
         panel.animationBehavior = .utilityWindow
         panel.title = "Action Agent Layer"
+        panel.setAccessibilityElement(true)
+        panel.setAccessibilityRole(.window)
+        panel.setAccessibilitySubrole(.floatingWindow)
+        panel.setAccessibilityLabel(panel.title)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        panel.contentAspectRatio = frame.size
-        panel.minSize = CGSize(width: 220, height: 120)
+        panel.minSize = CGSize(width: 380, height: 180)
 
         let content = ActionAgentLayerViewerView(frame: CGRect(origin: .zero, size: frame.size), displaySize: feed.displayBounds.size)
         content.crop = crop
@@ -1217,21 +1260,35 @@ final class ActionAgentLayerPiP {
                 }
             }
         }
-        content.addControl(symbol: "person.crop.circle", label: "Go to the agent's session", enabled: hasOwner) { [weak self] in
-            self?.onGoToOwner?()
-        }
-        content.addControl(symbol: "pause.fill", label: "Pause the agent", toggledSymbol: "play.fill", toggledLabel: "Resume the agent") { [weak self] in
+        content.addControl(symbol: "pause.fill", label: "Pause", toggledSymbol: "play.fill", toggledLabel: "Resume") { [weak self] in
             self?.onTogglePause?()
         }
-        content.addControl(symbol: "arrow.uturn.backward", label: "Take over: put the windows back and end the layer") { [weak self] in
+        content.addControl(symbol: "stop.fill", label: "Stop") { [weak self] in
+            self?.onStop?()
+        }
+        content.addControl(symbol: "person.crop.circle", label: "Agent", enabled: hasOwner) { [weak self] in
+            self?.onGoToOwner?()
+        }
+        content.addControl(symbol: "arrow.uturn.backward", label: "Take over") { [weak self] in
             self?.onTakeOver?()
         }
-        content.addControl(symbol: nil, label: "Hide viewer") { [weak self] in
-            self?.dismiss()
+        let preview = ActionAgentLayerPreviewView(frame: CGRect(origin: .zero, size: frame.size), viewer: content)
+        preview.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
+        preview.onHide = { [weak self] in self?.dismiss() }
+        panel.contentView = preview
+        preview.needsLayout = true
+        preview.layoutSubtreeIfNeeded()
+        for case let button as ActionAgentLayerControlButton in content.controls.arrangedSubviews {
+            switch button.title {
+            case "Stop": button.toolTip = "Stop this layer task without bringing its app forward"
+            case "Agent": button.toolTip = "Go to the local app or terminal that opened this layer"
+            case "Take over": button.toolTip = "End automation and take control; task-created windows may close"
+            default: break
+            }
         }
-        panel.contentView = content
         self.panel = panel
         self.viewer = content
+        logger.log("agent-layer pip: layout panel=\(panel.frame) viewer=\(content.frame) controls=\(content.controls.frame) buttons=\(content.controls.arrangedSubviews.map(\.frame))")
     }
 
     /// Launch: grow out of the screen corner and fade up, expo out. Runs once.
@@ -1239,18 +1296,52 @@ final class ActionAgentLayerPiP {
         guard !presented, let panel else { return }
         presented = true
         let frame = panel.frame
+        panel.contentView?.layoutSubtreeIfNeeded()
         guard !Self.reduceMotion else {
             panel.orderFrontRegardless()
+            finishPresentation(panel)
             return
         }
         panel.alphaValue = 0
         panel.setFrame(Self.tucked(frame, scale: 0.82), display: false)
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.42
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
             panel.animator().setFrame(frame, display: true)
             panel.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            self?.finishPresentation(panel)
+            self?.logger.log("agent-layer pip: presented frame=\(panel.frame) alpha=\(panel.alphaValue)")
+        })
+        finishPresentation(panel)
+    }
+
+    private func finishPresentation(_ panel: NSPanel) {
+        panel.contentView?.layoutSubtreeIfNeeded()
+        func invalidate(_ view: NSView) {
+            view.needsDisplay = true
+            for child in view.subviews {
+                invalidate(child)
+            }
+        }
+        if let content = panel.contentView {
+            invalidate(content)
+        }
+        panel.display()
+        NSApplication.shared.updateWindows()
+        if let event = NSEvent.otherEvent(
+            with: .applicationDefined,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            subtype: 0,
+            data1: 0,
+            data2: 0
+        ) {
+            NSApplication.shared.postEvent(event, atStart: false)
         }
     }
 
@@ -1266,8 +1357,10 @@ final class ActionAgentLayerPiP {
             let visible = screen.visibleFrame
             let aspect = crop.height / max(crop.width, 1)
             var width = (visible.width * 0.72).rounded()
-            if width * aspect > visible.height * 0.82 { width = (visible.height * 0.82 / aspect).rounded() }
-            let height = (width * aspect).rounded()
+            if width * aspect + ActionAgentLayerPreviewView.chromeHeight > visible.height * 0.82 {
+                width = ((visible.height * 0.82 - ActionAgentLayerPreviewView.chromeHeight) / aspect).rounded()
+            }
+            let height = (width * aspect).rounded() + ActionAgentLayerPreviewView.chromeHeight
             target = CGRect(x: visible.midX - width / 2, y: visible.midY - height / 2, width: width, height: height)
         }
         animate(panel, to: target, duration: 0.32)
@@ -1299,8 +1392,7 @@ final class ActionAgentLayerPiP {
         // Width stays, height follows the crop: from the bottom edge in the corner, from
         // the middle when enlarged.
         let frame = panel.frame
-        let height = (frame.width * next.height / max(next.width, 1)).rounded()
-        panel.contentAspectRatio = CGSize(width: frame.width, height: height)
+        let height = (frame.width * next.height / max(next.width, 1)).rounded() + ActionAgentLayerPreviewView.chromeHeight
         let y = compactFrame == nil ? frame.minY : frame.midY - height / 2
         animate(panel, to: CGRect(x: frame.minX, y: y, width: frame.width, height: height), duration: 0.28)
     }
@@ -1338,14 +1430,90 @@ private extension ISO8601DateFormatter {
     }()
 }
 
-/// The viewer's content: the whole-layer feed, positioned so `crop` fills the bounds,
-/// with the dot, act marks, the drive note, and the hover controls on top. Cropping is
-/// layout, not a stream reconfiguration, so the frame can follow the windows without
-/// the stream restarting.
 enum ActionAgentLayerOperatorInput {
     case click(CGPoint)
     case drag(CGPoint, CGPoint, Int)
     case scroll(CGPoint, Double, Double)
+}
+
+private final class ActionAgentLayerPreviewView: NSView {
+    static let headerHeight: CGFloat = 26
+    static let footerHeight: CGFloat = 38
+    static var chromeHeight: CGFloat { headerHeight + footerHeight }
+
+    private let viewer: ActionAgentLayerViewerView
+    private let hostname = ActionAgentLayerHostnameLabel(labelWithString: Host.current().localizedName ?? ProcessInfo.processInfo.hostName)
+    private let hideButton = ActionAgentLayerControlButton(symbol: nil, label: "Hide", toggledSymbol: nil, toggledLabel: nil)
+    var onHide: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
+
+    init(frame: CGRect, viewer: ActionAgentLayerViewerView) {
+        self.viewer = viewer
+        super.init(frame: frame)
+        appearance = NSAppearance(named: .darkAqua)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.masksToBounds = true
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
+        hostname.font = .systemFont(ofSize: 11, weight: .medium)
+        hostname.textColor = .secondaryLabelColor
+        hostname.lineBreakMode = .byTruncatingMiddle
+        hostname.maximumNumberOfLines = 1
+        hostname.toolTip = hostname.stringValue
+        hostname.setAccessibilityLabel("Host: \(hostname.stringValue)")
+        hideButton.toolTip = "Hide the viewer; the layer task continues"
+        hideButton.onPress = { [weak self] in self?.onHide?() }
+        addSubview(viewer)
+        addSubview(viewer.controls)
+        addSubview(hostname)
+        addSubview(hideButton)
+        layoutContent()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        layoutContent()
+    }
+
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        super.resizeSubviews(withOldSize: oldSize)
+        layoutContent()
+    }
+
+    private func layoutContent() {
+        let headerY = bounds.height - Self.headerHeight
+        hostname.frame = CGRect(x: 10, y: headerY + 5, width: max(bounds.width - 70, 0), height: 16)
+        hideButton.frame = CGRect(x: bounds.width - 54, y: headerY + 1, width: 46, height: 24)
+        viewer.controls.frame = CGRect(x: 8, y: 6, width: max(bounds.width - 16, 0), height: 26)
+        let availableHeight = max(bounds.height - Self.chromeHeight, 1)
+        let aspect = max(viewer.crop.width, 1) / max(viewer.crop.height, 1)
+        let width = min(bounds.width, availableHeight * aspect)
+        let height = width / aspect
+        viewer.frame = CGRect(x: (bounds.width - width) / 2, y: Self.footerHeight + (availableHeight - height) / 2, width: width, height: height)
+        viewer.controls.layoutSubtreeIfNeeded()
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard point.y >= bounds.height - Self.headerHeight else { return }
+        if event.clickCount == 2 { onDoubleClick?() }
+        else { window?.performDrag(with: event) }
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(CGRect(x: 0, y: bounds.height - Self.headerHeight, width: max(bounds.width - 58, 0), height: Self.headerHeight), cursor: .openHand)
+    }
+}
+
+private final class ActionAgentLayerHostnameLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 private final class ActionAgentLayerViewerView: NSView {
@@ -1362,7 +1530,7 @@ private final class ActionAgentLayerViewerView: NSView {
     private var pointerHide: DispatchWorkItem?
     private var pointerArrives: CFTimeInterval = 0
     private let dot = CALayer()
-    private let controls = NSStackView()
+    let controls = NSStackView()
     private let note = NSTextField(labelWithString: "")
     private var noteHide: DispatchWorkItem?
     var onDoubleClick: (() -> Void)?
@@ -1425,10 +1593,7 @@ private final class ActionAgentLayerViewerView: NSView {
 
         controls.orientation = .horizontal
         controls.spacing = 6
-        controls.alphaValue = 0
-        addSubview(controls)
-
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        controls.distribution = .fillEqually
     }
 
     required init?(coder: NSCoder) { nil }
@@ -1444,8 +1609,6 @@ private final class ActionAgentLayerViewerView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// The strip along the top that still moves the panel; ⌘ moves it from anywhere.
-    private static let grabStrip: CGFloat = 26
     private var operatorPress: (at: CGPoint, time: TimeInterval)?
     private var scrollPending = CGVector.zero
     private var scrollAt: CGPoint?
@@ -1455,7 +1618,6 @@ private final class ActionAgentLayerViewerView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         let grabs = onOperatorInput == nil
             || event.modifierFlags.contains(.command)
-            || point.y > bounds.height - Self.grabStrip
         guard grabs else {
             operatorPress = (point, event.timestamp)
             return
@@ -1504,25 +1666,8 @@ private final class ActionAgentLayerViewerView: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: flush)
     }
 
-    override func resetCursorRects() {
-        guard onOperatorInput != nil else { return }
-        addCursorRect(CGRect(x: 0, y: bounds.height - Self.grabStrip, width: bounds.width, height: Self.grabStrip), cursor: .openHand)
-    }
-
-    override func mouseEntered(with event: NSEvent) { fadeControls(to: 1) }
-    override func mouseExited(with event: NSEvent) { fadeControls(to: 0) }
-
-    private func fadeControls(to alpha: CGFloat) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
-            controls.animator().alphaValue = alpha
-        }
-    }
-
     override func layout() {
         super.layout()
-        let size = controls.fittingSize
-        controls.frame = CGRect(x: bounds.width - size.width - 8, y: bounds.height - size.height - 8, width: size.width, height: size.height)
         layoutNote()
         guard crop.width > 0, crop.height > 0 else { return }
         // Scale so the crop's width fills ours; lay the whole display out from its top-left,
@@ -1924,87 +2069,48 @@ private func axWindowID(_ window: AXUIElement) -> CGWindowID? {
     return _AXUIElementGetWindow(window, &id) == .success && id != 0 ? id : nil
 }
 
-/// One of the viewer's hover controls: a 20pt ink disc with an SF Symbol, or a thin ×
-/// when there's no symbol. A toggling control swaps its symbol and label when on.
-private final class ActionAgentLayerControlButton: NSView {
+private final class ActionAgentLayerControlButton: NSButton {
     var onPress: (() -> Void)?
-    var isEnabled = true { didSet { needsDisplay = true } }
     var isToggled = false { didSet { applyLabel() } }
     var toggles: Bool { toggledSymbol != nil }
     private let symbol: String?
     private let label: String
     private let toggledSymbol: String?
     private let toggledLabel: String?
-    private var hovering = false { didSet { needsDisplay = true } }
 
     init(symbol: String?, label: String, toggledSymbol: String?, toggledLabel: String?) {
         self.symbol = symbol
         self.label = label
         self.toggledSymbol = toggledSymbol
         self.toggledLabel = toggledLabel
-        super.init(frame: CGRect(x: 0, y: 0, width: 20, height: 20))
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
+        super.init(frame: .zero)
+        bezelStyle = .rounded
+        controlSize = .small
+        font = .systemFont(ofSize: 11)
+        imagePosition = .imageLeading
+        setButtonType(.momentaryPushIn)
+        target = self
+        action = #selector(pressed)
         applyLabel()
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     required init?(coder: NSCoder) { nil }
 
-    override var intrinsicContentSize: NSSize { NSSize(width: 20, height: 20) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     private func applyLabel() {
-        let text = isToggled ? (toggledLabel ?? label) : label
-        toolTip = text
-        setAccessibilityLabel(text)
-        needsDisplay = true
+        title = isToggled ? (toggledLabel ?? label) : label
+        let symbolName = isToggled ? (toggledSymbol ?? symbol) : symbol
+        image = symbolName.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        setAccessibilityLabel(title)
+        if toggles { toolTip = isToggled ? "Resume layer actions" : "Pause layer actions" }
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-
-    override func mouseUp(with event: NSEvent) {
-        if isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) { onPress?() }
-    }
-
-    override func accessibilityPerformPress() -> Bool {
-        guard isEnabled else { return false }
+    @objc private func pressed() {
+        guard isEnabled else { return }
         onPress?()
-        return true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let active = hovering && isEnabled
-        let disc = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
-        NSColor(srgbRed: 0x10 / 255, green: 0x15 / 255, blue: 0x18 / 255, alpha: active ? 0.92 : 0.72).setFill()
-        disc.fill()
-        NSColor(white: 0.95, alpha: 0.16).setStroke()
-        disc.lineWidth = 1
-        disc.stroke()
-
-        let ink = NSColor(white: 0.95, alpha: isEnabled ? (active ? 1 : 0.8) : 0.3)
-        let name = isToggled ? (toggledSymbol ?? symbol) : symbol
-        guard let name else {
-            let inset: CGFloat = 7
-            let cross = NSBezierPath()
-            cross.move(to: CGPoint(x: inset, y: inset))
-            cross.line(to: CGPoint(x: bounds.width - inset, y: bounds.height - inset))
-            cross.move(to: CGPoint(x: inset, y: bounds.height - inset))
-            cross.line(to: CGPoint(x: bounds.width - inset, y: inset))
-            cross.lineWidth = 1.25
-            cross.lineCapStyle = .round
-            ink.setStroke()
-            cross.stroke()
-            return
-        }
-        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
-        let size = image.size
-        image.draw(in: CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
     }
 }
 

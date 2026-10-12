@@ -5,9 +5,19 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
 PACKAGE_DIR="$ROOT_DIR/native/engine"
-APP_DIR="$ROOT_DIR/native/dist/Action.app"
-APP_EXECUTABLE="$ROOT_DIR/native/dist/Action.app/Contents/MacOS/Action"
+APP_DIR="${ACTION_DIST_DIR:-$ROOT_DIR/native/dist}/Action.app"
+APP_EXECUTABLE="$APP_DIR/Contents/MacOS/Action"
 COMMAND="${1:-status}"
+
+# Capability discovery reads the signed bundle without a LaunchServices activation,
+# AppKit lifecycle or implicit build. It does not inspect permissions/running apps.
+if [[ "$COMMAND" == "capabilities" ]]; then
+  if [[ ! -x "$APP_EXECUTABLE" ]]; then
+    echo "Action bundle is missing; install a matched app/runtime or build on the development host." >&2
+    exit 1
+  fi
+  exec "$APP_EXECUTABLE" "$@"
+fi
 
 # The agent performs every ScreenCaptureKit and Accessibility call the runtime makes,
 # so it has to carry the bundle's TCC identity. A direct exec of the binary does not:
@@ -36,7 +46,7 @@ run_via_open() {
   local open_flags=(-n)
   # Pointer input must reach the current foreground target. Activating this
   # short-lived helper first makes the target consume the click for activation.
-  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" || "$COMMAND" == "agent-layer" || "$COMMAND" == "agent-cursor-overlay" || "$COMMAND" == blink-* ]]; then
+  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" || "$COMMAND" == "agent-layer" || "$COMMAND" == "agent-display" || "$COMMAND" == "agent-cursor-overlay" || "$COMMAND" == blink-* ]]; then
     open_flags+=(-g)
   elif [[ "$COMMAND" == "launch-app" && " $* " == *" --background "* ]]; then
     # Opens the app without activating it; the helper mustn't take focus either.
@@ -76,12 +86,16 @@ if [[ ! -x "$APP_EXECUTABLE" ]]; then
   needs_build=1
 elif find "$PACKAGE_DIR" \
   \( -name .build -o -name .git \) -prune -o \
-  \( -name '*.swift' -o -name 'Info.plist' \) -type f -newer "$APP_EXECUTABLE" -print -quit \
+  \( -name '*.swift' -o -name '*.h' -o -name '*.m' -o -name 'Info.plist' \) -type f -newer "$APP_EXECUTABLE" -print -quit \
   | grep -q .; then
   needs_build=1
 fi
 
 if [[ $needs_build -eq 1 ]]; then
+  if [[ -f "$ROOT_DIR/runtime-provenance.json" ]]; then
+    echo "Installed Action runtime needs a matching native bundle; refusing an implicit rebuild on an installation target." >&2
+    exit 1
+  fi
   "$SCRIPT_DIR/build-app.sh" >/dev/stderr
 fi
 

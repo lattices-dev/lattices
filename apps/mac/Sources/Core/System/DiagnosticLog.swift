@@ -455,37 +455,3 @@ private struct DiagnosticWindowRootView: View {
         HudLoggerPanel(title: "Activity Log", onClose: onClose)
     }
 }
-
-// MARK: - SwiftUI Overlay
-
-struct ActivityPageView: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Palette.textMuted)
-
-                Text("Activity")
-                    .font(Typo.heading(13))
-                    .foregroundColor(Palette.text)
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-
-            Rectangle()
-                .fill(Palette.border)
-                .frame(height: 0.5)
-
-            HudLoggerView(store: .shared, title: "Activity", showHeader: true)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PanelBackground())
-        .onAppear {
-            DiagnosticLog.shared.info("Activity page opened")
-        }
-    }
-}

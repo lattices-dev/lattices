@@ -2,7 +2,8 @@
   "id": "assistant-spark",
   "displayName": "Assistant Spark",
   "description": "A small luminous assistant companion for Codex sessions.",
-  "spritesheetPath": "spritesheet.webp",
+  "spritesheetURL": "https://github.com/arach/lattices/releases/download/pets-v1/assistant-spark.webp",
+  "spritesheetSHA256": "e1714a1894eaba1097994460388ff9975948a7ea60c08c7351faa9508fb2c96b",
   "states": {
     "idle": {
       "row": 0,

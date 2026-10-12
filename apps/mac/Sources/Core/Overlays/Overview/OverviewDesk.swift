@@ -3,20 +3,6 @@ import SwiftUI
 
 // MARK: - Stage
 
-/// Where the selected window says it is, for the capsule that rides it.
-struct OverviewCapsuleAnchor {
-    let bounds: Anchor<CGRect>
-    /// A tray row rather than a window on a map.
-    let inTray: Bool
-}
-
-struct OverviewCapsuleAnchorKey: PreferenceKey {
-    static var defaultValue: [OverviewCapsuleAnchor] = []
-    static func reduce(value: inout [OverviewCapsuleAnchor], nextValue: () -> [OverviewCapsuleAnchor]) {
-        value.append(contentsOf: nextValue())
-    }
-}
-
 /// The desk drawn to scale: every monitor side by side, as large as the
 /// room allows, each with its Desktops beneath its map. A monitor's map
 /// shows its focused Desktop, or the one it's showing. Tapping a Desktop
@@ -102,6 +88,10 @@ struct OverviewStage: View {
             Group {
                 if let edit = model.editing {
                     OverviewDraftBar(model: model, edit: edit)
+                } else if let wid = model.focusedWid, let row = model.projection.all[wid] {
+                    OverviewSelectionBar(model: model, row: row)
+                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                        .clipped()
                 } else {
                     OverviewHint(model: model)
                 }
@@ -400,9 +390,6 @@ struct OverviewMap: View {
         .modifier(OverviewWindowDragSource(model: model, row: tile.row))
         .help((tile.row.title.isEmpty ? tile.row.app : "\(tile.row.app) — \(tile.row.title)")
             + (model.projection.moveTargets(for: wid).isEmpty ? "" : " · drag to a map or Desktop to move"))
-        .anchorPreference(key: OverviewCapsuleAnchorKey.self, value: .bounds) { anchor in
-            model.focusedWid == wid ? [OverviewCapsuleAnchor(bounds: anchor, inTray: false)] : []
-        }
         return base
             .offset(x: tile.rect.minX, y: tile.rect.minY)
             .accessibilityElement()
@@ -442,21 +429,35 @@ struct OverviewMap: View {
 
 // MARK: - Empty scope
 
-/// Nothing anywhere is in scope: what the scope is, and each way out. The
-/// selection is kept.
+/// Nothing anywhere is in scope: what the scope is, and a way out of each
+/// part of it. Every filter that can empty the list has a button here.
 struct OverviewEmptyScope: View {
     @ObservedObject var model: OverviewModel
+
+    /// Index picks (several layers, Unassigned) that aren't one ⌘⌥ layer.
+    private var pickedLabels: [String] {
+        guard model.scope.layerId == nil, let ids = model.scope.layerIds, !ids.isEmpty else { return [] }
+        return ids.map { id in model.layerIndexRows.first { $0.id == id }?.label ?? id }
+    }
+
+    private var hasLayerScope: Bool {
+        model.scope.layerId != nil || !(model.scope.layerIds ?? []).isEmpty || model.scope.scopedWindowIds != nil
+    }
 
     private var sentence: String {
         var parts: [String] = [model.scope.preset.map { $0.lowercased() } ?? "windows"]
         if let id = model.scope.layerId {
             parts.append("in " + (model.layers.first { $0.id == id }?.label ?? id))
+        } else if !pickedLabels.isEmpty {
+            parts.append("in " + pickedLabels.joined(separator: ", "))
         }
         if let id = model.scope.spaceId, let title = model.projection.desk.flatMap(\.spaces).first(where: { $0.spaceId == id })?.title {
             parts.append("on " + title)
+        } else if let index = model.scope.display, let name = model.displays.first(where: { $0.index == index })?.name {
+            parts.append("on " + name)
         }
         if !model.scope.search.isEmpty { parts.append("matching “\(model.scope.search)”") }
-        return "No \(parts.joined(separator: " ")). The scope only filters what you see; the selection is kept."
+        return "No \(parts.joined(separator: " "))."
     }
 
     var body: some View {
@@ -481,8 +482,11 @@ struct OverviewEmptyScope: View {
                 if model.scope.spaceId != nil {
                     Button("Every Desktop") { model.chooseDesktop(nil) }
                         .buttonStyle(.overview)
+                } else if model.scope.display != nil {
+                    Button("All monitors") { model.scope.display = nil }
+                        .buttonStyle(.overview)
                 }
-                if model.scope.layerId != nil {
+                if hasLayerScope {
                     Button("No layer") { model.chooseLayer(nil) }
                         .buttonStyle(.overview)
                 }
@@ -565,8 +569,9 @@ struct OverviewDraftBar: View {
 
 // MARK: - Tray
 
-/// Below the maps: every listed window the maps don't show, grouped by
-/// where it is, and the box that arranges the selection.
+/// Below the maps: every listed window, grouped by Desktop, the ones the
+/// maps show first, then the windows on no Space; and the box that
+/// arranges the selection.
 struct OverviewTray: View {
     @ObservedObject var model: OverviewModel
 
@@ -579,25 +584,26 @@ struct OverviewTray: View {
         let rows: [OverviewRow]
     }
 
-    /// Desktops the maps aren't showing, monitor by monitor, then the
-    /// windows on no Space.
     var groups: [Group] {
-        var out: [Group] = []
+        var shown: [Group] = []
+        var rest: [Group] = []
         for monitor in model.projection.desk {
             let viewed = model.scope.spaceId.flatMap { id in monitor.spaces.first { $0.spaceId == id } }
                 ?? monitor.spaces.first(where: \.isCurrent)
-            for space in monitor.spaces where space.spaceId != viewed?.spaceId && !space.rows.isEmpty {
-                let state = space.isCurrent ? "live" : (space.mapNote ?? "not showing")
-                out.append(Group(
+            for space in monitor.spaces where !space.rows.isEmpty {
+                let onMap = space.spaceId == viewed?.spaceId
+                let state = onMap ? "on the map" : space.isCurrent ? "live" : (space.mapNote ?? "not showing")
+                let group = Group(
                     id: "\(space.spaceId)", title: space.title,
                     detail: "\(monitor.display.name) · \(state)", rows: space.rows
-                ))
+                )
+                if onMap { shown.append(group) } else { rest.append(group) }
             }
         }
         if !model.projection.unplaced.isEmpty {
-            out.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced))
+            rest.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced))
         }
-        return out
+        return shown + rest
     }
 
     var body: some View {
@@ -605,7 +611,7 @@ struct OverviewTray: View {
             GeometryReader { geo in
                 let groups = self.groups
                 if groups.isEmpty {
-                    Text("Every listed window is on a map")
+                    Text("Nothing listed")
                         .font(Typo.mono(9))
                         .foregroundColor(Palette.textMuted)
                         .frame(width: geo.size.width, height: geo.size.height)
@@ -704,9 +710,6 @@ struct OverviewTray: View {
         .onTapGesture { OverviewDeskRow.pick(row.wid, model: model) }
         .simultaneousGesture(TapGesture(count: 2).onEnded { model.focus(row.wid) })
         .modifier(OverviewWindowDragSource(model: model, row: row))
-        .anchorPreference(key: OverviewCapsuleAnchorKey.self, value: .bounds) { anchor in
-            model.focusedWid == row.wid ? [OverviewCapsuleAnchor(bounds: anchor, inTray: true)] : []
-        }
         .help((row.title.isEmpty ? row.app : "\(row.app) — \(row.title)")
             + (model.projection.moveTargets(for: row.wid).isEmpty ? "" : " · drag to a map or Desktop to move"))
         .accessibilityElement()

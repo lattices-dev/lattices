@@ -1,6 +1,6 @@
 {
   "name": "action-browser",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Skills for driving the browser_* tools served by `lattices mcp`. The MCP server itself ships with the lattices CLI.",
   "keywords": [
     "browser",

@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
 import { configuredHosts, discoverTailnetHosts, hostStatuses, HOSTS_FILE, resolveHost, callHost } from "../hosts.ts";
 import { hasFlag } from "./helpers.ts";
 import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost } from "../host-pairing.ts";
@@ -9,6 +11,23 @@ import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost } from "
  */
 export async function hostsCommand(args: string[]): Promise<void> {
   const json = hasFlag(args, "json");
+  if (args[0] === "add") {
+    const [_, name, address = name, rawPort = "9399"] = args;
+    const port = Number(rawPort);
+    if (!name || name === "local" || !address || !Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error("Usage: lats hosts add <name> [address] [port]");
+    }
+    const root = existsSync(HOSTS_FILE) ? JSON.parse(readFileSync(HOSTS_FILE, "utf8")) : {};
+    if (!root || typeof root !== "object" || Array.isArray(root)) throw new Error("Invalid hosts.json");
+    if (root.hosts !== undefined && (!root.hosts || typeof root.hosts !== "object" || Array.isArray(root.hosts))) throw new Error("Invalid hosts.json hosts object");
+    root.hosts = { ...root.hosts, [name]: { address, port } };
+    mkdirSync(dirname(HOSTS_FILE), { recursive: true });
+    const temp = `${HOSTS_FILE}.${process.pid}.tmp`;
+    writeFileSync(temp, JSON.stringify(root, null, 2) + "\n", { mode: 0o600 });
+    renameSync(temp, HOSTS_FILE);
+    console.log(`Added ${name} at ${address}:${port}`);
+    return;
+  }
   if (args[0] === "pair") {
     await pairCommand(args.slice(1));
     return;

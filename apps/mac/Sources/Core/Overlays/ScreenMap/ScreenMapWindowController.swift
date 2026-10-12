@@ -39,7 +39,7 @@ final class ScreenMapWindowController: ObservableObject {
             return NSSize(width: 980, height: 720)
         case .settings, .companionSettings, .docs, .activity, .runs:
             return NSSize(width: 900, height: 640)
-        case .overview, .assistant, .layers:
+        case .overview, .assistant, .layers, .machines:
             return workspaceWindowSize
         }
     }

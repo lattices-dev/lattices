@@ -208,46 +208,16 @@ final class DeckBridgeSecurityStore {
             throw DeckBridgeSecurityError.pairingRequired
         }
         try requireCapability(for: path, trust: trust)
-
-        let requestNonce = UUID().uuidString.lowercased()
-        let timestamp = ISO8601DateFormatter.latticesBridge.string(from: Date())
-        let bodyData: Data
-
-        if trust.payloadEncryptionRequired, let plaintextBody {
-            let envelope = try sealEnvelope(
-                plaintextBody,
-                publicKeyBase64: health.bridgePublicKey,
-                aad: requestAAD(
-                    method: method,
-                    path: path,
-                    deviceID: deviceID,
-                    timestamp: timestamp,
-                    requestNonce: requestNonce
-                )
-            )
-            bodyData = try encoder.encode(envelope)
-        } else {
-            bodyData = plaintextBody ?? Data()
-        }
-
-        let signature = try requestSignature(
+        let signed = try crypto(health).sign(
             method: method,
             path: path,
-            bridgePublicKeyBase64: health.bridgePublicKey,
-            timestamp: timestamp,
-            requestNonce: requestNonce,
-            body: bodyData
+            plaintext: plaintextBody,
+            encrypt: trust.payloadEncryptionRequired
         )
-
         return PreparedBridgeRequest(
-            headers: [
-                "X-Lattices-Device-Id": deviceID,
-                "X-Lattices-Timestamp": timestamp,
-                "X-Lattices-Nonce": requestNonce,
-                "X-Lattices-Signature": signature,
-            ],
-            body: bodyData.isEmpty ? nil : bodyData,
-            requestNonce: requestNonce
+            headers: signed.headers,
+            body: signed.body.isEmpty ? nil : signed.body,
+            requestNonce: signed.nonce
         )
     }
 
@@ -259,18 +229,21 @@ final class DeckBridgeSecurityStore {
         requestNonce: String,
         health: BridgeHealthResponse
     ) throws -> T {
-        let envelope = try decoder.decode(DeckEncryptedEnvelope.self, from: data)
-        let plaintext = try openEnvelope(
-            envelope,
-            publicKeyBase64: health.bridgePublicKey,
-            aad: responseAAD(
-                status: status,
-                path: path,
-                deviceID: deviceID,
-                requestNonce: requestNonce
-            )
-        )
+        let plaintext: Data
+        do {
+            plaintext = try crypto(health).openResponse(data, status: status, path: path, nonce: requestNonce)
+        } catch DeckBridgeClientCrypto.Failure.invalidEnvelope {
+            throw DeckBridgeSecurityError.invalidEnvelope
+        }
         return try decoder.decode(type, from: plaintext)
+    }
+
+    private func crypto(_ health: BridgeHealthResponse) throws -> DeckBridgeClientCrypto {
+        do {
+            return try DeckBridgeClientCrypto(privateKey: privateKey, deviceID: deviceID, bridgePublicKey: health.bridgePublicKey)
+        } catch {
+            throw DeckBridgeSecurityError.invalidBridgeKey
+        }
     }
 }
 
@@ -310,82 +283,6 @@ private extension DeckBridgeSecurityStore {
         UserDefaults.standard.set(data, forKey: DefaultsKey.trustedBridges)
     }
 
-    func requestSignature(
-        method: String,
-        path: String,
-        bridgePublicKeyBase64: String,
-        timestamp: String,
-        requestNonce: String,
-        body: Data
-    ) throws -> String {
-        let key = try signingKey(bridgePublicKeyBase64: bridgePublicKeyBase64)
-        let canonical = requestCanonicalData(
-            method: method,
-            path: path,
-            deviceID: deviceID,
-            timestamp: timestamp,
-            requestNonce: requestNonce,
-            body: body
-        )
-        let mac = HMAC<SHA256>.authenticationCode(for: canonical, using: key)
-        return Data(mac).base64EncodedString()
-    }
-
-    func requestCanonicalData(
-        method: String,
-        path: String,
-        deviceID: String,
-        timestamp: String,
-        requestNonce: String,
-        body: Data
-    ) -> Data {
-        let digest = SHA256.hash(data: body)
-        let hex = digest.map { String(format: "%02x", $0) }.joined()
-        let canonical = [
-            method.uppercased(),
-            path,
-            deviceID,
-            timestamp,
-            requestNonce,
-            hex
-        ].joined(separator: "\n")
-        return Data(canonical.utf8)
-    }
-
-    func requestAAD(
-        method: String,
-        path: String,
-        deviceID: String,
-        timestamp: String,
-        requestNonce: String
-    ) -> Data {
-        let value = [
-            "request",
-            method.uppercased(),
-            path,
-            deviceID,
-            timestamp,
-            requestNonce
-        ].joined(separator: "\n")
-        return Data(value.utf8)
-    }
-
-    func responseAAD(
-        status: Int,
-        path: String,
-        deviceID: String,
-        requestNonce: String
-    ) -> Data {
-        let value = [
-            "response",
-            String(status),
-            path,
-            deviceID,
-            requestNonce
-        ].joined(separator: "\n")
-        return Data(value.utf8)
-    }
-
     func requireCapability(for path: String, trust: StoredBridgeTrust) throws {
         let required: String?
         switch path {
@@ -405,62 +302,6 @@ private extension DeckBridgeSecurityStore {
         guard trust.effectiveCapabilities.contains(required) else {
             throw DeckBridgeSecurityError.insufficientCapability(required)
         }
-    }
-
-    func sharedSecret(bridgePublicKeyBase64: String) throws -> SharedSecret {
-        guard
-            let bridgeData = Data(base64Encoded: bridgePublicKeyBase64),
-            let publicKey = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: bridgeData)
-        else {
-            throw DeckBridgeSecurityError.invalidBridgeKey
-        }
-        return try privateKey.sharedSecretFromKeyAgreement(with: publicKey)
-    }
-
-    func signingKey(bridgePublicKeyBase64: String) throws -> SymmetricKey {
-        let sharedSecret = try sharedSecret(bridgePublicKeyBase64: bridgePublicKeyBase64)
-        return sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data("lattices-bridge-v1".utf8),
-            sharedInfo: Data("signing".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    func encryptionKey(bridgePublicKeyBase64: String) throws -> SymmetricKey {
-        let sharedSecret = try sharedSecret(bridgePublicKeyBase64: bridgePublicKeyBase64)
-        return sharedSecret.hkdfDerivedSymmetricKey(
-            using: SHA256.self,
-            salt: Data("lattices-bridge-v1".utf8),
-            sharedInfo: Data("encryption".utf8),
-            outputByteCount: 32
-        )
-    }
-
-    func sealEnvelope(
-        _ plaintext: Data,
-        publicKeyBase64: String,
-        aad: Data
-    ) throws -> DeckEncryptedEnvelope {
-        let key = try encryptionKey(bridgePublicKeyBase64: publicKeyBase64)
-        let sealed = try ChaChaPoly.seal(plaintext, using: key, authenticating: aad)
-        return DeckEncryptedEnvelope(sealedBox: Data(sealed.combined).base64EncodedString())
-    }
-
-    func openEnvelope(
-        _ envelope: DeckEncryptedEnvelope,
-        publicKeyBase64: String,
-        aad: Data
-    ) throws -> Data {
-        guard let data = Data(base64Encoded: envelope.sealedBox),
-              let sealed = try? ChaChaPoly.SealedBox(combined: data) else {
-            throw DeckBridgeSecurityError.invalidEnvelope
-        }
-        let key = try encryptionKey(bridgePublicKeyBase64: publicKeyBase64)
-        guard let plaintext = try? ChaChaPoly.open(sealed, using: key, authenticating: aad) else {
-            throw DeckBridgeSecurityError.invalidEnvelope
-        }
-        return plaintext
     }
 }
 
@@ -501,12 +342,4 @@ private enum MobileKeychainBridge {
         let addStatus = SecItemAdd(insert as CFDictionary, nil)
         return addStatus == errSecSuccess
     }
-}
-
-private extension ISO8601DateFormatter {
-    static let latticesBridge: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 }

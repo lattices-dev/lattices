@@ -48,9 +48,6 @@ function parseArgs(argv: string[]) {
 Usage: lattices-host [--bind ADDR]... [--port N] [--allow-user ID|LOGIN]... [--allow-tag TAG]...
                      [--no-pairing] [--no-bridge] [--bridge-bind ADDR]... [--bridge-port N] [--bridge-state-dir DIR] [--describe]
        lattices-host visit-test [--host ADDR:PORT] [--name NAME]
-       lattices-host mouse-share [--for 5m]
-       lattices-host mouse-keep
-       lattices-host mouse-status
        lattices-host mouse-home
        lattices-host tray
 
