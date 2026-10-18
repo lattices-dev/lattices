@@ -90,7 +90,7 @@ ColumnLayout {
                                         readonly property var boxes: choice.modelData === "none" ? [[.08,.05,.5,.75],[.45,.3,.5,.7]] : choice.modelData === "columns" ? [[0,0,.3,1],[.35,0,.3,1],[.7,0,.3,1]] : choice.modelData === "master-stack" ? [[0,0,.6,1],[.65,0,.35,.45],[.65,.55,.35,.45]] : [[0,0,.28,1],[.33,0,.34,1],[.72,0,.28,.45],[.72,.55,.28,.45]]
                                         Repeater {
                                             model: parent.boxes
-                                            Rectangle { required property var modelData; x: modelData[0] * parent.width; y: modelData[1] * parent.height; width: modelData[2] * parent.width; height: modelData[3] * parent.height; radius: 2; color: choice.chosen ? "#375641" : "#333537"; border.color: choice.chosen ? "#6c9777" : "#5c5e60" }
+                                            Rectangle { required property var modelData; x: modelData[0] * parent.width; y: modelData[1] * parent.height; width: modelData[2] * parent.width; height: modelData[3] * parent.height; radius: 2; color: choice.chosen ? Theme.liveLine : Theme.hover; border.color: choice.chosen ? Theme.live : Theme.borderHot }
                                         }
                                     }
                                     AppText { text: layers.layoutTitle(choice.modelData); color: choice.chosen ? Theme.green : Theme.text; font.pixelSize: 11 }

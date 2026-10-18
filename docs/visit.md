@@ -12,6 +12,7 @@ A visit ends when:
 
 - the visitor goes back off the edge it came in by;
 - you press **⌃⌥⌘ Home**, or pick Bring Cursor Home from the menu bar;
+- someone at the host runs `lattices-host mouse-home` (see [Ending a visit from the host](#ending-a-visit-from-the-host));
 - the channel drops, or either side stops hearing from the other for 6 seconds.
 
 Your own cursor never left, so ending a visit can't strand it.
@@ -70,8 +71,23 @@ The plaintext is one JSON object with a type in `t`.
 - **Two cursors.** The host's own cursor stays where it is while the visitor
   moves. For a button press or a scroll, the real pointer goes to the visitor so
   the input lands there. Keyboard focus must end up where the visitor clicked.
-  When the visit ends, the host's cursor goes back to where it was.
+  When the visit ends, the host's cursor goes back to where it was. A visit
+  that never clicked or scrolled never moved it, so the host leaves it alone.
 - **Release.** If the visit ends while a button is held, the host releases it.
+
+### Ending a visit from the host
+
+`lattices-host mouse-home` ends every visit on this machine, then brings the
+host's own cursor home as it always has. Each running host listens on a unix
+socket, `$XDG_RUNTIME_DIR/lattices-host/visit-<bridge port>.sock` (mode 0600 in
+a 0700 directory, so only this user reaches it; `~/.lattices/host/control/`
+when there is no runtime directory). `POST /visits/end` there closes every
+visit channel with code 1000 and reason `Ended on this machine`, waits for the
+held buttons to be released, and answers `{"ok":true,"ended":N}`. The command
+asks every socket in the directory, so it needs no port or state directory.
+
+To the visiting device this is a close after `ready` with a normal code: the
+visit is over, not a failure to retry.
 
 ## On the Mac
 

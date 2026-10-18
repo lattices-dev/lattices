@@ -11,6 +11,7 @@
 - Agent skill discovery: /.well-known/agent-skills/index.json
 
 - Quickstart: /docs/quickstart
+- Install on Linux: /docs/install-linux
 - Concepts: /docs/concepts
 - Configuration: /docs/config
 - Menu Bar App: /docs/app

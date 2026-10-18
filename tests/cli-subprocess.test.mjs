@@ -31,7 +31,9 @@ function fixture(t) {
   return { root, directory };
 }
 
-test("Action reads a version from an app path containing shell syntax", (t) => {
+test("Action reads a version from an app path containing shell syntax", {
+  skip: process.platform !== "darwin" ? "requires macOS PlistBuddy" : false,
+}, (t) => {
   const { directory } = fixture(t);
   const app = join(directory, "Action.app");
   fs.mkdirSync(join(app, "Contents"), { recursive: true });

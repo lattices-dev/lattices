@@ -57,6 +57,23 @@ The package includes the Mac app. `lats app` launches it; bare `lats` shows work
 
 The [setup guide](https://lattices.dev/docs/quickstart) covers login startup, permissions, and other installation options.
 
+### Linux (Hyprland and Omarchy)
+
+Install the Linux app, CLI, host and tray from a terminal inside Hyprland:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
+```
+
+On Arch/Omarchy, the installer installs missing dependencies, enables the user
+services, verifies host health and opens the app. From a checkout, use
+`bash install.sh`. Add `--gestures` for Forward-button gestures, or
+`--wheel-gestures` to also reserve wheel-click. `--no-start` prepares the files
+without starting services.
+
+See [Install on Linux](docs/install-linux.md) for requirements, updates and
+recovery. The published npm app package remains macOS-only.
+
 ## Find a project window and bring it beside you
 
 With a terminal open in your project, replace `tideline` with its directory name:

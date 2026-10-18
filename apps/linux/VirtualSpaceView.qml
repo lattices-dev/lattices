@@ -13,6 +13,7 @@ ColumnLayout {
         Rectangle { implicitWidth: 6; implicitHeight: 6; radius: 3; color: virtualView.space.running ? Theme.green : Theme.dim }
         AppText { text: virtualView.space.running ? "Virtual space running" : "Virtual space"; font.weight: Font.DemiBold; Layout.fillWidth: true }
         AppText { visible: virtualView.space.running; text: virtualView.space.width + " × " + virtualView.space.height; mono: true; font.pixelSize: 10; color: Theme.dim }
+        ActionButton { objectName: "virtualViewerToggle"; text: virtualView.controller.virtualViewerVisible ? "Hide PiP" : "Show PiP"; enabled: virtualView.controller.online; onClicked: virtualView.controller.showVirtualViewer("toggle") }
         ActionButton { visible: virtualView.space.running; text: "Browser"; enabled: !virtualView.controller.busy; onClicked: virtualView.controller.call("computer.virtual.launch", { app: "browser" }) }
         ActionButton { visible: virtualView.space.running; text: "Terminal"; enabled: !virtualView.controller.busy; onClicked: virtualView.controller.call("computer.virtual.launch", { app: "terminal" }) }
         ActionButton { visible: virtualView.space.running; text: "Stop"; enabled: !virtualView.controller.busy; onClicked: stopDialog.open() }
@@ -21,7 +22,7 @@ ColumnLayout {
     Rectangle {
         id: monitor
         Layout.fillWidth: true; Layout.fillHeight: true; Layout.leftMargin: 16; Layout.rightMargin: 16
-        radius: 8; color: "#101113"; border.color: Theme.borderLit; clip: true
+        radius: 8; color: Theme.ink; border.color: Theme.borderLit; clip: true
         Image {
             id: screen
             anchors.fill: parent; anchors.margins: 1
@@ -81,11 +82,6 @@ ColumnLayout {
         }
     }
     AppText { visible: virtualView.controller.virtualError !== "" || !!virtualView.space.error; text: virtualView.controller.virtualError || virtualView.space.error || ""; color: Theme.red; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16; Layout.bottomMargin: 12 }
-    Timer {
-        interval: 500; repeat: true; triggeredOnStart: true
-        running: virtualView.visible && virtualView.controller.page === "Overview" && virtualView.controller.online && virtualView.space.running
-        onTriggered: virtualView.controller.previewVirtual()
-    }
     Item {
         Dialog {
             id: stopDialog; parent: virtualView.controller.dialogParent; anchors.centerIn: parent; width: 390; modal: true; padding: 20

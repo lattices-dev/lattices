@@ -9,8 +9,8 @@ let package = Package(name: "Voice", platforms: [.macOS(.v26)],
     dependencies: [
         // Build with HUDSONKIT_WITH_VOICE=0, as tools/package.sh does, so Hudson leaves out Vox.
         hudson,
-        // Kokoro runs on the Neural Engine through KokoroAne. Same pin as Talkie.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.6"),
+        // Kokoro runs on the Neural Engine through KokoroAne. Pinned explicitly; keep aligned with Talkie.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
     ], targets: [
         .executableTarget(name: "SpeechAppRuntime", dependencies: [
             .product(name: "HudsonUI", package: "hudson"),

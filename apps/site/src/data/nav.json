@@ -14,6 +14,11 @@
           "id": "quickstart",
           "title": "Quickstart",
           "description": "Install lattices and launch your first workspace in 2 minutes"
+        },
+        {
+          "id": "install-linux",
+          "title": "Install on Linux",
+          "description": "App, CLI, desktop services and optional Omarchy gestures"
         }
       ]
     },

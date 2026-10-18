@@ -12,6 +12,9 @@ const output = process.argv[2] ? resolve(process.argv[2]) : fileURLToPath(new UR
 const result = await Bun.build({
   entrypoints: [entry],
   target: "bun",
+  // dbus-next loads these optional native/X11 fallbacks lazily. A Wayland
+  // session uses its Unix session-bus address and needs neither fallback.
+  external: ["x11", "usocket"],
   define: { LATTICES_HOST_BUILD_IDENTITY: JSON.stringify(identity) },
 });
 if (!result.success) throw new Error(result.logs.map(String).join("\n"));

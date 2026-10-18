@@ -23,6 +23,10 @@ import { stateCommand } from "./cli/state.ts";
 import { runsCommand } from "./cli/runs.ts";
 import { mapCommand, mapUsage } from "./cli/map.ts";
 import { hostsCommand } from "./cli/hosts.ts";
+import { loadLinuxHintPack, printHintPack } from "./cli/hints.ts";
+import { linuxAppRunning } from "./cli/linux-app.ts";
+import { parseSpaceArgs, listSpaces, focusSpace, spaceUsage } from "./cli/spaces.ts";
+import { diagnoseHost, printDoctor } from "./cli/doctor.ts";
 import {
   esc,
   sessionExists,
@@ -2781,7 +2785,7 @@ function buildHomeContext() {
   const panes = resolvePanes(dir);
   const tmuxReady = hasTmux();
   const sessionRunning = tmuxReady && sessionExists(sessionName);
-  const appRunning = runQuiet("pgrep -x Lattices >/dev/null 2>&1 && echo yes") === "yes";
+  const appRunning = process.platform === "linux" ? linuxAppRunning() : runQuiet("pgrep -x Lattices >/dev/null 2>&1 && echo yes") === "yes";
   return {
     dir,
     sessionName,
@@ -3278,6 +3282,20 @@ switch (command) {
   case "windows":
     await windowsCommand(args[1] === "--json");
     break;
+  case "spaces":
+  case "space": {
+    const rest = args.slice(1);
+    if (rest.includes("--help") || rest.includes("-h")) { console.log(spaceUsage); break; }
+    const listing = command === "spaces" || rest.length === 0 || rest[0] === "list";
+    if (listing) {
+      if (rest.some(arg => !["list", "--json"].includes(arg))) { console.error(spaceUsage); process.exitCode = 1; break; }
+      await withDaemon(({ daemonCall }) => listSpaces(daemonCall, rest.includes("--json")));
+    } else {
+      try { const parsed = parseSpaceArgs(rest); await withDaemon(({ daemonCall }) => focusSpace(daemonCall, parsed)); }
+      catch (error) { console.error((error as Error).message); process.exitCode = 1; }
+    }
+    break;
+  }
   case "map":
     if (args.includes("--help") || args.includes("-h")) {
       console.log(mapUsage());
@@ -3286,7 +3304,22 @@ switch (command) {
     }
     break;
   case "window":
-    if (args[1] === "assign") {
+    if (args[1] === "focus") {
+      const rest = args.slice(2);
+      const usage = "lats window focus <wid> [--dry-run] [--json]";
+      if (rest.includes("--help") || rest.includes("-h")) { console.log(usage); break; }
+      const wid = Number(rest[0]);
+      if (!/^[1-9]\d*$/.test(rest[0] || "") || wid > 4294967295 || rest.slice(1).some(arg => !["--dry-run", "--json"].includes(arg))) {
+        console.error("Invalid window id or option. " + usage); process.exitCode = 1; break;
+      }
+      await withDaemon(async ({ daemonCall }) => {
+        const dryRun = rest.includes("--dry-run");
+        const result = await daemonCall(dryRun ? "windows.resolve" : "windows.focus", { wid });
+        if (result === false || (result as { ok?: boolean } | null)?.ok === false) throw new Error(`Could not focus wid:${wid}`);
+        if (rest.includes("--json")) console.log(JSON.stringify({ status: dryRun ? "planned" : "ok", wid, result }, null, 2));
+        else console.log(`${dryRun ? "Planned focus" : "Focused"} wid:${wid}`);
+      });
+    } else if (args[1] === "assign") {
       await windowAssignCommand(args[2], args[3]);
     } else if (args[1] === "move" || args[1] === "place") {
       const method = args[1];
@@ -3310,6 +3343,7 @@ switch (command) {
     } else {
       const { windowMoveUsage } = await import("./cli/window.ts");
       console.log("Usage:");
+      console.log("  lats window focus <wid> [--dry-run] [--json]");
       console.log("  lats window move <wid> --display <n> [--placement <slot>] [--dry-run] [--json]");
       console.log("  lats window place <wid> <slot> [--display <n>] [--dry-run] [--json]");
       console.log("  lats window assign <wid> <layer>      Same as: lats layer add wid:N --to <layer>");
@@ -3324,9 +3358,15 @@ switch (command) {
   case "focus":
     await focusCommand(args[1]);
     break;
-  case "place":
-    await placeCommand(args[1], args[2]);
+  case "place": {
+    const rest = args.slice(2);
+    if (args.includes("--help") || args.includes("-h")) { console.log("lats place <query> [position] [--dry-run] [--json]"); break; }
+    const positions = rest.filter(arg => !arg.startsWith("--"));
+    if (positions.length > 1) { console.error("Usage: lats place <query> [position] [--dry-run] [--json]"); process.exitCode = 1; break; }
+    try { await placeCommand(args[1], positions[0], new Set(rest.filter(arg => arg.startsWith("--")))); }
+    catch (error) { console.error((error as Error).message); process.exitCode = 1; }
     break;
+  }
   case "sessions":
     await sessionsCommand(args[1] === "--json");
     break;
@@ -3436,6 +3476,13 @@ switch (command) {
     await devCommand(args[1], ...args.slice(2));
     break;
   case "app": {
+    if (process.platform === "linux") {
+      try {
+        const { linuxAppCommand } = await import("./cli/linux-app.ts");
+        await linuxAppCommand(args.slice(1));
+      } catch (error) { console.error((error as Error).message); process.exitCode = 1; }
+      break;
+    }
     const { execFileSync } = await import("node:child_process");
     const dir = process.cwd();
     const first = args[1];
@@ -3491,6 +3538,31 @@ switch (command) {
   case "help":
     printUsage();
     break;
+  case "hints": {
+    if (args.slice(1).some(arg => !["linux", "--json", "--open", "--help", "-h"].includes(arg)) || (args.includes("--json") && args.includes("--open"))) {
+      console.error("Usage: lats hints [linux] [--json|--open]");
+      process.exitCode = 1;
+    } else if (args.includes("--help") || args.includes("-h")) {
+      console.log("lats hints [linux] [--json|--open] — Linux and Omarchy keyboard hints; --open shows the app’s Hints page.");
+    } else if (args.includes("--open")) {
+      if (process.platform !== "linux") { console.error("Opening Linux hints requires a Linux desktop. Use lats hints linux to read the pack here."); process.exitCode = 1; break; }
+      try {
+        const { openLinuxApp } = await import("./cli/linux-app.ts");
+        openLinuxApp("Hints");
+      } catch (error) { console.error((error as Error).message); process.exitCode = 1; }
+    } else if (args.includes("--json")) console.log(JSON.stringify(loadLinuxHintPack(), null, 2));
+    else printHintPack(loadLinuxHintPack());
+    break;
+  }
+  case "doctor": {
+    if (args.slice(1).some(arg => !["--json", "--help", "-h"].includes(arg))) { console.error("Usage: lats doctor [--json]"); process.exitCode = 1; break; }
+    if (args.includes("--help") || args.includes("-h")) { console.log("lats doctor [--json] — read host connection, desktop capabilities, events and build identity."); break; }
+    const report = await diagnoseHost((await loadDaemonClient()).daemonCall);
+    if (args.includes("--json")) console.log(JSON.stringify(report, null, 2));
+    else printDoctor(report);
+    if (!report.ok) process.exitCode = 1;
+    break;
+  }
   default:
     console.log(`Unknown command: ${command}`);
     console.log("Run `lats help` for the full command reference.");

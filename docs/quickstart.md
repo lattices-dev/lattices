@@ -6,6 +6,8 @@ order: 0.5
 
 Requires macOS 26 or later. Install the [Mac app](https://github.com/lattices-dev/lattices/releases/latest) for window management, or follow these steps to add the CLI and optional terminal sessions.
 
+For Hyprland and Omarchy, use [Install on Linux](/docs/install-linux).
+
 ## 1. Install lattices
 
 Install [Bun](https://bun.sh) first. The CLI needs Bun at runtime, including when installed with npm.

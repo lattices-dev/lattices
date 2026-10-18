@@ -3,6 +3,9 @@ import { homedir } from "node:os";
 import { daemonCallTo } from "../../bin/daemon-client.ts";
 import { changeUnit, withUserBus } from "../../packages/host-linux/src/systemd.ts";
 import type { Display, Window } from "../../packages/host-linux/src/desktop.ts";
+import { loadLinuxHintPack } from "../../bin/cli/hints.ts";
+import { diagnoseHost } from "../../bin/cli/doctor.ts";
+import { watchAppearance } from "./appearance.ts";
 
 const port = Number(process.env.LATTICES_LINUX_PORT ?? 9399);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local host port");
@@ -10,8 +13,9 @@ const endpoint = { host: "127.0.0.1", port };
 process.env.LATTICES_CLIENT = "linux-app";
 // daemonCallTo propagates this budget to the worker; timeout cancellation is
 // acknowledged before reporting safe failure, otherwise outcome is uncertain.
-const call = <T>(method: string, params?: Record<string, unknown>) => daemonCallTo(endpoint, method, params, method.startsWith("computer.virtual.") ? 20000 : 5000) as Promise<T>;
+const call = <T>(method: string, params?: Record<string, unknown>, timeout?: number) => daemonCallTo(endpoint, method, params, timeout ?? (method.startsWith("computer.virtual.") ? 20000 : 5000)) as Promise<T>;
 const emit = (value: unknown) => process.stdout.write(JSON.stringify(value) + "\n");
+const emitHints = () => emit({ type: "hints", pack: loadLinuxHintPack() });
 interface Describe {
   hostname: string; capabilities: string[]; methods: string[]; displays: Display[];
   build?: { version: string; commit: string | null; dirty: boolean | null };
@@ -73,9 +77,12 @@ async function refresh() {
 let previewPending = false;
 const allowed = new Set(["computer.virtual.start", "computer.virtual.stop", "computer.virtual.launch", "computer.click", "computer.scroll", "computer.pressKey", "computer.typeText", "layers.create", "layers.assign", "layers.unassign", "layers.rename", "layers.delete", "layers.layout", "layers.activate", "layers.reveal", "windows.focus", "windows.place", "sessions.launch", "clients.approve", "clients.deny", "clients.revoke", "bridge.pairing.approve", "bridge.pairing.deny", "bridge.devices.revoke"]);
 const input = createInterface({ input: process.stdin });
+allowed.add("spaces.focus");
+allowed.add("windows.resolve");
+for (const method of ["windows.list", "windows.search", "spaces.list", "tmux.list", "layers.list"]) allowed.add(method);
 let queue = Promise.resolve();
 input.on("line", (line) => {
-  let request: { method: string; params?: Record<string, unknown> };
+  let request: { method: string; params?: Record<string, unknown>; requestId?: string };
   try { request = JSON.parse(line); }
   catch { emit({ type: "error", message: "Invalid app request" }); return; }
   if (request.method === "virtual.preview") {
@@ -90,9 +97,11 @@ input.on("line", (line) => {
         finally { previewPending = false; }
         return;
       }
-      if (request.method === "refresh") { await refresh(); return; }
+      if (request.method === "refresh") { emitHints(); appearance.poll(true); await refresh(); return; }
       let result: unknown;
-      if (request.method === "host.start") {
+      if (request.method === "app.doctor") {
+        result = { report: await diagnoseHost((method, params, timeout) => call(method, params ?? undefined, timeout)) };
+      } else if (request.method === "host.start") {
         await withUserBus((bus) => changeUnit(bus, "lattices-host.service", "StartUnit"));
       } else {
         if (!allowed.has(request.method)) throw new Error("Unsupported app action");
@@ -103,11 +112,15 @@ input.on("line", (line) => {
         }
         result = await call(request.method, params);
       }
-      emit({ type: "done", result });
+      emit({ type: "done", result, requestId: request.requestId });
       await refresh();
-    } catch (error) { emit({ type: "error", message: (error as Error).message }); }
+    } catch (error) { emit({ type: "error", message: (error as Error).message, requestId: request.requestId }); }
   });
 });
 input.on("close", () => { events?.close(); process.exit(0); });
 process.on("SIGTERM", () => { events?.close(); process.exit(0); });
+emitHints();
+// The desktop palette is read here, apart from the host, so the app follows a
+// theme change while the host is offline.
+const appearance = watchAppearance(value => emit({ type: "appearance", appearance: value }), { warn: message => console.error(message) });
 void refresh();
