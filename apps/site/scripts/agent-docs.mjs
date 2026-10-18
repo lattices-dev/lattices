@@ -18,6 +18,7 @@ const kindRank = {
 const primaryDocReadOrder = [
   'overview',
   'quickstart',
+  'install-linux',
   'concepts',
   'config',
   'app',

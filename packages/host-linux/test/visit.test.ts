@@ -6,6 +6,9 @@ import { BridgeSecurity, CAPABILITIES, deriveKeys, openVisitFrame, publicKeyFrom
 import { startBridge } from "../src/bridge/server.ts";
 import { VisitTestClient, openVisitSocket, visitHeaders } from "../src/bridge/visit-test.ts";
 import { VISIT_SILENCE_MS } from "../src/bridge/visit-channel.ts";
+import { endLocalVisits } from "../src/bridge/visit-control.ts";
+import { statSync, writeFileSync } from "node:fs";
+import { runMouseCommand } from "../src/mouse-cli.ts";
 import { VisitArea, VisitSession, clampToScreens, parseVisitMessage, type VisitDependencies, type VisitorOverlay, type VisitorState } from "../src/bridge/visit.ts";
 import { wtypeKeysymArgs } from "../src/input.ts";
 import type { Monitor } from "../src/cursor-home.ts";
@@ -103,7 +106,11 @@ describe("visit input and cleanup", () => {
     expect(f.events.filter((e) => e[0] === "move")).toHaveLength(0);
     await session.perform({ t: "move", dx: 10000, dy: 10000 });
     expect(f.state()).toMatchObject({ x: 5359, y: 1439 });
+    await session.perform({ t: "key", key: "a", mods: [] });
     await session.end();
+    // Nothing landed, so the host's cursor is left exactly as it is.
+    expect(f.events.filter((e) => e[0] === "move" || e[0] === "restore")).toHaveLength(0);
+    expect(f.events.slice(-2)).toEqual([["hide"], ["close"]]);
   });
   test("button, drag and scroll share one pointer, keep clicked focus and restore home", async () => {
     const f = fixture(), session = new VisitSession(f.overlay, f.deps);
@@ -150,6 +157,7 @@ describe("visit input and cleanup", () => {
     f.deps.pointer = async () => ({ async move() { throw new Error("disconnected"); }, async button() { throw new Error("disconnected"); }, async scroll() {}, async close() { f.events.push(["close"]); } });
     const session = new VisitSession(f.overlay, f.deps);
     await session.enter(enter);
+    await session.perform({ t: "scroll", dx: 0, dy: 3 }).catch(() => {});
     await session.end();
     expect(f.events).toContainEqual(["restore", { x: 3000, y: 800 }]);
     expect(f.events.at(-1)).toEqual(["close"]);
@@ -170,19 +178,20 @@ test("visit schema rejects invalid input before desktop operations", () => {
   expect(parseVisitMessage({ t: "key", key: "XF86AudioPlay", mods: ["super"] }).t).toBe("key");
 });
 
-async function setup(silenceMs = VISIT_SILENCE_MS) {
+async function setup(silenceMs = VISIT_SILENCE_MS, control = false) {
   const dir = mkdtempSync("/tmp/visit-test-");
   const privateKey = generateKeyPairSync("x25519").privateKey;
   const security = new BridgeSecurity({ bridgeName: "test", privateKey, devicesPath: join(dir, "devices.json"), approve: async () => true });
   const f = fixture();
   const bridge = startBridge({ hosts: ["127.0.0.1"], port: 0, version: "test", log() {}, trackpadAvailable: () => true, hasTmux: () => false,
-    security, visitOverlay: f.overlay, visitDependencies: f.deps, visitSilenceMs: silenceMs });
+    security, visitOverlay: f.overlay, visitDependencies: f.deps, visitSilenceMs: silenceMs,
+    ...(control ? { controlDir: join(dir, "control") } : {}) });
   const base = `http://127.0.0.1:${bridge.port}`;
   const clientKey = generateKeyPairSync("x25519");
   const client = new VisitTestClient(base, clientKey.privateKey, "mini");
   await client.pair(() => {});
   const keys = deriveKeys(clientKey.privateKey, publicKeyFromBase64(security.publicKeyBase64)!);
-  return { ...f, bridge, security, base, client, keys, async stop() { await bridge.stop(); rmSync(dir, { recursive: true, force: true }); } };
+  return { ...f, dir, bridge, security, base, client, keys, async stop() { await bridge.stop(); rmSync(dir, { recursive: true, force: true }); } };
 }
 async function until(check: () => boolean) {
   const deadline = Date.now() + 1000;
@@ -308,5 +317,72 @@ describe("visit WebSocket", () => {
       expect(f.events).toContainEqual(["button", "left", false]);
       expect(f.state()?.visible).toBe(false);
     } finally { await f.stop(); }
+  });
+});
+
+describe("ending visits from the host", () => {
+  const closeOf = (ws: WebSocket) => new Promise<CloseEvent>((resolve) => ws.addEventListener("close", resolve, { once: true }));
+  test("the control socket is private and closes every channel as a normal end", async () => {
+    const f = await setup(VISIT_SILENCE_MS, true);
+    try {
+      const dir = join(f.dir, "control"), path = f.bridge.controlPath!;
+      expect(path).toBe(join(dir, `visit-${f.bridge.port}.sock`));
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect((await fetch("http://localhost/visits/end", { unix: path })).status).toBe(404);
+      expect((await fetch("http://localhost/health", { method: "POST", unix: path })).status).toBe(404);
+      expect(await endLocalVisits(dir)).toEqual({ hosts: 1, ended: 0, errors: [] });
+
+      // One visitor inside with a button held, one connected but still outside.
+      const inside = await f.client.connect(), outside = await f.client.connect();
+      const closes = [closeOf(inside.ws), closeOf(outside.ws)];
+      inside.send(enter); await inside.waitFor("ready");
+      inside.send({ t: "button", button: "left", down: true });
+      await until(() => f.events.some((e) => e[0] === "button"));
+      expect(await endLocalVisits(dir)).toEqual({ hosts: 1, ended: 2, errors: [] });
+      // Cleanup finished before the reply, so Bring Cursor Home warps last.
+      expect(f.events.slice(-4)).toEqual([["hide"], ["button", "left", false], ["move", 3000, 800, { x: 0, y: 0, w: 5360, h: 1440 }], ["close"]]);
+      for (const close of await Promise.all(closes)) expect([close.code, close.reason]).toEqual([1000, "Ended on this machine"]);
+
+      // The seat is free again, and a second press finds nothing to end.
+      expect(await endLocalVisits(dir)).toEqual({ hosts: 1, ended: 0, errors: [] });
+      const again = await f.client.connect();
+      again.send(enter); expect((await again.waitFor("ready")).t).toBe("ready");
+      again.close();
+    } finally { await f.stop(); }
+  });
+  test("the socket goes away with the bridge; dead and missing hosts are skipped", async () => {
+    const f = await setup(VISIT_SILENCE_MS, true);
+    const dir = join(f.dir, "control"), path = f.bridge.controlPath!;
+    await f.bridge.stop();
+    expect(() => statSync(path)).toThrow();
+    expect(await endLocalVisits(dir)).toEqual({ hosts: 0, ended: 0, errors: [] });
+    expect(await endLocalVisits(join(dir, "absent"))).toEqual({ hosts: 0, ended: 0, errors: [] });
+    // A socket file nobody listens on, and a file that is not ours.
+    // A killed host leaves its socket behind; other files here are not ours.
+    const dead = Bun.spawn([process.execPath, "-e", "Bun.serve({ unix: process.argv[1], fetch: () => new Response() }); console.log('up')", join(dir, "visit-1.sock")], { stdout: "pipe" });
+    await dead.stdout.getReader().read();
+    dead.kill("SIGKILL"); await dead.exited;
+    expect(statSync(join(dir, "visit-1.sock")).isSocket()).toBe(true);
+    writeFileSync(join(dir, "notes.sock"), "");
+    expect(await endLocalVisits(dir)).toEqual({ hosts: 0, ended: 0, errors: [] });
+    await f.stop();
+  });
+  test("a host that does not answer is reported, not waited for", async () => {
+    const f = await setup(VISIT_SILENCE_MS, true);
+    const stuck = Bun.serve({ unix: join(f.dir, "control", "visit-2.sock"), fetch: () => new Promise<Response>(() => {}) });
+    try {
+      const result = await endLocalVisits(join(f.dir, "control"), 50);
+      expect(result).toMatchObject({ hosts: 1, ended: 0 });
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toStartWith("visit-2.sock: ");
+    } finally { stuck.stop(true); await f.stop(); }
+  });
+  test("mouse-home ends visits before it warps", async () => {
+    const order: string[] = [];
+    const deps = { run: async (_cmd: string, args: string[]) => { order.push(args[0]); return args[0] === "monitors" ? JSON.stringify([monitors[1]]) : "ok\n"; } };
+    const end = async () => { order.push("visits"); return { hosts: 1, ended: 1, errors: [] }; };
+    expect(await runMouseCommand(["mouse-home"], deps, end)).toMatchObject({ ok: true, x: 3640, y: 720, visits: { hosts: 1, ended: 1 } });
+    expect(order).toEqual(["visits", "monitors", "dispatch"]);
   });
 });

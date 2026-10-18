@@ -1,15 +1,17 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 
+// The Lattices L on a neutral tile. No hue of its own: it takes the theme's
+// grays and its primary type color.
 Rectangle {
     id: mark
     implicitWidth: 24
     implicitHeight: 24
     radius: width * 0.28
-    border.color: "#405b4b"
+    border.color: Theme.borderHot
     gradient: Gradient {
-        GradientStop { position: 0; color: "#464e48" }
-        GradientStop { position: 1; color: "#3b403c" }
+        GradientStop { position: 0; color: Theme.hover }
+        GradientStop { position: 1; color: Theme.surface }
     }
     // Same 3×3 L and avatar proportions as the Mac's LatticesMarkAvatar.
     Item {
@@ -30,8 +32,8 @@ Rectangle {
                 width: glyph.cell
                 height: glyph.cell
                 radius: Math.max(0.6, width * 0.18)
-                color: Theme.green
-                opacity: modelData ? 1 : 0.18
+                color: Theme.text
+                opacity: modelData ? 1 : 0.12
             }
         }
     }

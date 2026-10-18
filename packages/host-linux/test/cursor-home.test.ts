@@ -76,5 +76,11 @@ test("local recovery command rejects unknown verbs and options", async () => {
     await expect(runMouseCommand(args, deps)).rejects.toThrow("Usage:");
   }
   expect(calls).toBe(0);
-  expect(await runMouseCommand(["mouse-home"], deps)).toMatchObject({ ok: true });
+  let ended = false;
+  const receipt = { hosts: 1, ended: 1, errors: [] };
+  const result = await runMouseCommand(["mouse-home"], { run: async (command, args) => {
+    expect(ended).toBe(true);
+    return deps.run(command, args);
+  } }, async () => { ended = true; return receipt; });
+  expect(result).toMatchObject({ ok: true, visits: receipt });
 });

@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Run a Lattices space gesture and report the observed result to its trail."""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+LATS = @LATS_PYTHON@
+
+
+def call(args):
+    result = subprocess.run([LATS, '--host', '127.0.0.1:9399', *args], capture_output=True, text=True, timeout=5)
+    if result.returncode:
+        detail = re.sub(r'\x1b\[[0-9;]*m', '', result.stderr or result.stdout).strip()
+        raise RuntimeError(detail or 'Lattices command failed')
+    return json.loads(result.stdout)
+
+
+def navigate(direction, invoke=call):
+    if direction not in ('prev', 'next'):
+        raise ValueError('Direction must be prev or next')
+    before = invoke(['spaces', '--json'])
+    if not isinstance(before, list) or not before or any(not isinstance(d, dict) or not isinstance(d.get('spaces'), list) or any(not isinstance(s, dict) for s in d['spaces']) for d in before):
+        raise RuntimeError('Lattices returned an invalid space inventory')
+    receipt = invoke(['space', direction, '--json'])
+    if not isinstance(receipt, dict) or receipt.get('ok') is not True or receipt.get('status') != 'ok':
+        raise RuntimeError('Lattices did not confirm the space action')
+    current = receipt.get('currentSpaceId')
+    if type(current) is not int:
+        raise RuntimeError('Lattices did not return the resulting space')
+    display = next((d for d in before if d.get('displayIndex') == receipt.get('displayIndex')), None)
+    if display is None:
+        raise RuntimeError('Lattices returned an unknown display')
+    spaces = [s for d in before for s in d.get('spaces', [])]
+    if display.get('currentSpaceId') == current:
+        if len({s.get('id') for s in spaces}) <= 1:
+            return 'noop', 'Only one space is open'
+        return 'failure', 'Lattices returned the same space'
+    target = next((s for s in spaces if s.get('id') == current), {})
+    name = target.get('name') or str(current)
+    return 'success', 'Space ' + name
+
+
+def main(args):
+    if len(args) != 2 or args[0] not in ('prev', 'next') or not re.fullmatch(r'[1-9][0-9]*', args[1]):
+        raise ValueError('Usage: lattices-gesture-space prev|next <gesture-id>')
+    detail = ''
+    try:
+        status, message = navigate(args[0])
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired, OSError) as error:
+        detail = str(error)
+        status = 'failure'
+        message = 'Lattices host unavailable' if any(s in detail.lower() for s in ('daemon not running', 'econnrefused', 'connection refused', 'timed out')) else 'Space switch failed'
+    message = message.replace('|', '/').replace('\n', ' ').replace('\r', ' ')[:180]
+    outcome = {'gestureId': int(args[1]), 'direction': args[0], 'status': status, 'message': message, 'detail': detail[:1000], 'at': time.time()}
+    state = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'lattices/gestures'
+    state.mkdir(parents=True, exist_ok=True)
+    temporary = state / ('last-action.' + str(os.getpid()) + '.tmp')
+    temporary.write_text(json.dumps(outcome) + '\n')
+    temporary.replace(state / 'last-action.json')
+    packet = '|'.join(['lattices-gesture-result', '1', args[1], status, message])
+    # Pass an argv array; workspace names and messages are never shell code.
+    result = subprocess.run(['hyprctl', 'dispatch', 'hl.dsp.event(' + json.dumps(packet, ensure_ascii=False) + ')'], capture_output=True, text=True, timeout=3)
+    print(json.dumps(outcome))
+    if result.returncode:
+        print('Could not update gesture trail: ' + result.stderr.strip(), file=sys.stderr)
+    return 0 if status != 'failure' else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,319 @@
+-- Lattices installer managed gesture module.
+-- Hold Forward or the wheel button, draw, then release:
+-- up = Fab recording toggle, left/right = spaces, down = Lattices overlay.
+-- Down then left (a carriage return) sends Enter; both legs need 80px.
+-- A stroke needs 80 logical pixels and a clear direction; taps/diagonals do nothing.
+-- Configured trigger buttons are reserved for gestures; Back is unchanged.
+-- Super+Ctrl+G opens a button tester with no recording/navigation actions.
+local lats = @LATS@
+local space_gesture = @SPACE_HELPER@
+local fab = @FAB@
+local mouse_map = "lattices-mouse"
+local origin = nil
+local overlay_address = nil
+local previous_focus = nil
+local overlay_pending = nil
+local overlay_timeout = nil
+local stroke_timer = nil
+local stroke_timeout = nil
+local test_timeout = nil
+local testing = false
+local serial = 0
+-- Mice may report Forward as BTN_EXTRA (276) or BTN_FORWARD (277).
+local trigger_buttons = @BUTTONS@
+
+local function direction(point, start)
+  local dx, dy = point.x - start.x, point.y - start.y
+  local ax, ay = math.abs(dx), math.abs(dy)
+  if math.max(ax, ay) < 8 then return "", false end
+  local dir = ""
+  if ax >= ay * 1.4 then dir = dx < 0 and "left" or "right"
+  elseif ay >= ax * 1.4 then dir = dy < 0 and "up" or "down" end
+  return dir, dir ~= "" and math.max(ax, ay) >= 80
+end
+
+-- Recognize the ordered bend from sampled motion, not its final diagonal.
+-- Once the turn is intentional, an unfinished shape cannot become a space
+-- switch or overlay action. Small hand tremors remain ordinary drags.
+local function recognize(point, start)
+  local dir, ready = direction(point, start)
+  if not start.first_heading and math.max(math.abs(point.x - start.x), math.abs(point.y - start.y)) >= 24 then
+    start.first_heading = dir ~= "" and dir or "diagonal"
+  end
+  if start.first_heading ~= "down" then return dir, ready end
+
+  local corner = start.return_corner or start.down_corner
+  local dx, dy = point.x - corner.x, point.y - corner.y
+  if not start.return_corner then
+    if dy > 0 and dy >= math.abs(dx) * 1.4 then
+      start.down_corner = { x = point.x, y = point.y }
+      corner = start.down_corner
+      dx, dy = 0, 0
+    end
+    if corner.y - start.y >= 48 and -dx >= 24 and -dx >= math.abs(dy) * 1.4 then
+      start.return_corner = { x = corner.x, y = corner.y }
+      start.return_max_left = -dx
+    end
+  end
+  if start.return_corner then
+    corner = start.return_corner
+    local left, drift = corner.x - point.x, math.abs(point.y - corner.y)
+    start.return_max_left = math.max(start.return_max_left, left)
+    if drift > math.max(24, math.min(40, start.return_max_left * 0.35)) or start.return_max_left - left > 32 then
+      start.return_invalid = true
+    end
+    local down = corner.y - start.y
+    local complete = not start.return_invalid and down >= 80 and down >= math.abs(corner.x - start.x) * 1.4
+      and left >= 80 and left >= drift * 1.4
+    return "down_left", complete
+  end
+  return dir, ready
+end
+
+local labels = { up = "Fab recording", left = "Previous space", right = "Next space", down = "Lattices overlay", down_left = "Enter" }
+
+-- A small native IPC event feeds the decorative shell surface. No subprocess
+-- or file writes occur while sampling, and rendering cannot delay an action.
+local function emit(phase, start, point, dir, ready, label)
+  hl.dispatch(hl.dsp.event(table.concat({
+    "lattices-gesture", "1", tostring(start.id), phase, start.button,
+    start.monitor or "", tostring(start.mx), tostring(start.my),
+    tostring(point.x), tostring(point.y), dir or "", ready and "1" or "0",
+    start.testing and "1" or "0", label or labels[dir] or "Move, then release",
+  }, "|")))
+end
+
+local function stop_sampling()
+  if stroke_timer then stroke_timer:set_enabled(false); stroke_timer = nil end
+  if stroke_timeout then stroke_timeout:set_enabled(false); stroke_timeout = nil end
+end
+
+local function result(start, status, message)
+  message = tostring(message):gsub("[|\r\n]", " "):sub(1, 180)
+  hl.dispatch(hl.dsp.event(table.concat({ "lattices-gesture-result", "1", tostring(start.id), status, message }, "|")))
+  if status == "failure" then
+    hl.notification.create({ text = message, timeout = 5000 })
+  end
+end
+
+local function checked(dispatcher)
+  local response = hl.dispatch(dispatcher)
+  if not response or response.ok ~= true then
+    error(response and response.error or "Compositor did not confirm the action", 0)
+  end
+end
+
+local function is_lattices(window)
+  -- The app owns this exact title. Quickshell's app ID varies by packaging;
+  -- require a unique mapped match rather than silently missing its window.
+  return window and window.mapped and window.title == "Lattices"
+end
+
+local function overlay_matches()
+  local matches = {}
+  for _, window in ipairs(hl.get_windows()) do
+    if is_lattices(window) then matches[#matches + 1] = window end
+  end
+  return matches
+end
+
+local function show_overlay(window)
+  local workspace = hl.get_active_workspace()
+  if not workspace then error("No active workspace for Lattices", 0) end
+  local active = hl.get_active_window()
+  if active and active.address ~= window.address then previous_focus = active end
+  checked(hl.dsp.window.move({ window = window, workspace = workspace, follow = false }))
+  checked(hl.dsp.window.float({ window = window, action = "enable" }))
+  checked(hl.dsp.window.center({ window = window }))
+  checked(hl.dsp.window.alter_zorder({ window = window, mode = "top" }))
+  checked(hl.dsp.focus({ window = window }))
+  overlay_address = window.address
+end
+
+local function finish_overlay(start, window)
+  local ok, err = pcall(show_overlay, window)
+  result(start, ok and "success" or "failure", ok and "Lattices overlay open" or ("Lattices overlay: " .. tostring(err)))
+end
+
+local function stop_overlay_wait()
+  overlay_pending = nil
+  if overlay_timeout then overlay_timeout:set_enabled(false); overlay_timeout = nil end
+end
+
+local function toggle_overlay(start)
+  if overlay_pending then
+    result(start, "noop", "Lattices is still opening")
+    return
+  end
+  local matches = overlay_matches()
+  if #matches > 1 then
+    result(start, "failure", "More than one Lattices window is open")
+  elseif #matches == 1 then
+    local window = matches[1]
+    if window.address == overlay_address and window.visible then
+      local ok, err = pcall(function()
+        checked(hl.dsp.window.move({ window = window, workspace = "special:lattices-overlay", follow = false }))
+      end)
+      if ok and previous_focus and previous_focus.mapped and previous_focus.visible then
+        hl.dispatch(hl.dsp.focus({ window = previous_focus }))
+      end
+      result(start, ok and "success" or "failure", ok and "Lattices overlay hidden" or tostring(err))
+    else
+      finish_overlay(start, window)
+    end
+  else
+    overlay_pending = start
+    local attempts = 0
+    -- Window titles may settle after window.open. Poll native objects briefly
+    -- so both a new app and an existing hidden app can be found.
+    overlay_timeout = hl.timer(function()
+      attempts = attempts + 1
+      local windows = overlay_matches()
+      if #windows == 1 then
+        stop_overlay_wait()
+        finish_overlay(start, windows[1])
+      elseif #windows > 1 or attempts >= 24 then
+        stop_overlay_wait()
+        result(start, "failure", #windows > 1 and "More than one Lattices window is open" or "Lattices did not open within 6 seconds")
+      end
+    end, { timeout = 250, type = "repeat" })
+    local ok, err = pcall(function() checked(hl.dsp.exec_cmd(o.shell_quote(lats) .. " app mission")) end)
+    if not ok then stop_overlay_wait(); result(start, "failure", tostring(err)) end
+  end
+end
+
+local function cancel()
+  local start = origin
+  origin = nil
+  stop_sampling()
+  if start then emit("cancel", start, hl.get_cursor_pos() or start, "", false, "Cancelled") end
+  testing = false
+  if test_timeout then test_timeout:set_enabled(false); test_timeout = nil end
+  hl.dispatch(hl.dsp.submap("reset"))
+end
+
+local function begin(button, test)
+  stop_sampling()
+  local point = hl.get_cursor_pos()
+  if not point then return end
+  local monitor = hl.get_monitor_at_cursor() or hl.get_active_monitor()
+  serial = serial + 1
+  origin = { x = point.x, y = point.y, window = hl.get_active_window(), button = button,
+    id = serial, testing = test == true, monitor = monitor and monitor.name or "",
+    mx = monitor and monitor.x or 0, my = monitor and monitor.y or 0,
+    down_corner = { x = point.x, y = point.y } }
+  local start = origin
+  emit("start", start, point, "", false, test and (button .. " · move to test") or "Move, then release")
+  if not test then hl.dispatch(hl.dsp.submap(mouse_map)) end
+  stroke_timer = hl.timer(function()
+    if origin ~= start then return end
+    local next_point = hl.get_cursor_pos()
+    if not next_point then return end
+    local dir, ready = recognize(next_point, start)
+    emit("move", start, next_point, dir, ready, test and (button .. " · test only") or nil)
+  end, { timeout = 16, type = "repeat" })
+  stroke_timeout = hl.timer(function() if origin == start then cancel() end end, { timeout = 10000, type = "oneshot" })
+end
+
+local function send_enter(start)
+  local target = start.window
+  if not target or not target.mapped then
+    result(start, "failure", "Enter: the original window is no longer available")
+    return
+  end
+  -- Match Omarchy's clipboard bindings: explicit down/up avoids repeat state.
+  -- Address both events to the original window, even if pointer focus moves.
+  local release = hl.dsp.send_key_state({ mods = "", key = "Return", state = "up", window = target })
+  local ok, err = pcall(function()
+    checked(hl.dsp.focus({ window = target }))
+    checked(hl.dsp.send_key_state({ mods = "", key = "Return", state = "down", window = target }))
+  end)
+  if not ok then
+    hl.dispatch(release)
+    result(start, "failure", "Enter: " .. tostring(err))
+    return
+  end
+  hl.timer(function()
+    local released, reason = pcall(function() checked(release) end)
+    result(start, released and "success" or "failure", released and "Enter sent" or ("Enter: " .. tostring(reason)))
+  end, { timeout = 50, type = "oneshot" })
+end
+
+local function finish(button)
+  local start = origin
+  if not start or start.button ~= button then return end
+  local point = hl.get_cursor_pos()
+  origin = nil
+  stop_sampling()
+  if not point then if not testing then hl.dispatch(hl.dsp.submap("reset")) end; return end
+  local dir, ready = recognize(point, start)
+  if start.testing then
+    emit("commit", start, point, dir, ready, button .. " · test only")
+    return
+  end
+  hl.dispatch(hl.dsp.submap("reset"))
+  local phase = not ready and "cancel" or "pending"
+  emit(phase, start, point, dir, ready, ready and labels[dir] or "No gesture")
+  if not ready then return end
+  if dir == "left" or dir == "right" then
+    local ok, err = pcall(function()
+      checked(hl.dsp.exec_cmd(o.shell_quote(space_gesture) .. (dir == "left" and " prev " or " next ") .. tostring(start.id)))
+    end)
+    if not ok then result(start, "failure", tostring(err)) end
+  elseif dir == "up" then
+      -- Preserve the app where the gesture began when pointer focus follows motion.
+      if start.window and start.window.mapped then
+        hl.dispatch(hl.dsp.focus({ window = start.window }))
+      end
+      if o.cmd_present(fab) then
+        hl.exec_cmd(o.shell_quote(fab) .. " take toggle")
+        result(start, "success", "Fab recording toggle sent")
+      else
+        result(start, "failure", "Recording requires Fab on this machine")
+      end
+  elseif dir == "down_left" then
+    send_enter(start)
+  elseif dir == "down" then
+    toggle_overlay(start)
+  end
+end
+
+-- Exactly one release handler owns recognition and cleanup. A watchdog cancels
+-- a held/stale gesture without ever running actions while the session is locked.
+for _, button in ipairs(trigger_buttons) do
+  hl.unbind(button)
+  o.bind(button, "Mouse gesture: up record, left/right spaces, down Lattices, down-left Enter", function() begin(button, false) end)
+  -- Releases match the submap at PRESS time, so these stay outside the submap.
+  o.bind(button, "Run mouse gesture on release", function() finish(button) end, {
+    release = true, transparent = true, ignore_mods = true,
+  })
+end
+
+hl.define_submap(mouse_map, function()
+  o.bind("Escape", "Cancel mouse gesture", cancel, { ignore_mods = true })
+  -- Other clicks, scrolling, or keyboard input cancel the stroke.
+  for _, key in ipairs({ "mouse:272", "mouse:273", "mouse:274", "mouse:275", "mouse_up", "mouse_down", "mouse_left", "mouse_right" }) do
+    o.bind(key, "Cancel mouse gesture", cancel, { ignore_mods = true })
+  end
+  hl.bind("catchall", cancel)
+end)
+
+o.bind("SUPER + CTRL + G", "Lattices: test mouse buttons and trail", function()
+  cancel()
+  testing = true
+  hl.dispatch(hl.dsp.submap("lattices-mouse-test"))
+  hl.notification.create({ text = "Mouse test: hold and move any button. No actions run. Escape exits; test closes in 15 seconds.", timeout = 5000 })
+  test_timeout = hl.timer(cancel, { timeout = 15000, type = "oneshot" })
+end)
+
+hl.define_submap("lattices-mouse-test", function()
+  for code = 272, 279 do
+    local button = "mouse:" .. tostring(code)
+    o.bind(button, "Show mouse button code", function() begin(button, true) end, { ignore_mods = true })
+    o.bind(button, "Finish mouse button test", function() finish(button) end, {
+      release = true, transparent = true, ignore_mods = true,
+    })
+  end
+  o.bind("Escape", "Leave mouse button test", cancel, { ignore_mods = true })
+  hl.bind("catchall", cancel)
+end)

@@ -63,7 +63,8 @@
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
-    "test": "node --experimental-strip-types --test tests/cli.test.mjs tests/cli-subprocess.test.mjs && bun test tests/dependency-free.test.ts tests/skills.test.ts",
+    "test": "node --experimental-strip-types --test tests/cli.test.mjs tests/cli-subprocess.test.mjs && bun test tests/dependency-free.test.ts tests/skills.test.ts tests/linux-hints.test.ts tests/linux-search.test.ts tests/linux-desktop-cli.test.ts tests/linux-flight-deck.test.ts tests/linux-flight-canvas.test.ts tests/linux-desktop-views.test.ts tests/linux-appearance.test.ts tests/linux-app-backend.test.ts tests/linux-viewer-cli.test.ts tests/linux-install.test.ts",
+    "test:linux-app": "bun apps/linux/check.ts",
     "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs tests/cli-subprocess.test.mjs",
     "test:dependencies": "bun test tests/dependency-free.test.ts",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
@@ -74,7 +75,9 @@
     "build:dist": "bash ./bin/lattices-build dist",
     "build:dist:local": "bash ./bin/lattices-build dist:local",
     "prepack": "bash ./bin/lattices-build package",
-    "linux:app": "bun apps/linux/main.ts"
+    "linux:app": "bun apps/linux/main.ts",
+    "linux:install": "bun apps/linux/install.ts",
+    "test:linux-install": "bun test tests/linux-install.test.ts"
   },
   "type": "module",
   "os": ["darwin"],

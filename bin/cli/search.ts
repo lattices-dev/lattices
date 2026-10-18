@@ -1,5 +1,6 @@
 import { relativeTime } from "./helpers.ts";
 import { withDaemon, type DaemonClient } from "./daemon.ts";
+import { normalizePlacement } from "./window.ts";
 
 export interface SearchResult {
   score: number;
@@ -16,7 +17,7 @@ export interface SearchOptions {
   mode?: string;
 }
 
-async function searchWithClient(client: DaemonClient, query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
+export async function searchWithClient(client: DaemonClient, query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
   const { daemonCall } = client;
   const params: Record<string, any> = { query };
   if (opts.sources) params.sources = opts.sources;
@@ -24,14 +25,29 @@ async function searchWithClient(client: DaemonClient, query: string, opts: Searc
   if (opts.before) params.before = opts.before;
   if (opts.recency !== undefined) params.recency = opts.recency;
   if (opts.mode) params.mode = opts.mode;
-  const hits = await daemonCall("search.query", params, 10000) as any[];
+  let hits: any[];
+  try { hits = await daemonCall("search.query", params, 10000) as any[]; }
+  catch (error) {
+    // Linux provides windows.search, while Mac provides unified search.query.
+    // Only an absent method permits fallback; authorization and transport errors do not.
+    if (!/^Unknown method: (search\.query|lattices\.search)$/.test((error as Error).message)) throw error;
+    let host: { platform?: string; methods?: string[] };
+    try { host = await daemonCall("host.describe") as typeof host; }
+    catch { throw error; }
+    if (host.platform !== "linux" || !host.methods?.includes("windows.search")) throw error;
+    if (opts.after || opts.before || opts.recency === true) throw new Error("Linux window search does not support date or recency filters.");
+    if (opts.sources?.some(source => !["titles", "apps", "sessions"].includes(source)) || opts.mode === "terminal" || opts.mode === "complete") {
+      console.error("Linux search covers window titles, apps and session tags; terminal-content and OCR sources are unavailable.");
+    }
+    hits = await daemonCall("windows.search", { query }, 10000) as any[];
+  }
   return hits.map((w: any) => ({
     score: w.score || 0,
     window: w,
     tabs: (w.terminalTabs || []).map((t: any) => ({
       tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession,
     })),
-    reasons: w.matchSources || [],
+    reasons: w.matchSources || (w.matchSource ? [w.matchSource] : []),
   }));
 }
 
@@ -114,28 +130,32 @@ export async function searchCommand(
   printResults(ranked);
 }
 
-export async function placeCommand(query?: string, tilePosition?: string): Promise<void> {
+export async function placeWithClient(client: DaemonClient, query: string, placement: string, dryRun: boolean) {
+  const ranked = await searchWithClient(client, query, { sources: ["all"] });
+  if (!ranked.length) return null;
+  const window = ranked[0].window;
+  if (!dryRun) await client.daemonCall("windows.focus", { wid: window.wid });
+  const receipt = await client.daemonCall("windows.place", { wid: window.wid, placement, dryRun }, 3000);
+  return { status: dryRun ? "planned" : "ok", window: { wid: window.wid, app: window.app, title: window.title }, placement, receipt };
+}
+
+export async function placeCommand(query?: string, tilePosition?: string, flags = new Set<string>()): Promise<void> {
   if (!query) {
-    console.log("Usage: lats place <query> [position]");
+    console.log("Usage: lats place <query> [position] [--dry-run] [--json]");
     return;
   }
+  if ([...flags].some(flag => !["--dry-run", "--json"].includes(flag))) throw new Error("Usage: lats place <query> [position] [--dry-run] [--json]");
+  const pos = normalizePlacement(tilePosition || "bottom-right");
+  if (!pos) throw new Error(`Unknown placement: ${tilePosition}`);
 
   await withDaemon(async (client) => {
-    const { daemonCall } = client;
-    const ranked = await searchWithClient(client, query, { sources: ["all"] });
-
-    if (!ranked.length) {
+    const result = await placeWithClient(client, query, pos, flags.has("--dry-run"));
+    if (!result) {
+      if (flags.has("--json")) { console.log(JSON.stringify({ status: "not-found", query })); return; }
       console.log(`No window matching "${query}"`);
       return;
     }
-
-    const pos = tilePosition || "bottom-right";
-    const win = ranked[0].window;
-    await daemonCall("windows.focus", { wid: win.wid });
-    await daemonCall("intents.run", {
-      intent: "tile_window",
-      slots: { position: pos, wid: win.wid }
-    }, 3000);
-    console.log(`${win.app} "${win.title}" (wid:${win.wid}) → ${pos}`);
+    if (flags.has("--json")) console.log(JSON.stringify(result, null, 2));
+    else console.log(`${flags.has("--dry-run") ? "Planned: " : ""}${result.window.app} "${result.window.title}" (wid:${result.window.wid}) → ${pos}`);
   });
 }
