@@ -21,6 +21,9 @@ for keeping file structure as architecture.
 | `docs/` | Markdown docs and engineering proposals. |
 | `skills/` | Family skill catalog for skills.sh: lattices, action, speech, blink. |
 | `assets/` | Shared release/app assets. |
+| `design/` | Design specifications, catalogs, and Studio. |
+| `studies/` | Bounded experiments and their supporting notes, source, and captures. |
+| `studies/archive/` | Historical experiments retained for reference. See the [website and deck archive](../studies/archive/website-deck-experiments/README.md). |
 | `scripts/` | User/dev entry-point scripts: `install.sh`, `uninstall.sh`, `build.sh`, `run.sh` (root `install.sh` is a shim forwarding here). |
 | `tools/release/` | Maintainer scripts for building and shipping. |
 | `tests/` | CLI, daemon, and evaluation tests. |
@@ -108,3 +111,12 @@ Root files should be few and intentional:
 
 Everything else should either be a product surface, a package, docs, content,
 or tooling.
+
+Keep experiment images and write-ups together under `studies/<study>/`.
+Retain useful historical material under `studies/archive/` instead of leaving
+captures and generated variations at the repository root. Store maintained
+site assets in `apps/site/public/` and app/release assets in `assets/`.
+
+The root retains `CLAUDE.md` and `AGENTS.md` for agent guidance, `PRODUCT.md`
+for website product context, `llms.txt` for documentation discovery, and
+`kimi.plugin.json` for plugin discovery. These files are maintained metadata.
