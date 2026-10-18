@@ -19,6 +19,16 @@ ok()    { echo -e "${GREEN}✓${RESET} $1"; }
 warn()  { echo -e "${YELLOW}⚠${RESET} $1"; }
 fail()  { echo -e "${RED}✗${RESET} $1"; exit 1; }
 
+# Linux has its own runtime and user-service installation path.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  linux_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+  if [[ -f "$linux_script_dir/install-linux.sh" ]]; then
+    exec bash "$linux_script_dir/install-linux.sh" "$@"
+  fi
+  linux_installer="$(curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/scripts/install-linux.sh)"
+  exec bash -c "$linux_installer" -- "$@"
+fi
+
 # ── Platform check ────────────────────────────────────────────────────
 
 [[ "$(uname)" == "Darwin" ]] || fail "Lattices requires macOS."

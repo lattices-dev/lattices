@@ -7,34 +7,40 @@ Button {
     required property string glyph
     property bool selected: false
     property bool compact: false
+    property string shortcut: ""
+    readonly property bool lit: selected || hovered || activeFocus
     implicitHeight: 30
     padding: 0
     Accessible.name: text
-    ToolTip.visible: compact && hovered
-    ToolTip.text: text
+    ToolTip.visible: hovered && (compact || shortcut !== "")
+    ToolTip.delay: compact ? 0 : 700
+    ToolTip.text: text + (shortcut !== "" ? "  ·  " + shortcut : "")
     contentItem: RowLayout {
         spacing: 0
         Item {
             Layout.preferredWidth: Theme.rail
             Layout.fillHeight: true
-            Symbol { anchors.centerIn: parent; name: row.glyph; tint: row.selected ? Theme.green : row.hovered ? Theme.text : "#b3b3b5" }
-            Rectangle { visible: row.compact && row.selected; width: 16; height: 1; color: Theme.green; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 3 }
+            Symbol { anchors.centerIn: parent; name: row.glyph; tint: row.selected ? Theme.accent : row.lit ? Theme.text : Theme.muted }
         }
         AppText {
             visible: !row.compact
             Layout.fillWidth: true
             text: row.text
-            font.pixelSize: 13
-            font.weight: row.selected ? Font.DemiBold : Font.Medium
-            color: row.selected || row.hovered ? Theme.text : "#b3b3b5"
+            font.pixelSize: Theme.lead
+            font.weight: row.selected ? Font.Medium : Font.Normal
+            color: row.lit ? Theme.text : Theme.body
         }
     }
     background: Item {
         Rectangle {
-            anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; anchors.topMargin: 2; anchors.bottomMargin: 2
-            visible: !row.compact && (row.selected || row.hovered)
-            radius: 6
-            color: row.selected ? "#405647" : "#474749"
+            anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 6; anchors.topMargin: 1; anchors.bottomMargin: 1
+            visible: row.selected || row.hovered || row.visualFocus
+            radius: 3
+            color: row.selected ? Theme.filmLit : row.hovered ? Theme.film : "transparent"
+            border.width: row.visualFocus ? 1 : 0
+            border.color: Theme.accent
         }
+        // The page on screen: one accent rule on the window edge.
+        Rectangle { visible: row.selected; y: 7; width: 2; height: parent.height - 14; color: Theme.accent }
     }
 }

@@ -75,7 +75,7 @@ export type Op =
   | { op: "toWorkspace"; address: string; workspace: number | string }
   | { op: "unfullscreen"; address: string }
   | { op: "close"; address: string }
-  | { op: "focusWorkspace"; workspace: number }
+  | { op: "focusWorkspace"; workspace: number | "e+1" | "e-1" | "previous" }
   | { op: "focusMonitor"; monitor: string };
 
 const luaString = (value: string) => JSON.stringify(value);
@@ -83,7 +83,7 @@ const int = (n: number) => String(Math.round(n));
 const workspace = (value: number | string, lua: boolean) => typeof value === "number" ? int(value) : lua ? luaString(value) : value;
 
 export function spell(op: Op, lua: boolean): string {
-  if (op.op === "focusWorkspace") return lua ? `hl.dsp.focus({ workspace = ${int(op.workspace)} })` : `workspace ${int(op.workspace)}`;
+  if (op.op === "focusWorkspace") return lua ? `hl.dsp.focus({ workspace = ${workspace(op.workspace, true)} })` : `workspace ${workspace(op.workspace, false)}`;
   if (op.op === "focusMonitor") return lua ? `hl.dsp.focus({ monitor = ${luaString(op.monitor)} })` : `focusmonitor ${op.monitor}`;
   const win = `address:${op.address}`;
   if (lua) {

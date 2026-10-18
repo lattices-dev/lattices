@@ -46,9 +46,9 @@ test("lattices skill teaches current workspace commands", () => {
 
 test("action skill teaches the native drive loop", () => {
   const source = readFileSync(join(skillsRoot, "action", "SKILL.md"), "utf8");
-  expect(source).toContain("action.drive.begin");
-  expect(source).toContain("action.observe.snapshot");
-  expect(source).toContain("action-browser@action");
+  expect(source).toContain("drive_begin");
+  expect(source).toContain("observe_snapshot");
+  expect(source).toContain("lattices mcp --list");
 });
 
 test("voice skill teaches say, simulate and intents", () => {

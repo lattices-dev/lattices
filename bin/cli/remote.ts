@@ -7,6 +7,6 @@ export function supportsRemote(args: string[]): boolean {
     "ls", "list", "status", "inventory", "display", "displays", "bring", "main", "elsewhere", "here", "home",
     "visit", "mouse", "call", "windows", "window", "map", "search", "s", "place", "layer", "layers",
     "state", "states", "diag", "diagnostics", "log", "logs", "activity", "scan", "ocr", "run", "runs",
-    "sessions", "terminals", "computer", "cua", "voice", "long", "distribute", "tile", "t", "daemon",
+    "sessions", "terminals", "computer", "cua", "voice", "long", "distribute", "tile", "t", "daemon", "spaces", "space", "doctor",
   ]).has(command);
 }

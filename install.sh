@@ -17,4 +17,5 @@ if [[ -n "${HERE:-}" && -f "$HERE/scripts/install.sh" ]]; then
 fi
 
 # Standalone (curl | bash): pull the real installer from main.
-exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/scripts/install.sh)" -- "$@"
+installer_script="$(curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/scripts/install.sh)"
+exec bash -c "$installer_script" -- "$@"

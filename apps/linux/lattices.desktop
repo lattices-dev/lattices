@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Lattices
+Comment=Find windows, manage workspace layers, and learn desktop shortcuts
+Exec=lats app
+Icon=lattices
+Terminal=false
+Categories=Development;
+Keywords=workspace;windows;layers;hints;omarchy;
+Actions=Hints;
+X-Lattices-Source=linux
+
+[Desktop Action Hints]
+Name=Keyboard hints
+Exec=lats hints --open

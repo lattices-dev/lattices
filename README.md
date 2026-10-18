@@ -58,6 +58,8 @@ Without tmux you still get the app, tiling, layers, OCR, search, and the daemon.
 
 ## Install
 
+### macOS
+
 macOS. Node 18+ or [Bun](https://bun.sh). The published package is `@arach/lattices` (also `@lattices/cli`).
 
 ```sh
@@ -84,6 +86,23 @@ curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | ba
 `lats app install` registers a user LaunchAgent so the companion starts at login.
 
 Grant **Accessibility** and **Screen Recording** under System Settings → Privacy & Security. Instant Space switching, window targeting, OCR, and mouse gestures need them.
+
+### Linux (Hyprland and Omarchy)
+
+Install the Linux app, CLI, host and tray from a terminal inside Hyprland:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+```
+
+On Arch/Omarchy, the installer installs missing dependencies, enables the user
+services, verifies host health and opens the app. From a checkout, use
+`bash install.sh`. Add `--gestures` for Forward-button gestures, or
+`--wheel-gestures` to also reserve wheel-click. `--no-start` prepares the files
+without starting services.
+
+See [Install on Linux](docs/install-linux.md) for requirements, updates and
+recovery. The published npm app package remains macOS-only.
 
 ## First session
 

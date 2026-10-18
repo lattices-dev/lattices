@@ -4,7 +4,7 @@ description: Install lattices and launch your first workspace in 2 minutes
 order: 0.5
 ---
 
-Four steps to a running workspace.
+Four steps to a running workspace on macOS. For Hyprland and Omarchy, use [Install on Linux](/docs/install-linux).
 
 ## 1. Install lattices
 
