@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { inventory, spaceInventory, consoleCommand, completions, formatResult } from "../apps/linux/DesktopViews.mjs";
+import { inventory, spaceInventory, consoleCommand, completions, formatResult } from "../DesktopViews.mjs";
 
 const windows = [{ wid: 11, app: "kitty", title: "Editor", displayIndex: 0, spaceIds: [1], isOnScreen: true }, { wid: 12, app: "chromium", title: "Docs", displayIndex: 0, spaceIds: [3], isOnScreen: false }];
 const layers = [{ id: "build", label: 'Build "tools"', entries: [{ windows: [windows[0], { wid: 19, app: "kitty", title: "Test runner", presence: "parked", spaceIds: [-1], displayIndex: 0 }] }] }];

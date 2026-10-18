@@ -1,10 +1,10 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
-import { daemonCallTo } from "../../bin/daemon-client.ts";
-import { changeUnit, withUserBus } from "../../packages/host-linux/src/systemd.ts";
-import type { Display, Window } from "../../packages/host-linux/src/desktop.ts";
-import { loadLinuxHintPack } from "../../bin/cli/hints.ts";
-import { diagnoseHost } from "../../bin/cli/doctor.ts";
+import { daemonCallTo } from "../../packages/desktop-client/daemon-client.ts";
+import { changeUnit, withUserBus } from "../../packages/host-linux/src/service-client.ts";
+import type { Display, Window } from "../../packages/desktop-client/contracts.ts";
+import { loadLinuxHintPack } from "../../packages/desktop-client/hints.ts";
+import { diagnoseHost } from "../../packages/desktop-client/doctor.ts";
 import { watchAppearance } from "./appearance.ts";
 
 const port = Number(process.env.LATTICES_LINUX_PORT ?? 9399);

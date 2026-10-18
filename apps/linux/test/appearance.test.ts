@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PALETTE, TOKEN_NAMES, TRANSLUCENCY, configPath, contrast, deriveTokens, loadAppearance, locateCurrent, parseConfig,
   parseFlat, parseHex, parsePalette, readPalette, resolveAppearance, themeCandidates, watchAppearance, type Appearance,
-} from "../apps/linux/appearance.ts";
-import * as fixtures from "../apps/linux/test/AppearanceFixtures.mjs";
+} from "../appearance.ts";
+import * as fixtures from "./AppearanceFixtures.mjs";
 
 const MATTE = 'mode = "dark"\n\naccent = "#e68e0d"\nbackground = "#121212"\nforeground = "#bebebe"\n\n# Named signals are not what they say.\ngreen = "#FFC107"\nyellow = "#b91c1c"\n';
 const LATTE = 'mode = "light"\naccent = "#1e66f5"\nbackground = "#eff1f5"\nforeground = "#4c4f69"\n';
@@ -244,14 +244,14 @@ test("the appearance file overrides and clamps, and bad values fall back with a 
 });
 
 test("Theme.qml's built-in colors are the loader's defaults", () => {
-  const qml = readFileSync(fileURLToPath(new URL("../apps/linux/Theme.qml", import.meta.url)), "utf8");
+  const qml = readFileSync(fileURLToPath(new URL("../Theme.qml", import.meta.url)), "utf8");
   const builtIn = Object.fromEntries([...qml.matchAll(/^\s*property color (\w+): "(#[0-9a-f]{6})"$/gm)].map(match => [match[1], match[2]]));
   expect(builtIn).toEqual(deriveTokens(DEFAULT_PALETTE));
   expect(JSON.parse(/readonly property var tokenNames: (\[[^\]]+\])/.exec(qml)![1])).toEqual([...TOKEN_NAMES]);
   expect(resolveAppearance(null)).toMatchObject({ source: "default", font: /property string font: "([^"]+)"/.exec(qml)![1], mono: /property string mono: "([^"]+)"/.exec(qml)![1] });
   // Saturated green and cyan are gone from the theme and from every control that used to hard-code them.
   expect(qml).not.toMatch(/#33c773|#9fd8e3/i);
-  const directory = fileURLToPath(new URL("../apps/linux/", import.meta.url));
+  const directory = fileURLToPath(new URL("../", import.meta.url));
   for (const file of ["ActionButton", "BrandMark", "DeckButton", "InputField", "LatticeGrid", "NavRow", "ShellChrome", "SpaceCell", "Tag", "WindowRow", "MissionControlPage", "OperatorConsolePage"])
     expect(readFileSync(join(directory, file + ".qml"), "utf8")).not.toMatch(/"#[0-9a-fA-F]{3,8}"/);
 });
@@ -284,7 +284,7 @@ test("the app bridge reports the appearance and follows a theme switch while the
   const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
   const port = closed.port;
   closed.stop(true);
-  const child = Bun.spawn([process.execPath, fileURLToPath(new URL("../apps/linux/backend.ts", import.meta.url))], {
+  const child = Bun.spawn([process.execPath, fileURLToPath(new URL("../backend.ts", import.meta.url))], {
     stdin: "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, ...env, LATTICES_LINUX_PORT: String(port) },
   });
   const messages: Record<string, any>[] = [];

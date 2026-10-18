@@ -1,4 +1,6 @@
-export type Rpc = (method: string, params?: Record<string, unknown> | null, timeout?: number) => Promise<unknown>;
+import type { Rpc } from "../../packages/desktop-client/contracts.ts";
+export type { Rpc } from "../../packages/desktop-client/contracts.ts";
+import { workspaceTarget } from "../../packages/desktop-client/workspace-target.mjs";
 export interface SpaceDisplay {
   displayIndex: number;
   name?: string;
@@ -18,12 +20,8 @@ export function parseSpaceArgs(args: string[]) {
   const values = args.filter(arg => !arg.startsWith("--"));
   if (values.length !== 1) throw new Error(spaceUsage);
   const value = values[0];
-  const directions: Record<string, string> = { next: "e+1", prev: "e-1", previous: "previous" };
-  let workspace: number | string = Object.hasOwn(directions, value) ? directions[value] : "";
-  if (!workspace) {
-    if (!/^[1-9]\d*$/.test(value) || Number(value) > 2147483647) throw new Error("Space must be next, prev, previous, or a positive workspace id.");
-    workspace = Number(value);
-  }
+  const workspace = workspaceTarget(value);
+  if (workspace === null) throw new Error("Space must be next, prev, previous, or a positive workspace id.");
   return { workspace, dryRun: flags.includes("--dry-run"), json: flags.includes("--json") };
 }
 

@@ -19,7 +19,9 @@ function fixture(name = "home") {
   for (const path of ["packages/host-linux/src/main.ts", "packages/host-linux/visitor/shell.qml", "packages/npm/sdk/cua.mjs", "docs/quickstart.md"]) writeFileSync(join(source,path), "// fixture");
   writeFileSync(join(source, "bin/lattices.ts"), 'console.log("fixture CLI")');
   writeFileSync(join(source, "assets/logo-mark.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
-  cpSync(join(root, "apps/linux/omarchy"), join(source, "apps/linux/omarchy"), { recursive: true });
+  cpSync(join(root, "apps/linux/integrations/omarchy"), join(source, "apps/linux/integrations/omarchy"), { recursive: true });
+  cpSync(join(root, "packages/host-linux/systemd"), join(source, "packages/host-linux/systemd"), { recursive: true });
+  cpSync(join(root, "packages/desktop-client"), join(source, "packages/desktop-client"), { recursive: true });
   cpSync(join(root, "apps/linux/lattices.desktop"), join(source, "apps/linux/lattices.desktop"));
   const paths = installPaths({ HOME: home });
   const omarchy = join(dir, "omarchy"); mkdirSync(join(omarchy, "default/hypr"), { recursive: true }); writeFileSync(join(omarchy, "default/hypr/helpers.lua"), "-- fixture");
@@ -34,7 +36,7 @@ function fixture(name = "home") {
 }
 const options = () => parseOptions(["--no-start"]);
 
-linuxTest("installer rejects unknown options and keeps wheel gestures explicit", () => {
+test("installer rejects unknown options and keeps wheel gestures explicit", () => {
   expect(() => parseOptions(["--wat"])).toThrow("Unknown option");
   expect(parseOptions([])).toMatchObject({ gestures: false, wheel: false, start: true });
   expect(parseOptions(["--wheel-gestures"])).toMatchObject({ gestures: true, wheel: true });
@@ -182,4 +184,38 @@ linuxTest("a deferred update closes prior managed app releases before opening th
   const quits=f.commands.filter(([,args])=>args[1]==='app'&&args[2]==='quit');
   expect(quits.map(([,args])=>args[0])).toEqual([join(first.release,'bin/lattices.ts'),join(second.release,'bin/lattices.ts')]);
   expect(JSON.parse(readFileSync(f.paths.receipt,'utf8')).appReleases).toEqual([]);
+});
+
+// These boundaries require no Linux desktop, user bus or process.platform override.
+// Keep the actual installation/activation cases above Linux-only.
+test("file transaction restores owned content, mode, symlinks and absent files", async () => {
+  const { fileTransaction, checkOwnership, hash } = await import("../apps/linux/install/files.ts");
+  const f = fixture();
+  const owned = join(f.home, "owned"), link = join(f.home, "link"), added = join(f.home, "added");
+  writeFileSync(owned, "before", { mode: 0o600 });
+  symlinkSync("owned", link);
+  const planned = [{ path: owned, content: "after", mode: 0o644 }];
+  expect(() => checkOwnership(planned, null, join(f.home, "current"), false)).toThrow("Existing files need review");
+  checkOwnership(planned, { schema: 1, release: "old", files: { [owned]: hash("before") }, backup: "", gestures: false, wheel: false }, join(f.home, "current"), false);
+  const transaction = fileTransaction(f.paths.state);
+  transaction.atomic(owned, "after", 0o644);
+  transaction.atomic(link, "replaced", 0o644);
+  transaction.atomic(added, "new", 0o644);
+  transaction.rollback();
+  expect(readFileSync(owned, "utf8")).toBe("before");
+  expect(lstatSync(owned).mode & 0o777).toBe(0o600);
+  expect(readlinkSync(link)).toBe("owned");
+  expect(existsSync(added)).toBe(false);
+});
+
+test("shared unit renderer preserves standalone bytes and development service policy", async () => {
+  const { renderServiceUnit } = await import("../packages/host-linux/src/service-units.ts");
+  const bun = '/home/a $% b/bun', entry = '/home/a $% b/runtime/packages/host-linux/src/main.ts';
+  const environmentPath = '/home/a $% b/bin:/usr/bin';
+  for (const name of ["host", "tray"] as const) {
+    const template = readFileSync(join(root, `packages/host-linux/systemd/lattices-${name}.service`), "utf8");
+    const command = `${unitQuote(bun)} ${unitQuote(entry)} ${name === "tray" ? "tray" : "--quiet"}`;
+    expect(renderServiceUnit(template, name, { bun, entry })).toBe(template.replace(/^ExecStart=.*$/m, () => `ExecStart=${command}`));
+    expect(renderServiceUnit(template, name, { bun, entry, environmentPath })).toBe(`[Unit]\nDescription=Lattices ${name}\nPartOf=graphical-session.target\nAfter=graphical-session.target\n\n[Service]\nExecStart=${command}\nEnvironment=${unitQuote("PATH=" + environmentPath, false)}\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n`);
+  }
 });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { workspaceSheets, worldBounds, sheetBounds, fitCamera, zoomCamera, interpolateCamera, resizedCamera, reconcileCamera } from "../apps/linux/FlightCanvasModel.mjs";
+import { workspaceSheets, worldBounds, sheetBounds, fitCamera, zoomCamera, interpolateCamera, resizedCamera, reconcileCamera } from "../FlightCanvasModel.mjs";
 
 const display = { displayIndex: 0, currentSpaceId: 3, frame: { x: 1920, y: 0, w: 1600, h: 900 }, spaces: [{ id: 1 }, { id: 3 }, { id: 7 }] };
 const windows = [{ wid: 11, app: "kitty", title: "Editor", displayIndex: 0, spaceIds: [1], frame: { x: 1920, y: 0, w: 800, h: 900 } }, { wid: 12, app: "chromium", title: "Docs", displayIndex: 0, spaceIds: [3], frame: { x: 2720, y: 0, w: 800, h: 900 } }];

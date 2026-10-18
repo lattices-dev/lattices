@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-test("viewer commands use their own IPC route and hidden startup never activates the app", async () => {
+// main.ts intentionally refuses non-Linux hosts before invoking Quickshell.
+const linuxTest = process.platform === "linux" ? test : test.skip;
+linuxTest("viewer commands use their own IPC route and hidden startup never activates the app", async () => {
   const directory = mkdtempSync(join(tmpdir(), "lats-viewer-cli-"));
   const log = join(directory, "calls");
   const qs = join(directory, "quickshell");
