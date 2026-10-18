@@ -14,6 +14,6 @@
     "verbatimModuleSyntax": true,
     "types": ["bun-types"]
   },
-  "include": ["bin/**/*.ts", "packages/host-linux/**/*.ts", "apps/linux/**/*.ts"],
-  "exclude": ["node_modules", "apps/mac", "apps/site"]
+  "include": ["bin/**/*.ts", "packages/host-linux/**/*.ts", "packages/desktop-client/**/*.ts", "apps/linux/**/*.ts"],
+  "exclude": ["apps/linux/test/*.test.ts", "node_modules", "apps/mac", "apps/site"]
 }

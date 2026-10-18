@@ -6,34 +6,8 @@ import type { Fractions, Rect } from "./placement.ts";
 import { rectFor } from "./placement.ts";
 import { RouterError, num, str, type Json, type Params } from "./router.ts";
 
-export interface Window {
-  wid: number;
-  address: string;
-  app: string;
-  pid: number;
-  title: string;
-  frame: Rect;
-  spaceIds: number[];
-  displayIndex: number;
-  isOnScreen: boolean;
-  isFloating: boolean;
-  isFullscreen: boolean;
-  isFocused: boolean;
-  latticesSession?: string;
-}
-
-export interface Display {
-  displayIndex: number;
-  displayId: string;
-  name: string;
-  frame: Rect;
-  visibleFrame: Rect;
-  scale: number;
-  /** A headless output: no panel behind it, only captures and remote views see it. */
-  virtual: boolean;
-  currentSpaceId: number;
-  spaces: { id: number; index: number; name: string; display: number; isCurrent: boolean; windowCount: number }[];
-}
+import type { Window, Display } from "../../desktop-client/contracts.ts";
+export type { Window, Display } from "../../desktop-client/contracts.ts";
 
 /**
  * A stable uint32 id for a window. Hyprland's stableId is hex and survives

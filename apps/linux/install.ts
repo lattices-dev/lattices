@@ -1,104 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseOptions, usage, type InstallOptions } from "./install/options.ts";
+import { desktopQuote, installPaths, shellQuote } from "./install/paths.ts";
+import type { InstallContext, PlannedFile, Receipt, Runner } from "./install/types.ts";
+import { runtimeFiles } from "./install/runtime.ts";
+import { checkOwnership, fileTransaction, hash, present } from "./install/files.ts";
+import { activateInstall } from "./install/activation.ts";
+import { planOmarchy } from "./integrations/omarchy/install.ts";
+import { renderServiceUnit } from "../../packages/host-linux/src/service-units.ts";
 
-export interface InstallOptions { gestures: boolean; wheel: boolean; start: boolean; dryRun: boolean; replace: boolean }
-export const usage = `Install Lattices for Linux (Hyprland + Quickshell)
+export { parseOptions, usage, type InstallOptions } from "./install/options.ts";
+export { desktopQuote, installPaths, shellQuote, type InstallPaths } from "./install/paths.ts";
+export { unitQuote } from "../../packages/host-linux/src/service-units.ts";
+export { runtimeFiles } from "./install/runtime.ts";
+export { mergeBindings, mergeShell } from "./integrations/omarchy/install.ts";
+export type { CommandResult, Runner } from "./install/types.ts";
 
-  bun run linux:install [options]
-
-  --gestures          Forward-button gestures and the pen trail (Omarchy only)
-  --wheel-gestures    Also reserve plain wheel-click for gestures; implies --gestures
-  --no-start          Install files without starting services or opening the app
-  --dry-run           Show the plan without writing files or starting anything
-  --replace-existing Back up and replace files owned by an older/manual install
-  --no-deps           Bootstrap only: skip system packages (JS dependencies still install)
-  --help              Show this help
-
-Run inside your Hyprland desktop to start and verify the host and tray.
-Use --no-start when preparing an installation over SSH or outside the desktop.`;
-
-export function parseOptions(args: string[]): InstallOptions {
-  const options = { gestures: false, wheel: false, start: true, dryRun: false, replace: false };
-  for (const arg of args) {
-    if (arg === "--gestures") options.gestures = true;
-    else if (arg === "--wheel-gestures") { options.gestures = true; options.wheel = true; }
-    else if (arg === "--no-start") options.start = false;
-    else if (arg === "--dry-run") options.dryRun = true;
-    else if (arg === "--replace-existing") options.replace = true;
-    else if (arg !== "--no-deps") throw new Error(`Unknown option: ${arg}\n${usage}`);
-  }
-  return options;
-}
-
-export const shellQuote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
-export function unitQuote(text: string, expandVariables = true): string {
-  if (/[\x00-\x1f\x7f]/.test(text)) throw new Error("Invalid service argument");
-  const escaped = text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%");
-  return '"' + (expandVariables ? escaped.replaceAll("$", () => "$$") : escaped) + '"';
-}
-export function desktopQuote(text: string): string {
-  validPath(text);
-  if (text.includes("=")) throw new Error("The desktop launcher path cannot contain '='.");
-  return '"' + text.replace(/[\\"`$]/g, char => "\\" + char).replaceAll("\\", "\\\\").replaceAll("%", "%%") + '"';
-}
-function validPath(path: string) {
-  if (!isAbsolute(path) || /[\x00-\x1f\x7f]/.test(path)) throw new Error(`Expected an absolute path without control characters: ${JSON.stringify(path)}`);
-}
-const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
-const present = (path: string) => { try { lstatSync(path); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; return false; } };
-
-export interface InstallPaths { home: string; bin: string; data: string; config: string; state: string; runtime: string; receipt: string }
-export function installPaths(env: NodeJS.ProcessEnv = process.env): InstallPaths {
-  const home = env.HOME || homedir();
-  const data = env.XDG_DATA_HOME || join(home, ".local/share");
-  const config = env.XDG_CONFIG_HOME || join(home, ".config");
-  const state = env.XDG_STATE_HOME || join(home, ".local/state");
-  const bin = join(home, ".local/bin"), runtime = join(data, "lattices/linux-runtime");
-  for (const value of [home, data, config, state, bin]) validPath(value);
-  return { home, data, config, state, bin, runtime, receipt: join(runtime, "install.json") };
-}
-export interface CommandResult { status: number; stdout: string; stderr: string }
-export type Runner = (command: string, args: string[], timeout?: number) => CommandResult;
 const defaultRun: Runner = (command, args, timeout = 120000) => {
   const result = Bun.spawnSync([command, ...args], { stdout: "pipe", stderr: "pipe", timeout, env: { ...process.env, BUN_INSTALL_AUTO: "disable" } });
   return { status: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 };
-interface Receipt { schema: 1; release: string; files: Record<string, string>; backup: string; gestures: boolean; wheel: boolean; appReleases?: string[] }
-interface PlannedFile { path: string; content: string; mode: number; shared?: boolean }
-interface InstallContext { source?: string; paths?: InstallPaths; run?: Runner; which?: (command: string) => string | null; bun?: string; log?: (message: string) => void; omarchy?: string }
-const payload = ["bin", "apps/linux", "packages/host-linux/src", "packages/host-linux/visitor", "packages/host-linux/package.json", "packages/host-linux/bun.lock", "packages/npm/sdk", "assets/logo-mark.svg", "package.json", "docs"];
-const excluded = new Set(["node_modules", ".systemd", "test", "tests", ".git"]);
-function walk(path: string, prefix = ""): string[] {
-  const stat = lstatSync(path);
-  if (stat.isSymbolicLink()) throw new Error(`Runtime source contains a symlink: ${path}`);
-  if (stat.isFile()) return [prefix];
-  return readdirSync(path).sort().filter(name => !excluded.has(name)).flatMap(name => walk(join(path, name), join(prefix, name)));
-}
-export function runtimeFiles(source: string): string[] {
-  return payload.flatMap(item => {
-    if (!existsSync(join(source, item))) throw new Error(`Linux runtime source is missing ${item}`);
-    return walk(join(source, item), item);
-  });
-}
-export function mergeBindings(text: string): string {
-  const block = '-- BEGIN LATTICES GESTURES\nrequire("hypr.lattices-mouse")\n-- END LATTICES GESTURES';
-  const marked = /-- BEGIN LATTICES GESTURES\n[\s\S]*?-- END LATTICES GESTURES/g;
-  if (marked.test(text)) return text.replace(marked, block);
-  if (/require\s*\(?\s*["']hypr\.lattices-mouse["']/.test(text)) return text;
-  if (/o\.bind\(\s*["']SUPER\s*\+\s*CTRL\s*\+\s*G["']/.test(text)) throw new Error("Super+Ctrl+G is already configured. Free that binding before installing gesture testing.");
-  return text.replace(/\s*$/, "") + "\n\n" + block + "\n";
-}
-export function mergeShell(text: string): string {
-  const config = text ? JSON.parse(text) : {};
-  if (!config || Array.isArray(config) || typeof config !== "object" || (config.plugins !== undefined && !Array.isArray(config.plugins))) throw new Error("Omarchy shell.json must be an object with a plugins array.");
-  const plugins = config.plugins ?? [];
-  if (plugins.some((entry: unknown) => entry === "lattices.gestures" || (entry && typeof entry === "object" && (entry as { id?: unknown }).id === "lattices.gestures"))) return text;
-  config.plugins = [...plugins, { id: "lattices.gestures" }];
-  return JSON.stringify(config, null, 2) + "\n";
-}
 
 export async function installLinux(options: InstallOptions, context: InstallContext = {}) {
   if (process.platform !== "linux") throw new Error("This installer needs Linux.");
@@ -146,52 +69,14 @@ export async function installLinux(options: InstallOptions, context: InstallCont
   add(join(paths.data, "applications/org.lattices.Lattices.desktop"), desktop);
   add(join(paths.data, "icons/hicolor/scalable/apps/lattices.svg"), readFileSync(join(source, "assets/logo-mark.svg"), "utf8"));
   const environmentPath = [...new Set([paths.bin, dirname(bun), ...(process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin").split(":").filter(isAbsolute)])].join(":");
-  for (const name of ["host", "tray"]) {
-    add(join(paths.config, `systemd/user/lattices-${name}.service`), `[Unit]\nDescription=Lattices ${name}\nPartOf=graphical-session.target\nAfter=graphical-session.target\n\n[Service]\nExecStart=${unitQuote(bun)} ${unitQuote(join(current, "packages/host-linux/src/main.ts"))} ${name === "tray" ? "tray" : "--quiet"}\nEnvironment=${unitQuote("PATH=" + environmentPath, false)}\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n`);
+  for (const name of ["host", "tray"] as const) {
+    const template = readFileSync(join(source, `packages/host-linux/systemd/lattices-${name}.service`), "utf8");
+    add(join(paths.config, `systemd/user/lattices-${name}.service`), renderServiceUnit(template, name, {
+      bun, entry: join(current, "packages/host-linux/src/main.ts"), environmentPath,
+    }));
   }
-  let gestureRelease: string | null = null;
-  if (options.gestures) {
-    const omarchy = context.omarchy ?? process.env.OMARCHY_PATH ?? "/usr/share/omarchy";
-    const mainConfig = join(paths.config, "hypr/hyprland.lua");
-    if (!options.dryRun) {
-      const version = checked("Hyprland", ["--version"], 5000).stdout.match(/Hyprland\s+v?(\d+)\.(\d+)/i);
-      if (!version || (Number(version[1]) === 0 && Number(version[2]) < 56)) throw new Error("Omarchy gestures require Hyprland 0.56 or later.");
-    }
-    if (!existsSync(join(omarchy, "default/hypr/helpers.lua")) || !existsSync(mainConfig)) throw new Error("Gesture setup needs Omarchy's Lua Hyprland configuration. Core Lattices can install without --gestures.");
-    const buttons = options.wheel ? '{ "mouse:276", "mouse:277", "mouse:274" }' : '{ "mouse:276", "mouse:277" }';
-    const module = readFileSync(join(source, "apps/linux/omarchy/lattices-mouse.lua.in"), "utf8")
-      .replace("@LATS@", JSON.stringify(launcher)).replace("@SPACE_HELPER@", JSON.stringify(join(paths.bin, "lattices-gesture-space")))
-      .replace("@FAB@", JSON.stringify(which("fab-linux") ?? join(paths.bin, "fab-linux"))).replace("@BUTTONS@", buttons);
-    add(join(paths.config, "hypr/lattices-mouse.lua"), module);
-    const helper = readFileSync(join(source, "apps/linux/omarchy/lattices-gesture-space.py.in"), "utf8").replace("@LATS_PYTHON@", JSON.stringify(launcher));
-    add(join(paths.bin, "lattices-gesture-space"), helper, 0o755);
-    const bindings = join(paths.config, "hypr/bindings.lua"), shell = join(paths.config, "omarchy/shell.json");
-    add(bindings, mergeBindings(existsSync(bindings) ? readFileSync(bindings, "utf8") : ""), 0o644, true);
-    add(shell, mergeShell(existsSync(shell) ? readFileSync(shell, "utf8") : ""), 0o644, true);
-    const pluginSource = join(source, "apps/linux/omarchy/plugin"), pluginRoot = join(paths.config, "omarchy/plugins/lattices.gestures");
-    const pluginFiles = walk(pluginSource).filter(path => path !== "manifest.json");
-    const pluginHash = createHash("sha256");
-    for (const file of pluginFiles) pluginHash.update(file).update(readFileSync(join(pluginSource, file)));
-    const version = pluginHash.digest("hex").slice(0, 16);
-    gestureRelease = join(pluginRoot, "releases", version);
-    // Immutable component directories avoid Qt's stale QML and directory caches.
-    for (const file of pluginFiles) add(join(gestureRelease, file), readFileSync(join(pluginSource, file), "utf8"));
-    const manifest = JSON.parse(readFileSync(join(pluginSource, "manifest.json"), "utf8"));
-    manifest.entryPoints.service = `releases/${version}/${manifest.entryPoints.service}`;
-    add(join(pluginRoot, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
-  }
-  const conflicts: string[] = [];
-  for (const file of planned) {
-    if (!present(file.path)) continue;
-    const stat = lstatSync(file.path);
-    if (stat.isSymbolicLink() && file.shared) throw new Error(`Config file is a symlink: ${file.path}. Keep it intact and add the documented gesture include manually.`);
-    if (stat.isDirectory()) throw new Error(`Expected a file: ${file.path}`);
-    const unchanged = !stat.isSymbolicLink() && hash(readFileSync(file.path)) === hash(file.content);
-    const owned = !stat.isSymbolicLink() && previous?.files[file.path] === hash(readFileSync(file.path));
-    if (!unchanged && !file.shared && !owned && !options.replace) conflicts.push(file.path);
-  }
-  if (present(current) && (!previous || !lstatSync(current).isSymbolicLink())) conflicts.push(current);
-  if (conflicts.length) throw new Error(`Existing files need review:\n${conflicts.join("\n")}\nUse --replace-existing to back them up and replace them.`);
+  const gestureRelease = planOmarchy({ options, context, paths, source, launcher, which, checked, add });
+  checkOwnership(planned, previous, current, options.replace);
   for (const file of planned) log(`${options.dryRun ? "Would install" : "Install"}: ${file.path}`);
   log(`${options.dryRun ? "Would copy" : "Runtime"}: ${files.length} source files → ${release}`);
   if (options.dryRun) return { release, paths, started: false, dryRun: true };
@@ -216,22 +101,7 @@ export async function installLinux(options: InstallOptions, context: InstallCont
     // managed app before opening its replacement, including deferred SSH updates.
     for (const old of oldApps) checked(bun, [join(old, "bin/lattices.ts"), "app", "quit"], 15000);
   }
-  const backup = join(paths.state, "lattices/install-backups", `${Date.now()}-${randomUUID().slice(0, 8)}`);
-  const undo: Array<() => void> = [];
-  const saveOld = (path: string) => {
-    if (!present(path)) { undo.push(() => rmSync(path, { force: true })); return; }
-    mkdirSync(backup, { recursive: true, mode: 0o700 });
-    const saved = join(backup, `${undo.length}-${path.split("/").pop()}`);
-    const stat = lstatSync(path);
-    if (stat.isSymbolicLink()) symlinkSync(readlinkSync(path), saved); else cpSync(path, saved);
-    undo.push(() => { rmSync(path, { force: true }); cpSync(saved, path, { dereference: false, verbatimSymlinks: true }); });
-  };
-  const atomic = (path: string, content: string, mode: number) => {
-    mkdirSync(dirname(path), { recursive: true }); saveOld(path);
-    const temporary = path + `.install-${randomUUID()}`;
-    try { writeFileSync(temporary, content, { mode }); chmodSync(temporary, mode); renameSync(temporary, path); }
-    finally { rmSync(temporary, { force: true }); }
-  };
+  const { backup, saveOld, atomic, rollback } = fileTransaction(paths.state);
   try {
     mkdirSync(dirname(current), { recursive: true }); saveOld(current);
     const next = current + "." + randomUUID(); symlinkSync(relative(dirname(current), release), next); renameSync(next, current);
@@ -248,7 +118,7 @@ export async function installLinux(options: InstallOptions, context: InstallCont
       if (errors) throw new Error(`Hyprland rejected the gesture config: ${errors}`);
     }
   } catch (error) {
-    for (const restore of undo.reverse()) restore();
+    rollback();
     if (options.start && options.gestures) run("hyprctl", ["reload"], 5000);
     throw error;
   }
@@ -257,28 +127,8 @@ export async function installLinux(options: InstallOptions, context: InstallCont
     log("Services were not started. From a Hyprland terminal, rerun without --no-start to activate and verify the installation.");
     return { release, paths, started: false, gestureRelease };
   }
-  // Files are committed now. A service/health failure keeps this usable install
-  // and reports recovery; it never claims a healthy desktop or rolls back data.
-  try {
-    checked("systemctl", ["--user", "import-environment", "WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "XDG_CURRENT_DESKTOP"], 5000);
-    checked("systemctl", ["--user", "daemon-reload"], 5000);
-    checked("systemctl", ["--user", "enable", "lattices-host.service", "lattices-tray.service"], 10000);
-    checked("systemctl", ["--user", "restart", "lattices-host.service", "lattices-tray.service"], 15000);
-    let doctor: CommandResult = { status: 1, stdout: "", stderr: "Host has not replied" };
-    for (let attempt = 0; attempt < 8; ++attempt) {
-      doctor = run(launcher, ["--host", "127.0.0.1:9399", "doctor", "--json"], 10000);
-      if (doctor.status === 0) break;
-      await Bun.sleep(250);
-    }
-    if (doctor.status !== 0) throw new Error(doctor.stdout || doctor.stderr);
-    const health = JSON.parse(doctor.stdout);
-    if (health.ok !== true) throw new Error(doctor.stdout);
-    checked(launcher, ["app"], 15000);
-    log("Lattices is installed. Host health passed; host and tray start at login. The app was opened.");
-    return { release, paths, started: true, gestureRelease };
-  } catch (error) {
-    throw new Error(`Files are installed, but activation did not finish: ${(error as Error).message}\nRun lats --host 127.0.0.1:9399 doctor and journalctl --user -u lattices-host -u lattices-tray. Rerun the installer from your Hyprland desktop.`);
-  }
+  await activateInstall(launcher, checked, run, log);
+  return { release, paths, started: true, gestureRelease };
 }
 
 if (import.meta.main) {

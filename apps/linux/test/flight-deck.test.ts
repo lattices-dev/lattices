@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mapWindows, nearbyWindow, spacesFor, nextSpace, parseEntry } from "../apps/linux/FlightDeckModel.mjs";
+import { mapWindows, nearbyWindow, spacesFor, nextSpace, parseEntry } from "../FlightDeckModel.mjs";
 
 const makeWindow = (wid: number, x: number, y: number, space = 1, displayIndex = 0) => ({
   wid, app: "kitty", title: "Terminal " + wid, frame: { x, y, w: 400, h: 300 }, spaceIds: [space], displayIndex, isOnScreen: space === 1,

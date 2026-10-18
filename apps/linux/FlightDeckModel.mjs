@@ -1,3 +1,5 @@
+import { workspaceTarget } from "../../packages/desktop-client/workspace-target.mjs";
+
 // Pure desktop projection and command parsing, shared by QML and its tests.
 export function matches(window, query) {
   return (window.app + " " + window.title + " " + (window.latticesSession || "")).toLowerCase().includes(query.trim().toLowerCase());
@@ -92,10 +94,7 @@ export function parseEntry(text, windows, layers) {
     if (args.some(p => p.startsWith("--"))) throw new Error("This command does not support that option.");
     if (action === "hints" && args.length === 0 && !dryRun) return { kind: "page", page: "Hints" };
     if (action === "space" && args.length === 1) {
-      const direction = { next: "e+1", prev: "e-1", previous: "previous" };
-      const target = args[0];
-      const workspace = Object.prototype.hasOwnProperty.call(direction, target) ? direction[target] :
-        /^[1-9]\d*$/.test(target) && Number(target) <= 2147483647 ? Number(target) : null;
+      const workspace = workspaceTarget(args[0]);
       if (workspace === null) throw new Error("Use space next, prev, previous, or a positive decimal ID.");
       return { kind: "rpc", method: "spaces.focus", params: { workspace, dryRun } };
     }

@@ -8,46 +8,6 @@ For a standalone app, CLI, host and tray installation, follow
 [Install on Linux](../../docs/install-linux.md). The installed runtime does not
 depend on keeping a source checkout.
 
-## Install
-
-Run this inside a Hyprland desktop on Arch/Omarchy:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
-```
-
-From this checkout, run `bash install.sh` at the repository root. With Bun and
-all system dependencies already installed, `bun run linux:install` runs the
-same app installer.
-
-The installer copies the CLI and Linux runtime into the user account, installs
-the app launcher, enables the host and tray user services, checks `lats doctor`,
-and opens the app. The source checkout can be removed afterward.
-
-| Option | Behavior |
-| --- | --- |
-| `--gestures` | Add Forward-button gestures and the pen trail on Omarchy |
-| `--wheel-gestures` | Also reserve wheel-click for gestures |
-| `--no-start` | Copy files without starting services or opening the app |
-| `--dry-run` | Show the plan without writes, downloads or service changes |
-| `--no-deps` | Skip distribution packages; install JavaScript dependencies normally |
-| `--replace-existing` | Back up and replace older/manual installation files |
-
-Gestures map left/right to spaces, down to the Lattices overlay, and down then
-left to Enter in the original window. Up sends the Fab recording toggle when
-Fab is separately installed. The installer does not install Fab or Scout.
-
-Plain wheel-click keeps its existing behavior unless `--wheel-gestures` is
-selected. **Super+Ctrl+G** opens the button tester; **Escape** cancels it.
-
-Repeat the install command to update. Existing gesture choices are retained.
-An activation failure leaves the copied runtime installed and reports the
-service or desktop error. Changed files are backed up under
-`~/.local/state/lattices/install-backups/`.
-
-See [Install on Linux](../../docs/install-linux.md) for the full requirements,
-verification commands, SSH setup, installed paths and recovery instructions.
-
 ## Run from source for development
 
 Keep this checkout available when running the development app. With Bun and
@@ -346,7 +306,7 @@ repository root after installing both packages:
 bun packages/host-linux/test/virtual-runtime.acceptance.ts
 mkdir -p /tmp/lattices-qml-evidence
 LATTICES_ACCEPTANCE_ARTIFACTS=/tmp/lattices-qml-evidence \
-  bun packages/host-linux/test/qml-runtime.acceptance.ts
+  bun apps/linux/test/qml-runtime.acceptance.ts
 ```
 
 The virtual check owns a fresh private Sway runtime and disposable foot windows.
@@ -369,3 +329,31 @@ a real park. It removes only its own outputs/windows, restores baseline focus
 and pointer, and compares preexisting window geometry and workspace assignments.
 Do not run it while someone is interacting with the desktop: concurrent changes
 can invalidate the baseline assertions.
+
+## Source ownership
+
+- `main.ts` launches the app; `shell.qml` owns its window and navigation. QML
+  components and portable view models remain beside the shell.
+- `backend.ts` adapts app requests to the host API. Shared transport, pairing,
+  health checks, hints, desktop contracts and workspace target validation live
+  in `packages/desktop-client`. CLI parsing and printing remain in `bin/cli`.
+- `install.ts` remains the installer entry point. `install/` owns options,
+  paths, runtime inventory, file ownership/rollback and service activation.
+  `integrations/omarchy/` owns the optional gesture plan and its templates.
+- `packages/host-linux` owns the background host, tray and service control.
+  Both installers render its `systemd/` templates through `src/service-units.ts`.
+  The development installer links source-backed units and enables only the tray;
+  the standalone installer copies a runtime, supplies PATH and enables both.
+- `test/` contains app model, appearance, Qt and opt-in QML runtime checks.
+  `tests/linux-*.test.ts` at the root covers CLI and cross-component behavior.
+
+The runtime copies repository-relative paths. Changes to shared modules must
+also update `install/runtime.ts`, the sparse checkout in
+`scripts/install-linux.sh`, and the npm `files` manifest. Test directories are
+excluded from the installed runtime. `docs/install-linux.md` is the canonical
+installation and recovery guide.
+
+QML folder regrouping is deferred until its relative imports and component
+lookup can be exercised with Qt and Quickshell on Linux. The console keeps its
+existing command subset; it shares only portable workspace target validation
+with the CLI. Omarchy remains an integration of the Linux app.

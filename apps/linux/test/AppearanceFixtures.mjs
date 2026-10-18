@@ -1,5 +1,5 @@
 // Appearance messages as the app bridge sends them, for the Theme tests and
-// renders. tests/linux-appearance.test.ts regenerates each one from `sources`
+// renders. appearance.test.ts regenerates each one from `sources`
 // and fails if the loader has drifted from what is written here.
 
 export const sources = {
