@@ -3,7 +3,8 @@ import { actionDescription } from '../lib/action-schema'
 /** Canonical origin. Matches public/CNAME and the tags in index.html. */
 export const SITE_ORIGIN = 'https://lattices.dev'
 
-export const latticesAppVersion = '0.15.0'
+// Published release; repository candidates may be ahead of downloadable builds.
+export const latticesAppVersion = '0.14.1'
 export const latticesDownloadUrl =
   `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =

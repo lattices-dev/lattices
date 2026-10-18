@@ -16,5 +16,5 @@ names Omarchy, so the image is decorative for assistive technology.
 Platform description: https://github.com/omacom/omarchy/blob/quattro/manual/01-welcome-to-omarchy.md
 Lattices capabilities: https://github.com/lattices-dev/lattices/blob/main/apps/linux/README.md
 Installer and requirements: https://github.com/lattices-dev/lattices/blob/main/docs/install-linux.md
-The homepage install command follows this guide. Its publication requires the
-Linux installer from PR #224 to be available on main.
+The homepage install command follows this guide. The Linux installer was
+verified on main at `9e03a8dacdf6e444b16f6326b57f2e683fdfec32` after PR #224 merged.
