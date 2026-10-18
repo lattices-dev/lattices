@@ -1,0 +1,113 @@
+{
+  "title": "Lattices desktop navigation motion study",
+  "date": "2026-10-13",
+  "status": "exploration",
+  "goal": "Make immediate desktop navigation feel legible, continuous and quietly delightful.",
+  "rubric": [
+    "Destination and direction remain legible",
+    "Repeated input and reversal remain continuous",
+    "Silent first and last boundaries",
+    "Reduce Motion removes spatial movement",
+    "Small fixed drawing cost; no desktop images",
+    "Native Lattices visual identity"
+  ],
+  "budget": "One implementation and one correction pass per author",
+  "previews": {
+    "codex": "http://127.0.0.1:3066/",
+    "opus": "http://127.0.0.1:3066/opus/",
+    "codexSpatial": "http://127.0.0.1:3066/spatial/",
+    "opusSpatial": "http://127.0.0.1:3066/opus-spatial/",
+    "visualPreviews": "http://127.0.0.1:3066/previews/"
+  },
+  "serve": "python3 -m http.server 3066 --bind 127.0.0.1 --directory studies/space-navigation-2026-10-13",
+  "authors": [
+    {
+      "agent": "Codex",
+      "concepts": [
+        "Shuttle",
+        "Viewport",
+        "Quiet Compass"
+      ],
+      "shortlist": "Viewport"
+    },
+    {
+      "agent": "Opus",
+      "runtime": "Claude Code",
+      "model": "claude-opus-5-5",
+      "modelEvidence": "Scout profile resolution and worker self-report",
+      "concepts": [
+        "Odometer",
+        "Lens",
+        "Wake + origin"
+      ],
+      "shortlist": "Wake + origin"
+    }
+  ],
+  "baseline": {
+    "file": "baseline.mp4",
+    "evidence": "Action recording of signed native app, finished marker verified",
+    "source": "/Users/arach/dev/lattices/apps/mac/Sources/Core/Overlays/HUD/SpaceSwitchBezel.swift"
+  },
+  "limitations": [
+    "Browser prototypes approximate native motion, not performance measurements",
+    "Opus default repeat pace differs; choose matching pace when comparing",
+    "No concept selected for native implementation yet"
+  ],
+  "expandedCanvas": {
+    "goal": "Explore desktop-scale navigation beyond the top rail",
+    "rubric": [
+      "Spatial motion adds useful direction or arrival feedback",
+      "Destination remains readable",
+      "Repeated input interrupts without queueing decorative work",
+      "Silent invalid moves at either boundary",
+      "Reduce Motion removes spatial effects",
+      "Distinguish overlay cost from desktop capture or compositing cost"
+    ],
+    "codex": {
+      "concepts": [
+        "Passing light",
+        "Threshold",
+        "Focus echo"
+      ],
+      "shortlist": "Focus echo",
+      "checks": [
+        "Browser render inspected",
+        "Full traversal at 110 ms ended on desktop 1",
+        "Previous at desktop 1 remained on desktop 1",
+        "Quick reversal exercised",
+        "Reduce Motion toggled and destination updated",
+        "No browser console errors observed"
+      ],
+      "limitations": [
+        "No native implementation or profiling in this round",
+        "Desktop content is illustrative",
+        "Focus anchor can be positioned by clicking; native anchor policy remains undecided"
+      ]
+    },
+    "opus": {
+      "status": "Completed; artifact read and broker reply received",
+      "flightId": "flt-mv6uy3ik-3kq8zd",
+      "session": "claude:050d3765-bb71-4587-8641-c7a9ac1cc60b",
+      "modelObserved": "claude-opus-5-5",
+      "requestedOutput": "opus-spatial/index.html",
+      "follow": "http://127.0.0.1:43120/c/chn-68f299aaaa38439a808f8cfc8a2eb126",
+      "concepts": [
+        "Flanks",
+        "Landing",
+        "Ghost carry"
+      ]
+    }
+  },
+  "visualPreviews": {
+    "goal": "Richer desktop previews with restrained motion, following user clarification",
+    "concepts": [
+      "Desktop filmstrip",
+      "Window atlas",
+      "Neighbor peek"
+    ],
+    "recommended": "Desktop filmstrip",
+    "status": "Interactive illustrative study; no native implementation",
+    "inspiration": "Window atlas draws on the window-outline idea in the Opus spatial study",
+    "budget": "One build and one correction pass"
+  }
+}

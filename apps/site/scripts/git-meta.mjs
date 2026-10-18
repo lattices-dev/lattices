@@ -9,7 +9,7 @@ import { resolve, join } from 'node:path'
 
 const execFileAsync = promisify(execFile)
 
-const GITHUB_REPO = 'arach/lattices'
+const GITHUB_REPO = 'lattices-dev/lattices'
 const GITHUB_BRANCH = 'main'
 
 export const repoInfo = {

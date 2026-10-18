@@ -1,3 +1,4 @@
+import { withRequestContext } from "./request-context.ts";
 import type { ServerWebSocket } from "bun";
 import { identify, type Identity, type Policy } from "./auth.ts";
 import { BridgeSecurityError } from "./bridge/security.ts";
@@ -9,6 +10,7 @@ interface Conn {
   auth: ConnAuth;
   /** Events this connection asked for; null means all (the default, as on the Mac). */
   events: Set<string> | null;
+  active: Set<AbortController>;
 }
 
 /**
@@ -32,7 +34,8 @@ export function handleSubscription(conn: Pick<Conn, "events">, method: string, p
   return { ok: true, events: conn.events ? [...conn.events].sort() : ["*"] };
 }
 
-export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed", "virtual.changed"];
+export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "computer.acted", "host.healthChanged", "layers.changed", "virtual.changed"];
+
 
 export interface ServeOptions {
   hosts: string[];
@@ -69,7 +72,7 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
           }
         }
         const auth: ConnAuth = { local: identity.local === true, client, pairingRequired: pairing !== null };
-        if (server.upgrade(req, { data: { identity, auth, events: null } })) return undefined;
+        if (server.upgrade(req, { data: { identity, auth, events: null, active: new Set<AbortController>() } })) return undefined;
         // Plain HTTP GET / answers a health check, like the companion bridge.
         return Response.json({ ok: true, service: "lattices-host", websocket: `ws://${hostname}:${port}` });
       },
@@ -84,12 +87,14 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
         },
         close(ws) {
           sockets.delete(ws);
+          for (const controller of ws.data.active) controller.abort();
         },
         async message(ws, raw) {
           let request: Request;
           try {
             request = JSON.parse(String(raw));
             if (typeof request.method !== "string") throw new Error("missing method");
+            if (request.deadline !== undefined && (!Number.isFinite(request.deadline) || !Number.isSafeInteger(request.deadline))) throw new Error("invalid deadline");
           } catch {
             ws.send(JSON.stringify({ id: "?", result: null, error: "Invalid request JSON" }));
             return;
@@ -120,15 +125,20 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
             ws.send(JSON.stringify({ id, result: subscription, error: null }));
             return;
           }
-          const response = await router.handle({ ...request, id });
-          if (response.error) log(`${request.method} -> ${response.error}`);
-          ws.send(JSON.stringify(response));
+          const controller = new AbortController();
+          ws.data.active.add(controller);
+          try {
+            const response = await withRequestContext({ signal: controller.signal, deadline: request.deadline }, () => router.handle({ ...request, id }));
+            if (response.error) log(`${request.method} -> ${response.error}`);
+            if (!controller.signal.aborted) ws.send(JSON.stringify(response));
+          } finally { ws.data.active.delete(controller); }
         },
       },
     })
   );
 
   return {
+    ports: servers.map(server => server.port!),
     clientCount: () => sockets.size,
     /** Close the connections a revoked client has open. */
     disconnect(clientID: string) {
@@ -142,6 +152,7 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
       }
     },
     stop() {
+      for (const ws of sockets) for (const controller of ws.data.active) controller.abort();
       for (const server of servers) server.stop(true);
     },
   };

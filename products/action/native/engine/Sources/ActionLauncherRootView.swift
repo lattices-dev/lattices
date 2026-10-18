@@ -663,14 +663,13 @@ struct ActionLauncherRootView: View {
                 Rectangle()
                     .fill(StageHUDTheme.cardBorder.opacity(0.7))
                     .frame(height: 1)
-                    .padding(.horizontal, showsIconsOnly ? 6 : 10)
+                    .padding(.horizontal, showsIconsOnly ? 14 : 18)
                     .padding(.vertical, 7)
 
                 ForEach([LauncherSection.scenarios, .runs, .library], id: \.self) { section in
                     sidebarItem(section, showsIconsOnly: showsIconsOnly)
                 }
             }
-            .padding(.horizontal, 8)
             .padding(.top, 12)
 
             Spacer(minLength: 0)
@@ -682,7 +681,6 @@ struct ActionLauncherRootView: View {
             }
 
             sidebarItem(.settings, showsIconsOnly: showsIconsOnly)
-                .padding(.horizontal, 8)
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -734,6 +732,9 @@ struct ActionLauncherRootView: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 32, alignment: showsIconsOnly ? .center : .leading)
+        // The row insets its own content so the selection band can run the
+        // full width of the rail.
+        .padding(.horizontal, 8)
         .background {
             // The travelling pill. Only the selected row draws it, so SwiftUI
             // animates the single view from its old frame to its new one.
@@ -743,17 +744,18 @@ struct ActionLauncherRootView: View {
                 // chrome, on every screen, permanently. The 2pt rail is the
                 // only coloured mark left, and being the only one it does not
                 // need to be wide or to sit on a tinted field to be found.
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                // Square, edge to edge, with the rail flush against the left
+                // edge: a band across the panel, not a pill floating in it.
+                Rectangle()
                     .fill(StageHUDTheme.textPrimary.opacity(0.055))
                     .overlay(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        Rectangle()
                             .fill(StageHUDTheme.reviewAccent)
                             .frame(width: 2)
-                            .padding(.vertical, 8)
                     }
                     .matchedGeometryEffect(id: "sidebarSelection", in: sidebarSelection)
             } else if hovered {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                Rectangle()
                     .fill(StageHUDTheme.textPrimary.opacity(0.03))
             }
         }

@@ -4,6 +4,12 @@
 
 ## Documentation
 
+- Action install: /action/install.md
+- Action MCP setup: /action/agent-setup.md
+- Action agent index: /action/llms.txt
+- Action setup manifest: /action/agent.json
+- Agent skill discovery: /.well-known/agent-skills/index.json
+
 - Quickstart: /docs/quickstart
 - Install on Linux: /docs/install-linux
 - Concepts: /docs/concepts

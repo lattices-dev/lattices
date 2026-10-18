@@ -1,14 +1,22 @@
 import { describe, expect, test } from 'bun:test';
 import { fetchCompanionRelease, selectCompanionRelease } from '../bin/companion-release';
 
-function release(tag = 'blink-v2.0.0', asset = 'Blink.dmg') {
+function release(tag = 'blink-v2.0.0', asset = 'Blink.dmg', repository = 'lattices-dev/lattices') {
   return { tag_name: tag, draft: false, prerelease: false, assets: [{
     name: asset, state: 'uploaded', size: 1000,
-    browser_download_url: `https://github.com/arach/lattices/releases/download/${tag}/${asset}`,
+    browser_download_url: `https://github.com/${repository}/releases/download/${tag}/${asset}`,
   }] };
 }
 
 describe('companion release policy', () => {
+  test('accepts exact release assets before and after the repository transfer', () => {
+    for (const repository of ['arach/lattices', 'lattices-dev/lattices']) {
+      expect(selectCompanionRelease('blink', [release('blink-v2.0.0', 'Blink.dmg', repository)])?.version).toBe('2.0.0');
+    }
+    for (const repository of ['lattices-dev/other', 'other/lattices', 'lattices-dev/lattices-copy']) {
+      expect(selectCompanionRelease('blink', [release('blink-v2.0.0', 'Blink.dmg', repository)])).toBeUndefined();
+    }
+  });
   test('selects the highest stable product version independent of API order', () => {
     const result = selectCompanionRelease('blink', [
       release('v99.0.0'), release('blink-v2.9.0'), release('blink-v2.10.0'),
@@ -52,6 +60,7 @@ describe('companion release policy', () => {
     }) as typeof fetch;
     expect((await fetchCompanionRelease('blink', { fetcher }))?.version).toBe('2.0.0');
     expect(urls[1]).toContain('page=2');
+    expect(urls[0]).toStartWith('https://api.github.com/repositories/1171006654/releases?');
     const abort = new AbortController(); abort.abort();
     await expect(fetchCompanionRelease('blink', { fetcher, signal: abort.signal })).rejects.toThrow();
     expect(urls.length).toBe(2);

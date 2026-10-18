@@ -3720,7 +3720,9 @@ final class ComputerUseController {
             }
         }
 
-        let previousValue = axAttributeString(element, attribute: kAXValueAttribute)
+        // Mutation inputs and verification must preserve the complete value.
+        // axAttributeString trims and truncates text for display in snapshots.
+        let previousValue = axString(element, attribute: kAXValueAttribute)
         let baseValue = append ? (previousValue ?? "") : ""
         let insertedValue = append ? (baseValue + text) : text
         let interval = typeIntervalMs.map { max(4, min($0, 160)) }
@@ -3739,7 +3741,7 @@ final class ComputerUseController {
             try setAXValue(insertedValue)
         }
 
-        let verified = axAttributeString(element, attribute: kAXValueAttribute)
+        let verified = axString(element, attribute: kAXValueAttribute)
         return AXTextInsertionResult(
             role: elementInfo.role,
             roleDescription: elementInfo.roleDescription,
@@ -3758,6 +3760,20 @@ final class ComputerUseController {
         maxElements: Int,
         timeoutMs: Int
     ) throws -> AXSnapshotContext {
+        // AX calls targeting this process invoke our AppKit/SwiftUI accessibility
+        // implementation directly. Traversing it on the daemon queue can enter
+        // view layout off the main thread and crash the Swift exclusivity runtime.
+        // Keep only the self-inspection on main; remote AX and capture stay off it.
+        if window.pid == ProcessInfo.processInfo.processIdentifier, !Thread.isMainThread {
+            return try DispatchQueue.main.sync {
+                try self.axSnapshot(
+                    window: window,
+                    maxDepth: maxDepth,
+                    maxElements: maxElements,
+                    timeoutMs: timeoutMs
+                )
+            }
+        }
         guard AXIsProcessTrusted() else {
             throw RouterError.custom("Accessibility permission is required for computer.windowState")
         }

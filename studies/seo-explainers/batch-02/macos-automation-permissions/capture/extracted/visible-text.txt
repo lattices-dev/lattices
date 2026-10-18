@@ -1,0 +1,7 @@
+User: ok, let's build more explainers
+Audience: mid level aspiring power user
+Source-reviewed teaching text:
+Operate a control. Accessibility lets a tool read or use the controls an app exposes.
+Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access.
+Send app commands. Automation covers Apple Events that let one app command another.
+Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version.

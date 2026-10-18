@@ -13,7 +13,7 @@ depend on keeping a source checkout.
 Run this inside a Hyprland desktop on Arch/Omarchy:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
 ```
 
 From this checkout, run `bash install.sh` at the repository root. With Bun and
@@ -58,6 +58,20 @@ bun install --cwd packages/host-linux --frozen-lockfile --ignore-scripts --omit 
 bun packages/host-linux/src/main.ts  # if the host is not already running
 bun run linux:app
 ```
+
+The repository root and `packages/host-linux` are separate Bun packages.
+The host declares `dbus-next` in its own manifest and lockfile; a root-only
+install does not install it. For root typechecking and host tests, install both:
+
+```sh
+bun install --frozen-lockfile
+bun install --cwd packages/host-linux --frozen-lockfile --ignore-scripts --omit optional
+bun run check:types
+bun test packages/host-linux/test
+```
+
+The host install skips dependency lifecycle scripts and the optional native
+Unix-FD addon, matching the host's documented JavaScript D-Bus setup.
 
 The shell follows the macOS app's layout and navigation. Home shows running
 sessions, active windows, and saved layer layouts. Layers saves windows into named
@@ -254,16 +268,9 @@ lats hints --open      # open the app's Hints page
 lats app hints         # same page
 ```
 
-To make Lattices discoverable in Omarchy's Apps menu, install its desktop entry
-and icon after putting this checkout's `lats` on PATH:
-
-```sh
-bun run linux:install
-```
-
-The entry also includes a **Keyboard hints** action. It writes only to your XDG
-data directory and does not change Hyprland bindings or Omarchy configuration.
-Keep the source checkout and `lats` available after installing it.
+The Linux installer adds Lattices to Omarchy's Apps menu. The desktop entry
+includes a **Keyboard hints** action that opens this page. It uses the installed
+runtime, so opening Hints does not require a source checkout.
 
 ## Desktop CLI
 
@@ -329,3 +336,36 @@ Agents use `computer.virtual.start/status/launch/capture/stop` and add
 `space: "virtual"` to `computer.*` input or observe calls. Input still stages by
 default and requires `treatment: "execute"` to act. See the
 [host API notes](../../packages/host-linux/README.md#virtual-computer-use).
+
+## Opt-in acceptance checks
+
+These checks are not part of the ordinary unit-test command. Run them from the
+repository root after installing both packages:
+
+```sh
+bun packages/host-linux/test/virtual-runtime.acceptance.ts
+mkdir -p /tmp/lattices-qml-evidence
+LATTICES_ACCEPTANCE_ARTIFACTS=/tmp/lattices-qml-evidence \
+  bun packages/host-linux/test/qml-runtime.acceptance.ts
+```
+
+The virtual check owns a fresh private Sway runtime and disposable foot windows.
+The QML check uses a fresh private Sway runtime, a copied shell with a navigation
+timer, and a fixture backend. It captures Home, Overview, Layers, Activity,
+Settings, and the Virtual space view. It does not test host RPC integration.
+
+For live Hyprland acceptance, an explicit opt-in permits creating two new owned
+headless outputs and three disposable foot windows in the current compositor:
+
+```sh
+LATTICES_ACCEPT_LIVE_OWNED_OUTPUTS=1 \
+  bun packages/host-linux/test/hyprland-runtime.acceptance.ts
+```
+
+This check does not edit compositor configuration or workspace assignments. It
+uses temporary registry/workspace files, verifies floating and tiled move-back,
+layer parking and restart recovery, and an injected lost acknowledgement after
+a real park. It removes only its own outputs/windows, restores baseline focus
+and pointer, and compares preexisting window geometry and workspace assignments.
+Do not run it while someone is interacting with the desktop: concurrent changes
+can invalidate the baseline assertions.

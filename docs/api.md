@@ -28,7 +28,7 @@ lats daemon status
 3. Call a method from Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
@@ -144,7 +144,7 @@ matching internally.
 Send an RPC call and await the response.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Read-only
 const status = await daemonCall('daemon.status')
@@ -170,7 +170,7 @@ await daemonCall('projects.scan', null, 10000)
 Check if the server is reachable.
 
 ```js
-import { isDaemonRunning } from '@lattices/cli'
+import { isDaemonRunning } from '@lattices/lattices'
 
 if (await isDaemonRunning()) {
   console.log('daemon is up')
@@ -186,7 +186,7 @@ typed SDK facade, which validates params with dependency-free schemas and calls
 the same daemon methods directly.
 
 ```ts
-import { cua } from '@lattices/sdk'
+import { cua } from '@lattices/lattices/cua'
 
 await cua.magicCursor({
   app: 'Scout',
@@ -213,16 +213,15 @@ await cua.click({
 })
 ```
 
-`@lattices/cli/cua` exposes the same CUA module for CLI-adjacent scripts, but
-new app and agent code should use `@lattices/sdk` or `@lattices/sdk/cua` so the
-import names the product surface instead of the CLI package.
+`@lattices/lattices/cua` exposes this typed CUA module. Existing imports from
+`@arach/lattices/cua` and `@lattices/cli/cua` remain supported.
 
 ### Error handling
 
 `daemonCall` throws on errors — always wrap calls in try/catch:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 try {
   await daemonCall('sessions.launch', { path: '/nonexistent' })
@@ -1787,65 +1786,66 @@ Provide either `wid` or `session`. If `wid` is given, it takes priority.
 
 #### `windows.move`
 
-Move a specific window to another display, into a placement slot, or to a
-different macOS Space. `windows.place` stays the canonical placement mutation;
-`windows.move` adds the display-to-display move that preserves the window's
-normalized geometry.
+Move a specific window to a display and desktop in one verified operation.
+Without a placement, the window keeps its normalized position and size on the
+target display. A Space ID identifies one desktop on one display; Desktop 2
+on a physical monitor differs from Desktop 2 on a virtual display.
 
 **Params**:
 
-| Field       | Type             | Required | Description                                        |
-|-------------|------------------|----------|----------------------------------------------------|
-| `wid`       | number           | no       | Target CGWindowID (preferred)                      |
-| `session`   | string           | no       | Session name (legacy target)                       |
-| `display`   | number           | no       | Target display index (`spaces.list` `displayIndex`) |
-| `placement` | string \| object | no       | Placement slot on the target display               |
-| `position`  | string           | no       | Alias for `placement`                              |
-| `spaceId`   | number           | no       | Target Space ID (from `spaces.list`)               |
-| `dryRun`    | bool             | no       | Plan and validate without moving the window        |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `wid` | number | no | Target CGWindowID (preferred) |
+| `session` | string | no | Session name (legacy target) |
+| `display` | number | no | Target display index from `spaces.list` |
+| `spaceId` | number | no | Absolute target Space ID from `spaces.list` |
+| `placement` | string \| object | no | Placement slot on the target display |
+| `position` | string | no | Alias for `placement` |
+| `dryRun` | bool | no | Validate and plan without moving the window or changing the view |
 
-Provide `wid` or `session` — there is no frontmost fallback — plus at least one
-of `display`, `placement`, or `spaceId`. Invalid combinations are rejected
-synchronously:
+Provide `wid` or `session`, plus at least one of `display`, `spaceId`, or
+`placement`. There is no frontmost-window fallback.
 
-- `spaceId` cannot be combined with `display` or `placement`; move Spaces and
-  geometry in separate calls.
-- An unknown `placement` string or unresolvable `display` index is an error,
-  not a silent default.
+- `spaceId` selects its owning display when `display` is omitted. If both are
+  supplied, the Space must belong to that display. A mismatch is an error.
+- `display` alone selects that display's current desktop. Display indexes
+  resolve through stable display UUIDs.
+- `placement` can accompany either destination. Without a placement, a
+  cross-display move maps the source frame onto the target visible frame and
+  clamps it to fit. A same-display desktop move preserves the frame.
+- Unknown displays, Spaces, and placements are errors. A window must belong
+  to one ordinary desktop; full-screen and multi-Space windows are rejected
+  when their relocation cannot be verified.
 
-**Semantics**:
+For an inactive source desktop, Lattices first carries the window to the
+source display's current desktop. It then moves the window to the target
+display and carries it to the requested desktop. Mission Control can appear
+during these steps. Keep the pointer free until the operation finishes.
 
-- `display` **without** `placement` — the window's normalized `x/y/w/h` within
-  its source display's visible frame is preserved onto the target display's
-  visible frame and clamped to fit. Display indexes resolve to screens through
-  stable display UUIDs, not array order.
-- `display` **with** `placement` (or `placement` alone) — routes through the
-  canonical `windows.place` execution path; the receipt carries
-  `compatibilityMethod: "window.move"`.
-- `session` + `spaceId` — waits for `moveWindowToSpace` and returns
-  `{ ok, wid, spaceId, moved, method }` instead of fire-and-forget.
-- `wid` + `spaceId` — synchronous Space move through the CGS primitive. Returns
-  `{ ok, moved, method, fromSpaceIds }`; `method` is `"CGS"` when the window
-  actually moved or `"switch-view"` when macOS denied the move and only the
-  view switched. An unknown `spaceId` is rejected with `Not found`, and CGS
-  being unavailable is an error. `dryRun: true` validates the target and
-  returns `status: "planned"` without touching the window or the view.
-
-**Returns** (geometry moves): an execution receipt with `status`
+**Returns**: an execution receipt with `status`
 (`ok`/`planned`/`blocked`/`failed`), before/target/after frames in `mutations`,
-`sourceDisplay` and `display` (name, index, visible frame), `targetResolution`,
-`verified`, `trace`, and undo metadata. Successful moves are undoable via
-`history.undo`.
+`sourceDisplay`, `display`, `spaceId`, `fromSpaceIds`, and `afterSpaceIds`.
+`verified` requires `verifiedFrame`, `verifiedDisplay`, and `verifiedSpace`
+to succeed. An AX call or a desktop view switch alone cannot report success.
+A placement receipt retains `action.type: "window.place"` and
+`compatibilityMethod: "window.move"`.
+
+On partial failure, Lattices attempts to restore the original display,
+desktop, and frame. The receipt reports `failureReason`, `rollback`, and the
+observed final state. Successful moves support `actions.undo`, including the
+original desktop. Allow up to 60 seconds for verification and recovery.
 
 ```js
-// Move window 4182 to display 1, keeping its relative size and position
-await daemonCall('windows.move', { wid: 4182, display: 1 })
+// Move to the current desktop on display 0, preserving relative geometry.
+await daemonCall('window.move', { wid: 4182, display: 0 }, 60000)
 
-// Move it to display 1 and snap it into the right half
-await daemonCall('windows.move', { wid: 4182, display: 1, placement: 'right' })
+// Choose the exact physical display and desktop in one operation.
+await daemonCall('window.move', { wid: 4182, display: 0, spaceId: 3 }, 60000)
 
-// Plan only — validate the move and preview frames without executing
-await daemonCall('windows.move', { wid: 4182, display: 1, dryRun: true })
+// Preview a move and placement without changing the window or desktop view.
+await daemonCall('window.move', {
+  wid: 4182, display: 0, spaceId: 3, placement: 'left', dryRun: true
+})
 ```
 
 #### `spaces.optimize`
@@ -2022,7 +2022,8 @@ Restart a specific pane's process within a session.
 | `projects.scan` | write | Re-scan project directory |
 | `layers.list` | read | Workspace layers, active index, and what switches put away |
 | `layers.members` | read | Each layer's entries and the windows they hold, on any desktop |
-| `layers.reveal` | write | Show All: put back parked windows, unhide apps a switch hid |
+| `layers.exit` | write | Exit layer focus and restore parked windows |
+| `layers.reveal` | write | Compatibility alias for `layers.exit` |
 | `layers.create` | write | Save windows as a new layer |
 | `layers.assign` | write | Add windows to a layer |
 | `layers.unassign` | write | Take windows out of a layer |
@@ -2074,8 +2075,7 @@ repo or adding a `.lattices.json` config.
 
 #### `layers.list`
 
-List configured workspace layers and the active index. `stage` lists
-what layer switches have put away: parked windows and hidden apps.
+List configured workspace layers and whether layer focus is active.
 
 **Params**: none
 
@@ -2088,16 +2088,56 @@ what layer switches have put away: parked windows and hidden apps.
     { "id": "mobile", "label": "Mobile", "index": 1, "projectCount": 2 }
   ],
   "active": 0,
-  "stage": {
-    "parked": [{ "wid": 4812, "app": "Ghostty", "title": "mini: web · server" }],
-    "hidden": ["Slack"]
-  }
+  "focusActive": true,
+  "rememberedIndex": 0,
+  "stage": { "parked": [], "hidden": [] }
 }
 ```
 
-Returns empty `layers` array if no workspace config is loaded. `stage`
-is read as it stands: a window that closed or was dragged back since the
-last switch can still be listed until something prunes the ledger.
+`active` is `null` after exiting layers. `rememberedIndex` retains the last
+selected layer index; it does not mean that layer focus is active. `stage`
+lists windows parked and apps hidden by Lattices. Returns an empty `layers`
+array if no workspace config is loaded.
+
+#### `layers.exit`
+
+Exit layer focus and restore windows that Lattices parked or hid. Saved
+layer definitions and window desktop assignments remain intact. Apps the
+user hid stay hidden. Select a layer explicitly to enter layer focus again.
+
+**Params**: none
+
+**Returns**:
+
+```json
+{
+  "ok": true,
+  "focusActive": false,
+  "active": null,
+  "unparked": 3,
+  "stillParked": 0,
+  "rescued": 0,
+  "unhidden": ["Slack"],
+  "stillHidden": [],
+  "recoveryPending": false,
+  "stage": { "parked": [], "hidden": [] }
+}
+```
+
+`unparked` counts restored windows. `rescued` counts untracked windows
+recovered from the parking corner. `stillParked` and `stillHidden` report
+restoration that remains pending; `ok` confirms exit, not complete recovery.
+
+A window on an inactive desktop can remain parked until that desktop is
+visible. Lattices retains its saved position and retries restoration when
+you visit the desktop. The exit action does not switch desktops or gather
+windows onto the current desktop. Check `recoveryPending` and `stage` for
+outstanding recovery.
+
+#### `layers.reveal`
+
+Compatibility alias for `layers.exit`, with the same result. The former
+Show All action also exits layer focus.
 
 #### `layers.members`
 
@@ -2556,7 +2596,7 @@ is available at ws://127.0.0.1:9399.
 
 ### Import
 \```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 \```
 ```
 
@@ -2565,7 +2605,7 @@ import { daemonCall } from '@lattices/cli'
 An orchestrator agent can set up the full workspace for sub-agents:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Discover what's available
 const projects = await daemonCall('projects.list')
@@ -2619,7 +2659,7 @@ ws.on('open', () => {
 Always verify the daemon is running before making calls:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@lattices/cli'
+import { isDaemonRunning, daemonCall } from '@lattices/lattices'
 
 if (!(await isDaemonRunning())) {
   console.error('lats daemon is not running — start it with: lats app')

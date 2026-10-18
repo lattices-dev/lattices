@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Space Switch Study</title>
+<meta name="description" content="Opus study: three directions for the Lattices Ctrl+arrow desktop HUD. Simulated preview.">
+<style>
+:root{
+  --bg:#0b0d0f; --panel:#121518; --line:rgba(255,255,255,.08); --text:#e9ecee; --dim:rgba(233,236,238,.55); --faint:rgba(233,236,238,.32);
+  --cyan:#5fd4e8; --tray:rgba(20,23,26,.92); --tray-stroke:rgba(255,255,255,.10);
+  --cell-off:rgba(255,255,255,.18); --cell-on:#f2f2f2;
+  --mono: ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:18px;margin:0 0 4px;font-weight:600}
+.back{margin:0 0 10px;font-size:12px;color:var(--faint)}.back a{color:var(--cyan);text-decoration:none}.back a:hover{text-decoration:underline}
+.sub{color:var(--dim);margin:0 0 18px;max-width:780px}
+.sim{display:inline-block;font:600 10px var(--mono);letter-spacing:.08em;color:var(--cyan);border:1px solid rgba(95,212,232,.35);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
+.controls{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:none;border-bottom:1px solid var(--line);padding:10px 0 12px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+button,select{font:12px -apple-system,system-ui,sans-serif;color:var(--text);background:#1a1e22;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:rgba(255,255,255,.22)}
+button:focus-visible,select:focus-visible,.stage:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+label{color:var(--dim);font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.log{font:11px var(--mono);color:var(--faint);min-width:220px;margin-left:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card h2{font-size:14px;margin:0;font-weight:600}
+.card header{padding:12px 14px 0}
+.card header p{margin:2px 0 0;color:var(--dim);font-size:12px}
+.stage{position:relative;margin:12px 14px;height:210px;border-radius:8px;overflow:hidden;outline:none;cursor:pointer}
+.desk{position:absolute;inset:0;transition:none}
+.desk .num{position:absolute;right:14px;bottom:6px;font:700 64px var(--mono);color:rgba(255,255,255,.06);letter-spacing:-.04em}
+.desk .win{position:absolute;border-radius:5px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06)}
+.stage .hint{position:absolute;left:10px;bottom:8px;font:10px var(--mono);color:rgba(255,255,255,.28)}
+.notes{padding:0 14px 14px;color:var(--dim);font-size:12px}
+.notes b{color:var(--text);font-weight:600}
+.notes ul{margin:6px 0 0;padding-left:16px}
+section.rec{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;color:var(--dim);max-width:820px}
+section.rec h2{color:var(--text);font-size:15px;margin:0 0 6px}
+
+/* Shared tray chrome — mirrors SpaceSwitchBezel: dark, 10pt radius, hairline stroke, faint cyan wash */
+.tray{position:absolute;left:50%;top:14px;transform:translateX(-50%);height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;
+  background:linear-gradient(180deg,rgba(95,212,232,.10),transparent 60%),var(--tray);border:.75px solid var(--tray-stroke);border-radius:10px;
+  box-shadow:0 8px 16px rgba(0,0,0,.45);opacity:0;transition:opacity .18s linear;pointer-events:none}
+.tray.on{opacity:1;transition-duration:.12s}
+.dir{width:8px;color:var(--cyan);font:600 9px var(--mono);text-align:center}
+.hair{width:1px;height:16px;background:rgba(255,255,255,.12)}
+.lbl{font:700 9px var(--mono);letter-spacing:.06em;color:var(--dim);white-space:nowrap}
+
+/* A — Odometer */
+.ruler{position:relative;display:flex;gap:4px;align-items:center;height:18px}
+.ruler i{display:block;width:2px;height:8px;border-radius:1px;background:var(--cell-off);transition:height .14s ease,background .14s}
+.ruler i.on{height:16px;background:var(--cell-on)}
+.odo{display:flex;font:700 15px/18px var(--mono);height:18px;overflow:hidden;color:var(--cell-on)}
+.odo .col{width:10px;overflow:hidden;height:18px}
+.odo .strip{display:flex;flex-direction:column;transition:transform .16s cubic-bezier(.3,.7,.2,1)}
+.odo .strip span{height:18px;text-align:center}
+.odo .col.lead .strip span:nth-child(10n+1){color:rgba(255,255,255,.18)}
+.odo .of{font:700 9px var(--mono);color:var(--faint);align-self:flex-end;margin-left:3px;line-height:14px}
+
+/* B — Lens */
+.lens-track{position:relative;height:18px}
+.lens-track i{position:absolute;top:6px;width:6px;height:6px;border-radius:2px;background:var(--cell-off);transition:transform .16s ease,background .16s}
+.lens-track i.near{transform:scale(1.25);background:rgba(255,255,255,.32)}
+.lens{position:absolute;top:2px;height:14px;border-radius:4px;background:var(--cell-on);
+  transition:left .22s cubic-bezier(.3,.7,.2,1),right .22s cubic-bezier(.3,.7,.2,1)}
+.lens.lead-r{transition-duration:.24s,.07s}  /* transition order is left,right: right edge leads, left trails */
+.lens.lead-l{transition-duration:.07s,.24s}
+
+/* C — Wake */
+.cells{display:flex;gap:6px;align-items:center}
+.cells i{position:relative;display:block;width:15px;height:15px;border-radius:3.6px;background:var(--cell-off)}
+.cells i .w{position:absolute;inset:0;border-radius:inherit;background:var(--cell-on);opacity:0;transition:opacity .7s ease-out}
+.cells i.on .w{opacity:1!important;transition:opacity .06s}
+.cells i.origin::after{content:"";position:absolute;left:50%;bottom:-6px;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--cyan)}
+
+/* Reduce Motion: no travel, only state; fades kept (macOS keeps cross-fades under RM) */
+.rm .ruler i,.rm .odo .strip,.rm .lens,.rm .lens-track i,.rm .cells i .w{transition:none!important}
+@media (prefers-reduced-motion: reduce){.ruler i,.odo .strip,.lens,.lens-track i,.cells i .w{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../">← Codex study</a> for comparison</p>
+<h1>Ctrl+←/→ desktop HUD — three directions <span class="sim">SIMULATED PREVIEW</span></h1>
+<p class="sub">Opus study. Each stage is a fake desktop that changes the instant you press — the HUD only acknowledges, it never gates the switch. Beyond the first or last desktop nothing happens, by design. Click a stage (or Tab to it) and use ← / →, or drive all three at once with the buttons.</p>
+
+<div class="controls" role="toolbar" aria-label="Scenarios">
+  <button data-s="prev">◀ Previous</button>
+  <button data-s="next">Next ▶</button>
+  <span class="sep"></span>
+  <button data-s="sweepR">Sweep 1→18</button>
+  <button data-s="sweepL">Sweep 18→1</button>
+  <button data-s="round">Round trip 1→18→1</button>
+  <button data-s="reverse">Reversal 4→9→6</button>
+  <button data-s="nine">9 → 10</button>
+  <button data-s="first">First boundary</button>
+  <button data-s="last">Last boundary</button>
+  <span class="sep"></span>
+  <label>Rate <select id="rate"><option value="45">key repeat (45ms)</option><option value="110" selected>fast taps (110ms)</option><option value="320">deliberate (320ms)</option></select></label>
+  <label>Desktops <select id="total"><option>4</option><option>9</option><option>12</option><option selected>18</option></select></label>
+  <label><input type="checkbox" id="rm"> Reduce Motion</label>
+  <span class="log" id="log" aria-live="polite">ready</span>
+</div>
+
+<div class="grid">
+  <article class="card">
+    <header><h2>A · Odometer</h2><p>The number carries the news; the cells become a ruler.</p></header>
+    <div class="stage" tabindex="0" data-k="A" aria-label="Odometer stage. Use left and right arrows."></div>
+    <div class="notes">
+      <b>Idea.</b> At 18 desktops, cells shrink to 7pt and stop being readable. Swap them for a hairline ruler (position at a glance) and let a mechanical two-digit counter roll to the target. Each digit column is one translated strip, so rapid presses just retarget the transform.
+      <ul><li>Tens column is always present once total ≥ 10 (dim leading 0), so 9→10 never reflows.</li>
+      <li>Footprint is fixed per total; the tray never resizes during a burst.</li>
+      <li>Reduce Motion: digits snap, ruler snaps.</li></ul>
+    </div>
+  </article>
+  <article class="card">
+    <header><h2>B · Lens</h2><p>The active mark stretches with travel, then settles.</p></header>
+    <div class="stage" tabindex="0" data-k="B" aria-label="Lens stage. Use left and right arrows."></div>
+    <div class="notes">
+      <b>Idea.</b> One bright pill whose two edges animate at different speeds: the leading edge snaps (70ms) to the target, the trailing edge follows (240ms). A single press reads as a quick lunge; a held sweep reads as a long streak from where you started, and contracts the moment you stop. Reversal swaps which edge leads, so the streak folds back on itself without a special case.
+      <ul><li>Neighbours of the lens grow slightly — a Dock-like lens without magnifying anything.</li>
+      <li>Two animatable numbers (left, right). No trail buffer, no blur.</li>
+      <li>Reduce Motion: pill jumps; no stretch.</li></ul>
+    </div>
+  </article>
+  <article class="card">
+    <header><h2>C · Wake + origin</h2><p>Keep today's cells; remember where the burst began.</p></header>
+    <div class="stage" tabindex="0" data-k="C" aria-label="Wake stage. Use left and right arrows."></div>
+    <div class="notes">
+      <b>Idea.</b> Closest to the shipped bezel. Every cell you pass flashes to full and decays over 700ms, so a sweep leaves a comet tail and the tail's length is your speed. A small cyan dot under the cell where the burst started answers "how do I get back?" — it is cleared when the tray dismisses.
+      <ul><li>State: one origin index + per-cell opacity the compositor fades. Nothing retained after dismiss.</li>
+      <li>Reversal re-lights cells you return through; the origin dot stays put.</li>
+      <li>Reduce Motion: no decay — only the active cell and origin dot.</li></ul>
+    </div>
+  </article>
+</div>
+
+<section class="rec">
+  <h2>Recommendation</h2>
+  <p><b>Ship C, borrow A's numeral.</b> C keeps the Lattices cell language and adds the one piece of information the current HUD lacks during a burst — where you came from — at the cost of one integer. Replace the "DESKTOP N" label with A's fixed-width rolling two-digit counter so 9→10 and fast sweeps never reflow. Hold B as the direction for &gt; 12 desktops if 7pt cells prove illegible; its stretch is the most expressive answer to speed, but it departs furthest from the logo-cell identity.</p>
+  <p><b>Native mapping.</b> A: two <code>Text</code> columns in a clipped frame with <code>.offset(y:)</code>, or <code>.contentTransition(.numericText())</code>. B: a <code>Capsule</code> positioned by two <code>@State</code> edges with separate <code>.animation</code> durations. C: per-cell opacity driven by a timestamp array in <code>SpaceBezelState</code> (18 Doubles) plus <code>originIndex</code>; set on show, cleared in <code>dismiss()</code>. All three keep the existing panel, timer and token logic, and none touches the switch path.</p>
+  <p><b>Limitations.</b> Browser approximation: CSS easing stands in for SwiftUI springs; tray size and fonts are eyeballed from <code>SpaceSwitchBezel.swift</code>, not measured; travelEdge/bottom positions and multi-display are not simulated; not tested with real key-repeat timing from <code>SpaceSwitchInterceptor</code>.</p>
+</section>
+</main>
+
+<script>
+(() => {
+  const DISMISS = 1100;
+  let total = 18, rate = 110, reduce = false, runId = 0;
+  const logEl = document.getElementById('log');
+  const log = t => { logEl.textContent = t; };
+
+  function deskBg(i){ const h = (i*37)%360; return `linear-gradient(135deg,hsl(${h} 18% 17%),hsl(${(h+40)%360} 14% 10%))`; }
+  const wins = [[8,40,38,46],[50,30,40,36],[14,60,30,30],[56,58,34,30]];
+
+  class Stage {
+    constructor(el, kind){
+      this.el = el; this.kind = kind; this.active = 1; this.origin = null; this.timer = null;
+      el.innerHTML = `<div class="desk"><div class="num"></div></div><div class="tray"></div><div class="hint">← → when focused</div>`;
+      this.desk = el.querySelector('.desk'); this.num = el.querySelector('.num'); this.tray = el.querySelector('.tray');
+      wins.forEach(()=>{ const w=document.createElement('div'); w.className='win'; this.desk.appendChild(w); });
+      this.build(); this.paintDesk();
+      el.addEventListener('click', ()=>el.focus());
+      el.addEventListener('keydown', e => {
+        if (e.key==='ArrowRight'||e.key==='ArrowLeft'){ e.preventDefault(); this.step(e.key==='ArrowRight'?1:-1); }
+      });
+    }
+    paintDesk(){
+      this.desk.style.background = deskBg(this.active);
+      this.num.textContent = this.active;
+      [...this.desk.querySelectorAll('.win')].forEach((w,k)=>{ const r=wins[(k+this.active)%4]; Object.assign(w.style,{left:r[0]+'%',top:r[1]+'%',width:r[2]+'%',height:r[3]+'%'}); });
+    }
+    build(){
+      const t = this.tray, n = total; t.innerHTML = '';
+      t.insertAdjacentHTML('beforeend','<span class="dir">›</span>');
+      this.dirEl = t.firstChild;
+      if (this.kind==='A'){
+        const r = document.createElement('div'); r.className='ruler';
+        for (let i=1;i<=n;i++) r.appendChild(document.createElement('i'));
+        t.appendChild(r); this.cells=[...r.children];
+        t.insertAdjacentHTML('beforeend','<span class="hair"></span>');
+        const o = document.createElement('div'); o.className='odo';
+        const cols = n>=10 ? 2 : 1;
+        this.cols = [];
+        for (let c=0;c<cols;c++){
+          const col=document.createElement('div'); col.className='col'+(cols===2&&c===0?' lead':'');
+          const s=document.createElement('div'); s.className='strip';
+          for (let d=0; d<30; d++){ const sp=document.createElement('span'); sp.textContent=d%10; s.appendChild(sp); }
+          s.pos = 10;  // 0-9 x3; rest in the middle band, roll toward travel, renormalise after
+          s.addEventListener('transitionend', ()=>{ if (s.pos<10||s.pos>19) this.setSlot(s, 10+s.pos%10, true); });
+          col.appendChild(s); o.appendChild(col); this.cols.push(s);
+        }
+        o.insertAdjacentHTML('beforeend',`<span class="of">/${n}</span>`);
+        t.appendChild(o);
+      } else if (this.kind==='B'){
+        const step = n>12 ? 10 : 13, w = (n-1)*step+6;
+        const tr = document.createElement('div'); tr.className='lens-track'; tr.style.width = w+'px';
+        this.step_px = step; this.trackW = w;
+        for (let i=0;i<n;i++){ const c=document.createElement('i'); c.style.left=(i*step)+'px'; tr.appendChild(c); }
+        this.cells=[...tr.children];
+        this.lens=document.createElement('div'); this.lens.className='lens'; tr.appendChild(this.lens);
+        t.appendChild(tr);
+        t.insertAdjacentHTML('beforeend','<span class="hair"></span><span class="lbl"></span>');
+        this.lbl = t.lastChild;
+      } else {
+        const size = n>12 ? Math.max(7, Math.floor((240-(n-1)*6)/n)) : 15;
+        const cs=document.createElement('div'); cs.className='cells';
+        for (let i=0;i<n;i++){ const c=document.createElement('i'); c.style.width=c.style.height=size+'px'; c.style.borderRadius=(size*.24)+'px'; c.innerHTML='<span class="w"></span>'; cs.appendChild(c); }
+        t.appendChild(cs); this.cells=[...cs.children];
+        t.insertAdjacentHTML('beforeend','<span class="hair"></span><span class="lbl"></span>');
+        this.lbl = t.lastChild;
+      }
+      this.render(0, true);
+    }
+    setSlot(s, slot, instant){
+      s.pos = slot;
+      if (instant) s.style.transition='none';
+      s.style.transform=`translateY(${-18*slot}px)`;
+      if (instant){ void s.offsetWidth; s.style.transition=''; }
+    }
+    lensPos(i, instant){
+      const L = (i-1)*this.step_px - 2, R = this.trackW - (L + 10);
+      if (instant) { this.lens.style.transition='none'; }
+      this.lens.style.left = L+'px'; this.lens.style.right = R+'px';
+      if (instant) { void this.lens.offsetWidth; this.lens.style.transition=''; }
+    }
+    render(dir, instant){
+      const a = this.active;
+      if (dir) this.dirEl.textContent = dir>0 ? '›' : '‹';
+      if (this.kind==='A'){
+        this.cells.forEach((c,k)=>c.classList.toggle('on',k+1===a));
+        const digits = this.cols.length===2 ? [Math.floor(a/10), a%10] : [a%10];
+        this.cols.forEach((s,k)=>{
+          const d = digits[k], cur = s.pos % 10;
+          if (instant || !dir) return this.setSlot(s, 10+d, true);
+          if (d === cur) return;
+          if (s.pos < 3 || s.pos > 26) this.setSlot(s, 10+cur, true);
+          this.setSlot(s, dir>0 ? s.pos + (d-cur+10)%10 : s.pos - (cur-d+10)%10, false);
+        });
+      } else if (this.kind==='B'){
+        this.cells.forEach((c,k)=>c.classList.toggle('near',Math.abs(k+1-a)===1));
+        this.lens.classList.toggle('lead-r', dir>0); this.lens.classList.toggle('lead-l', dir<0);
+        this.lensPos(a, instant);
+        this.lbl.textContent = 'DESKTOP ' + String(a).padStart(total>=10?2:1,' ');
+      } else {
+        this.cells.forEach((c,k)=>{
+          const on = k+1===a;
+          if (c.classList.contains('on') && !on){ c.classList.remove('on'); c.querySelector('.w').style.opacity = reduce||instant ? '0' : '0'; }
+          if (on) c.classList.add('on');
+          c.classList.toggle('origin', this.origin!=null && k+1===this.origin && !on);
+        });
+        this.lbl.textContent = 'DESKTOP ' + String(a).padStart(total>=10?2:1,' ');
+      }
+    }
+    step(dir){
+      const target = this.active + dir;
+      if (target < 1 || target > total){ log(`${this.kind}: ${dir>0?'→':'←'} at ${this.active} — silent`); return false; }
+      // 1. the desktop switches first, unconditionally
+      const from = this.active; this.active = target; this.paintDesk();
+      // 2. HUD acknowledges
+      const opening = !this.tray.classList.contains('on');
+      if (opening){ this.origin = from; this.active = from; this.render(dir, true); this.active = target; }
+      this.tray.classList.add('on');
+      this.render(dir, false);
+      clearTimeout(this.timer);
+      this.timer = setTimeout(()=>this.dismiss(), DISMISS);
+      return true;
+    }
+    dismiss(){ this.tray.classList.remove('on'); this.origin = null; if (this.kind==='C') this.cells.forEach(c=>c.classList.remove('origin')); }
+    jump(i){ clearTimeout(this.timer); this.dismiss(); this.active=i; this.paintDesk(); this.render(0,true); }
+  }
+
+  const stages = [...document.querySelectorAll('.stage')].map(el => new Stage(el, el.dataset.k));
+  const all = f => stages.forEach(f);
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+
+  async function run(seq, label){
+    const id = ++runId; log(label);
+    for (const s of seq){
+      if (id!==runId) return;
+      if (s.jump){ all(st=>st.jump(s.jump)); await wait(250); continue; }
+      all(st=>st.step(s));
+      await wait(rate);
+    }
+    if (id===runId) log(label + ' — done');
+  }
+  const rep = (d,n)=>Array(n).fill(d);
+  const scen = {
+    prev: ()=>{ runId++; all(s=>s.step(-1)); log('previous'); },
+    next: ()=>{ runId++; all(s=>s.step(1)); log('next'); },
+    sweepR: ()=>run([{jump:1}, ...rep(1,total-1)], `sweep 1→${total}`),
+    sweepL: ()=>run([{jump:total}, ...rep(-1,total-1)], `sweep ${total}→1`),
+    round: ()=>run([{jump:1}, ...rep(1,total-1), ...rep(-1,total-1)], `round trip 1→${total}→1`),
+    reverse: ()=>run([{jump:Math.min(4,total)}, ...rep(1,Math.min(5,total-4)), ...rep(-1,3)], 'reversal'),
+    nine: ()=> total<10 ? log('needs ≥10 desktops') : run([{jump:8}, 1, 1], '8→9→10'),
+    first: ()=>run([{jump:2}, -1, -1, -1, -1], 'first boundary (2→1, then silent)'),
+    last: ()=>run([{jump:total-1}, 1, 1, 1, 1], `last boundary (${total-1}→${total}, then silent)`),
+  };
+  document.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>scen[b.dataset.s]()));
+  document.getElementById('rate').addEventListener('change',e=>rate=+e.target.value);
+  document.getElementById('total').addEventListener('change',e=>{ total=+e.target.value; runId++; all(s=>{ clearTimeout(s.timer); s.dismiss(); s.active=Math.min(s.active,total); s.paintDesk(); s.build(); }); });
+  document.getElementById('rm').addEventListener('change',e=>{ reduce=e.target.checked; document.body.classList.toggle('rm',reduce); });
+})();
+</script>
+</body>
+</html>

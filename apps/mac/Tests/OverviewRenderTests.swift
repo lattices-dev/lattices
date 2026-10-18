@@ -82,7 +82,7 @@ final class OverviewRenderTests: XCTestCase {
     /// Overview from fixtures in an offscreen window, never ordered in.
     /// `top` drops the page that far down its window, as the shell's title
     /// bar and rounded stage do, which can land it between pixels.
-    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0,
+    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0, canvas: Bool = false,
                       configure: (OverviewModel) -> Void = { _ in }) -> (NSHostingView<AnyView>, NSWindow, () -> Void) {
         let suite = "overview.render.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -91,7 +91,7 @@ final class OverviewRenderTests: XCTestCase {
         model.membershipShown = sidebar
         configure(model)
 
-        let view = OverviewView(model: model, controller: ScreenMapController(), live: false)
+        let view = OverviewView(model: model, controller: ScreenMapController(), live: false, canvasFixture: canvas)
             .frame(width: width, height: height - top)
             .padding(.top, top)
             .environment(\.colorScheme, .dark)
@@ -131,8 +131,25 @@ final class OverviewRenderTests: XCTestCase {
         try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
     }
 
+    func testConnectedCanvasRender() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        let (host, window, cleanup) = self.host(width: 1120, height: 740, sidebar: false, canvas: true)
+        defer { cleanup(); _ = window }
+        let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("overview-connected-canvas.png"))
+    }
+
     private func scrollViews(in view: NSView) -> [NSScrollView] {
         ((view as? NSScrollView).map { [$0] } ?? []) + view.subviews.flatMap(scrollViews(in:))
+    }
+
+    func testMoveFailurePresentation() throws {
+        try render("overview-move-error", width: 1120, height: 740, sidebar: false) { model in
+            XCTAssertTrue(model.move(1, toSpace: 5))
+            XCTAssertNotNil(model.actionError)
+        }
     }
 
     /// The sidebar's long list scrolls on its own at any width: a wheel
@@ -319,7 +336,9 @@ private struct RenderActions: OverviewActions {
     func distribute(_ windows: [(wid: UInt32, pid: Int32)], displayId: UInt32, shape: [Int]?) {}
     func focus(wid: UInt32, pid: Int32) {}
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32) {}
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {}
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void) {
+        completion(.init(details: "Destination Desktop move failed: Mission Control didn’t open"))
+    }
     func saveLayer(_ plan: LayerEditPlan) throws {}
     func rearrange(layerId: String) throws {}
 }

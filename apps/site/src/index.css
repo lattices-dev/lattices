@@ -14,14 +14,15 @@
   --border: rgba(255, 255, 255, 0.06);
   --border-lit: rgba(255, 255, 255, 0.1);
   --text: rgba(255, 255, 255, 0.92);
-  --text-dim: rgba(255, 255, 255, 0.62);
-  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.52);
   --green: #33c773;
   --green-glow: rgba(51, 199, 115, 0.15);
   --amber: #f5a623;
   --logo-ink: #f2f2f2;
   --logo-dim: rgba(255, 255, 255, 0.18);
-  --speech-dim: rgba(255, 255, 255, 0.35);
+  /* The family accent on every mark. The site's UI keeps --green. */
+  --logo-accent: #ef6a47;
   --syntax-key: #7ec8e3;
   --syntax-kw: #c792ea;
 
@@ -55,14 +56,13 @@
   --border: rgba(16, 21, 24, 0.08);
   --border-lit: rgba(16, 21, 24, 0.14);
   --text: #101518;
-  --text-dim: rgba(16, 21, 24, 0.6);
-  --text-muted: rgba(16, 21, 24, 0.35);
+  --text-dim: rgba(16, 21, 24, 0.68);
+  --text-muted: rgba(16, 21, 24, 0.52);
   --green: #1a9d52;
   --green-glow: rgba(26, 157, 82, 0.12);
   --amber: #c47b00;
   --logo-ink: #101518;
   --logo-dim: rgba(16, 21, 24, 0.22);
-  --speech-dim: rgba(16, 21, 24, 0.22);
   --syntax-key: #2f7895;
   --syntax-kw: #8e59b5;
   /* Same material logic reinterpreted: paper ground, ink type, and the slab
@@ -147,7 +147,7 @@ code {
 }
 
 .nav-brand:hover {
-  --logo-ink: var(--green);
+  --logo-ink: var(--logo-accent);
 }
 
 .nav-name {
@@ -507,10 +507,6 @@ button.nav-link {
   color: var(--text);
 }
 
-.hero-desktop-demo {
-  margin-top: 24px;
-}
-
 .hero-desktop-comparison {
   display: inline-flex;
   gap: 3px;
@@ -532,7 +528,7 @@ button.nav-link {
   background: transparent;
   color: var(--text-muted);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 12px;
   cursor: pointer;
   transition: color 0.16s, background-color 0.16s, box-shadow 0.16s;
 }
@@ -542,7 +538,7 @@ button.nav-link {
 }
 
 .hero-desktop-comparison button:focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -552,36 +548,31 @@ button.nav-link {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 8%, transparent);
 }
 
-.hero-desktop-comparison button.is-active:last-child {
-  background: color-mix(in srgb, var(--green) 14%, transparent);
-  color: var(--green);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 18%, transparent);
+.hero-desktop-comparison button span {
+  font-size: 12px;
 }
 
-.hero-desktop-comparison button span {
-  font-size: 8px;
+.hero-desktop-comparison button.is-active:last-child span {
+  color: var(--logo-accent);
 }
+
+/* The simulated desktop. Everything on its screen is sized in cqw, so the
+   desktop scales as one picture at every width. */
 
 .hero-workspace-stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 1505 / 614;
-  margin: 14px 0 0 50%;
-  padding: 0;
+  aspect-ratio: 2 / 1;
   overflow: hidden;
-  transform: translateX(-50%);
   border: 1px solid rgba(28, 34, 40, 0.08);
   border-radius: 16px;
   background: #c9d2dc;
   box-shadow:
     0 24px 56px rgba(48, 58, 70, 0.14),
     0 2px 0 rgba(255, 255, 255, 0.7) inset;
+  container-type: inline-size;
   isolation: isolate;
   animation: heroDesktopArrive 950ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
-}
-
-.hero-laptop-camera {
-  display: none;
 }
 
 .hero-desktop-screen {
@@ -618,22 +609,24 @@ button.nav-link {
   right: 0;
   left: 0;
   display: flex;
-  height: 7%;
-  min-height: 22px;
+  height: max(2.1cqw, 9px);
   align-items: center;
-  gap: 18px;
-  padding: 0 15px;
+  gap: 1.6cqw;
+  padding: 0 1.2cqw;
   border-bottom: 1px solid rgba(40, 48, 56, 0.08);
   background: rgba(248, 246, 242, 0.62);
-  color: rgba(28, 32, 36, 0.78);
-  font-size: clamp(6px, 0.68vw, 10px);
+  color: rgba(28, 32, 36, 0.82);
+  font-family: -apple-system, BlinkMacSystemFont, "Space Grotesk", sans-serif;
+  font-size: max(0.86cqw, 4.5px);
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   backdrop-filter: blur(18px) saturate(1.2);
 }
 
 .hero-macos-brand {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 1.4em;
   font-weight: 700;
 }
 
@@ -649,14 +642,16 @@ button.nav-link {
 }
 
 .hero-macos-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.3em;
   margin-left: auto;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
 }
 
-.hero-macos-lattices {
-  color: color-mix(in srgb, var(--green) 78%, white);
-  font-weight: 600;
+.hero-macos-mark {
+  width: 1.3em;
+  height: 1.3em;
 }
 
 .hero-desktop-window {
@@ -665,10 +660,10 @@ button.nav-link {
   flex-direction: column;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: clamp(5px, 0.72vw, 11px);
+  border-radius: 0.8cqw;
   background: rgba(18, 20, 24, 0.94);
   box-shadow:
-    0 18px 36px rgba(40, 52, 64, 0.22),
+    0 1.5cqw 3cqw rgba(40, 52, 64, 0.22),
     0 1px 0 rgba(255, 255, 255, 0.1) inset;
   color: rgba(255, 255, 255, 0.82);
   will-change: left, top, width, height;
@@ -677,7 +672,7 @@ button.nav-link {
 .hero-desktop-window.is-focused {
   border-color: rgba(255, 255, 255, 0.34);
   box-shadow:
-    0 22px 44px rgba(32, 42, 54, 0.28),
+    0 1.8cqw 3.6cqw rgba(32, 42, 54, 0.3),
     0 1px 0 rgba(255, 255, 255, 0.14) inset;
 }
 
@@ -685,13 +680,13 @@ button.nav-link {
   position: relative;
   display: flex;
   flex: none;
-  height: clamp(11px, 1.3vw, 17px);
+  height: 1.75cqw;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 0.8cqw;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.028));
-  font-family: "JetBrains Mono", monospace;
-  font-size: clamp(4px, 0.48vw, 7px);
+  font-family: -apple-system, BlinkMacSystemFont, "Space Grotesk", sans-serif;
+  font-size: 0.78cqw;
 }
 
 .hero-desktop-window:not(.is-focused) .hero-window-bar {
@@ -700,13 +695,13 @@ button.nav-link {
 
 .hero-window-lights {
   display: flex;
-  gap: 3px;
+  gap: 0.5cqw;
 }
 
 .hero-window-lights i {
   display: block;
-  width: clamp(3px, 0.42vw, 6px);
-  height: clamp(3px, 0.42vw, 6px);
+  width: 0.78cqw;
+  height: 0.78cqw;
   border-radius: 50%;
   background: #ff665c;
 }
@@ -714,21 +709,30 @@ button.nav-link {
 .hero-window-lights i:nth-child(2) { background: #f2c04d; }
 .hero-window-lights i:nth-child(3) { background: #50c85b; }
 
+/* Only the key window keeps its colored lights, as on a Mac. */
+.hero-desktop-window:not(.is-focused) .hero-window-lights i {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .hero-window-title {
   position: absolute;
   left: 50%;
-  max-width: 62%;
+  max-width: 60%;
   overflow: hidden;
   transform: translateX(-50%);
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.62);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.hero-desktop-window:not(.is-focused) .hero-window-title {
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .hero-window-app {
   margin-left: auto;
-  color: var(--window-tint);
-  opacity: 0.76;
+  color: rgba(255, 255, 255, 0.36);
 }
 
 .hero-window-body {
@@ -737,79 +741,116 @@ button.nav-link {
   overflow: hidden;
 }
 
-.desktop-editor {
-  display: grid;
-  grid-template-columns: 30% 1fr;
+/* Terminal: one tmux session, claude beside the dev server at 60/40. */
+
+.desktop-tmux {
+  display: flex;
   height: 100%;
-  font-family: "JetBrains Mono", monospace;
-  font-size: clamp(4px, 0.58vw, 8px);
-  line-height: 1.65;
 }
-
-.desktop-editor-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.025);
-  color: rgba(255, 255, 255, 0.36);
-}
-
-.desktop-editor-sidebar strong {
-  margin-bottom: 3px;
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 0.88em;
-}
-
-.desktop-editor-sidebar span { padding-left: 5px; }
-
-.desktop-editor-sidebar .is-active {
-  border-radius: 3px;
-  background: rgba(98, 160, 255, 0.14);
-  color: #8dbbff;
-}
-
-.desktop-code-lines {
-  display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
-  color: rgba(221, 225, 235, 0.68);
-}
-
-.desktop-code-lines i { color: #d277ff; font-style: normal; }
-.desktop-code-lines b { color: #e8b56b; font-weight: 500; }
-.desktop-code-lines .indent { padding-left: 10%; }
-.desktop-code-lines .indent-2 { padding-left: 18%; }
 
 .desktop-terminal-lines {
   display: flex;
-  height: 100%;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
-  gap: 4px;
-  justify-content: center;
-  padding: 7% 8%;
+  gap: 0.3cqw;
+  overflow: hidden;
+  padding: 0.75cqw 0.95cqw;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.76cqw;
+  line-height: 1.4;
   text-align: left;
-  font-family: "JetBrains Mono", monospace;
-  font-size: clamp(4px, 0.52vw, 8px);
-  line-height: 1.35;
+  white-space: nowrap;
 }
 
-.desktop-terminal-lines b,
-.desktop-terminal-lines i,
-.terminal-ready {
-  color: #56dc92;
+/* A session longer than its pane: the input box stays at the bottom and the
+   older turns scroll off the top, one blank line between blocks. */
+.desktop-claude-pane {
+  flex: 3 1 0;
+  justify-content: flex-end;
+  gap: 1.36cqw;
+  transition: padding-bottom 740ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* In the layer the session reaches the stage's bottom edge, under the
+   understage cards; the input box rides above them. */
+.hero-workspace-stage.is-organized .desktop-claude-pane {
+  padding-bottom: calc(0.75cqw + var(--understage-overlap, 0px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-claude-pane {
+    transition: none;
+  }
+}
+
+/* The narrow pane wraps long lines, as the terminal would. */
+.desktop-dev-pane {
+  flex: 2 1 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.desktop-terminal-lines b {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+}
+
+.desktop-terminal-lines i {
+  color: rgba(255, 255, 255, 0.74);
   font-style: normal;
-  font-weight: 500;
 }
 
-.terminal-dim { color: rgba(255, 255, 255, 0.36); }
+.desktop-terminal-lines strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-weight: 700;
+}
 
-.desktop-agent-lines {
-  justify-content: flex-start;
-  gap: 5px;
-  padding: 4% 5%;
-  font-size: clamp(5px, 0.6vw, 9px);
+.terminal-dim { color: rgba(255, 255, 255, 0.4); }
+
+.terminal-out {
+  margin-left: 2ch;
+}
+
+/* A blank line, as between Vite's banner and its URLs. */
+.terminal-gap {
+  margin-top: 1.06cqw;
+}
+
+.claude-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3cqw;
+}
+
+/* claude's diffs keep their indentation, numbered to match the editor. */
+.terminal-diff {
+  margin-left: 4ch;
+  white-space: pre;
+}
+
+/* The added line on a faint band. */
+.terminal-added {
+  align-self: flex-start;
+  padding-right: 0.6ch;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.claude-input {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  padding: 0.3cqw 1ch;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 0.35cqw;
+}
+
+.claude-cursor {
+  width: 0.6em;
+  height: 1.2em;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .agent-prompt {
@@ -817,78 +858,277 @@ button.nav-link {
   font-weight: 600;
 }
 
-.desktop-browser-view {
-  position: relative;
+/* Zed, open on the file claude just fixed. */
+
+.desktop-editor {
   display: grid;
+  grid-template-columns: 24% 1fr;
   height: 100%;
-  place-content: center;
-  background:
-    radial-gradient(circle at 64% 45%, rgba(52, 211, 153, 0.1), transparent 22%),
-    #080a0d;
-  text-align: center;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.72cqw;
+  line-height: 1.7;
 }
 
-.desktop-browser-mark {
+.desktop-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1cqw;
+  overflow: hidden;
+  padding: 0.7cqw 0.45cqw;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(255, 255, 255, 0.42);
+  font-family: -apple-system, BlinkMacSystemFont, "Space Grotesk", sans-serif;
+  white-space: nowrap;
+}
+
+.desktop-editor-sidebar strong {
+  margin-bottom: 0.2cqw;
+  padding-left: 0.45cqw;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.88em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.desktop-editor-sidebar span {
+  padding: 0 0.45cqw;
+  border-radius: 0.25cqw;
+}
+
+.desktop-editor-sidebar .is-nested { padding-left: 1.3cqw; }
+
+.desktop-editor-sidebar .is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-code-lines {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.7cqw 0;
+  color: rgba(221, 225, 235, 0.74);
+  counter-reset: code-line 11;
+  white-space: nowrap;
+}
+
+.desktop-code-lines > span {
+  position: relative;
+  padding-left: 3.8em;
+  counter-increment: code-line;
+}
+
+.desktop-code-lines > span::before {
   position: absolute;
-  top: 7%;
-  left: 6%;
+  left: 0;
+  width: 2.5em;
+  color: rgba(255, 255, 255, 0.22);
+  content: counter(code-line);
+  text-align: right;
+}
+
+.desktop-code-lines i { color: #c7a6ff; font-style: normal; }
+.desktop-code-lines b { color: #e9c38b; font-weight: 400; }
+.desktop-code-lines .indent { padding-left: calc(3.8em + 2ch); }
+.desktop-code-lines .indent-2 { padding-left: calc(3.8em + 4ch); }
+
+/* The line claude added, marked the way an editor's diff gutter marks it. */
+.desktop-code-lines .is-changed {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0.16cqw 0 rgba(255, 255, 255, 0.5);
+  color: rgba(236, 239, 245, 0.92);
+}
+
+/* Safari: tideline's own page, the day's tide at Half Moon Bay. */
+
+.desktop-tide {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: 0.9cqw 1.1cqw 0.7cqw;
+  background: #f3f5f7;
+  color: #1b2530;
+  font-family: -apple-system, BlinkMacSystemFont, "Space Grotesk", sans-serif;
+  font-size: 0.72cqw;
+  line-height: 1.3;
+}
+
+.desktop-tide-head {
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: clamp(4px, 0.5vw, 7px);
+  justify-content: space-between;
+  gap: 1cqw;
 }
 
-.desktop-browser-ready {
+.desktop-tide-place {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.6cqw;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.desktop-tide-place strong {
+  font-size: 1.3em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.desktop-tide-place span {
+  color: #6b7785;
+}
+
+.desktop-tide-days {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(6px, 0.86vw, 13px);
-  font-weight: 620;
+  flex: none;
+  padding: 0.15cqw;
+  border-radius: 0.5cqw;
+  background: rgba(27, 37, 48, 0.07);
+  font-size: 0.9em;
 }
 
-.desktop-browser-ready i {
-  width: 6px;
-  height: 6px;
+.desktop-tide-days span {
+  padding: 0.12cqw 0.6cqw;
+  border-radius: 0.38cqw;
+  color: #6b7785;
+}
+
+.desktop-tide-days .is-active {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(27, 37, 48, 0.14);
+  color: #1b2530;
+  font-weight: 600;
+}
+
+.desktop-tide-reading {
+  margin: 0.45cqw 0 0;
+  color: #4d5967;
+  white-space: nowrap;
+}
+
+.desktop-tide-reading b {
+  color: #1b2530;
+  font-size: 1.25em;
+  font-weight: 700;
+}
+
+.desktop-tide-chart {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.4cqw;
+  color: #2c6e9e;
+}
+
+.desktop-tide-chart svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.desktop-tide-grid {
+  stroke: rgba(27, 37, 48, 0.08);
+  stroke-width: 1;
+}
+
+.desktop-tide-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.desktop-tide-now {
+  stroke: rgba(27, 37, 48, 0.42);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+}
+
+.desktop-tide-extreme {
+  position: absolute;
+  color: #6b7785;
+  font-size: 0.86em;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 0.35cqw));
+}
+
+.desktop-tide-extreme.is-low { transform: translate(-50%, 0.35cqw); }
+.desktop-tide-extreme.is-high.is-end { transform: translate(-100%, calc(-100% - 0.35cqw)); }
+.desktop-tide-extreme.is-low.is-end { transform: translate(-100%, 0.35cqw); }
+
+.desktop-tide-extreme b {
+  color: #1b2530;
+  font-weight: 600;
+}
+
+.desktop-tide-dot {
+  position: absolute;
+  width: 0.6cqw;
+  height: 0.6cqw;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 13px var(--green);
+  background: currentColor;
+  box-shadow:
+    0 0 0 0.2cqw #f3f5f7,
+    0 0 0 0.34cqw rgba(44, 110, 158, 0.24);
+  transform: translate(-50%, -50%);
 }
 
-.desktop-browser-view > span {
-  margin-top: 5px;
-  color: rgba(255, 255, 255, 0.34);
-  font-family: "JetBrains Mono", monospace;
-  font-size: clamp(3px, 0.42vw, 6px);
+.desktop-tide-axis {
+  position: relative;
+  height: 1.4em;
+  margin-top: 0.35cqw;
+  color: #8a95a2;
+  font-size: 0.8em;
 }
+
+.desktop-tide-axis span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.desktop-tide-axis span:nth-child(1) { left: 0; transform: none; }
+.desktop-tide-axis span:nth-child(2) { left: 25%; }
+.desktop-tide-axis span:nth-child(3) { left: 50%; }
+.desktop-tide-axis span:nth-child(4) { left: 75%; }
+.desktop-tide-axis span:nth-child(5) { right: 0; transform: none; }
+
+/* The shortcut, shown while it's pressed. It sits above the band the
+   understage cards overlap, so it stays visible. */
 
 .hero-keycast {
   position: absolute;
   z-index: 55;
-  bottom: 9%;
+  bottom: calc(var(--understage-overlap, 0px) + 3.5%);
   left: 50%;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.55em;
   transform: translateX(-50%);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  padding: 5px 11px;
+  padding: 0.5em 1.1em;
   background: rgba(3, 7, 11, 0.84);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 1.2cqw 2.8cqw rgba(0, 0, 0, 0.42);
   color: rgba(255, 255, 255, 0.62);
   font-family: "JetBrains Mono", monospace;
-  font-size: clamp(5px, 0.55vw, 8px);
+  font-size: max(0.8cqw, 7px);
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   pointer-events: none;
 }
 
 .hero-keycast kbd {
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 5px;
-  padding: 2px 5px;
+  border-radius: 0.45em;
+  padding: 0.2em 0.5em;
   background: rgba(255, 255, 255, 0.09);
   color: rgba(255, 255, 255, 0.94);
   font: inherit;
@@ -896,36 +1136,87 @@ button.nav-link {
 }
 
 .hero-keycast span {
-  margin-left: 3px;
+  margin-left: 0.3em;
 }
 
-.hero-desktop-result {
+/* The layer bezel: the pill the app shows over the screen on every layer
+   switch, with the mark's coral in place of the app's own accent. */
+
+.hero-layer-bezel {
   position: absolute;
-  z-index: 50;
-  bottom: 2.6%;
-  left: 50%;
-  display: inline-flex;
+  z-index: 58;
+  top: calc(33.3% - 1.9em);
+  right: 0;
+  left: 0;
+  display: flex;
+  width: max-content;
+  min-width: 17.5em;
+  height: 3.8em;
   align-items: center;
-  gap: 6px;
-  transform: translateX(-50%);
-  border: 1px solid rgba(52, 211, 153, 0.24);
+  justify-content: center;
+  gap: 1em;
+  margin: 0 auto;
+  padding: 0 1.45em;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 4px 9px;
-  background: rgba(3, 10, 8, 0.78);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
-  color: rgba(255, 255, 255, 0.62);
-  font-family: "JetBrains Mono", monospace;
-  font-size: clamp(4px, 0.46vw, 7px);
-  white-space: nowrap;
-  backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(44, 48, 54, 0.9), rgba(20, 23, 27, 0.92));
+  box-shadow:
+    0 1.4cqw 3.4cqw rgba(0, 0, 0, 0.34),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: max(0.9cqw, 7.5px);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  backdrop-filter: blur(20px) saturate(1.3);
+  pointer-events: none;
 }
 
-.hero-desktop-result i {
-  width: 6px;
-  height: 6px;
+.hero-layer-bezel-icon {
+  flex: none;
+  width: 1.35em;
+  height: 1.35em;
+  fill: var(--logo-accent);
+  stroke: var(--logo-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+
+.hero-layer-bezel-dots {
+  display: inline-flex;
+  gap: 0.4em;
+}
+
+.hero-layer-bezel-dots i {
+  display: block;
+  width: 0.46em;
+  height: 0.46em;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--green) 70%, transparent);
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.hero-layer-bezel-dots i.is-active {
+  background: var(--logo-accent);
+}
+
+.hero-layer-bezel-rule {
+  width: 1px;
+  height: 1.5em;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hero-layer-bezel-name {
+  font-family: -apple-system, BlinkMacSystemFont, "Space Grotesk", sans-serif;
+  font-size: 1.08em;
+  font-weight: 600;
+}
+
+.hero-layer-bezel-tag {
+  color: rgba(255, 255, 255, 0.42);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .hero-agent-harness {
@@ -935,6 +1226,7 @@ button.nav-link {
   border: 1px solid var(--border-lit);
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface) 86%, transparent);
+  container-type: inline-size;
   font-family: "JetBrains Mono", monospace;
   text-align: left;
 }
@@ -956,15 +1248,18 @@ button.nav-link {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--green) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 42%, transparent);
+}
+
+.hero-harness-cwd,
+.hero-harness-transport {
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  text-transform: none;
 }
 
 .hero-harness-transport {
   margin-left: auto;
-  font-weight: 400;
-  letter-spacing: 0.03em;
-  text-transform: none;
 }
 
 .hero-harness-body {
@@ -993,7 +1288,7 @@ button.nav-link {
 
 .hero-harness-tool i {
   margin-right: 7px;
-  color: var(--green);
+  color: var(--text-muted);
   font-style: normal;
 }
 
@@ -1014,6 +1309,14 @@ button.nav-link {
   padding-left: 0;
 }
 
+/* One line in every state, so the cards below never jump as the loop turns. */
+.hero-harness-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hero-harness-body > [aria-hidden="true"] {
   pointer-events: none;
   user-select: none;
@@ -1031,7 +1334,9 @@ button.nav-link {
      metrics with fallback box glyphs leaves stippled vertical joins, so keep
      the complete map in one box-capable system monospace. */
   font-family: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Monaco, monospace;
-  font-size: 10px;
+  /* Shrinks with the card so the 68-column map fits a phone without
+     scrolling: 48px of padding and borders, about 0.6em per column. */
+  font-size: clamp(5.5px, calc((100cqw - 48px) / 41.5), 10px);
   font-weight: 500;
   font-variant-ligatures: none;
   letter-spacing: 0;
@@ -1442,6 +1747,13 @@ button.nav-link {
   background: #111;
 }
 
+/* A wide strip: narrower panels crop the empty backdrop, never the HUD. */
+.hands-placement-film {
+  height: 200px;
+  object-fit: cover;
+  background: #1b1d20;
+}
+
 .hands-gesture-figure figcaption {
   margin-top: 8px;
   color: var(--text-muted);
@@ -1470,85 +1782,41 @@ button.nav-link {
   line-height: 1.75;
 }
 
-.install-chooser {
-  padding: 96px 0 54px;
-}
-
-.install-chooser-head {
-  margin-bottom: 36px;
-  text-align: center;
-}
-
-.install-chooser-head h2 {
-  margin: 0 auto;
-}
-
-.install-chooser-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.install-chooser-grid article {
-  display: flex;
-  min-height: 260px;
-  flex-direction: column;
-  align-items: flex-start;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 25px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  text-align: left;
-}
-
-.install-chooser-label {
-  margin-bottom: 34px;
-  color: var(--green);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.install-chooser-grid h3 {
-  margin: 0 0 10px;
-  font-size: 17px;
-}
-
-.install-chooser-grid p {
-  margin: 0 0 26px;
-  color: var(--text-dim);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.install-chooser-grid a {
-  margin-top: auto;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 620;
-}
-
-.install-chooser-grid a span {
-  margin-left: 3px;
-  color: var(--green);
-}
-
-.install-chooser-grid small {
-  margin-top: 10px;
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.install-chooser-grid small code {
-  font-size: inherit;
-}
-
-.install-chooser-footnote {
-  margin-top: 18px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
+.install-chooser { padding: 96px 0 54px; scroll-margin-top: 80px; }
+.install-chooser-head { margin-bottom: 42px; text-align: center; }
+.install-chooser-head h2 { margin: 0 auto; }
+.install-chooser-head p { color: var(--text-dim); margin: 16px 0 0; }
+.install-main { display: grid; grid-template-columns: 1.15fr 1fr; border: 1px solid var(--border-lit); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.install-download { padding: 42px; grid-row: span 2; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.install-app-mark { width: 76px; height: 76px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--border-lit); border-radius: 16px; margin-bottom: 26px; }
+.install-main h3 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 12px; }
+.install-main p { color: var(--text-dim); font-size: 15px; line-height: 1.6; margin: 0 0 28px; }
+.install-primary { display: inline-flex; align-items: center; gap: 12px; background: var(--text); color: var(--bg); border-radius: 8px; padding: 16px 22px; font-weight: 650; font-size: 15px; transition: opacity .15s; }
+.install-primary:hover { opacity: .82; }
+.install-primary svg { width: 19px; height: 19px; }
+.install-main small { display: block; color: var(--text-dim); font-size: 12px; line-height: 1.6; margin-top: 14px; }
+.install-main .install-directions { font-size: 13px; margin: 26px 0 0; }
+.install-brew { border-left: 1px solid var(--border-lit); padding: 42px; display: flex; flex-direction: column; justify-content: center; background: color-mix(in srgb, var(--bg) 60%, var(--surface)); }
+.install-brew-title { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.install-brew-title h3 { margin: 0; font-size: 21px; }
+.install-brew-title span { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border-lit); padding: 4px 8px; border-radius: 4px; }
+.install-command { padding: 18px; border: 1px solid var(--border-lit); border-radius: 8px; background: var(--bg); }
+.install-command code { font-size: 12px; overflow-wrap: anywhere; color: var(--text-dim); }
+.install-developer { margin-top: 24px; border-bottom: 1px solid var(--border-lit); }
+.install-developer summary { padding: 18px 0; cursor: pointer; font-size: 14px; font-weight: 600; }
+.install-developer summary span { color: var(--text-dim); font-weight: 400; margin-left: 12px; font-size: 13px; }
+.install-developer-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 32px; padding: 22px 0 32px; }
+.install-developer-options h3 { font-size: 15px; margin: 0 0 14px; }
+.install-developer-options code { font-size: 12px; overflow-wrap: anywhere; }
+.install-developer-options p { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.install-developer-options a { font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.install-chooser :is(a, summary):focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+@media (max-width: 760px) {
+  .install-main { grid-template-columns: 1fr; }
+  .install-download, .install-brew { padding: 28px; }
+  .install-brew { border-left: 0; border-top: 1px solid var(--border-lit); }
+  .install-developer-options { grid-template-columns: 1fr; gap: 28px; }
+  .install-developer summary span { display: block; margin: 8px 0 0 18px; }
 }
 
 /* ── Hero pillars ─────────────────────────────────── */
@@ -2280,8 +2548,7 @@ button.nav-link {
 }
 
 .action-page .nav-inner,
-.action-shell,
-.action-footer-inner {
+.action-shell {
   width: min(1120px, calc(100% - 48px));
   max-width: none;
   margin-inline: auto;
@@ -2662,29 +2929,6 @@ button.nav-link {
   gap: 10px;
 }
 
-.action-footer {
-  border-top: 1px solid var(--border);
-}
-
-.action-footer-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  min-height: 92px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.action-footer-inner > div {
-  display: flex;
-  gap: 20px;
-}
-
-.action-footer a:hover {
-  color: var(--action-coral);
-}
-
 .cua-showcase .code-pre {
   flex: 1;
   padding: 22px;
@@ -2718,17 +2962,11 @@ button.nav-link {
 
 /* ── Menu bar app section ──────────────────────────── */
 
-.app-kicker-row {
+.app-title-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 16px;
-  color: var(--green);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
 }
 
 .app-grid {
@@ -2742,12 +2980,17 @@ button.nav-link {
   min-width: 0;
 }
 
+.app-title-row .app-title {
+  flex: 1;
+  margin: 0;
+}
+
 .app-title {
   max-width: 420px;
   margin-bottom: 14px;
   font-size: clamp(2rem, 3.7vw, 3rem);
   font-weight: 650;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.03em;
   line-height: 1.02;
   text-wrap: balance;
 }
@@ -2806,6 +3049,11 @@ button.nav-link {
   border-color: var(--border-lit);
   background: color-mix(in srgb, var(--text) 4%, transparent);
   color: var(--text);
+}
+
+.app-download-icon:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .app-download-icon svg {
@@ -3622,28 +3870,6 @@ button.nav-link {
 .family-close nav a { color: var(--text-muted); }
 .family-close nav a:hover { color: var(--green); }
 
-.family-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  width: min(1240px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 28px 0 40px;
-  border-top: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.family-footer nav {
-  display: flex;
-  gap: 18px;
-}
-
-.family-footer a { color: var(--text-dim); }
-.family-footer a:hover { color: var(--text); }
-
 @media (max-width: 900px) {
   .family-hero,
   .family-capability {
@@ -3664,8 +3890,7 @@ button.nav-link {
   }
   .family-capability-rail span:last-child { border-bottom: 0; }
   .family-hero { padding-top: 56px; }
-  .family-close,
-  .family-footer {
+  .family-close {
     width: calc(100% - 32px);
     flex-direction: column;
     align-items: flex-start;
@@ -4237,45 +4462,164 @@ button.nav-link {
   }
 }
 
-/* ── Footer ────────────────────────────────────────── */
+/* ── Site footer ───────────────────────────────────── */
 
-.footer {
-  padding: 32px 0 48px;
-  border-top: 1px solid var(--border);
+/* One footer on every page. A page with its own palette points the four
+   tokens at it (the docs pages, Action, Blink), and the rail at its own
+   content width. */
+.site-footer {
+  --footer-text: var(--text);
+  --footer-dim: var(--text-dim);
+  --footer-muted: var(--text-muted);
+  --footer-rule: var(--border);
+  border-top: 1px solid var(--footer-rule);
+  color: var(--footer-dim);
+  font-family: "Space Grotesk", -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.docs-page .site-footer {
+  --footer-text: var(--docs-text);
+  --footer-dim: var(--docs-muted);
+  --footer-muted: color-mix(in srgb, var(--docs-text) 42%, transparent);
+  --footer-rule: var(--docs-border);
+}
+
+.family-page .site-footer {
+  --footer-rail: 1240px;
+}
+
+.action-page .site-footer {
+  --footer-text: var(--action-ink);
+  --footer-dim: color-mix(in srgb, var(--action-ink) 68%, transparent);
+  --footer-muted: color-mix(in srgb, var(--action-ink) 46%, transparent);
+  --footer-rule: var(--action-rule);
+  --footer-rail: 1200px;
+}
+
+.site-footer-content-rail {
+  --footer-rail: calc(var(--content-rail) - 48px);
+}
+
+.site-footer-inner {
+  width: min(var(--footer-rail, 1272px), calc(100% - 48px));
+  margin: 0 auto;
+  padding: 56px 0 28px;
+}
+
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) repeat(4, minmax(0, 1fr));
+  gap: 40px 32px;
+}
+
+.site-footer-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--footer-text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.site-footer-lockup:hover {
+  --logo-ink: var(--logo-accent);
+}
+
+.site-footer-brand p {
+  max-width: 240px;
+  margin-top: 14px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.site-footer-heading {
+  margin-bottom: 16px;
+  color: var(--footer-text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.site-footer-col ul {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+}
+
+/* The product names carry their marks; the pages about the family follow. */
+.site-footer-col li:has(svg) + li:not(:has(svg)) {
+  margin-top: 8px;
+}
+
+.site-footer-col a {
+  --logo-ink: currentColor;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* A mark has no baseline, so align to the top to keep every row one height. */
+  vertical-align: top;
+  color: var(--footer-dim);
+  transition: color 0.15s ease;
+}
+
+.site-footer-col a svg {
+  flex-shrink: 0;
+}
+
+.site-footer-col a:hover,
+.site-footer-col a[aria-current='page'] {
+  color: var(--footer-text);
+}
+
+.site-footer-out {
+  color: var(--footer-muted);
+  font-size: 11px;
+}
+
+.site-footer-bar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px 24px;
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--footer-rule);
   font-size: 12px;
-  color: var(--text-muted);
 }
 
-.footer a {
-  color: var(--text-dim);
-  transition: color 0.15s;
+.site-footer-bar a {
+  color: var(--footer-text);
 }
 
-.footer a:hover {
-  color: var(--text);
+.site-footer-bar a:hover {
+  color: var(--logo-accent);
 }
 
-.footer-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+@media (max-width: 1024px) {
+  .site-footer-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .site-footer-brand {
+    grid-column: 1 / -1;
+  }
 }
 
-.footer-dot {
-  color: var(--text-muted);
-  opacity: 0.6;
-}
+@media (max-width: 640px) {
+  .site-footer-inner {
+    width: calc(100% - 32px);
+    padding: 44px 0 24px;
+  }
 
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  .site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 20px;
+  }
 }
 
 /* ── Animations ────────────────────────────────────── */
@@ -4420,9 +4764,10 @@ button.nav-link {
   border-right: 1px solid var(--hero-rule);
   color: var(--hero-ink-dim);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
-  letter-spacing: 0.11em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .hero-meta li:last-child {
@@ -4433,7 +4778,7 @@ button.nav-link {
 .hero-meta li:first-child::before {
   content: "\25CF";
   margin-right: 9px;
-  color: var(--hero-accent);
+  color: var(--logo-accent);
 }
 
 /* Understage card — the gesture demo sits beside the agent transcript. */
@@ -4453,7 +4798,7 @@ button.nav-link {
 }
 
 .hero-demo-peek:focus-visible {
-  outline: 2px solid var(--hero-accent);
+  outline: 2px solid var(--hero-ink);
   outline-offset: 5px;
 }
 
@@ -4462,7 +4807,8 @@ button.nav-link {
   width: 100%;
   aspect-ratio: 16 / 7;
   border-bottom: 1px solid var(--border);
-  background: var(--hero-ink);
+  /* The recording's own near-black, so a sub-pixel gap under the frame never shows. */
+  background: #141316 padding-box;
   object-fit: cover;
   transition: filter 180ms ease;
 }
@@ -4493,12 +4839,11 @@ button.nav-link {
 }
 
 .hero-demo-peek-link {
-  color: var(--hero-accent);
   transition: color 180ms ease;
 }
 
 .hero-demo-peek:hover {
-  border-color: var(--hero-accent);
+  border-color: color-mix(in srgb, var(--hero-ink) 38%, transparent);
 }
 
 .hero-demo-peek:hover .hero-demo-peek-media,
@@ -4546,10 +4891,12 @@ button.nav-link {
   width: 7px;
   height: 7px;
   border-radius: 1.5px;
-  background: var(--hero-accent);
+  background: var(--logo-accent);
 }
 
 .hero-desktop-demo {
+  /* How far the understage cards ride up over the desktop's bottom edge. */
+  --understage-overlap: 58px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -4557,9 +4904,6 @@ button.nav-link {
 }
 
 .hero-stage .hero-workspace-stage {
-  margin: 0;
-  transform: none;
-  width: 100%;
   border-radius: 18px;
   box-shadow:
     0 44px 90px rgba(8, 14, 18, 0.26),
@@ -4570,25 +4914,13 @@ button.nav-link {
   border-radius: 17px;
 }
 
-.hero-video-stage {
-  aspect-ratio: 16 / 9;
-  background: var(--surface);
-}
-
-.hero-video-media {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .hero-understage {
   position: relative;
   z-index: 5;
   display: grid;
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   gap: 16px;
-  margin-top: -58px;
+  margin-top: calc(-1 * var(--understage-overlap));
   padding: 0 34px;
 }
 
@@ -4627,12 +4959,13 @@ button.nav-link {
 }
 
 .hero-plinth-state {
-  color: var(--hero-accent);
+  color: var(--hero-ink);
 }
 
 .hero-plinth-state::before {
   content: "\25CF";
   margin-right: 8px;
+  color: var(--logo-accent);
 }
 
 .pixel-mascot-wrap {
@@ -4925,6 +5258,10 @@ button.nav-link {
 }
 
 @media (max-width: 960px) {
+  .hero-desktop-demo {
+    --understage-overlap: 0px;
+  }
+
   .hero-understage {
     grid-template-columns: 1fr;
     margin-top: 16px;
@@ -5121,9 +5458,19 @@ button.nav-link {
     padding: 12px 16px;
   }
 
+  .home-nav .nav-inner {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .home-nav .nav-links {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
   .action-page .nav-inner,
-  .action-shell,
-  .action-footer-inner {
+  .action-shell {
     width: calc(100% - 32px);
   }
 
@@ -5177,16 +5524,6 @@ button.nav-link {
 
   .action-final-cta {
     padding-top: 72px;
-  }
-
-  .action-footer-inner {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 28px 0;
-  }
-
-  .action-footer-inner > div {
-    flex-wrap: wrap;
   }
 
   .nav-links {
@@ -5247,7 +5584,6 @@ button.nav-link {
   }
 
   .hero-harness-map {
-    font-size: 7.5px;
     padding: 7px 8px;
   }
 
@@ -5263,11 +5599,7 @@ button.nav-link {
   }
 
   .hero-workspace-stage {
-    width: 100%;
     aspect-ratio: 16 / 9;
-    margin-top: 12px;
-    padding: 0;
-    border-radius: 12px;
   }
 
   .hero-desktop-screen {
@@ -5277,16 +5609,6 @@ button.nav-link {
   .hero-macos-menu,
   .hero-window-app {
     display: none;
-  }
-
-  .hero-macos-bar {
-    min-height: 15px;
-    gap: 8px;
-    padding: 0 7px;
-  }
-
-  .hero-desktop-result {
-    padding: 3px 6px;
   }
 
   .local-trust {
@@ -5401,11 +5723,6 @@ button.nav-link {
   .deck-shell {
     width: 100%;
   }
-
-  .footer {
-    padding: 28px 0 40px;
-    font-size: 11px;
-  }
 }
 
 @media (max-width: 360px) {
@@ -5474,8 +5791,7 @@ button.nav-link {
   background: color-mix(in srgb, var(--action-paper) 93%, transparent);
 }
 
-.action-page .nav-inner,
-.action-footer-inner {
+.action-page .nav-inner {
   width: min(1200px, calc(100% - 48px));
   max-width: none;
   margin-inline: auto;
@@ -6358,14 +6674,6 @@ button.nav-link {
   margin: 0 0 22px;
 }
 
-.action-footer {
-  border-color: var(--action-rule);
-}
-
-.action-footer-inner {
-  color: color-mix(in srgb, var(--action-ink) 52%, transparent);
-}
-
 :root[data-theme='dark'] .action-page {
   --action-paper: #11191a;
   --action-paper-deep: #263032;
@@ -6415,7 +6723,6 @@ button.nav-link {
 
 @media (max-width: 680px) {
   .action-page .nav-inner,
-  .action-footer-inner,
   .action-hero-inner,
   .action-tech-rail,
   .action-film,
@@ -6636,4 +6943,41 @@ button.nav-link {
     padding: 48px 0;
   }
   :is(.blink-page, .speech-page) .action-proof { padding: 48px 16px; }
+}
+
+.install-npm { padding: 32px 42px; border-left: 1px solid var(--border-lit); border-top: 1px solid var(--border-lit); }
+.install-npm h3 { font-size: 21px; }
+.install-npm p { margin-bottom: 20px; }
+.install-npm small a { text-decoration: underline; text-underline-offset: 3px; }
+.install-copy-command { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.install-copy-command button { background: var(--surface); color: var(--text); border: 1px solid var(--border-lit); border-radius: 4px; padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.install-copy-command button:hover { background: var(--bg); }
+.install-copy-command button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+@media (max-width: 760px) { .install-download { grid-row: auto; } .install-npm { padding: 28px; border-left: 0; } }
+
+/* Ambient install lighting, intensified by hover and keyboard focus. */
+.install-main { border-color: color-mix(in srgb, var(--green) 24%, var(--border-lit)); box-shadow: 0 0 70px color-mix(in srgb, var(--green) 7%, transparent); }
+.install-main > :is(.install-download, .install-brew, .install-npm) {
+  position: relative; isolation: isolate;
+  background: radial-gradient(ellipse at 20% 0%, color-mix(in srgb, var(--green) 11%, transparent), transparent 75%), var(--surface);
+}
+.install-main > :is(.install-download, .install-brew, .install-npm)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 35% 0%, color-mix(in srgb, var(--green) 23%, transparent), transparent 85%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--green) 55%, transparent);
+  opacity: 0; transition: opacity 220ms ease;
+}
+.install-main > :focus-within::before { opacity: 1; }
+.install-app-mark, .install-command, .install-copy-command button { transition: border-color 220ms ease, box-shadow 220ms ease, background-color 220ms ease; }
+.install-main > :focus-within .install-command { border-color: color-mix(in srgb, var(--green) 60%, var(--border-lit)); }
+.install-primary { transition: box-shadow 220ms ease, background-color 220ms ease; }
+.install-primary:hover, .install-primary:focus-visible { opacity: 1; box-shadow: 0 0 32px color-mix(in srgb, var(--green) 38%, transparent); }
+.install-copy-command button:hover { background: color-mix(in srgb, var(--green) 18%, var(--surface)); border-color: var(--green); box-shadow: 0 0 18px color-mix(in srgb, var(--green) 20%, transparent); }
+@media (hover: hover) {
+  .install-main > :hover::before { opacity: 1; }
+  .install-main > :hover :is(.install-app-mark, .install-command) { border-color: color-mix(in srgb, var(--green) 55%, var(--border-lit)); box-shadow: 0 0 24px color-mix(in srgb, var(--green) 10%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-main > :is(.install-download, .install-brew, .install-npm)::before,
+  .install-app-mark, .install-command, .install-copy-command button, .install-primary { transition: none; }
 }

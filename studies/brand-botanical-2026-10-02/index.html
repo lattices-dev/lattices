@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Lattices — Workspace conservatory</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="preview.css">
+  <script type="module" src="preview.js"></script>
+</head>
+<body>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="lattice-mark" viewBox="0 0 24 24"><g fill="currentColor"><rect x="1" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="1" y="17" width="6" height="6"/><rect x="9" y="17" width="6" height="6"/><rect x="17" y="17" width="6" height="6"/><g opacity=".22"><rect x="9" y="1" width="6" height="6"/><rect x="17" y="1" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/><rect x="17" y="9" width="6" height="6"/></g></g></symbol>
+    <symbol id="chevron" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4"/></symbol>
+    <symbol id="arrow" viewBox="0 0 16 16"><path d="M3 8h10M8 3l5 5-5 5"/></symbol>
+    <symbol id="download" viewBox="0 0 16 16"><path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3"/></symbol>
+    <symbol id="pause" viewBox="0 0 16 16"><path d="M5 3v10M11 3v10"/></symbol>
+    <symbol id="play" viewBox="0 0 16 16"><path d="m5 3 7 5-7 5Z"/></symbol>
+    <symbol id="check" viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"/></symbol>
+    <symbol id="render-mark" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12M4 4l8 8M4 12l8-8"/></symbol>
+  </svg>
+  <header class="masthead">
+    <a class="brand" href="#"><svg aria-hidden="true"><use href="#lattice-mark"/></svg><span>lattices</span></a>
+    <span class="masthead-divider" aria-hidden="true"></span>
+    <span class="section-name">Design studies</span>
+    <span class="edition">Botanical collection</span>
+  </header>
+
+  <main>
+    <div class="intro">
+      <div><h1>Workspace conservatory.</h1><p>A little life in the spaces between your work.</p></div>
+      <span class="study-note">An exploration for Lattices &amp; Lats</span>
+    </div>
+
+    <section class="workbench" aria-label="Botanical artwork preview">
+      <div class="preview-area">
+        <div class="preview-toolbar">
+          <div class="segmented" role="group" aria-label="Preview mode">
+            <button type="button" data-mode="artwork" aria-pressed="true">Artwork</button>
+            <button type="button" data-mode="site" aria-pressed="false">In a page</button>
+          </div>
+          <span class="render-state"><span class="state-dot" aria-hidden="true"></span><span id="motion-status">Still frame</span></span>
+        </div>
+        <div class="stage">
+          <canvas id="fern" role="img" aria-label="Fine silver fern with rectangular openings in its fronds, on a small bed of basalt and moss"></canvas>
+          <div class="page-sample" hidden>
+            <svg class="sample-mark" aria-hidden="true"><use href="#lattice-mark"/></svg>
+            <h2>Room for<br>what’s next.</h2>
+            <p>Your windows, terminal sessions,<br>and workspaces. All in their place.</p>
+            <a href="#workspace-sample" class="sample-link">Explore your workspaces<svg aria-hidden="true"><use href="#arrow"/></svg></a>
+          </div>
+          <div class="stage-label"><span>Workspace fern</span><span id="treatment-caption">Original illustration</span></div>
+          <div id="image-status" class="image-status" role="status">Loading illustration…</div>
+        </div>
+        <div class="art-caption"><span>One source, four expressions.</span><span class="dimensions">1536 × 1024</span></div>
+      </div>
+
+      <aside class="inspector" aria-label="Artwork controls">
+        <div class="inspector-intro"><h2>Workspace fern</h2><p>Fronds become frames.<br>Roots hold the work together.</p></div>
+        <div class="control-section">
+          <div class="control-heading"><span id="treatment-label">Rendering</span><span class="control-index">4 treatments</span></div>
+          <div class="picker">
+            <button type="button" id="treatment-trigger" aria-haspopup="menu" aria-expanded="false" aria-controls="treatment-menu" aria-label="Rendering: Illustration">
+              <svg class="render-symbol" aria-hidden="true"><use href="#render-mark"/></svg><span id="treatment-name">Illustration</span><svg aria-hidden="true"><use href="#chevron"/></svg>
+            </button>
+            <div id="treatment-menu" class="picker-menu" role="menu" aria-labelledby="treatment-label" hidden>
+              <div class="menu-caption">Choose a rendering</div>
+              <button type="button" role="menuitemradio" aria-checked="true" data-effect="original" tabindex="-1"><span class="option-mark" aria-hidden="true"></span><span>Illustration<small>Fine engraved detail</small></span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-effect="ascii" tabindex="-1"><span class="option-mark" aria-hidden="true"></span><span>ASCII<small>A field of characters</small></span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-effect="dither" tabindex="-1"><span class="option-mark" aria-hidden="true"></span><span>Ordered dither<small>Light resolved into dots</small></span></button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-effect="etched" tabindex="-1"><span class="option-mark" aria-hidden="true"></span><span>Engraved lines<small>Small horizontal strokes</small></span></button>
+            </div>
+          </div>
+          <p id="treatment-note" class="control-help">The original silver-and-moss engraving.</p>
+        </div>
+        <div class="control-section">
+          <div class="control-heading"><span>Surface</span></div>
+          <div class="surface-control" role="group" aria-label="Surface">
+            <button type="button" data-theme="dark" aria-pressed="true"><span class="swatch swatch-ink" aria-hidden="true"></span>Graphite<svg class="surface-check" aria-hidden="true"><use href="#check"/></svg></button>
+            <button type="button" data-theme="light" aria-pressed="false"><span class="swatch swatch-paper" aria-hidden="true"></span>Paper<svg class="surface-check" aria-hidden="true"><use href="#check"/></svg></button>
+          </div>
+        </div>
+        <div class="control-section">
+          <div class="control-heading"><label for="presence">Presence</label><output id="presence-value" for="presence">90%</output></div>
+          <input id="presence" type="range" min="15" max="100" step="1" value="90">
+          <p class="control-help">Softer behind words. Richer on its own.</p>
+        </div>
+        <div class="inspector-actions">
+          <button type="button" id="motion" aria-pressed="false"><svg aria-hidden="true"><use href="#play"/></svg><span>Play drift</span></button>
+          <button type="button" id="export"><svg aria-hidden="true"><use href="#download"/></svg><span>Save artwork</span></button>
+        </div>
+        <p id="action-status" class="action-status" role="status">PNG · current rendering</p>
+      </aside>
+    </section>
+
+    <section id="workspace-sample" class="workspace-sample" aria-labelledby="workspace-heading">
+      <div class="section-heading"><h2 id="workspace-heading">A place for every kind of work.</h2><span>Interactive component study · example content</span></div>
+      <div class="workspace-layout">
+        <div class="ledger" role="group" aria-label="Example workspaces">
+          <button type="button" class="ledger-row" data-workspace="research" aria-pressed="true"><span class="workspace-glyph" aria-hidden="true"><i></i><i></i><i></i></span><span class="workspace-title">Research<small>Follow a thread.</small></span><span class="workspace-count">3 windows</span><svg aria-hidden="true"><use href="#arrow"/></svg></button>
+          <button type="button" class="ledger-row" data-workspace="build" aria-pressed="false"><span class="workspace-glyph build" aria-hidden="true"><i></i><i></i><i></i></span><span class="workspace-title">Build<small>Make something grow.</small></span><span class="workspace-count">4 windows</span><svg aria-hidden="true"><use href="#arrow"/></svg></button>
+          <button type="button" class="ledger-row" data-workspace="write" aria-pressed="false"><span class="workspace-glyph write" aria-hidden="true"><i></i><i></i><i></i></span><span class="workspace-title">Write<small>Give an idea some room.</small></span><span class="workspace-count">2 windows</span><svg aria-hidden="true"><use href="#arrow"/></svg></button>
+        </div>
+        <div class="workspace-detail" aria-live="polite">
+          <div class="detail-heading"><h3 id="detail-name">Research</h3><span id="detail-count">3 windows</span></div>
+          <div id="window-map" class="window-map" role="group" aria-label="Windows in this example workspace"><span>Browser</span><span>Notes</span><span>Reference</span></div>
+          <p id="detail-description">Keep the reference close and the next question open.</p>
+          <div class="detail-footer"><span class="state-dot" aria-hidden="true"></span>Preview workspace<span class="keyboard-hint">Select a row to explore</span></div>
+        </div>
+      </div>
+    </section>
+    <footer><span>Lattices · Botanical studies</span><a href="NOTES.md">Study notes<svg aria-hidden="true"><use href="#arrow"/></svg></a></footer>
+  </main>
+</body>
+</html>

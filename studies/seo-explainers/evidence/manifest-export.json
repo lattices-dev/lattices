@@ -1,0 +1,58 @@
+{
+  "ax-tree": {
+    "durationSeconds": 36,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 8,
+        "text": "You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools."
+      },
+      {
+        "start": 8,
+        "end": 16,
+        "text": "That description is a tree. An app contains a window. The window contains controls, such as buttons."
+      },
+      {
+        "start": 16,
+        "end": 26,
+        "text": "An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it."
+      },
+      {
+        "start": 26,
+        "end": 36,
+        "text": "The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps."
+      }
+    ],
+    "fullTranscript": "How the macOS accessibility tree works\n\nSilent educational animation. All diagrams are illustrative; no live desktop was inspected.\n\nOpening: Lattices / Field Guide. THE ACCESSIBILITY TREE. Your apps have a second interface. AX is what an app tells tools about its buttons and windows.\n\n[0–8 seconds] You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools.\n\n[8–16 seconds] That description is a tree. An app contains a window. The window contains controls, such as buttons.\n\n[16–26 seconds] An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it.\n\n[26–36 seconds] The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps.\n\nOn-screen diagram labels: Illustrated app; Export; What you see on screen; App; Window; Export button; The button tells a tool; What am I?; Role: Button; Title: Export; Action: Press; Only what this app exposes.\n\nFooter: Lattices / Field Guide. Illustrative diagram · not a live desktop inspection. lattices.dev/learn.\n"
+  },
+  "ax-vs-screenshots": {
+    "durationSeconds": 36,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 9,
+        "text": "A screenshot is an image: shapes, colors, and visible text. A tool must interpret the pixels to locate a button."
+      },
+      {
+        "start": 9,
+        "end": 18,
+        "text": "AX is structured information supplied by the app. A button may identify its role, title, and supported Press action."
+      },
+      {
+        "start": 18,
+        "end": 27,
+        "text": "Each view has limits. Pixels do not directly encode a button action. AX can omit a custom control or provide incomplete information."
+      },
+      {
+        "start": 27,
+        "end": 36,
+        "text": "Use the evidence the app provides, then verify what changed. Accessibility access and Screen Recording are separate macOS permissions."
+      }
+    ],
+    "fullTranscript": "AX vs screenshots: what UI automation can see\n\nSilent educational animation. All diagrams are illustrative; no live desktop was inspected.\n\nOpening: Lattices / Field Guide. PIXELS + STRUCTURE. Two ways to understand a screen. A screenshot shows appearance. AX describes exposed controls.\n\n[0–9 seconds] A screenshot is an image: shapes, colors, and visible text. A tool must interpret the pixels to locate a button.\n\n[9–18 seconds] AX is structured information supplied by the app. A button may identify its role, title, and supported Press action.\n\n[18–27 seconds] Each view has limits. Pixels do not directly encode a button action. AX can omit a custom control or provide incomplete information.\n\n[27–36 seconds] Use the evidence the app provides, then verify what changed. Accessibility access and Screen Recording are separate macOS permissions.\n\nOn-screen diagram labels: 01 / Image; 02 / Structure; Screenshot; Accessibility · AX; What it looks like: Visible text, shapes and colors; What the app says: Roles, labels and supported actions; Role: Button; Title: Export; Action: Press; A picture does not contain a Press action; Some controls may be missing or incomplete; Screen Recording: Permission to capture screen content; Seeing the screen does not grant AX control; Accessibility: Permission for access and control through AX; AX access does not grant screen capture.\n\nFooter: Lattices / Field Guide. Illustrative diagram · not a live desktop inspection. lattices.dev/learn.\n"
+  }
+}

@@ -1,5 +1,12 @@
 import { SectionHeader, PrimaryButton, GhostButton, Reveal, MockTitleBar } from './shared'
-import { BlinkMark } from './BlinkMark'
+
+/** Blink's own references, which the family footer doesn't carry. */
+const RELEASE_LINKS = [
+  { href: 'https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md', label: 'CLI docs', external: true },
+  { href: '/blink/llms.txt', label: 'llms.txt', external: false },
+  { href: '/blink/agents.md', label: 'AGENTS.md', external: false },
+  { href: 'https://blink.arach.dev/privacy/', label: 'Privacy', external: true },
+] as const
 
 export function Install() {
   return (
@@ -33,70 +40,29 @@ export function Install() {
                     </span>{' '}
                     download for macOS
                   </PrimaryButton>
-                  <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
+                  <GhostButton href="https://github.com/lattices-dev/lattices/tree/main/products/blink">
                     source <span className="text-faintx" aria-hidden>↗</span>
                   </GhostButton>
                 </div>
               </div>
             </div>
           </div>
+          <ul className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-dimx">
+            {RELEASE_LINKS.map((link) => (
+              <li key={link.href}>
+                <a
+                  href={link.href}
+                  {...(link.external ? { target: '_blank', rel: 'noreferrer' } : {})}
+                  className="rounded-[3px] py-0.5 transition-colors hover:text-acc"
+                >
+                  {link.label}
+                  {link.external && <span className="text-faintx" aria-hidden> ↗</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
         </Reveal>
       </div>
     </section>
-  )
-}
-
-const FOOTER_LINKS = [
-  { href: 'https://github.com/arach/lattices/tree/main/products/blink', label: 'GitHub', external: true },
-  { href: '/blink/download', label: 'Releases', external: true },
-  { href: '/blink/agents.md', label: 'AGENTS.md', external: false },
-  { href: '/blink/llms.txt', label: 'llms.txt', external: false },
-  { href: 'https://blink.arach.dev/privacy/', label: 'Privacy', external: false },
-  {
-    href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md',
-    label: 'CLI docs',
-    external: true,
-  },
-] as const
-
-export function Footer() {
-  return (
-    <footer className="border-t border-linex pb-12 pt-8">
-      <div className="mx-auto max-w-5xl px-4 md:px-6">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[12px] font-bold text-[var(--text)]">
-              <BlinkMark className="h-4 w-4 shrink-0 text-acc" />
-              <span>blink</span>
-            </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-faintx">
-              spatial notes for your Mac
-            </p>
-          </div>
-
-          <nav
-            aria-label="Footer"
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-dimx sm:justify-end sm:max-w-md"
-          >
-            {FOOTER_LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                {...(link.external
-                  ? { target: '_blank', rel: 'noreferrer' }
-                  : {})}
-                className="rounded-[3px] py-0.5 transition-colors hover:text-acc"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-        </div>
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[var(--ghost)]">
-          <span>JetBrains Mono</span>
-          <span>lattices.dev/blink</span>
-        </div>
-      </div>
-    </footer>
   )
 }

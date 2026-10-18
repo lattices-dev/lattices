@@ -164,6 +164,12 @@ Run `lats init` in your project directory to generate a starter
 | `lats place <query> [pos]` | Deep search + focus + tile (default: bottom-right)|
 | `lats focus <session>`   | Focus a session's window and switch Spaces        |
 | `lats scan search <query>` | Search indexed screen text                       |
+| `lats action`            | Action product status (install, agent, checkout)  |
+| `lats action install`    | Download the latest Action.app release to /Applications |
+| `lats action launch`     | Open Action.app (`--launch` also works on install) |
+| `lats action quit`       | Quit Action.app                                   |
+| `lats action call <m>`   | Raw Action agent call (ws://127.0.0.1:4319)       |
+| `lats action <cmd>`      | Forward to the Action CLI (monorepo checkout)     |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
 | `lats app`               | Launch the menu bar companion app                 |
 | `lats app install`       | Register launch-at-login and start now            |

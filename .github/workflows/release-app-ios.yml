@@ -10,6 +10,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 jobs:
   ios:
     name: Archive iOS app
@@ -21,7 +24,9 @@ jobs:
       ASC_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID || secrets.APP_STORE_CONNECT_ISSUER_ID }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         shell: bash

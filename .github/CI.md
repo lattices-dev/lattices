@@ -18,3 +18,21 @@ Signing, notarization, and artifact verification remain part of release jobs.
 
 Do not add automatic push, PR, schedule, or tag triggers without explicit
 operator approval. A manual run opts in to that run only.
+
+## Action dependencies and token permissions
+
+Pin every external `uses:` reference to its full commit SHA. Keep the upstream
+major version in a comment so updates remain understandable. When updating an
+action, review its upstream release and resolve the intended tag to a commit
+(for example, `gh api repos/actions/checkout/commits/v4 --jq .sha`). Review the
+commit before replacing the pin; do not replace pins with floating tags.
+
+Workflows default to `contents: read`. Grant release, Pages, and OIDC write
+permissions only to jobs that need them. Checkout credentials stay disabled
+except in Action and Blink tag-publishing runs, which use authenticated `git push`.
+Adding a new Git operation must not silently broaden credentials for other jobs.
+
+Validate workflow edits locally with `actionlint -shellcheck= -pyflakes=` and
+`git diff --check`. This checks workflow syntax and expressions without running
+release jobs; it does not validate embedded shell or Python programs. Test changes
+to those programs separately. Preserve manual triggers and publish/upload inputs.

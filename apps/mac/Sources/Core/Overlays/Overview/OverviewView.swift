@@ -15,6 +15,8 @@ struct OverviewView: View {
     @ObservedObject var controller: ScreenMapController
     /// Off for fixture renders: no live reads, no shared selection.
     var live = true
+    var canvasFixture = false
+    @State private var canvasShown = false
     @FocusState private var searchFocused: Bool
     @FocusState private var canvasFocused: Bool
     @ObservedObject private var index = LayerIndexState.shared
@@ -34,12 +36,14 @@ struct OverviewView: View {
         }
         .onReceive(indexTimer) { _ in
             guard live else { return }
-            _ = try? index.snapshot()
+            try? index.refreshRows()
             applyIndex()
         }
         .onReceive(index.$selected) { _ in if live { DispatchQueue.main.async { applyIndex() } } }
-        .onAppear { if live { _ = try? index.snapshot(); applyIndex() } }
+        .onAppear { if live { try? index.refreshRows(); applyIndex() } }
     }
+
+    private var isCanvas: Bool { live ? canvasShown : canvasFixture }
 
     private var indexRows: [LayerIndexState.Row] { live ? index.rows : model.indexFixtureRows }
     private var selectedLayers: [String] { live ? index.selected : model.scope.layerIds ?? model.scope.layerId.map { [$0] } ?? [] }
@@ -49,6 +53,10 @@ struct OverviewView: View {
         VStack(spacing: 0) {
             scopeBar
             Divider().overlay(Palette.border)
+            if let error = model.actionError {
+                moveError(error)
+                Divider().overlay(Palette.border)
+            }
             VStack(spacing: 0) {
                 stage
                 Divider().overlay(Palette.border)
@@ -64,15 +72,6 @@ struct OverviewView: View {
                     .background(Palette.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(10)
-                } else if let error = model.actionError {
-                    Text(error)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.kill)
-                        .padding(10)
-                        .background(Palette.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .padding(10)
-                        .accessibilityLabel("Window move failed: \(error)")
                 }
             }
             // The list lies over the stage and tray, under the scope bar
@@ -112,6 +111,45 @@ struct OverviewView: View {
         }
     }
 
+    private func moveError(_ error: OverviewMoveError) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+                .font(.system(size: 16))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(error.title).font(.system(size: 13, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                if let destination = error.destination {
+                    Text("\(error.windowTitle.isEmpty ? error.app : error.windowTitle) → \(destination.title)")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textMuted)
+                        .lineLimit(2)
+                }
+                Text(error.destination == nil ? error.failure.details : error.failure.message)
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup("Technical details") {
+                    Text(error.failure.details)
+                        .font(Typo.mono(10))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Try Again") { model.retryMove() }
+                .disabled(!model.canRetryMove)
+            Button("Dismiss") { model.dismissActionError() }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .foregroundStyle(Palette.text)
+        .padding(14)
+        .background(Palette.surface)
+        .accessibilityElement(children: .contain)
+    }
+
     // MARK: Scope bar
 
     /// The list, in one line: the layer, toggled; the kind, where there's
@@ -132,6 +170,7 @@ struct OverviewView: View {
             }
             searchField
                 .frame(width: barWidth >= 1000 ? 170 : 130)
+            canvasToggle
             listToggle
         }
         .padding(.horizontal, 14)
@@ -212,6 +251,21 @@ struct OverviewView: View {
     // MARK: List toggle
 
     /// The list's name and size; opens and closes the sidebar.
+    /// Desk and the connected canvas are two views of the same projection;
+    /// the selection and drafts carry across.
+    private var canvasToggle: some View {
+        Button {
+            canvasShown.toggle()
+        } label: {
+            Image(systemName: isCanvas ? "rectangle.split.3x1" : "square.grid.2x2")
+                .font(.system(size: 10))
+        }
+        .buttonStyle(.overview(selected: isCanvas))
+        .fixedSize()
+        .help(isCanvas ? "Desk" : "Canvas: every Desktop on one plane")
+        .accessibilityLabel(isCanvas ? "Show the desk" : "Show the canvas")
+    }
+
     private var listToggle: some View {
         let name = OverviewWorkingList.name(model)
         let count = OverviewWorkingList.count(model)
@@ -253,7 +307,7 @@ struct OverviewView: View {
     /// selection, / searches, Esc closes the sidebar, then clears the
     /// selection.
     private var stage: some View {
-        OverviewStage(model: model)
+        OverviewStage(model: model, canvas: isCanvas)
             .focusable()
             .focused($canvasFocused)
             .focusEffectDisabled()
@@ -896,13 +950,6 @@ private struct OverviewSelectionPanel: View {
                 focused(row)
             }
             bulkActions
-            if let error = model.actionError {
-                Text(error)
-                    .font(Typo.mono(8))
-                    .foregroundColor(Palette.kill)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -1,10 +1,10 @@
 {
-  "name": "@arach/lattices",
-  "version": "0.13.5",
-  "description": "Tile windows, search your screen, keep tmux sessions alive, and let AI agents control your Mac — CLI + daemon API",
+  "name": "@lattices/lattices",
+  "version": "0.15.0",
+  "description": "A native Mac workspace for you and your agents. Tile windows, find project context, and return to running terminal sessions with a shared local API.",
   "homepage": "https://lattices.dev",
   "bugs": {
-    "url": "https://github.com/arach/lattices/issues"
+    "url": "https://github.com/lattices-dev/lattices/issues"
   },
   "publishConfig": {
     "access": "public",
@@ -36,7 +36,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/arach/lattices"
+    "url": "https://github.com/lattices-dev/lattices"
   },
   "license": "MIT",
   "exports": {
@@ -49,6 +49,8 @@
   "scripts": {
     "dev": "bun --cwd apps/site dev",
     "site:build": "bun --cwd apps/site build",
+    "studio:dev": "bun --cwd design/studio dev",
+    "studio:build": "bun --cwd design/studio build",
     "action": "bun --cwd products/action action",
     "action:dev": "bun --cwd products/action native:relaunch",
     "action:launch": "bun --cwd products/action native:launch",
@@ -57,8 +59,6 @@
     "action:native:doctor": "bun --cwd products/action native:doctor",
     "blink:check": "swift test --package-path products/blink",
     "blink:build": "swift build --package-path products/blink",
-    "studio:dev": "bun --cwd apps/studio dev",
-    "studio:build": "bun --cwd apps/studio build",
     "docs:agent": "bun --cwd apps/site agent-docs",
     "check": "bun run check:types && bun run check:app",
     "check:types": "tsc --noEmit",
@@ -91,7 +91,9 @@
     "apps/mac/Lattices.entitlements",
     "apps/mac/Resources",
     "assets/AppIcon.icns",
-    "docs"
+    "assets/Assets.car",
+    "docs",
+    "tools/release/companion-signing.json"
   ],
   "devDependencies": {
     "bun-types": "^1.3.10",

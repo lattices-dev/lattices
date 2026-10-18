@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 
 export default function FamilyPage() {
   return (
@@ -88,14 +88,7 @@ export default function FamilyPage() {
         </section>
       </main>
 
-      <footer className="family-footer">
-        <span>Lattices is built for macOS.</span>
-        <nav aria-label="Footer">
-          <a href="/docs/overview">Docs</a>
-          <a href="/blog">Blog</a>
-          <a href="https://github.com/arach/lattices">GitHub</a>
-        </nav>
-      </footer>
+      <SiteFooter current="/family" />
     </div>
   )
 }

@@ -166,3 +166,9 @@ chrome.runtime.sendMessage({
   params: { selector: "button, input, textarea, a" }
 });
 ```
+
+## Experimental fast actions
+
+The companion also supports observation-bound `action.fast.observe` and
+`action.fast.act`. See [the experiment guide](../../docs/fast-browser-experiment.md)
+for the bounded model loop, target guards, timing, and verification requirements.

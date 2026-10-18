@@ -27,6 +27,11 @@ test("build digest binds dirty and untracked source, resources, and feature flag
     writeFileSync(join(root, "apps/mac/Resources/Editor/editor.js"), "untracked resource");
     expect(sourceDigest(root, { LATTICES_BUNDLE: "0" })).not.toBe(original);
     rmSync(join(root, "apps/mac/Resources/Editor/editor.js"));
+    mkdirSync(join(root, "assets"), { recursive: true });
+    const beforeIconCatalog = sourceDigest(root, { LATTICES_BUNDLE: "0" });
+    writeFileSync(join(root, "assets/Assets.car"), "packaged icon catalog");
+    expect(sourceDigest(root, { LATTICES_BUNDLE: "0" })).not.toBe(beforeIconCatalog);
+    rmSync(join(root, "assets/Assets.car"));
     rmSync(source);
     expect(sourceDigest(root, { LATTICES_BUNDLE: "0" })).not.toBe(original);
   } finally {

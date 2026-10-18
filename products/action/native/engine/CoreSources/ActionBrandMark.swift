@@ -3,25 +3,29 @@ import Foundation
 
 /// Action's mark: a sharp capital A whose right foot is taken by a cursor.
 ///
-/// The cursor's tip sits on the lower right corner of the counter and its tail
-/// runs out through the leg. The letter is cut back from both arms by an even
-/// gap, so the cursor reads as working inside the letter rather than lying on
-/// top of it.
+/// The A fills a square. The cursor lies on the square's diagonal, with its tip
+/// on the counter's right edge and its tail touching the square's right and
+/// bottom sides, so the glyph is exactly the square, as every Lattices mark
+/// fills the same 16-unit square of its 20-unit box. The letter is cut back
+/// from both arms by an even gap, so the cursor reads as working inside the
+/// letter rather than lying on top of it.
 ///
 /// This is a port. The source of truth is `ActionMark` in
-/// `apps/site/src/components/ActionMark.tsx` (STUDY 02), and the numbers below
+/// `apps/site/src/components/ActionMark.tsx` (STUDY 03), and the numbers below
 /// are copied from it. `bun run brand` in `apps/site` renders the brand kit and
-/// `Action.icns` from that component. The app draws the mark itself in two
-/// places, the menu bar status item and the brand chip, and both use this.
+/// the app icon (`Action.icon`, `Assets.car` and `Action.icns`) from that
+/// component. The app draws the mark itself in two places, the menu bar status
+/// item and the brand chip, and both use this.
 ///
 /// Paths are authored in the component's coordinates, with **y pointing down**,
 /// then mapped onto whatever rect the caller hands in, so the mark is
 /// resolution-independent.
 public enum ActionBrandMark {
     /// The square the brand kit crops from the component's 720 x 640
-    /// construction drawing. The path functions map this box onto the rect they
-    /// are given. y points down.
-    public static let designBox = CGRect(x: 15, y: 35, width: 590, height: 590)
+    /// construction drawing: the A's 460-unit square plus the family margin, so
+    /// the glyph spans 80% of the box, as the grid's 16 units span 20. The path
+    /// functions map this box onto the rect they are given. y points down.
+    public static let designBox = CGRect(x: 12.5, y: 12.5, width: 575, height: 575)
 
     /// Which way y runs in the space the caller is drawing into.
     ///
@@ -66,14 +70,14 @@ public enum ActionBrandMark {
         place(rawLetter(gap: gap), in: rect, yAxis: yAxis)
     }
 
-    /// The cursor on its own, so it can carry its own colour.
+    /// The cursor on its own.
     public static func cursorPath(in rect: CGRect, yAxis: YAxis = .up) -> CGPath {
         place(rawCursor(), in: rect, yAxis: yAxis)
     }
 
-    /// The drawn glyph's bounds in design space: the A's apex and left foot,
-    /// and the cursor's tail, which overhangs the letter to the right and
-    /// below.
+    /// The drawn glyph's bounds in design space: the A's square, which its apex
+    /// and left foot touch at the top and left and the cursor's tail at the
+    /// right and bottom.
     public static let glyphBounds: CGRect = {
         let glyph = CGMutablePath()
         glyph.addPath(rawLetter(gap: standardGap))
@@ -121,55 +125,41 @@ public enum ActionBrandMark {
     /// Lattices product icon uses the same pair (`export-brand.tsx`).
     public static let tileCornerExponent = 2.85
 
-    /// The glyph's longer side as a share of the tile.
-    public static let iconGlyphShare = 0.66
-    /// How far the glyph is lifted, as a share of the tile's height. Its mass
-    /// sits low — a wide base with the cursor's tail beneath it — so centring
-    /// it on its bounds alone makes it look like it is sinking.
-    public static let iconGlyphLift = 0.012
+    /// The glyph's longer side as a share of the tile, the same for every
+    /// Lattices product icon (`export-brand.tsx`).
+    public static let iconGlyphShare = 0.56
 
     /// Where the design box sits inside a tile: the glyph centred on its own
-    /// bounds, scaled to `iconGlyphShare` and lifted by `iconGlyphLift`, as the
-    /// app icon composes it. Every tile the app draws goes through here, so the
-    /// chip in a header and the icon in the Dock cannot drift.
+    /// bounds and scaled to `iconGlyphShare`, as the app icon composes it.
+    /// Every tile the app draws goes through here, so the chip in a header and
+    /// the icon in the Dock cannot drift.
     public static func markRect(inTile tile: CGRect, yAxis: YAxis = .up) -> CGRect {
         let side = tile.width * CGFloat(iconGlyphShare)
-        let lift = tile.height * CGFloat(iconGlyphLift)
-        let glyph = CGRect(
-            x: tile.midX - side / 2,
-            // Raising the glyph subtracts in a y-down space and adds in a y-up one.
-            y: tile.midY - side / 2 + (yAxis == .down ? -lift : lift),
-            width: side,
-            height: side
-        )
+        let glyph = CGRect(x: tile.midX - side / 2, y: tile.midY - side / 2, width: side, height: side)
         return designRect(fittingGlyphIn: glyph, yAxis: yAxis)
     }
 
     // MARK: - Colours
 
-    /// The cursor's colour. The kit uses it on both its light and its dark
-    /// paper, so it is baked in here while the chip's tile and letter follow
-    /// the theme. sRGB, like the kit's hex values and the icon rendered from
-    /// them.
-    public static let cursor = CGColor(srgbRed: 0xC5 / 255, green: 0x8A / 255, blue: 0x70 / 255, alpha: 1)
-
     /// The `action` built-in theme's HUD coral (`ActionThemeBuiltin.swift`),
     /// which means "live" everywhere in the app. The status item turns this
-    /// colour while a drive holds the machine. Generic RGB, the space the
-    /// theme's colours are built in, so the two match.
+    /// colour while a drive holds the machine, and the app icon and the brand
+    /// chip draw the cursor in it. Generic RGB, the space the theme's colours
+    /// are built in, so the two match.
     public static let coral = CGColor(red: 0.937, green: 0.416, blue: 0.278, alpha: 1)
 
     // MARK: - Geometry
 
-    /// The cursor's tip: the counter's lower right corner, where the crossbar
-    /// meets the right leg.
-    private static let tip = CGPoint(x: 378.02667529115377, y: 404.9783920951129)
+    /// The cursor's tip: where the square's diagonal crosses the counter's
+    /// right edge. The edge width is solved so that, from here, the tail just
+    /// touches the square.
+    private static let tip = CGPoint(x: 348.61256823541, y: 348.61256823541)
 
     /// Carries the cursor's own frame, with the tip at the origin and the tail
-    /// along +x, onto the design box. The component's
-    /// `translate(378.03 404.98) rotate(35)`.
+    /// along +x, onto the design box: along the diagonal. The component's
+    /// `translate(348.61 348.61) rotate(45)`.
     private static let cursorFrame = CGAffineTransform(translationX: tip.x, y: tip.y)
-        .rotated(by: 35 * .pi / 180)
+        .rotated(by: 45 * .pi / 180)
 
     /// The cursor's arms leave the tip 25° either side of its axis.
     private static let spread = 25 * Double.pi / 180
@@ -177,18 +167,18 @@ public enum ActionBrandMark {
     private static func rawLetter(gap: Double) -> CGPath {
         let outer = CGMutablePath()
         outer.addLines(between: [
-            CGPoint(x: 265, y: 100),
-            CGPoint(x: 335, y: 100),
-            CGPoint(x: 530.0930354263446, y: 500),
-            CGPoint(x: 69.90696457365542, y: 500),
+            CGPoint(x: 265, y: 70),
+            CGPoint(x: 335, y: 70),
+            CGPoint(x: 530, y: 530),
+            CGPoint(x: 70, y: 530),
         ])
         outer.closeSubpath()
 
         let counter = CGMutablePath()
         counter.addLines(between: [
-            CGPoint(x: 300, y: 245),
-            CGPoint(x: 221.97332470884623, y: 404.9783920951129),
-            tip,
+            CGPoint(x: 300, y: 233.93676624418646),
+            CGPoint(x: 215.2785567844705, y: 433.7924784449227),
+            CGPoint(x: 384.72144321552946, y: 433.7924784449227),
         ])
         counter.closeSubpath()
 

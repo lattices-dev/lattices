@@ -4,6 +4,98 @@ Action's agent layer attaches an app or Action-owned browser to a prepared,
 persistent virtual monitor. The monitor and each task have separate lifetimes.
 Use MCP for the complete browser workflow.
 
+## Named virtual workspaces
+
+The multi-workspace candidate adds independent virtual displays. This is not a
+host-isolation acceptance result. Validate the matched native app and runtime
+on the target host before using it for desktop-preserving work.
+
+Use `--workspace <name>` on each CLI layer command. Use `workspace` on each MCP
+layer call. Omission selects `default`; it never selects the last workspace
+used. Names contain 1–32 lowercase letters, digits, or hyphens and start with a
+letter. The existing unnamed display remains the `default` workspace.
+
+Each workspace has its own display owner, task, browser profile, preview,
+operator controls, and recording. Closing a task leaves its display connected.
+Opening a task never replaces an active task. An MCP caller cannot close another
+caller's task. Cross-process transaction locks protect each workspace's lifecycle
+and control files; concurrent mutations fail without overwriting another request.
+An app process can belong to only one active workspace. Use separate browser
+processes for browser tasks on different workspaces.
+
+Preparation changes the macOS display topology. Arrange a setup interval before
+running these commands. Build only in the native development workspace; copy a
+matched bundle and runtime to installation targets.
+
+```bash
+lats action layer prepare --workspace stage --width 1920 --height 1080
+lats action layer prepare --workspace agent --width 1440 --height 900
+lats action layer list
+```
+
+After preflight and host acceptance, attach tasks through MCP:
+
+```text
+layer_open {workspace:"stage", previewFull:true}
+layer_open {workspace:"agent", browser:true, url:"https://lattices.dev/action", previewWorkspace:"stage"}
+layer_snapshot {workspace:"agent"}
+layer_snapshot {workspace:"stage", full:true}
+layer_record {workspace:"stage", action:"start", out:"/absolute/path/stage.mov"}
+layer_record {workspace:"agent", action:"start", out:"/absolute/path/agent.mov"}
+layer_go {workspace:"agent", url:"https://lattices.dev/docs/agents"}
+layer_record {workspace:"agent", action:"stop"}
+layer_record {workspace:"stage", action:"stop"}
+```
+
+`previewWorkspace` places the agent preview on the prepared stage display. The
+displays are peers, not nested virtual machines. The outer recording captures
+the stage and embedded preview. The inner recording captures the agent display.
+Verify both recording completion results and movie files before reporting a take
+as finished. An empty stage task does not populate or arrange application windows.
+
+Set `previewFull:true` on the stage's `layer_open` or `layer_pip` call to show its
+entire display, including the embedded agent preview. Otherwise the preview follows
+the subject windows and can crop out the embedded preview. CLI equivalent:
+`lats action layer pip --workspace stage --preview-full`. Each preview identifies
+its workspace and host. Preview framing does not change full-display recording.
+
+Use `layer_pip {workspace:"agent", previewWorkspace:"stage"}` to move an existing
+preview. CLI equivalent:
+
+```bash
+lats action layer pip --workspace agent --preview-workspace stage
+```
+
+Action rejects self-previews and recursive preview chains. A preview that loses
+its destination must not fall back to a physical screen. A display cannot be
+released while another workspace previews onto it. Close the dependent agent
+task before releasing the stage display:
+
+```text
+layer_close {workspace:"agent"}
+layer_close {workspace:"stage"}
+```
+
+```bash
+lats action layer release --workspace agent
+lats action layer release --workspace stage
+```
+
+Browser profiles are separate for each named workspace. A busy debugging port
+is reusable only when its process matches the expected browser executable,
+profile path, and port. A mismatch fails without adopting or stopping that
+process. Port overrides for named workspaces use
+`ACTION_LAYER_BROWSER_PORT_<WORKSPACE>`, with uppercase letters and underscores
+in place of hyphens. `ACTION_LAYER_BROWSER_PORT` applies to `default` only.
+
+Multiple virtual displays do not create independent macOS keyboards or focus.
+Browser interactions use CDP. Native input uses a shared exclusive input lease
+and can still cause temporary focus changes. Validate physical display modes,
+arrangement, pointer, frontmost app, and unrelated window frames throughout the
+two-workspace lifecycle. Also verify independent pause, stop, recording, crash
+cleanup, and preview-destination loss. Passing a one-display test does not prove
+that the two-display configuration is accepted.
+
 ## Prepare the monitor once
 
 Provision the monitor explicitly when the user is ready for a display topology
@@ -294,8 +386,9 @@ Requests go through `control.request.json` next to the state file and a `SIGUSR2
 `layer_close` is the intended teardown. It creates the stop file and waits for the layer to put the windows back and exit. Windows that were opened after the layer went up (`born` in the state file) never sat on the user's screen, so they are closed instead of moved there. One that asks before closing (unsaved changes) stays open and goes back to the frame it appeared at. If the layer does not exit, Action sends `SIGTERM`.
 
 This tears down the task's feed and window attachment, not the monitor.
-`layer release` explicitly closes any task and then stops the persistent
-monitor owner. It must not disconnect the monitor when task closure fails.
+`layer release` stops the persistent monitor owner only after its task has been
+explicitly closed. It refuses active tasks and incoming previews without closing
+them. Close dependent tasks first, then release their displays.
 
 The layer also tears down when its owner dies:
 

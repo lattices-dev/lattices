@@ -39,6 +39,36 @@ final class MachineGeometryTests: XCTestCase {
         XCTAssertEqual(result.map(\.name), ["HDMI-A-1", "LATS-1"])
         XCTAssertEqual(result.last?.frame.width, 1920)
     }
+    func testLegacyTunnelMonitorMigrationPreservesPlacementsAndFreshReplies() throws {
+        let suite = "MachineGeometryTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let monitor = MachineArrangementStore.Monitor(name: "remote", frame: .init(display))
+        let legacy = try JSONEncoder().encode([monitor])
+        let placement = try JSONEncoder().encode(MachineGeometry.Placement(display))
+        let hosts = [("tunnel", "127.0.0.1:5288"), ("ipv6", "[::1]:5288"),
+                     ("localhost", "localhost:5288"), ("rootDot", "localhost.:5288"),
+                     ("expanded", "[0:0:0:0:0:0:0:1]:5288"), ("mapped", "[::ffff:127.12.34.56]:5288"),
+                     ("direct", "remote.local:5287")].map {
+            VisitTrust.Host(name: $0.0, address: $0.1, side: .left, bridgePublicKey: "key",
+                            bridgeFingerprint: "fingerprint", capabilities: [], pairedAt: .distantPast)
+        }
+        for host in hosts {
+            defaults.set(legacy, forKey: "machines.monitors.\(host.name)")
+            defaults.set(placement, forKey: "machines.placement.\(host.name)")
+        }
+        MachineArrangementStore.invalidateLegacyTunnelMonitors(for: hosts, defaults: defaults)
+        for host in hosts {
+            XCTAssertEqual(MachineArrangementStore.monitors(host.name, defaults: defaults), host.name == "direct" ? [monitor] : [])
+            XCTAssertEqual(defaults.data(forKey: "machines.placement.\(host.name)"), placement)
+        }
+        // An explicit daemon can refresh a tunnel pairing before the next
+        // launch or re-pair. Migration must never remove that fresh result.
+        MachineArrangementStore.cache([monitor], for: "tunnel", defaults: defaults)
+        MachineArrangementStore.invalidateLegacyTunnelMonitors(for: hosts, defaults: defaults)
+        XCTAssertEqual(MachineArrangementStore.monitors("tunnel", defaults: defaults), [monitor])
+    }
+
     func testAddHostPreservesOtherEntriesAndRejectsCorruption() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview B · Workbench</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* Study B — the list is the page. Windows read as rows grouped by where they
+     are (monitor ▸ Desktop), so labels never fight the geometry. The map
+     shrinks to a locator inside the inspector, which also answers "why can't
+     I move this?" in words. */
+  .b { flex: 1; display: flex; min-width: 0; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .query { flex: none; display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 0.5px solid var(--border); }
+  .qbox { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: 8px;
+    background: rgba(255,255,255,0.035); box-shadow: inset 0 0 0 0.5px var(--border-lit); overflow: hidden; }
+  .qbox:focus-within { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3); }
+  .qbox input { flex: 1; min-width: 80px; background: none; border: 0; outline: none; color: var(--text); font: 13px var(--sans); }
+  .tok { position: relative; display: inline-flex; align-items: center; gap: 0; height: 22px; border-radius: 5px; background: rgba(255,255,255,0.08);
+    font: 12px/1 var(--ui); white-space: nowrap; flex: none; }
+  .tok .k { padding: 0 4px 0 7px; color: var(--muted); font-weight: 500; }
+  .tok select { appearance: none; background: none; border: 0; color: var(--text); font: 600 12px/1 var(--ui); padding: 0 16px 0 0; cursor: pointer; outline: none; }
+  .tok::after { content: "▾"; position: absolute; right: 5px; font-size: 9px; color: var(--muted); pointer-events: none; }
+  .tok.unset { background: transparent; box-shadow: inset 0 0 0 0.5px var(--border); }
+  .tok.unset select { color: var(--dim); font-weight: 500; }
+  .query .bulk { display: flex; gap: 6px; flex: none; }
+
+  .table { flex: 1; min-height: 0; padding: 0 0 16px; }
+  .cols, .row { display: grid; grid-template-columns: 34px 92px minmax(120px, 1fr) 118px 132px 172px; align-items: center; column-gap: 8px; padding: 0 14px; }
+  .cols { height: 28px; position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 0.5px solid var(--border); }
+  .cols span { font: 600 10px/1 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .grp { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; margin-top: 6px; position: sticky; top: 28px; z-index: 2; background: var(--bg); }
+  .grp .t { font: 600 12.5px/1 var(--ui); }
+  .grp .s { font: 11px/1 var(--mono); color: var(--muted); }
+  .grp .live { font: 600 9px/1 var(--mono); letter-spacing: .06em; color: var(--text); padding: 3px 5px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+  .grp .grow { flex: 1; height: 0.5px; background: var(--border); }
+  .grp .btn { height: 24px; font-size: 11.5px; }
+  .row { height: 34px; border-radius: 7px; margin: 0 6px; padding: 0 8px; cursor: default; }
+  .row:hover { background: rgba(255,255,255,0.04); }
+  .row.sel { background: var(--sel-fill); box-shadow: inset 0 0 0 1px rgba(236,237,240,0.42); }
+  .row.dimmed .app, .row.dimmed .title { color: var(--muted); }
+  .row .app { font: 600 12.5px/1 var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .title { font: 12.5px/1.2 var(--sans); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.sel .title { color: var(--text); }
+  .row .role, .row .state { font: 11px/1 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .role b { color: var(--dim); font-weight: 500; }
+  .row .state.ok { color: var(--dim); }
+  .row .acts { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; }
+  .row:hover .acts, .row.sel .acts { opacity: 1; }
+  .ib { height: 24px; min-width: 26px; padding: 0 6px; border-radius: 5px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 4px; cursor: pointer; font: 500 11.5px/1 var(--ui); }
+  .ib:hover { background: rgba(255,255,255,0.08); }
+  .ib[disabled] { opacity: .3; cursor: not-allowed; }
+  .pinned { margin: 8px 6px 0; padding: 6px 8px; border-radius: 8px; box-shadow: inset 0 0 0 0.5px dashed var(--border-lit); background: rgba(255,255,255,0.025); }
+  .pinned .lbl { font: 11px/1 var(--sans); color: var(--muted); padding: 2px 8px 6px; display: flex; gap: 8px; align-items: center; }
+  .pinned .row { margin: 0; }
+  .fold { display: flex; align-items: center; gap: 6px; height: 30px; margin: 6px 14px 0; font: 12px/1 var(--sans); color: var(--muted); cursor: pointer; background: none; border: 0; padding: 0; }
+  .fold:hover { color: var(--text); }
+  .emptyrow { margin: 18px 20px; padding: 18px; border-radius: 9px; box-shadow: inset 0 0 0 0.5px var(--border); text-align: center; }
+  .emptyrow h3 { margin: 0 0 4px; font: 600 13px/1.2 var(--ui); }
+  .emptyrow p { margin: 0 0 10px; font: 12px/1.35 var(--sans); color: var(--dim); }
+
+  /* desk strip: every monitor's Spaces, as scope shortcuts */
+  .desk { flex: none; display: flex; gap: 28px; align-items: flex-end; padding: 12px 20px 14px; border-top: 0.5px solid var(--border); background: rgba(255,255,255,0.012); overflow-x: auto; }
+  .desk .dsp { display: flex; flex-direction: column; gap: 7px; flex: none; }
+  .desk .dh { display: flex; gap: 8px; align-items: baseline; font: 600 11.5px/1 var(--ui); }
+  .desk .dh span { font: 10.5px/1 var(--mono); color: var(--muted); font-weight: 400; }
+  .desk .sps { display: flex; gap: 6px; }
+  .desk .sp { display: flex; flex-direction: column; gap: 4px; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; }
+  .desk .th { position: relative; border-radius: 4px; background: #0f0f11; box-shadow: inset 0 0 0 0.5px var(--border-lit); overflow: hidden; }
+  .desk .th i { position: absolute; border-radius: 1.5px; background: rgba(255,255,255,0.14); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.16); }
+  .desk .th i.sel { background: rgba(236,237,240,0.75); }
+  .desk .th.fs { display: grid; place-items: center; font: 600 9px/1 var(--ui); color: var(--dim); }
+  .desk .sp[aria-pressed="true"] .th { box-shadow: inset 0 0 0 1.5px var(--ink-sel); }
+  .desk .sp:hover .th { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
+  .desk .cap { font: 10.5px/1 var(--mono); color: var(--muted); text-align: left; white-space: nowrap; }
+  .desk .cap b { color: var(--text); font-weight: 500; }
+  .desk .any { margin-left: auto; align-self: center; }
+
+  /* inspector */
+  .insp { width: 340px; flex: none; border-left: 0.5px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .insp .scroll { flex: 1; min-height: 0; }
+  .sec { padding: 14px 16px; border-bottom: 0.5px solid var(--border); }
+  .sec:last-child { border-bottom: 0; }
+  .sec > .label-caps { display: block; margin-bottom: 10px; }
+  .who { display: flex; gap: 10px; align-items: flex-start; }
+  .who .glyph { width: 28px; height: 28px; border-radius: 7px; font-size: 11px; }
+  .who .ap { font: 600 14px/1.2 var(--ui); }
+  .who .tt { font: 12.5px/1.3 var(--sans); color: var(--dim); margin-top: 2px; }
+  .where { margin-top: 12px; display: flex; gap: 10px; align-items: center; }
+  .where .meta { font: 11px/1.5 var(--mono); color: var(--muted); }
+  .where .meta b { color: var(--text); font-weight: 500; }
+  .mini .mon .w { padding: 0; }
+  .mini .mon .w .t1, .mini .mon .w .t2 { display: none; }
+  .verdict { margin-top: 12px; padding: 8px 10px; border-radius: 7px; background: rgba(255,255,255,0.04); font: 12px/1.35 var(--sans); color: var(--dim); display: flex; gap: 8px; }
+  .verdict b { color: var(--text); font-weight: 600; }
+  .verdict.no b { color: var(--amber); }
+  .cmd { display: flex; align-items: center; gap: 10px; width: 100%; height: 30px; padding: 0 8px; margin: 0 -8px; border: 0; border-radius: 6px; background: none; color: var(--text); font: 13px/1 var(--ui); cursor: pointer; text-align: left; }
+  .cmd:hover { background: rgba(255,255,255,0.06); }
+  .cmd[disabled] { color: var(--muted); cursor: not-allowed; }
+  .cmd[disabled]:hover { background: none; }
+  .cmd .k { margin-left: auto; }
+  .cmd .note { margin-left: auto; font: 11px/1 var(--sans); color: var(--muted); }
+  .placerow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 6px; }
+  .placerow .ib { height: 30px; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--dim); background: rgba(255,255,255,0.04); }
+  .placerow .ib:hover { color: var(--text); }
+  .spacepick { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px 26px; }
+  .mem { display: flex; align-items: center; gap: 8px; height: 30px; }
+  .mem .nm { font: 600 12.5px/1 var(--ui); width: 70px; }
+  .mem .how { font: 11px/1 var(--mono); color: var(--muted); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mem .how b { color: var(--dim); font-weight: 500; }
+  .mem .ib { color: var(--dim); }
+  .draftbox { margin: 0 12px 12px; padding: 10px; border-radius: 9px; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 0.5px var(--border-lit); }
+  .draftbox .top { display: flex; justify-content: space-between; font: 12px/1.3 var(--sans); margin-bottom: 8px; }
+  .draftbox .ch { font: 11px/1.4 var(--mono); color: var(--dim); margin-bottom: 10px; }
+  .draftbox .acts { display: flex; gap: 6px; }
+  .draftbox .acts .btn { flex: 1; justify-content: center; }
+  .multi .big { font: 600 22px/1 var(--ui); }
+
+  @media (max-width: 1500px) {
+    .cols, .row { grid-template-columns: 30px 80px minmax(110px, 1fr) 96px 110px 150px; }
+    .insp { width: 300px; }
+  }
+  @media (max-width: 1340px) {
+    .cols, .row { grid-template-columns: 30px 76px minmax(110px, 1fr) 0 104px 120px; column-gap: 6px; }
+    .cols .c-role, .row .role { display: none; }
+    .cols, .row { column-gap: 0; } .row .app, .cols span:nth-child(2) { padding-right: 6px; }
+    .row .acts .ib.place:not(.first) { display: none; }
+    .query .bulk .lbl { display: none; }
+  }
+</style>
+</head>
+<body>
+<script src="shared/fixture.js"></script>
+<script src="shared/model.js"></script>
+<script src="shared/shell.js"></script>
+<script>
+(function () {
+  const { h } = LT;
+  const m = LT.createModel();
+  const ui = { showHidden: false, movePick: false };
+
+  // ---------- query bar: scope as editable tokens ----------
+  function token(key, value, options, onChange) {
+    const sel = h("select", { onChange: (e) => onChange(e.target.value) },
+      ...options.map(([v, label]) => { const o = h("option", { value: v }, label); if (String(v) === String(value)) o.selected = true; return o; }));
+    const unset = options[0][0] === "" && String(value) === "";
+    return h("label.tok" + (unset ? ".unset" : ""), h("span.k", key), sel);
+  }
+  function queryBar() {
+    const s = m.scope;
+    const d = s.display != null ? m.display(s.display) : null;
+    const plan = m.plan("Tile");
+    return h("div.query",
+      h("div.qbox",
+        LT.icon("search"),
+        token("Monitor", s.display ?? "", [["", "Any"], ...m.displays.map((x) => [x.id, x.short])], (v) => m.setScope({ display: v === "" ? null : Number(v) })),
+        d ? token("Space", s.spaceId ?? "", [["", "Any"], ...d.spaces.filter((x) => !x.fullScreen).map((x) => [x.id, `Desktop ${x.n}`])], (v) => m.setScope({ spaceId: v === "" ? null : Number(v) })) : null,
+        token("Layer", s.layerId ?? "", [["", "Any"], ...m.layers.map((l) => [l.id, l.name])], (v) => m.setScope({ layerId: v || null })),
+        token("Kind", s.kind === "all" ? "" : s.kind, [["", "Any"], ...m.kinds.filter((k) => k.id !== "all").map((k) => [k.id, k.label])], (v) => m.setScope({ kind: v || "all" })),
+        LT.searchField(m, "Filter by title or app  /")),
+      h("div.bulk",
+        h("button.btn" + (plan.enabled ? "" : ".is-disabled"), { title: plan.excludedText ? "Left out: " + plan.excludedText : "", onClick: () => m.runBulk("Tile") }, LT.icon("tile"), h("span.lbl", `Tile ${plan.count}`), h("span.kbd", "T")),
+        h("button.btn" + (plan.enabled ? "" : ".is-disabled"), { title: plan.excludedText ? "Left out: " + plan.excludedText : "", onClick: () => m.runBulk("Distribute") }, LT.icon("distribute"), h("span.lbl", `Distribute ${plan.count}`), h("span.kbd", "D"))));
+  }
+
+  // ---------- rows ----------
+  function roleText(w) {
+    const lid = m.scope.layerId || (m.draft && m.draft.layerId);
+    const ls = m.layersOf(w);
+    if (lid) {
+      const r = m.roleIn(w, lid);
+      if (!r) return ls.length ? h("span", ls.map((l) => l.name).join(", ")) : "—";
+      if (r.role === "member") return h("span", h("b", lid), ` · ${r.entry.id.startsWith("d") ? "+pin" : r.entry.via}`);
+      if (r.role === "tucked") return h("span", h("b", lid), " · tucked");
+      return h("span", "unclaimed");
+    }
+    return ls.length ? h("span", h("b", ls[0].name), ls.length > 1 ? ` +${ls.length - 1}` : "") : "—";
+  }
+  function stateText(w) {
+    const ex = m.inScope(w) ? m.stateExclusion(w) : null;
+    if (m.isLive(w) && !ex) return h("span.state.ok", "live");
+    if (ex === "tucked") return h("span.state", "live · tucked");
+    const p = m.positionLabel(w);
+    return h("span.state", { title: m.whereLabel(w) }, w.state === "otherSpace" ? (p || "").toLowerCase() : m.stateLabel(w).toLowerCase());
+  }
+  function row(w, opts = {}) {
+    const placeWhy = m.blocker(w, "place");
+    const acts = h("div.acts",
+      h("button.ib", { "aria-label": `Focus ${w.app}`, title: m.focusNote(w) + "  ↵", disabled: !!m.blocker(w, "focus"), onClick: (e) => { e.stopPropagation(); m.focus(w.wid); } }, LT.icon("focus")),
+      ...["left", "right", "max", "center"].map((k, i) => h("button.ib.place" + (i === 0 ? ".first" : ""), { "aria-label": LT.PLACE[k].label, title: placeWhy || LT.PLACE[k].label, disabled: !!placeWhy, onClick: (e) => { e.stopPropagation(); m.place(w.wid, k); } }, LT.icon(k))),
+      opts.reveal ? h("button.ib", { "aria-label": "Show in scope", title: "Show in scope", onClick: (e) => { e.stopPropagation(); m.reveal(w.wid); } }, LT.icon("reveal")) : null);
+    return h("div.row" + (m.isSelected(w.wid) ? ".sel" : "") + (opts.dim ? ".dimmed" : ""),
+      { "data-wid": w.wid, title: `${w.app} — ${w.title}`,
+        onClick: (e) => m.select(w.wid, { toggle: e.metaKey || e.shiftKey }), onDblclick: () => m.focus(w.wid) },
+      LT.glyph(w.app), h("span.app", w.app), h("span.title", w.title), h("span.role", roleText(w)), stateText(w), acts);
+  }
+
+  function groupRun(displayId, verb) {
+    const prev = { display: m.scope.display, spaceId: m.scope.spaceId };
+    m.scope.display = displayId;
+    m.runBulk(verb);
+    Object.assign(m.scope, prev);
+    m.emit();
+  }
+
+  function table() {
+    const body = h("div.table.scroll", { "data-keep": "table" },
+      h("div.cols", h("span"), h("span", "App"), h("span", "Window"), h("span.c-role", "Layer"), h("span", "State"), h("span", { style: { textAlign: "right" } }, "")));
+
+    const p = m.primary();
+    if (p && !m.inScope(p)) {
+      body.append(h("div.pinned",
+        h("div.lbl", "Selected, outside this scope —", h("span", { style: { color: "var(--dim)" } }, m.exclusionLabel(m.scopeExclusion(p), p)),
+          h("button.btn.ghost", { style: { marginLeft: "auto", height: "22px" }, onClick: () => m.reveal(p.wid) }, LT.icon("reveal"), "Show in scope")),
+        row(p, { dim: true })));
+    }
+
+    let shown = 0;
+    // Current Spaces first: these are the only rows that can be arranged.
+    for (const d of m.displays) {
+      const ws = m.windows.filter((w) => w.display === d.id && w.space === d.current && m.inScope(w));
+      if (!ws.length) continue;
+      shown += ws.length;
+      const elig = ws.filter((w) => !m.stateExclusion(w)).length;
+      body.append(h("div.grp",
+        h("span.t", d.name), h("span.s", `Desktop ${m.spaceNumber(d.current)}`), h("span.live", "LIVE"), h("span.s", `${elig} can arrange`),
+        h("span.grow"),
+        h("button.btn.ghost" + (elig ? "" : ".is-disabled"), { onClick: () => groupRun(d.id, "Tile") }, LT.icon("tile"), "Tile"),
+        h("button.btn.ghost" + (elig ? "" : ".is-disabled"), { onClick: () => groupRun(d.id, "Distribute") }, LT.icon("distribute"), "Distribute")));
+      ws.forEach((w) => body.append(row(w)));
+    }
+    // Elsewhere: in scope, but not on a current Space. Read-only positions.
+    const elsewhere = m.windows.filter((w) => m.inScope(w) && !(w.space != null && w.space === m.display(w.display).current));
+    if (elsewhere.length) {
+      shown += elsewhere.length;
+      body.append(h("div.grp", h("span.t", "Elsewhere"), h("span.s", "other Desktops · full screen · hidden — focus to bring one here"), h("span.grow")));
+      elsewhere.forEach((w) => body.append(row(w)));
+    }
+    if (!shown) {
+      const s = m.scope;
+      body.append(h("div.emptyrow",
+        h("h3", "No windows match"),
+        h("p", "Selection is kept; the scope only filters this list."),
+        h("div", { style: { display: "flex", gap: "6px", justifyContent: "center" } },
+          s.kind !== "all" ? h("button.btn", { onClick: () => m.setScope({ kind: "all" }) }, "Any kind") : null,
+          s.spaceId ? h("button.btn", { onClick: () => m.setScope({ spaceId: null }) }, "Any Space") : null,
+          s.layerId ? h("button.btn", { onClick: () => m.setScope({ layerId: null }) }, "Any layer") : null,
+          s.search ? h("button.btn", { onClick: () => m.setScope({ search: "" }) }, "Clear text") : null)));
+    }
+    // Hidden by scope: folded, so the list stays about the scope.
+    const hidden = m.windows.filter((w) => !m.inScope(w) && !(p && p.wid === w.wid));
+    if (hidden.length) {
+      body.append(h("button.fold", { onClick: () => { ui.showHidden = !ui.showHidden; m.emit(); } }, LT.icon(ui.showHidden ? "down" : "chev"), `${hidden.length} outside this scope`));
+      if (ui.showHidden) hidden.forEach((w) => body.append(row(w, { dim: true, reveal: true })));
+    }
+    return body;
+  }
+
+  // ---------- inspector ----------
+  function inspector() {
+    const sel = m.selection.map(m.win);
+    const box = h("div.scroll");
+    if (!sel.length) {
+      box.append(h("div.sec", h("span.label-caps", "Nothing selected"),
+        h("p", { style: { font: "12.5px/1.4 var(--sans)", color: "var(--dim)", margin: 0 } }, "Pick a row. ⌘-click adds to the selection; Esc clears it.")));
+    } else if (sel.length > 1) {
+      const live = sel.filter((w) => m.blocker(w, "place") == null);
+      box.append(h("div.sec.multi", h("span.label-caps", "Selection"),
+        h("div.big", `${sel.length} windows`),
+        h("div.verdict" + (live.length === sel.length ? "" : ".no"), h("span", h("b", `${live.length} of ${sel.length}`), " are live on a current Space and could be placed. Others are left alone.")),
+        h("div", { style: { display: "flex", flexDirection: "column", marginTop: "10px" } },
+          ...sel.map((w) => h("button.cmd", { onClick: () => m.select(w.wid) }, LT.glyph(w.app), w.app, h("span.note", m.whereLabel(w)))))));
+    } else {
+      const w = sel[0], d = m.display(w.display);
+      const placeWhy = m.blocker(w, "place"), focusWhy = m.blocker(w, "focus"), outWhy = m.scopeExclusion(w);
+      const mini = h("div.mini", w.space != null ? LT.monitor(m, d, { width: 108, spaceId: w.space, labels: "tiny", onSelect: (x) => m.select(x.wid) }) : h("div.mon", { style: { width: "108px", height: Math.round(108 / d.aspect) + "px", display: "grid", placeItems: "center", font: "10px var(--mono)", color: "var(--muted)" } }, "no Space"));
+      box.append(h("div.sec",
+        h("div.who", LT.glyph(w.app), h("div", h("div.ap", w.app), h("div.tt", w.title))),
+        h("div.where", mini, h("div.meta",
+          h("div", h("b", d.name)),
+          h("div", w.space == null ? m.stateLabel(w) : m.spaceOf(w.space).space.fullScreen ? "Full-screen Space" : `Desktop ${m.spaceNumber(w.space)}${w.space === d.current ? " · current" : ""}`),
+          h("div", m.positionLabel(w) || "Live position"))),
+        h("div.verdict" + (placeWhy ? ".no" : ""), placeWhy ? h("span", h("b", "Can't place. "), placeWhy + ".") : h("span", h("b", "Live. "), outWhy ? "Placeable, though outside this scope." : m.stateExclusion(w) === "tucked" ? "Placeable alone; tucked, so Tile and Distribute skip it." : "Placeable, and part of Tile / Distribute."))));
+
+      const cmds = h("div.sec", h("span.label-caps", "Window"));
+      cmds.append(h("button.cmd", { disabled: !!focusWhy, onClick: () => m.focus(w.wid) }, LT.icon("focus"), "Focus", h("span.note", focusWhy || m.focusNote(w)), h("span.kbd", "↵")));
+      if (outWhy) cmds.append(h("button.cmd", { onClick: () => m.reveal(w.wid) }, LT.icon("reveal"), "Show in scope", h("span.note", m.exclusionLabel(outWhy, w))));
+      cmds.append(h("div.placerow", ...["left", "right", "max", "center"].map((k) => h("button.ib", { disabled: !!placeWhy, title: placeWhy || "", onClick: () => m.place(w.wid, k) }, LT.icon(k), LT.PLACE[k].label))));
+      cmds.append(h("button.cmd", { disabled: !!placeWhy, onClick: () => { ui.movePick = !ui.movePick; m.emit(); } }, LT.icon("move"), "Move to Desktop", h("span.note", placeWhy ? "needs a live window" : ""), LT.icon(ui.movePick ? "down" : "chev")));
+      if (ui.movePick && !placeWhy) cmds.append(h("div.spacepick", ...d.spaces.filter((s) => !s.fullScreen && s.id !== w.space).map((s) => h("button.chip", { onClick: () => { ui.movePick = false; m.moveToSpace(w.wid, s.id); } }, `Desktop ${s.n}`))));
+      box.append(cmds);
+
+      const mem = h("div.sec", h("span.label-caps", "Layers"));
+      for (const l of m.layers) {
+        const r = m.roleIn(w, l.id);
+        const editing = m.draft && m.draft.layerId === l.id;
+        const how = !r ? "not a member" : r.role === "member" ? h("span", h("b", r.entry.id.startsWith("d") ? "+ pin (draft)" : r.entry.via), r.entry.via === "rule" ? ` · ${r.entry.match}` : "") : r.role === "tucked" ? h("b", "tucked") : "on its home Space";
+        const ctl = [];
+        if (editing) {
+          if (!r || r.role === "unclaimed") ctl.push(h("button.ib", { onClick: () => m.draftPin(w.wid) }, LT.icon("pin"), "Pin"));
+          else { ctl.push(h("button.ib", { onClick: () => m.draftTuck(w.wid) }, r.role === "tucked" ? "Untuck" : "Tuck")); ctl.push(h("button.ib", { "aria-label": "Remove from layer", title: "Remove from layer", onClick: () => m.draftRemove(w.wid) }, LT.icon("x"))); }
+        } else if (!m.draft) {
+          ctl.push(h("button.ib", { title: `Edit ${l.name}`, onClick: () => m.beginEdit(l.id) }, "Edit"));
+        }
+        mem.append(h("div.mem", LT.icon("layer"), h("span.nm", l.name), h("span.how", how), ...ctl));
+      }
+      box.append(mem);
+    }
+    const el = h("aside.insp", box);
+    if (m.draft) {
+      const l = m.layer(m.draft.layerId), n = m.draft.changes.length;
+      el.append(h("div.draftbox",
+        h("div.top", h("span", "Editing ", h("b", l.name)), h("span.muted", l.active ? "active layer" : "not active")),
+        h("div.ch", n ? m.draft.changes.join(" · ") : "No changes yet"),
+        h("div.acts",
+          h("button.btn.ghost", { onClick: () => m.cancelEdit() }, "Discard"),
+          h("button.btn", { onClick: () => m.saveEdit(false) }, "Save"),
+          h("button.btn.primary" + (l.active ? "" : ".is-disabled"), { title: l.active ? "Save, then arrange its live members" : "Only the active layer can be arranged", onClick: () => m.saveEdit(true) }, "Save & arrange"))));
+    }
+    return el;
+  }
+
+  // Every Space on every monitor, drawn small. Clicking one scopes the list to
+  // it; the selected window is marked wherever it is.
+  function deskStrip() {
+    const s = m.scope;
+    const strip = h("div.desk");
+    for (const d of m.displays) {
+      const W = d.id === 1 ? 88 : 72, H = Math.round(W / d.aspect);
+      const sps = h("div.sps");
+      for (const sp of d.spaces) {
+        const th = h("div.th" + (sp.fullScreen ? ".fs" : ""), { style: { width: W + "px", height: H + "px" } });
+        if (sp.fullScreen) th.append(sp.fullScreen);
+        else for (const w of m.windows.filter((w) => w.space === sp.id && w.frame)) {
+          const [x, y, ww, hh] = w.frame;
+          th.append(h("i" + (m.isSelected(w.wid) ? ".sel" : ""), { style: { left: x * W + 1 + "px", top: y * H + 1 + "px", width: ww * W - 2 + "px", height: hh * H - 2 + "px" } }));
+        }
+        const n = m.windows.filter((w) => w.space === sp.id).length;
+        const on = s.display === d.id && s.spaceId === sp.id;
+        sps.append(h("button.sp", { "aria-pressed": String(on), title: on ? "Clear Space scope" : `Scope to ${d.short} · ${sp.fullScreen ? "full screen" : "Desktop " + sp.n}`,
+          onClick: () => m.setScope(on ? { spaceId: null } : { display: d.id, spaceId: sp.id }) },
+          th, h("span.cap", sp.id === d.current ? h("b", `● ${sp.fullScreen ? "Full" : "D" + sp.n}`) : sp.fullScreen ? "Full" : `D${sp.n}`, ` · ${n}`)));
+      }
+      strip.append(h("div.dsp", h("div.dh", d.name, h("span", d.size)), sps));
+    }
+    const hidden = m.windows.filter((w) => w.space == null);
+    strip.append(h("div.dsp", h("div.dh", "No Space", h("span", "hidden · minimized")),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } }, ...hidden.map((w) => h("button.chip" + "", { "aria-pressed": String(m.isSelected(w.wid)), onClick: () => m.select(w.wid) }, LT.glyph(w.app), w.app)))));
+    if (s.display != null || s.spaceId != null) strip.append(h("button.btn.ghost.any", { onClick: () => m.setScope({ display: null }) }, "All monitors"));
+    return strip;
+  }
+
+  // ↑/↓ walk the visible rows (study-only; mirrors list navigation).
+  function onKey(e) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const rows = [...document.querySelectorAll(".table .row")].map((r) => Number(r.dataset.wid));
+    const uniq = [...new Set(rows)];
+    if (!uniq.length) return;
+    e.preventDefault();
+    const i = uniq.indexOf(m.primary() ? m.primary().wid : -1);
+    const next = uniq[Math.max(0, Math.min(uniq.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];
+    ui.movePick = false;
+    m.select(next);
+    const n = document.querySelector(`.table .row[data-wid="${next}"]`);
+    if (n) n.scrollIntoView({ block: "nearest" });
+  }
+
+  LT.mountShell({
+    letter: "B", name: "Workbench", blurb: "Rows grouped by where windows are; an inspector that explains every limit.",
+    model: m, onKey,
+    render: () => h("div.b", h("div.main", queryBar(), table(), deskStrip()), inspector()),
+  });
+})();
+</script>
+</body>
+</html>

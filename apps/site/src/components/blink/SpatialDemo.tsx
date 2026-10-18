@@ -103,6 +103,14 @@ export default function SpatialDemo() {
     setNotes(next)
   }, [clamp])
 
+  const toggleBlink = useCallback(() => {
+    setAllHidden((h) => {
+      const target = !h
+      setNotes((prev) => prev.map((n) => ({ ...n, hidden: target })))
+      return target
+    })
+  }, [])
+
   /* keyboard: press N while hovering the surface */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -122,8 +130,7 @@ export default function SpatialDemo() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spawn])
+  }, [spawn, toggleBlink])
 
   /* Canonical first-load/reset composition. These are the exact demo-window
      coordinates and sizes shown in the product mock; dragging remains live. */
@@ -133,14 +140,6 @@ export default function SpatialDemo() {
     seededRef.current = true
     resetScene()
   }, [resetScene])
-
-  const toggleBlink = useCallback(() => {
-    setAllHidden((h) => {
-      const target = !h
-      setNotes((prev) => prev.map((n) => ({ ...n, hidden: target })))
-      return target
-    })
-  }, [])
 
   /* drag */
   const onPanelPointerDown = (e: React.PointerEvent, note: DemoNote) => {

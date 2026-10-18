@@ -17,7 +17,7 @@ final class ActionBuildProvenanceTests: XCTestCase {
         let fixture = ActionBuildProvenance(
             schemaVersion: 1,
             build: .init(version: "0.3.0", commit: "test-commit", sourceDigest: "test-digest", sourceScope: "native", builtAt: "2026-10-11", dirty: true, configuration: "debug", bundleBuild: "202610114", orchestrationSourceDigest: "orchestration-digest"),
-            features: .init(privateLayer: true, isolationContext: true, persistentAgentDisplay: true), routing: ActionBuildProvenance.routingContract)
+            features: .init(privateLayer: true, isolationContext: true, persistentAgentDisplay: true, namedWorkspaces: true, previewDestination: true), routing: ActionBuildProvenance.routingContract)
         try Data(fixture.json.utf8).write(to: directory.appendingPathComponent("build-provenance.json"))
         let value = ActionBuildProvenance.load(resourceURL: directory)
         XCTAssertEqual(value.build?.commit, "test-commit")
@@ -27,6 +27,8 @@ final class ActionBuildProvenanceTests: XCTestCase {
         XCTAssertEqual(value.build?.orchestrationSourceDigest, "orchestration-digest")
         XCTAssertEqual(value.features.isolationContext, true)
         XCTAssertEqual(value.features.persistentAgentDisplay, true)
+        XCTAssertEqual(value.features.namedWorkspaces, true)
+        XCTAssertEqual(value.features.previewDestination, true)
     }
 
     func testMalformedManifestDoesNotInventIdentity() throws {

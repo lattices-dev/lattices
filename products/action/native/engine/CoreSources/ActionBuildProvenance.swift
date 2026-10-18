@@ -17,6 +17,8 @@ public struct ActionBuildProvenance: Codable, Sendable {
         public let privateLayer: Bool
         public var isolationContext: Bool? = nil
         public var persistentAgentDisplay: Bool? = nil
+        public var namedWorkspaces: Bool? = nil
+        public var previewDestination: Bool? = nil
     }
     public struct Routing: Codable, Sendable {
         public let nativeHost: String
@@ -46,7 +48,7 @@ public struct ActionBuildProvenance: Codable, Sendable {
     }
 
     public static var routingContract: Routing {
-        Routing(nativeHost: "agent-display owns the persistent monitor; agent-layer attaches a task without display reconfiguration",
+        Routing(nativeHost: "agent-display owns each named persistent monitor; agent-layer attaches a workspace task without display reconfiguration and explicitly targets its preview display",
                 privateLayerWorkflow: "Use Action MCP action.layer.open/snapshot/click/type/js/close; browser control is MCP orchestration over CDP, not raw WebSocket",
                 rawWebSocket: "status.methods lists only raw agent RPCs; it is not the complete CLI/MCP capability catalog")
     }

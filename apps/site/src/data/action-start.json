@@ -1,0 +1,40 @@
+{
+  "siteUrl": "https://lattices.dev",
+  "title": "Try Action on your Mac",
+  "description": "Install Action, grant permissions, and take your first screenshot.",
+  "prerequisites": "macOS on Apple Silicon, with Bun installed. No source build needed.",
+  "steps": [
+    {
+      "id": "install",
+      "title": "Install and launch",
+      "command": "bun add -g @lattices/lattices\nlats action install --launch",
+      "expected": "Action.app opens from Applications. The CLI is available as lats."
+    },
+    {
+      "id": "permissions",
+      "title": "Allow access",
+      "command": "lats action call permissions.request\nlats action call permissions.snapshot",
+      "expected": "Approve Accessibility and Screen Recording in macOS, then run the second command. Both permissions should report granted."
+    },
+    {
+      "id": "screenshot",
+      "title": "Take a screenshot",
+      "command": "lats action call capture.screenshotScreen \\\n  '{\"output\":\"/tmp/action-first.png\"}'\nopen /tmp/action-first.png",
+      "expected": "The reply reports status: screenshot. Your main display capture opens in Preview. This captures your screen, not a private workspace."
+    }
+  ],
+  "troubleshooting": "Agent not reachable? Run lats action launch, then retry. Permission denied? Enable Action in System Settings → Privacy & Security, quit and reopen Action, then check permissions again.",
+  "agentNote": "The app download includes native capture. Agent-driven browser work and the virtual workspaces in the demo also need the matching MCP runtime and host preflight.",
+  "linuxNote": "Linux uses a remote lattices-host connection, not the macOS app. Available actions depend on the host; macOS overlays and Accessibility are not available there.",
+  "links": {
+    "install": "/action/install.md",
+    "agents": "/action/agents/",
+    "instructions": "/action/AGENTS.md",
+    "index": "/action/llms.txt",
+    "fullContext": "/action/llms-full.txt",
+    "manifest": "/action/agent.json",
+    "docs": "/action/docs.json",
+    "linux": "/action/remote-engine.md",
+    "discovery": "/.well-known/agent-skills/index.json"
+  }
+}

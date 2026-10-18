@@ -1,0 +1,86 @@
+{
+  "macos-automation-permissions": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Operate a control. Accessibility lets a tool read or use the controls an app exposes."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Send app commands. Automation covers Apple Events that let one app command another."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version."
+      }
+    ],
+    "fullTranscript": "Three permissions, three different jobs\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. MACOS PERMISSIONS. Three permissions, three different jobs. Start with the task your tool needs to do.\n\n[0–10 seconds] Operate a control. Accessibility lets a tool read or use the controls an app exposes.\n\n[10–20 seconds] Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access.\n\n[20–30 seconds] Send app commands. Automation covers Apple Events that let one app command another.\n\n[30–40 seconds] Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version.\n\nOn-screen diagram labels: Your tool; Accessibility; Exposed controls; Save; Screen & System Audio Recording; Captured image; Automation; Apple Events; App A; App B; One task can cross several boundaries.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  },
+  "observe-act-verify": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Observe. Goal: save Weekend plans. Find the right window and the Save control."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Act. Press Save once. An accepted action does not prove the file was saved."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Verify. The app reports “Could not save”. The error means the goal is still unmet."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help."
+      }
+    ],
+    "fullTranscript": "A click is not a completed task\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. RELIABLE UI AUTOMATION. A click is not a completed task. Observe the app. Act once. Check what changed.\n\n[0–10 seconds] Observe. Goal: save Weekend plans. Find the right window and the Save control.\n\n[10–20 seconds] Act. Press Save once. An accepted action does not prove the file was saved.\n\n[20–30 seconds] Verify. The app reports “Could not save”. The error means the goal is still unmet.\n\n[30–40 seconds] Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help.\n\nOn-screen diagram labels: Illustrated app; Weekend plans; Save; Could not save; Goal: save Weekend plans; Right window. Right control.; 01 / OBSERVE; 02 / ACT; 03 / VERIFY; Action accepted; Now inspect the result.; Expected: Saved; Observed: Could not save; Goal still unmet; Inspect cause; One safe retry; Verify again; Still unresolved? Stop and ask.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  },
+  "window-snapping-vs-tiling": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Snap a window. You choose the position. Put the selected window on the left."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Group a workspace. Keep related work together. Windows, projects, or sessions share a context."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app."
+      }
+    ],
+    "fullTranscript": "Snapping, tiling, and workspaces\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. ORGANIZE YOUR MAC. Snapping, tiling, and workspaces. Three jobs that window tools can help with.\n\n[0–10 seconds] Snap a window. You choose the position. Put the selected window on the left.\n\n[10–20 seconds] Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins.\n\n[20–30 seconds] Group a workspace. Keep related work together. Windows, projects, or sessions share a context.\n\n[30–40 seconds] Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app.\n\nOn-screen diagram labels: Snapping; Place one; Automatic tiling; Arrange several; Workspace; Return to a context; Planning; Browser; Notes; Terminal; Tools may combine these jobs.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  }
+}

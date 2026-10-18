@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="650" viewBox="0 0 640 650" role="img" aria-labelledby="title desc">
+<title id="title">Speech — speech playback for agents</title>
+<desc id="desc">A fine-line illustration of a local player: an agent summary waveform, playback controls, and two queued readouts.</desc>
+<rect width="640" height="650" rx="16" fill="#141719"/>
+<g font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-weight="400" fill="#e9e9e5">
+
+<text x="48" y="70" font-size="12" fill="#aaaeb1" letter-spacing="2.2">LATTICES</text>
+<text x="45" y="145" font-size="60" fill="#e9e9e5" font-weight="300" letter-spacing="-1.8">Speech</text>
+<text x="48" y="186" font-size="20" fill="#aaaeb1" >Speech playback for agents.</text>
+<g transform="translate(48 238)">
+<rect x="0.5" y="0.5" width="531" height="299" rx="12" fill="#1b1e21" stroke="#363b40"/>
+<text x="25" y="33" font-size="13" fill="#aaaeb1" >Playback</text>
+<text x="507" y="33" font-size="12" fill="#aaaeb1" text-anchor="end">3 items</text>
+<path d="M1 49.5H531" fill="none" stroke="#363b40"/>
+<text x="25" y="79" font-size="17" fill="#e9e9e5" >Agent summary</text>
+<text x="25" y="101" font-size="12" fill="#aaaeb1" >Release build</text>
+<text x="507" y="81" font-size="12" fill="#aaaeb1" text-anchor="end" font-variant-numeric="tabular-nums">00:38 / 02:14</text>
+<path d="M25 137.00V141.00" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M31 133.09V144.91" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M37 129.18V148.82" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M43 126.77V151.23" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M49 128.43V149.57" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M55 135.53V142.47" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M61 127.86V150.14" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M67 118.78V159.22" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M73 116.33V161.67" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M79 122.24V155.76" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M85 133.45V144.55" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M91 129.80V148.20" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M97 124.29V153.71" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M103 125.04V152.96" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M109 129.68V148.32" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M115 134.96V143.04" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M121 134.88V143.12" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M127 131.80V146.20" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M133 129.59V148.41" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M139 129.30V148.70" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M145 132.77V145.23" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M151 133.48V144.52" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M157 124.03V153.97" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M163 117.77V160.23" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M169 118.90V159.10" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M175 127.72V150.28" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M181 133.93V144.07" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M187 124.17V153.83" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M193 121.11V156.89" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M199 124.65V153.35" stroke="#b3acd9" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M205 131.38V146.62" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M211 136.49V141.51" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M217 132.71V145.29" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M223 130.96V147.04" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M229 130.59V147.41" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M235 132.10V145.90" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M241 136.68V141.32" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M247 129.84V148.16" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M253 122.30V155.70" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M259 119.19V158.81" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M265 123.57V154.43" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M271 134.44V143.56" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M277 127.28V150.72" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M283 119.57V158.43" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M289 119.62V158.38" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M295 126.02V151.98" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M301 134.41V143.59" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M307 133.29V144.71" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M313 130.56V147.44" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M319 130.51V147.49" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M325 131.94V146.06" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M331 134.80V143.20" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M337 134.26V143.74" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M343 127.80V150.20" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M349 122.63V155.37" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M355 122.59V155.41" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M361 129.56V148.44" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M367 132.66V145.34" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M373 121.62V156.38" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M379 116.86V161.14" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M385 120.32V157.68" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M391 129.30V148.70" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M397 135.35V142.65" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M403 129.70V148.30" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M409 128.63V149.37" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M415 130.52V147.48" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M421 133.54V144.46" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M427 136.80V141.20" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M433 132.19V145.81" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M439 127.29V150.71" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M445 124.64V153.36" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M451 127.25V150.75" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M457 135.87V142.13" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M463 126.60V151.40" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M469 117.85V160.15" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M475 116.59V161.41" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M481 123.38V154.62" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M487 134.29V143.71" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M493 130.33V147.67" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M499 126.17V151.83" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M505 127.28V150.72" stroke="#656176" stroke-width="1.25" stroke-linecap="round"/>
+<path d="M25 184.5H507" stroke="#363b40"/><path d="M25 184.5H162" stroke="#b3acd9"/><circle cx="162" cy="184.5" r="2.5" fill="#b3acd9"/>
+<g fill="none" stroke="#aaaeb1" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M27 204V216M32 204V216"/><path d="M53 204L62 210L53 216Z M65 204V216"/></g>
+<text x="507" y="215" font-size="12" fill="#aaaeb1" text-anchor="end">1×</text>
+<path d="M1 231.5H531M25 265.5H507" stroke="#363b40"/>
+<text x="25" y="253" font-size="11" fill="#aaaeb1" >02</text>
+<text x="56" y="253" font-size="13" fill="#aaaeb1" >Download finished</text>
+<text x="507" y="253" font-size="11" fill="#aaaeb1" text-anchor="end">00:08</text>
+<text x="25" y="287" font-size="11" fill="#aaaeb1" >03</text>
+<text x="56" y="287" font-size="13" fill="#aaaeb1" >Release notes draft</text>
+<text x="507" y="287" font-size="11" fill="#aaaeb1" text-anchor="end">01:42</text>
+</g>
+<text x="48" y="609" font-size="12" fill="#aaaeb1" >macOS</text>
+<text x="592" y="609" font-size="12" fill="#aaaeb1" text-anchor="end">Local speech queue</text>
+</g>
+</svg>

@@ -744,7 +744,7 @@ struct SettingsContentView: View {
 
                         settingsPrefRow(
                             "Slide echo",
-                            caption: "A quick swoosh at the pointer as you switch. Off, or with Reduce Motion, a thin top-edge sweep is used."
+                            caption: "A quick swoosh at the pointer as you switch. Turn off for just the desktop filmstrip. Reduce Motion suppresses the swoosh."
                         ) {
                             SettingsSwitch(isOn: $prefs.spaceSwitchGlideEnabled)
                         }
@@ -892,6 +892,10 @@ struct SettingsContentView: View {
                         cardDivider
 
                         mouseShortcutMappingMatrix(title: "Active mappings", limit: 8)
+
+                        Text("Hold Shift before a desktop gesture to move the window under the pointer to the next or previous desktop. You follow the window to its new desktop.")
+                            .font(Typo.caption(11))
+                            .foregroundColor(Palette.textDim)
 
                         breakerStatusRow(
                             state: mouseGestureController.breakerState,

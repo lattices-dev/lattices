@@ -58,8 +58,9 @@ final class ScreenMapWindowController: ObservableObject {
             if activePage == .overview {
                 controller?.enter()
             }
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            // The red button orders the window out without `close()`, so this
+            // can be a hidden window coming back: present it like a new one.
+            AppWindowShell.present(existing)
             return
         }
 
@@ -86,10 +87,11 @@ final class ScreenMapWindowController: ObservableObject {
             rootView: view
         )
         AppWindowShell.positionCentered(w)
-        AppWindowShell.present(w)
-
+        // Held before presenting: `present` asks whether a window is showing,
+        // and an unheld window reads as none, leaving Lattices out of ⌘Tab.
         self.window = w
         self.controller = ctrl
+        AppWindowShell.present(w)
     }
 
     /// Navigate to a specific page, opening the window if needed.

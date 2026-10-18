@@ -1,0 +1,17 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:10.000
+Operate a control. Accessibility lets a tool read or use the controls an app exposes.
+
+2
+00:00:10.000 --> 00:00:20.000
+Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access.
+
+3
+00:00:20.000 --> 00:00:30.000
+Send app commands. Automation covers Apple Events that let one app command another.
+
+4
+00:00:30.000 --> 00:00:40.000
+Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version.

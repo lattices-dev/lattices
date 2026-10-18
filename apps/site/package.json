@@ -8,6 +8,7 @@
     "clean": "rm -rf dist .astro",
     "build": "bun run blink:styles && bun run clean && vite build && bun scripts/export-static.mjs && pagefind --site dist",
     "agent-docs": "node scripts/agent-docs.mjs",
+    "audit:learning": "bun scripts/audit-learning.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "brand": "bun scripts/export-brand.tsx",

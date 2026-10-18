@@ -14,9 +14,10 @@ final class ActionAgentDisplayController {
         let width: Int
         let height: Int
         let serialNumber: UInt32
+        let workspace: String
     }
 
-    private static let serialNumber: UInt32 = 0x41435401
+    private let workspace: ActionVirtualWorkspace
     private let size: CGSize
     private let stateURL: URL
     private let stopURL: URL
@@ -24,6 +25,7 @@ final class ActionAgentDisplayController {
     private let logger: DebugLogger
     private var display: CGVirtualDisplay?
     private var lockDescriptor: Int32 = -1
+    private var topologyLock: ActionWorkspaceLock?
     private var setupLeaseDescriptor: Int32 = -1
     private var state: State?
     private var timer: Timer?
@@ -31,6 +33,7 @@ final class ActionAgentDisplayController {
     private var shuttingDown = false
 
     init(options: CommandOptions) throws {
+        workspace = try ActionVirtualWorkspace(options.options["workspace"] ?? "default")
         let width = options.double("width", default: 1440)
         let height = options.double("height", default: 900)
         guard width.isFinite, height.isFinite, width.rounded() == width, height.rounded() == height,
@@ -49,14 +52,15 @@ final class ActionAgentDisplayController {
             throw ActionHostError.unsupportedOS(refusal)
         }
         let lockURL = ActionLayerSafetyGate.defaultURL.deletingLastPathComponent()
-            .appendingPathComponent("display-owner.lock")
+            .appendingPathComponent(workspace.ownerLockName)
         try FileManager.default.createDirectory(at: lockURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         lockDescriptor = Darwin.open(lockURL.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
         guard lockDescriptor >= 0, flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
             throw ActionHostError.unsupportedOS("An Action display owner is already running; reuse its prepared display")
         }
-        guard ActionAgentLayerDisplay.displays().isEmpty else {
-            throw ActionHostError.unsupportedOS("An Action display already exists outside this owner; close its owner before preparing another")
+        topologyLock = try ActionWorkspaceLock(url: topologyLockURL)
+        guard !ActionAgentLayerDisplay.displays().contains(where: { CGDisplaySerialNumber($0) == workspace.serialNumber }) else {
+            throw ActionHostError.unsupportedOS("An Action display already uses this workspace identity; reuse its owner instead of preparing another")
         }
         try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let leaseURL = stateURL.deletingLastPathComponent().appendingPathComponent("display-session.lock")
@@ -101,15 +105,15 @@ final class ActionAgentDisplayController {
         log("display-owner-pre-create")
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.queue = .main
-        descriptor.name = "Action Agent Layer"
+        descriptor.name = workspace.name == "default" ? "Action Agent Layer" : "Action · \(workspace.name)"
         descriptor.maxPixelsWide = UInt32(size.width)
         descriptor.maxPixelsHigh = UInt32(size.height)
         descriptor.sizeInMillimeters = CGSize(width: size.width / 110 * 25.4, height: size.height / 110 * 25.4)
         descriptor.vendorID = ActionAgentLayerDisplay.vendorID
         descriptor.productID = ActionAgentLayerDisplay.productID
-        descriptor.serialNum = Self.serialNumber
+        descriptor.serialNum = workspace.serialNumber
         if descriptor.responds(to: NSSelectorFromString("setSerialNumber:")) {
-            descriptor.serialNumber = Self.serialNumber
+            descriptor.serialNumber = workspace.serialNumber
         }
         guard let created = CGVirtualDisplay(descriptor: descriptor) else {
             throw ActionHostError.unsupportedOS("Could not prepare the Action virtual display")
@@ -129,7 +133,7 @@ final class ActionAgentDisplayController {
             try await Task.sleep(for: .milliseconds(50))
         }
         guard CGDisplayIsOnline(created.displayID) != 0, CGDisplayIsActive(created.displayID) != 0,
-              CGDisplaySerialNumber(created.displayID) == Self.serialNumber else {
+              CGDisplaySerialNumber(created.displayID) == workspace.serialNumber else {
             throw ActionHostError.unsupportedOS("The prepared display did not become available with its stable identity")
         }
         try placeOffCorner(created.displayID)
@@ -141,13 +145,14 @@ final class ActionAgentDisplayController {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let state = State(schemaVersion: 1, pid: getpid(), displayId: created.displayID,
                           startedAt: formatter.string(from: Date()), width: Int(size.width),
-                          height: Int(size.height), serialNumber: Self.serialNumber)
+                          height: Int(size.height), serialNumber: workspace.serialNumber, workspace: workspace.name)
         self.state = state
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
         log("display-owner-ready")
         try writer.write(ActionHostResponse(status: "agent-display-running", outputPath: stateURL.path, detail: String(getpid())))
         Darwin.close(setupLeaseDescriptor)
         setupLeaseDescriptor = -1
+        topologyLock = nil
     }
 
     private func placeOffCorner(_ displayID: CGDirectDisplayID) throws {
@@ -159,15 +164,16 @@ final class ActionAgentDisplayController {
         guard CGGetActiveDisplayList(count, &identifiers, &count) == .success else {
             throw ActionHostError.unsupportedOS("Could not enumerate physical displays")
         }
-        let others = identifiers.prefix(Int(count)).filter { !ActionAgentLayerDisplay.isAgentLayer($0) }
-        guard let anchor = others.map(CGDisplayBounds).max(by: { ($0.maxX + $0.maxY) < ($1.maxX + $1.maxY) }) else {
+        let others = identifiers.prefix(Int(count)).filter { $0 != displayID }
+        guard others.contains(where: { !ActionAgentLayerDisplay.isAgentLayer($0) }),
+              let origin = ActionVirtualWorkspace.offscreenOrigin(otherBounds: others.map(CGDisplayBounds)) else {
             throw ActionHostError.unsupportedOS("A physical display is required before preparing the agent display")
         }
         var configuration: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else {
             throw ActionHostError.unsupportedOS("Could not start display placement")
         }
-        guard CGConfigureDisplayOrigin(configuration, displayID, Int32(anchor.maxX), Int32(anchor.maxY)) == .success else {
+        guard CGConfigureDisplayOrigin(configuration, displayID, Int32(origin.x), Int32(origin.y)) == .success else {
             CGCancelDisplayConfiguration(configuration)
             throw ActionHostError.unsupportedOS("Could not place the prepared display")
         }
@@ -177,6 +183,15 @@ final class ActionAgentDisplayController {
     }
 
     private func stopIfUnused() {
+        let previewLock: ActionWorkspaceLock
+        do {
+            previewLock = try ActionWorkspaceLock(url: stateURL.deletingLastPathComponent().appendingPathComponent("display-preview.lock"))
+        } catch {
+            logger.log("agent-display: close previews hosted on this display before releasing it")
+            try? FileManager.default.removeItem(at: stopURL)
+            return
+        }
+        defer { withExtendedLifetime(previewLock) {} }
         let leaseURL = stateURL.deletingLastPathComponent().appendingPathComponent("display-session.lock")
         let leaseDescriptor = Darwin.open(leaseURL.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
         guard leaseDescriptor >= 0 else {
@@ -205,7 +220,16 @@ final class ActionAgentDisplayController {
                 return
             }
         }
-        shutdown(exitCode: 0)
+        do {
+            topologyLock = try ActionWorkspaceLock(url: topologyLockURL)
+            shutdown(exitCode: 0)
+        } catch {
+            logger.log("agent-display: topology change is busy; retry release")
+        }
+    }
+
+    private var topologyLockURL: URL {
+        ActionLayerSafetyGate.defaultURL.deletingLastPathComponent().appendingPathComponent("display-topology.lock")
     }
 
     private func shutdown(exitCode: Int32) {

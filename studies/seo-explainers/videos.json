@@ -1,0 +1,60 @@
+[
+  {
+    "id": "ax-tree",
+    "title": "How the macOS accessibility tree works",
+    "head": "Your apps have a second interface.",
+    "dek": "AX is what an app tells tools about its buttons and windows.",
+    "tag": "THE ACCESSIBILITY TREE",
+    "beats": [
+      {
+        "start": 0,
+        "end": 8,
+        "text": "You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools."
+      },
+      {
+        "start": 8,
+        "end": 16,
+        "text": "That description is a tree. An app contains a window. The window contains controls, such as buttons."
+      },
+      {
+        "start": 16,
+        "end": 26,
+        "text": "An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it."
+      },
+      {
+        "start": 26,
+        "end": 36,
+        "text": "The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps."
+      }
+    ]
+  },
+  {
+    "id": "ax-vs-screenshots",
+    "title": "AX vs screenshots: what UI automation can see",
+    "head": "Two ways to understand a screen.",
+    "dek": "A screenshot shows appearance. AX describes exposed controls.",
+    "tag": "PIXELS + STRUCTURE",
+    "beats": [
+      {
+        "start": 0,
+        "end": 9,
+        "text": "A screenshot is an image: shapes, colors, and visible text. A tool must interpret the pixels to locate a button."
+      },
+      {
+        "start": 9,
+        "end": 18,
+        "text": "AX is structured information supplied by the app. A button may identify its role, title, and supported Press action."
+      },
+      {
+        "start": 18,
+        "end": 27,
+        "text": "Each view has limits. Pixels do not directly encode a button action. AX can omit a custom control or provide incomplete information."
+      },
+      {
+        "start": 27,
+        "end": 36,
+        "text": "Use the evidence the app provides, then verify what changed. Accessibility access and Screen Recording are separate macOS permissions."
+      }
+    ]
+  }
+]

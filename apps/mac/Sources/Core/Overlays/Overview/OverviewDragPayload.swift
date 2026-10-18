@@ -59,6 +59,15 @@ struct OverviewWindowDragSource: ViewModifier {
                 .frame(maxWidth: 300)
                 .background(Palette.bg, in: RoundedRectangle(cornerRadius: 6))
             }
+            .dragConfiguration(DragConfiguration(
+                operationsWithinApp: .init(allowCopy: false, allowMove: true),
+                operationsOutsideApp: .init(allowCopy: false)
+            ))
+            .onDragSessionUpdated { session in
+                if session.phase != .active {
+                    DiagnosticLog.shared.info("Overview: drag wid=\(row.wid) phase=\(session.phase)")
+                }
+            }
         } else {
             content
         }
@@ -67,14 +76,23 @@ struct OverviewWindowDragSource: ViewModifier {
 
 struct OverviewWindowDropTarget: ViewModifier {
     @ObservedObject var model: OverviewModel
-    let display: OverviewDisplay
-    let spaceId: Int
+    let destination: OverviewMoveDestination?
     var compact = false
     @State private var isTargeted = false
 
+    init(model: OverviewModel, destination: OverviewMoveDestination?, compact: Bool = false) {
+        self.model = model
+        self.destination = destination
+        self.compact = compact
+    }
+
+    init(model: OverviewModel, display: OverviewDisplay, spaceId: Int, compact: Bool = false) {
+        self.init(model: model, destination: OverviewWindowDrop.destination(on: display, spaceId: spaceId), compact: compact)
+    }
+
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let destination = OverviewWindowDrop.destination(on: display, spaceId: spaceId) {
+        if let destination {
             content
                 .overlay {
                     if isTargeted, model.moving.isEmpty {
@@ -103,11 +121,20 @@ struct OverviewWindowDropTarget: ViewModifier {
                 }
                 .dropDestination(for: OverviewWindowDragPayload.self) { items, _ in
                     isTargeted = false
+                    DiagnosticLog.shared.info("Overview: drop windows=\(items.map(\.wid)) destination=\(destination.spaceId)")
                     guard let wid = OverviewWindowDrop.window(
                         from: items, to: destination, projection: model.projection, moving: model.moving
                     ) else { return false }
                     return model.move(wid, toSpace: destination.spaceId)
-                } isTargeted: { isTargeted = $0 }
+                } isTargeted: {
+                    isTargeted = $0
+                    DiagnosticLog.shared.info("Overview: drop target=\(destination.spaceId) active=\($0)")
+                }
+                .onDropSessionUpdated { session in
+                    if session.phase != .active {
+                        DiagnosticLog.shared.info("Overview: drop session target=\(destination.spaceId) phase=\(session.phase) operations=\(session.suggestedOperations)")
+                    }
+                }
                 .dropConfiguration { _ in DropConfiguration(operation: model.moving.isEmpty ? .move : .forbidden) }
         } else {
             content

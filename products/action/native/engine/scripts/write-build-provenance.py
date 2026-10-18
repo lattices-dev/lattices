@@ -45,9 +45,9 @@ manifest = {
         'dirty': bool(git('status', '--porcelain', '--', 'native/engine', 'assets', 'themes')),
         'configuration': configuration,
     },
-    'features': {'privateLayer': True, 'isolationContext': True, 'persistentAgentDisplay': True},
+    'features': {'privateLayer': True, 'isolationContext': True, 'persistentAgentDisplay': True, 'namedWorkspaces': True, 'previewDestination': True},
     'routing': {
-        'nativeHost': 'agent-display owns the persistent monitor; agent-layer attaches a task without display reconfiguration',
+        'nativeHost': 'agent-display owns each named persistent monitor; agent-layer attaches a workspace task without display reconfiguration and explicitly targets its preview display',
         'privateLayerWorkflow': 'Use Action MCP layer_open/snapshot/click/type/js/close with active tools/list names; browser control is MCP orchestration over CDP, not raw WebSocket',
         'rawWebSocket': 'status.methods lists only raw agent RPCs; it is not the complete CLI/MCP capability catalog',
     },

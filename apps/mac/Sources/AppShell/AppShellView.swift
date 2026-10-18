@@ -96,7 +96,6 @@ struct AppShellView: View {
     @AppStorage("sidebar.labelWidth") private var sidebarLabelWidth = 120.0
     /// Actions the visible page published with `.pageActions(_:)`.
     @State private var pageActions: [PageAction] = []
-    @ObservedObject private var activityLog = HudLogStore.shared
     @ObservedObject private var daemon = DaemonServer.shared
     @ObservedObject private var desktop = DesktopModel.shared
 
@@ -161,7 +160,7 @@ struct AppShellView: View {
             .background(ShellGlassBackdrop())
         }
         .environment(\.hudTheme, .lattices)
-        .background(HudWindowChrome(colorScheme: .dark))
+        .background(HudWindowChrome(colorScheme: .dark, isMovableByWindowBackground: false))
         .hudsonAppManifest(manifest)
         .onChange(of: windowController.activePage) { page in
             clearRelevantDismissals(for: page)
@@ -255,9 +254,14 @@ struct AppShellView: View {
         let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
         return VStack(spacing: wrap ? 5 : 0) {
             HStack(spacing: 8) {
-                Text(windowController.activePage.label)
-                    .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
-                Spacer(minLength: 8)
+                HStack {
+                    Text(windowController.activePage.label)
+                        .font(Typo.heading(15)).foregroundColor(Palette.text).lineLimit(1)
+                    Spacer(minLength: 8)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }
@@ -330,18 +334,8 @@ struct AppShellView: View {
                 Text(desktopShapeText)
             }
 
-            if let error = activityPreviewMessage {
-                Button {
-                    windowController.showPage(.activity)
-                } label: {
-                    Text(error)
-                        .font(Typo.mono(11))
-                        .foregroundColor(Palette.kill)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .buttonStyle(.plain)
-                .help("Open Activity")
+            ShellActivityError {
+                windowController.showPage(.activity)
             }
 
             Spacer(minLength: 12 * scale)
@@ -400,14 +394,6 @@ struct AppShellView: View {
             return "No scan yet"
         }
         return "Scanned \(relativeStatusTime(last))"
-    }
-
-    /// Warnings stay in the log. Only errors belong in the status strip.
-    private var activityPreviewMessage: String? {
-        guard let entry = activityLog.summary.lastEntry else { return nil }
-        guard entry.level == .error || entry.level == .fault else { return nil }
-        let trimmed = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func relativeStatusTime(_ date: Date) -> String {
@@ -629,5 +615,34 @@ private struct ShellGlassBackdrop: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Log traffic must not invalidate the full shell during a Space switch.
+/// Only this small status slot observes the live log buffer.
+private struct ShellActivityError: View {
+    @ObservedObject private var log = HudLogStore.shared
+    let openActivity: () -> Void
+
+    var body: some View {
+        if let message = message {
+            Button(action: openActivity) {
+                Text(message)
+                    .font(Typo.mono(11))
+                    .foregroundColor(Palette.kill)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .buttonStyle(.plain)
+            .help("Open Activity")
+        }
+    }
+
+    /// Warnings stay in the log. Only errors belong in the status strip.
+    private var message: String? {
+        guard let entry = log.entries.last,
+              entry.level == .error || entry.level == .fault else { return nil }
+        let trimmed = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

@@ -45,7 +45,12 @@ cd "$APP_DIR"
 # re-print just the error: lines for a quick scan. (Previously `| tail -3`
 # swallowed the actual diagnostics, leaving only doc-link footers.)
 build_log="$(mktemp)"
-if ! swift build -c release 2>&1 | tee "$build_log"; then
+build_args=(-c release)
+# Release verification can require the recorded dependency pins without updating them.
+if [ "${LATTICES_LOCKED_DEPENDENCIES:-0}" = "1" ]; then
+    build_args+=(--force-resolved-versions)
+fi
+if ! swift build "${build_args[@]}" 2>&1 | tee "$build_log"; then
     echo "==> Swift build FAILED. Compiler errors:" >&2
     grep -E "error:" "$build_log" >&2 || true
     rm -f "$build_log"
@@ -65,10 +70,13 @@ mkdir -p "$BUNDLE/Contents/Resources"
 # Copy binary
 cp "$APP_DIR/.build/release/Lattices" "$BUNDLE/Contents/MacOS/Lattices"
 
-# Copy app icon
+# Copy app icon: the light and dark icons CFBundleIconName names, and the .icns fallback
 ICON="$ROOT/assets/AppIcon.icns"
 if [ -f "$ICON" ]; then
     cp "$ICON" "$BUNDLE/Contents/Resources/AppIcon.icns"
+fi
+if [ -f "$ROOT/assets/Assets.car" ]; then
+    cp "$ROOT/assets/Assets.car" "$BUNDLE/Contents/Resources/Assets.car"
 fi
 
 TAP_SOUND="$APP_DIR/Resources/tap.wav"

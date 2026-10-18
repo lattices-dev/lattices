@@ -1,0 +1,41 @@
+[
+  {
+    "id": "macos-automation-permissions",
+    "title": "Three permissions, three different jobs",
+    "tag": "MACOS PERMISSIONS",
+    "dek": "Start with the task your tool needs to do.",
+    "beats": [
+      {"start":0,"end":10,"title":"Operate a control","text":"Accessibility lets a tool read or use the controls an app exposes."},
+      {"start":10,"end":20,"title":"Capture the screen","text":"Screen & System Audio Recording covers capture access. It is separate from control access."},
+      {"start":20,"end":30,"title":"Send app commands","text":"Automation covers Apple Events that let one app command another."},
+      {"start":30,"end":40,"title":"Start with the task","text":"One workflow may need more than one permission. Check the requesting app; names vary by macOS version."}
+    ],
+    "labels":"Your tool; Accessibility; Exposed controls; Save; Screen & System Audio Recording; Captured image; Automation; Apple Events; App A; App B; One task can cross several boundaries."
+  },
+  {
+    "id":"observe-act-verify",
+    "title":"A click is not a completed task",
+    "tag":"RELIABLE UI AUTOMATION",
+    "dek":"Observe the app. Act once. Check what changed.",
+    "beats":[
+      {"start":0,"end":10,"title":"Observe","text":"Goal: save Weekend plans. Find the right window and the Save control."},
+      {"start":10,"end":20,"title":"Act","text":"Press Save once. An accepted action does not prove the file was saved."},
+      {"start":20,"end":30,"title":"Verify","text":"The app reports “Could not save”. The error means the goal is still unmet."},
+      {"start":30,"end":40,"title":"Recover with a limit","text":"Inspect the cause before retrying. If one safe correction fails, stop and ask for help."}
+    ],
+    "labels":"Illustrated app; Weekend plans; Save; Could not save; Goal: save Weekend plans; Right window. Right control.; 01 / OBSERVE; 02 / ACT; 03 / VERIFY; Action accepted; Now inspect the result.; Expected: Saved; Observed: Could not save; Goal still unmet; Inspect cause; One safe retry; Verify again; Still unresolved? Stop and ask."
+  },
+  {
+    "id":"window-snapping-vs-tiling",
+    "title":"Snapping, tiling, and workspaces",
+    "tag":"ORGANIZE YOUR MAC",
+    "dek":"Three jobs that window tools can help with.",
+    "beats":[
+      {"start":0,"end":10,"title":"Snap a window","text":"You choose the position. Put the selected window on the left."},
+      {"start":10,"end":20,"title":"Tile automatically","text":"Rules arrange the windows. The layout adapts as a managed window joins."},
+      {"start":20,"end":30,"title":"Group a workspace","text":"Keep related work together. Windows, projects, or sessions share a context."},
+      {"start":30,"end":40,"title":"Choose the job","text":"Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app."}
+    ],
+    "labels":"Snapping; Place one; Automatic tiling; Arrange several; Workspace; Return to a context; Planning; Browser; Notes; Terminal; Tools may combine these jobs."
+  }
+]

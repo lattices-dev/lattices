@@ -1,0 +1,15 @@
+tool,path,line
+browser_profiles,bin/mcp/toolsets/browser/index.ts,311
+browser_use_profile,bin/mcp/toolsets/browser/index.ts,318
+browser_profile_info,bin/mcp/toolsets/browser/index.ts,335
+browser_import_cookies,bin/mcp/toolsets/browser/index.ts,342
+browser_companion_status,bin/mcp/toolsets/browser/index.ts,382
+browser_open,bin/mcp/toolsets/browser/index.ts,389
+browser_tabs,bin/mcp/toolsets/browser/index.ts,416
+browser_snapshot,bin/mcp/toolsets/browser/index.ts,423
+browser_click,bin/mcp/toolsets/browser/index.ts,438
+browser_fill,bin/mcp/toolsets/browser/index.ts,462
+browser_resize,bin/mcp/toolsets/browser/index.ts,487
+browser_screenshot,bin/mcp/toolsets/browser/index.ts,547
+browser_console,bin/mcp/toolsets/browser/index.ts,577
+browser_close,bin/mcp/toolsets/browser/index.ts,600

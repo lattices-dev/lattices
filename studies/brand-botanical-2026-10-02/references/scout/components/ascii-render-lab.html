@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scout — ASCII render lab</title>
+<style>
+  :root{
+    --bg:#0a0a09; --panel:#0e0d0c; --ink:#f1ece1; --ink-2:#a49d90; --ink-3:#6f6960;
+    --edge:#1e1d1a; --edge-2:#33312c; --accent:#a6e15e;
+    --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --t0:#2e2b27; --t1:#474339; --t2:#6b6558; --t3:#968e7f; --t4:#d5cdbd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased;
+    display:grid;grid-template-columns:302px minmax(0,1fr)}
+
+  aside{border-right:1px solid var(--edge);overflow-y:auto;background:var(--panel);
+    padding:0 0 60px;scrollbar-width:thin}
+  .head{position:sticky;top:0;z-index:2;background:var(--panel);padding:16px 15px 12px;
+    border-bottom:1px solid var(--edge)}
+  .head p{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.17em;
+    text-transform:uppercase;color:var(--ink-2)}
+  .head .acts{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+
+  details{border-bottom:1px solid var(--edge)}
+  summary{cursor:pointer;list-style:none;padding:10px 15px;font-family:var(--mono);
+    font-size:9px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-3);
+    display:flex;justify-content:space-between;align-items:center}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:'+';color:var(--edge-2);font-size:11px}
+  details[open] summary::after{content:'–'}
+  details[open] summary{color:var(--ink-2)}
+  .body{padding:2px 15px 14px}
+
+  .p{margin:0 0 10px}
+  .p .lab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    margin-bottom:3px}
+  .p .lab span{font-size:11px;color:var(--ink-2)}
+  .p .lab output{font-family:var(--mono);font-size:10px;color:var(--ink-3);
+    font-variant-numeric:tabular-nums}
+  /* Hairline track + a small neutral thumb. The stock accent-color fill turns
+     every slider into a green bar, which spends the one rationed hue on chrome. */
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:14px;
+    margin:0;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--edge-2)}
+  input[type=range]::-moz-range-track{height:1px;background:var(--edge-2)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;
+    border-radius:50%;background:var(--ink-3);margin-top:-4px;transition:background 120ms}
+  input[type=range]::-moz-range-thumb{width:9px;height:9px;border:0;border-radius:50%;
+    background:var(--ink-3)}
+  input[type=range]:hover::-webkit-slider-thumb{background:var(--ink-2)}
+  input[type=range]:active::-webkit-slider-thumb{background:var(--accent)}
+  select,input[type=text]{width:100%;background:var(--bg);color:var(--ink);
+    border:1px solid var(--edge-2);border-radius:3px;padding:5px 7px;
+    font-family:var(--mono);font-size:11px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-2);
+    cursor:pointer;margin:0 0 10px}
+  .chk input{accent-color:var(--accent);width:13px;height:13px;margin:0}
+  button{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;
+    background:var(--bg);color:var(--ink-2);border:1px solid var(--edge-2);border-radius:3px;
+    padding:6px 9px;cursor:pointer}
+  button:hover{color:var(--ink);border-color:var(--ink-3)}
+  :focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+
+  main{display:grid;place-items:center;position:relative;overflow:hidden}
+  .stage{position:relative;user-select:none}
+  .stage pre{margin:0;white-space:pre}
+  .stage pre + pre{position:absolute;inset:0;top:0;left:0}
+  .stage pre[data-t="0"]{color:var(--t0)}
+  .stage pre[data-t="1"]{color:var(--t1)}
+  .stage pre[data-t="2"]{color:var(--t2)}
+  .stage pre[data-t="3"]{color:var(--t3)}
+  .stage pre[data-t="4"]{color:var(--t4)}
+  .meta{position:absolute;left:26px;bottom:22px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.07em;color:var(--ink-3)}
+  .meta b{color:var(--ink-2);font-weight:500}
+  .ghost{position:absolute;right:26px;bottom:20px;width:84px;height:84px;opacity:.42}
+</style>
+</head>
+<body>
+<aside>
+  <div class="head">
+    <p>Scout · ascii render lab</p>
+    <div class="acts">
+      <button id="pause">pause</button>
+      <button id="rand">randomise</button>
+      <button id="copy">copy link</button>
+      <button id="reset">reset</button>
+    </div>
+  </div>
+  <div id="panel"></div>
+</aside>
+
+<main>
+  <div class="stage" id="stage" aria-hidden="true"></div>
+  <div class="meta" id="meta"></div>
+  <img class="ghost" id="ghost" alt="" aria-hidden="true" />
+</main>
+
+<script>
+(() => {
+// ===========================================================================
+// The ornament is a RENDER of real artwork, never a shape constructed inside
+// ASCII constraints:
+//
+//   svg art → rasterise → sample per cell → field filters → shimmer → quantise
+//
+// Source paths come from design/logo-attempts/focused-03-wire-cube-mark.svg.
+// Because step one rasterises, the isometric angles antialias for free and no
+// edge angle is off-limits the way it is when placing glyphs by hand.
+// ===========================================================================
+
+// ---- parameter spec -------------------------------------------------------
+// r: changing it needs a re-rasterise/re-sample. Everything else is per-frame.
+const SPEC = [
+ ['Source', [
+  ['art','artwork','sel','twohex',{twohex:'two hexes (outer + echo)',cube:'wire cube (full)',outer:'outer hex only',inner:'inner hex only',rays:'depth rays only',tri:'three hexes'},1],
+  ['stroke','outer stroke','n',5,[0.5,16,0.5],1],
+  ['istroke','inner stroke ×','n',1,[0.2,3,0.05],1],
+  ['inner','inner scale','n',0.5,[0.15,0.98,0.01],1],
+  ['rot','rotation','n',0,[-90,90,1],1],
+  ['irot','inner rotation','n',0,[-90,90,1],1],
+  ['squash','squash','n',1,[0.5,1.6,0.01],1],
+  ['sblur','source blur','n',0,[0,6,0.25],1],
+ ]],
+ ['Grid', [
+  ['size','font size','n',10,[4,28,1],1],
+  ['lh','line height','n',1,[0.7,2,0.05],1],
+  ['track','tracking','n',0,[-2,8,0.25],1],
+  ['boxw','box width','n',260,[100,620,10],1],
+  ['boxh','box height','n',240,[100,620,10],1],
+  ['font','font','sel',"ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace",
+    {"ui-monospace,SFMono-Regular,'SF Mono',Menlo,monospace":'SF Mono',
+     "Menlo,monospace":'Menlo',"'Courier New',monospace":'Courier',
+     "'JetBrains Mono',ui-monospace,monospace":'JetBrains Mono',
+     "'Andale Mono',monospace":'Andale Mono',"monospace":'system default'},1],
+  ['weight','font weight','n',400,[100,900,100],0],
+  ['ss','supersample','n',3,[1,6,1],1],
+ ]],
+ ['Field', [
+  ['invert','invert','chk',0],
+  ['fblur','field blur','n',0,[0,3,1],0],
+  ['edge','edge mix','n',0,[0,1,0.05],0],
+  ['contrast','contrast','n',1,[0.2,3,0.05],0],
+  ['gamma','gamma','n',0.7,[0.2,3,0.05],0],
+  ['floor','floor','n',0.09,[0,0.8,0.01],0],
+  ['ceil','ceiling','n',1,[0.2,1,0.01],0],
+ ]],
+ ['Texture', [
+  ['glyphs','glyph ramp (sparse → dense)','txt','·░'],
+  ['dith','dither','sel','none',{none:'none — glyph ramp',b2:'bayer 2×2',b4:'bayer 4×4',b8:'bayer 8×8',thr:'hard threshold'},0],
+  ['gain','dither gain','n',1.2,[0.3,3,0.05],0],
+  ['grain','grain','n',0,[0,0.5,0.01],0],
+  ['tones','tones','n',5,[1,5,1],0],
+  ['lift','tone lift','n',0,[0,4,1],0],
+  ['pal','palette','sel','warm',{warm:'warm neutral',cool:'cool neutral',mono:'mono white',accent:'warm + accent tip',acc2:'accent ramp'},0],
+  ['bgc','background','sel','#0a0a09',{'#0a0a09':'near-black warm','#000000':'black','#101113':'ink','#f1efe9':'paper'},0],
+ ]],
+ ['Shimmer', [
+  ['mode','mode','sel','off',{off:'off',sweep:'sweep — band travels',ripple:'ripple — rings from centre',scan:'scan — row by row',breathe:'breathe — whole field',orbit:'orbit — angular'},0],
+  ['amp','amplitude','n',0.45,[0,1,0.02],0],
+  ['speed','speed','n',0.5,[0.02,3,0.02],0],
+  ['wave','wavelength','n',1,[0.08,4,0.04],0],
+  ['angle','angle','n',120,[0,360,5],0],
+  ['sharp','crest sharpness','n',2.5,[1,8,0.25],0],
+  ['phase','phase','n',0,[0,1,0.01],0],
+  ['mod2','2nd modulator','n',0,[0,1,0.02],0],
+  ['per2','2nd period','n',2.7,[1.1,6,0.1],0],
+  ['fps','fps cap','n',24,[6,60,2],0],
+ ]],
+];
+
+const DEFAULTS = {}, KIND = {}, RASTER = new Set();
+for (const [, items] of SPEC) for (const [id, , kind, def, , r] of items) {
+  DEFAULTS[id] = def; KIND[id] = kind; if (r) RASTER.add(id);
+}
+const P = { ...DEFAULTS, ...fromHash() };
+
+const PALETTES = {
+  warm:   ['#2e2b27','#474339','#6b6558','#968e7f','#d5cdbd'],
+  cool:   ['#26282b','#3b3f44','#5c6167','#8b9199','#cfd4da'],
+  mono:   ['#2a2a2a','#444','#6d6d6d','#9c9c9c','#ededed'],
+  accent: ['#2e2b27','#474339','#6b6558','#968e7f','#a6e15e'],
+  acc2:   ['#1e2a1c','#2f4227','#486534','#6d9448','#a6e15e'],
+};
+
+// ---- source artwork -------------------------------------------------------
+const OUTER = 'M112 8 207 63v110l-95 55-95-55V63Z';
+const RAYS  = 'M112 8v110M207 63l-95 55M17 63l95 55M112 228V118';
+const CX = 112, CY = 118;
+const echo = (s, rot, w) =>
+  `<g transform="translate(${CX} ${CY}) rotate(${rot}) scale(${s}) translate(${-CX} ${-CY})"`
+  + ` stroke-width="${w}"><path d="${OUTER}"/></g>`;
+
+function art(p) {
+  const w = p.stroke, iw = p.stroke * p.istroke;
+  const body =
+      p.art === 'outer'  ? `<path d="${OUTER}"/>`
+    : p.art === 'inner'  ? echo(p.inner, p.irot, iw)
+    : p.art === 'rays'   ? `<path d="${RAYS}"/>`
+    : p.art === 'twohex' ? `<path d="${OUTER}"/>${echo(p.inner, p.irot, iw)}`
+    : p.art === 'tri'    ? `<path d="${OUTER}"/>${echo(p.inner, p.irot, iw)}`
+                           + echo(p.inner * p.inner, p.irot * 2, iw)
+    : `<path d="${OUTER}"/><path d="${RAYS}"/>${echo(p.inner, p.irot, iw)}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 224 236">
+    <g transform="rotate(${p.rot} ${CX} ${CY}) translate(0 ${CY*(1-p.squash)}) scale(1 ${p.squash})"
+       fill="none" stroke="#fff" stroke-width="${w}"
+       stroke-linejoin="round" stroke-linecap="round">${body}</g></svg>`;
+}
+
+// ---- pipeline -------------------------------------------------------------
+function cellBox(p) {
+  const el = document.createElement('pre');
+  el.style.cssText = `position:absolute;visibility:hidden;margin:0;white-space:pre;`
+    + `font-family:${p.font};font-size:${p.size}px;line-height:${p.lh};`
+    + `letter-spacing:${p.track}px;font-weight:${p.weight}`;
+  el.textContent = 'x'.repeat(40) + '\nx';
+  document.body.appendChild(el);
+  const r = el.getBoundingClientRect(); el.remove();
+  return { CW: r.width / 40, CH: r.height / 2 };
+}
+
+function rasterise(svg, W, H, ss, blur) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(W * ss)); c.height = Math.max(1, Math.round(H * ss));
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+      if (blur > 0) g.filter = `blur(${blur * ss}px)`;
+      const s = Math.min(c.width / img.width, c.height / img.height) * 0.96;
+      g.drawImage(img, (c.width - img.width * s) / 2, (c.height - img.height * s) / 2,
+                  img.width * s, img.height * s);
+      res(g.getImageData(0, 0, c.width, c.height));
+    };
+    img.onerror = rej;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+
+function sample(img, COLS, ROWS, CW, CH, ss) {
+  const f = [];
+  for (let y = 0; y < ROWS; y++) {
+    const row = [];
+    for (let x = 0; x < COLS; x++) {
+      const x0 = Math.floor(x*CW*ss), x1 = Math.max(x0+1, Math.floor((x+1)*CW*ss));
+      const y0 = Math.floor(y*CH*ss), y1 = Math.max(y0+1, Math.floor((y+1)*CH*ss));
+      let s = 0, n = 0;
+      for (let py = y0; py < y1 && py < img.height; py++)
+        for (let px = x0; px < x1 && px < img.width; px++) { s += img.data[(py*img.width+px)*4]; n++; }
+      row.push(n ? s/n/255 : 0);
+    }
+    f.push(row);
+  }
+  return f;
+}
+
+const at = (f,x,y) => (f[y] && f[y][x] != null) ? f[y][x] : 0;
+const norm = f => { let m=0; f.forEach(r=>r.forEach(v=>{if(v>m)m=v})); return m ? f.map(r=>r.map(v=>v/m)) : f; };
+
+function boxBlur(f, r) {
+  if (!r) return f;
+  const H = f.length, W = f[0].length, o = [];
+  for (let y=0;y<H;y++){ const row=[];
+    for (let x=0;x<W;x++){ let s=0,n=0;
+      for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){ s+=at(f,x+dx,y+dy); n++; }
+      row.push(s/n); } o.push(row); }
+  return o;
+}
+function sobel(f) {
+  return f.map((row,y)=>row.map((_,x)=>{
+    const gx = -at(f,x-1,y-1)-2*at(f,x-1,y)-at(f,x-1,y+1)+at(f,x+1,y-1)+2*at(f,x+1,y)+at(f,x+1,y+1);
+    const gy = -at(f,x-1,y-1)-2*at(f,x,y-1)-at(f,x+1,y-1)+at(f,x-1,y+1)+2*at(f,x,y+1)+at(f,x+1,y+1);
+    return Math.hypot(gx,gy);
+  }));
+}
+
+// Ordered Bayer, built recursively. A regular threshold lattice resolves a ramp
+// into an even pattern rather than noise — and it keeps the dots on their grid
+// while the field beneath them moves, which is what stops a shimmer boiling.
+function bayer(order) {
+  let m = [[0]];
+  while (m.length < order) {
+    const n = m.length, o = Array.from({length:n*2},()=>new Array(n*2));
+    for (let y=0;y<n;y++) for (let x=0;x<n;x++) {
+      const v = m[y][x]*4;
+      o[y][x]=v; o[y][x+n]=v+2; o[y+n][x]=v+3; o[y+n][x+n]=v+1;
+    }
+    m = o;
+  }
+  const d = m.length*m.length;
+  return m.map(r=>r.map(v=>(v+0.5)/d));
+}
+const MATS = { b2:bayer(2), b4:bayer(4), b8:bayer(8) };
+const hash = (x,y) => { const s=Math.sin(x*127.1+y*311.7)*43758.5453; return s-Math.floor(s); };
+
+// The shimmer modulates COVERAGE before quantisation, never brightness after —
+// modulating the field makes structure travel; modulating the output just eats
+// holes in the thing it is meant to animate.
+function shimmer(x, y, COLS, ROWS, t, p) {
+  if (p.mode === 'off') return 1;
+  const nx = (x/(COLS-1))*2-1, ny = (y/(ROWS-1))*2-1;
+  const w = Math.max(0.05, p.wave);
+  const a = p.angle*Math.PI/180;
+  let u;
+  switch (p.mode) {
+    case 'sweep':  u = (nx*Math.cos(a)+ny*Math.sin(a))/w - t; break;
+    case 'ripple': u = Math.hypot(nx, ny)/w - t; break;
+    case 'scan':   u = ny/w - t; break;
+    case 'orbit':  u = (Math.atan2(ny,nx)/(Math.PI*2))/w - t; break;
+    default:       u = -t;
+  }
+  let c = Math.cos((u + p.phase)*Math.PI*2)*0.5+0.5;
+  c = Math.pow(c, p.sharp);
+  // A second, non-commensurate modulator stops the motion looking plotted.
+  if (p.mod2 > 0) {
+    const c2 = Math.cos((u/p.per2 - t/p.per2)*Math.PI*2)*0.5+0.5;
+    c = c*(1-p.mod2) + c*c2*p.mod2*2;
+  }
+  return 1 - p.amp + p.amp*c*2;
+}
+
+// ---- render ---------------------------------------------------------------
+const stage = document.getElementById('stage'), meta = document.getElementById('meta'),
+      ghost = document.getElementById('ghost');
+let base = null, COLS = 0, ROWS = 0, layers = [], raf = 0, paused = false, last = 0;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+async function rebuild() {
+  const { CW, CH } = cellBox(P);
+  COLS = Math.max(3, Math.round(P.boxw/CW));
+  ROWS = Math.max(3, Math.round(P.boxh/CH));
+  const svg = art(P);
+  const img = await rasterise(svg, COLS*CW, ROWS*CH, P.ss, P.sblur);
+  base = norm(sample(img, COLS, ROWS, CW, CH, P.ss));
+  ghost.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+
+  layers = [0,1,2,3,4].map(t => {
+    const pre = document.createElement('pre'); pre.dataset.t = t;
+    pre.style.cssText = `font-family:${P.font};font-size:${P.size}px;line-height:${P.lh};`
+      + `letter-spacing:${P.track}px;font-weight:${P.weight}`;
+    return pre;
+  });
+  stage.replaceChildren(...layers);
+  draw(0);
+}
+
+function draw(t) {
+  if (!base) return;
+  let f = base;
+  if (P.invert) f = f.map(r=>r.map(v=>1-v));
+  if (P.fblur)  f = boxBlur(f, P.fblur);
+  if (P.edge > 0) { const e = norm(sobel(f)); f = f.map((r,y)=>r.map((v,x)=>v*(1-P.edge)+e[y][x]*P.edge)); }
+
+  const glyphs = [...(P.glyphs || '·')];
+  const mat = MATS[P.dith];
+  const out = [0,1,2,3,4].map(()=>Array.from({length:ROWS},()=>new Array(COLS).fill(' ')));
+
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      let v = f[y][x] * shimmer(x, y, COLS, ROWS, t, P);
+      v = (v - 0.5) * P.contrast + 0.5;                       // contrast
+      v = Math.max(0, Math.min(1, v)) / Math.max(0.01, P.ceil); // ceiling
+      v = Math.pow(Math.max(0, Math.min(1, v)), P.gamma);       // gamma
+      const g = P.grain ? (hash(x,y)-0.5)*P.grain : 0;
+
+      let ch;
+      if (P.dith === 'none') {
+        if (v + g <= P.floor) continue;
+        ch = glyphs[Math.min(glyphs.length-1, Math.floor(v*glyphs.length))];
+      } else {
+        const thr = mat ? mat[y % mat.length][x % mat.length] : 0.5;
+        if (!(v * P.gain + g > thr)) continue;
+        ch = glyphs[glyphs.length-1];
+      }
+      const n = Math.max(1, P.tones);
+      const step = Math.min(n-1, Math.floor(v*n));
+      const tone = n === 1 ? 4 : Math.round(P.lift + step*(4-P.lift)/(n-1));
+      out[Math.max(0,Math.min(4,tone))][y][x] = ch;
+    }
+  }
+  layers.forEach((el,i)=>{ el.textContent = out[i].map(r=>r.join('')).join('\n'); });
+  meta.innerHTML = `<b>${COLS}×${ROWS}</b> · ${glyphs.length} glyph${glyphs.length>1?'s':''}`
+    + ` · ${P.tones} tone${P.tones>1?'s':''} · ${P.dith === 'none' ? 'ramp' : P.dith}`
+    + ` · ${P.mode}`;
+}
+
+const STILL = 0.42;
+function loop(ts) {
+  raf = requestAnimationFrame(loop);
+  if (ts - last < 1000/P.fps) return;
+  last = ts;
+  draw(STILL + (ts/1000)*P.speed);
+}
+function sync() {
+  cancelAnimationFrame(raf); raf = 0;
+  if (P.mode !== 'off' && !paused && !reduce.matches) raf = requestAnimationFrame(loop);
+  else draw(STILL);
+}
+reduce.addEventListener('change', sync);
+
+function applyStyle() {
+  PALETTES[P.pal].forEach((c,i)=>document.documentElement.style.setProperty('--t'+i, c));
+  document.querySelector('main').style.background = P.bgc;
+}
+
+// ---- build the panel from the spec ----------------------------------------
+const panel = document.getElementById('panel');
+for (const [group, items] of SPEC) {
+  const d = document.createElement('details'); d.open = true;
+  const s = document.createElement('summary'); s.textContent = group;
+  const b = document.createElement('div'); b.className = 'body';
+  for (const [id, label, kind, , range, ] of items) {
+    if (kind === 'chk') {
+      const w = document.createElement('label'); w.className = 'chk';
+      const i = document.createElement('input'); i.type='checkbox'; i.id=id; i.checked=!!P[id];
+      w.append(i, Object.assign(document.createElement('span'),{textContent:label}));
+      b.append(w); continue;
+    }
+    const w = document.createElement('div'); w.className='p';
+    const lab = document.createElement('div'); lab.className='lab';
+    lab.append(Object.assign(document.createElement('span'),{textContent:label}));
+    let i;
+    if (kind === 'n') {
+      const o = document.createElement('output'); o.id='_'+id; o.textContent=P[id]; lab.append(o);
+      i = document.createElement('input'); i.type='range';
+      [i.min,i.max,i.step] = range.map(String); i.value = P[id];
+    } else if (kind === 'sel') {
+      i = document.createElement('select');
+      for (const [v, t] of Object.entries(range))
+        i.append(Object.assign(document.createElement('option'),{value:v,textContent:t}));
+      i.value = P[id];
+    } else { i = document.createElement('input'); i.type='text'; i.spellcheck=false; i.value=P[id]; }
+    i.id = id;
+    w.append(lab, i); b.append(w);
+  }
+  d.append(s, b); panel.append(d);
+}
+
+function onInput(e) {
+  const id = e.target.id; if (!(id in DEFAULTS)) return;
+  P[id] = KIND[id]==='chk' ? (e.target.checked?1:0)
+        : KIND[id]==='n'   ? parseFloat(e.target.value) : e.target.value;
+  const o = document.getElementById('_'+id); if (o) o.textContent = P[id];
+  toHash(); applyStyle();
+  if (RASTER.has(id)) rebuild().then(sync); else sync();
+}
+panel.addEventListener('input', onInput);
+
+document.getElementById('pause').addEventListener('click', e => {
+  paused = !paused; e.target.textContent = paused ? 'play' : 'pause'; sync();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  history.replaceState(null,'',location.pathname); location.reload();
+});
+document.getElementById('copy').addEventListener('click', async e => {
+  try { await navigator.clipboard.writeText(location.href); e.target.textContent='copied'; }
+  catch { e.target.textContent='see url'; }
+  setTimeout(()=>{ e.target.textContent='copy link'; }, 1200);
+});
+document.getElementById('rand').addEventListener('click', () => {
+  const pick = a => a[Math.floor(Math.random()*a.length)];
+  Object.assign(P, {
+    dith: pick(['none','b2','b4','b8']), glyphs: pick(['·','·░','·:░','.·░','·∙░','·-░']),
+    gamma: +(0.4+Math.random()*1.2).toFixed(2), contrast: +(0.7+Math.random()*1.3).toFixed(2),
+    tones: 1+Math.floor(Math.random()*5), lift: Math.floor(Math.random()*3),
+    mode: pick(['sweep','ripple','scan','breathe','orbit']),
+    amp: +(0.2+Math.random()*0.7).toFixed(2), wave: +(0.3+Math.random()*1.6).toFixed(2),
+    sharp: +(1+Math.random()*4).toFixed(2), angle: Math.floor(Math.random()*72)*5,
+  });
+  for (const k of Object.keys(DEFAULTS)) {
+    const el = document.getElementById(k); if (!el) continue;
+    if (KIND[k]==='chk') el.checked = !!P[k]; else el.value = P[k];
+    const o = document.getElementById('_'+k); if (o) o.textContent = P[k];
+  }
+  toHash(); applyStyle(); sync();
+});
+
+function toHash() {
+  const d = Object.entries(P).filter(([k,v]) => String(v) !== String(DEFAULTS[k]));
+  history.replaceState(null, '', '#' + new URLSearchParams(d).toString());
+}
+function fromHash() {
+  const o = {};
+  new URLSearchParams(location.hash.slice(1)).forEach((v,k) => {
+    if (!(k in DEFAULTS)) return;
+    o[k] = (typeof DEFAULTS[k] === 'number') ? parseFloat(v) : v;
+  });
+  return o;
+}
+
+applyStyle();
+rebuild().then(sync);
+})();
+</script>
+</body>
+</html>

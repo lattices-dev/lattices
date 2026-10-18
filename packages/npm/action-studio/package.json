@@ -1,0 +1,31 @@
+{
+  "name": "@lattices/action-studio",
+  "version": "0.1.0",
+  "description": "Embeddable, themeable workspace action definition editor",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    }
+  },
+  "files": [
+    "index.mjs",
+    "index.d.ts",
+    "editor.html",
+    "action-studio.css",
+    "DESIGN.md",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "bun --hot demo/server.mjs",
+    "check": "bun test"
+  },
+  "keywords": [
+    "lattices",
+    "web-component",
+    "workspace",
+    "action-editor"
+  ],
+  "license": "MIT"
+}

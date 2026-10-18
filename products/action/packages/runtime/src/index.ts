@@ -19,6 +19,9 @@ export * from "./drive-client.js";
 export * from "./drive-cursor.js";
 export * from "./play-log.js";
 export * from "./pointer-events.js";
+export * from "./fast-browser.js";
+export * from "./providers/fast-browser-model.js";
+export * from "./providers/jev.js";
 
 export * from "./capabilities.js";
 

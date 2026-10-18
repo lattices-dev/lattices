@@ -71,7 +71,7 @@ export class Layers {
   private parked: Parked[] = [];
   private queue = Promise.resolve();
   private stageError: string | undefined;
-  constructor(private emit: (event: string, data: unknown) => void = () => {}, directory = process.env.LATTICES_WORKSPACE_DIR ?? `${homedir()}/.lattices`) {
+  constructor(private emit: (event: string, data: unknown) => void = () => {}, directory = process.env.LATTICES_WORKSPACE_DIR ?? `${homedir()}/.lattices`, private deps = { snapshot: desktop.snapshot, apply: hypr.apply, place: desktop.place }) {
     this.path = `${directory}/workspace.json`;
     this.stagePath = `${directory}/layers-stage-linux.json`;
     if (existsSync(this.stagePath)) {
@@ -112,7 +112,7 @@ export class Layers {
   }
   private async snapshot() {
     if (this.stageError) throw new RouterError(this.stageError);
-    const snap = await desktop.snapshot();
+    const snap = await this.deps.snapshot();
     const windows = snap.clients.filter(c => c.mapped && (c.workspace.id > 0 || c.workspace.name === "special:lattices"))
       .sort((a, b) => a.focusHistoryID - b.focusHistoryID).map(c => desktop.toWindow(c, snap.monitors, snap.focused));
     this.parked = this.parked.filter(record => windows.some(w => w.wid === record.window.wid && w.pid === record.window.pid && w.spaceIds[0] < 0));
@@ -201,8 +201,8 @@ export class Layers {
   }
   private async restore(record: Parked, window: desktop.Window) {
     const address = window.address;
-    await hypr.apply([{ op: "toWorkspace", address, workspace: record.space }]);
-    if (record.window.isFloating) await hypr.apply([{ op: "float", address }, { op: "resize", address, w: record.window.frame.w, h: record.window.frame.h }, { op: "move", address, x: record.window.frame.x, y: record.window.frame.y }]);
+    await this.deps.apply([{ op: "toWorkspace", address, workspace: record.space }]);
+    if (record.window.isFloating) await this.deps.apply([{ op: "float", address }, { op: "resize", address, w: record.window.frame.w, h: record.window.frame.h }, { op: "move", address, x: record.window.frame.x, y: record.window.frame.y }]);
     this.parked = this.parked.filter(r => r !== record);
     this.saveStage();
   }
@@ -242,15 +242,15 @@ export class Layers {
     for (const w of park) {
       const record = { window: w, space: display.currentSpaceId };
       this.parked.push(record); this.saveStage(); // Recovery survives host restarts and partial batches.
-      await hypr.apply([{ op: "toWorkspace", address: w.address, workspace: "special:lattices" }]);
+      await this.deps.apply([{ op: "toWorkspace", address: w.address, workspace: "special:lattices" }]);
     }
     for (const w of selected) {
       const record = this.parked.find(r => r.window.wid === w.wid);
       if (record) await this.restore(record, w);
     }
-    for (let i = 0; i < frames.length; i++) await desktop.place(automatic[i], frames[i], display);
-    for (const tile of tiles) await desktop.place(tile.w, tile.fractions, display);
-    await hypr.apply([{ op: "focus", address: selected[0].address }]);
+    for (let i = 0; i < frames.length; i++) await this.deps.place(automatic[i], frames[i], display);
+    for (const tile of tiles) await this.deps.place(tile.w, tile.fractions, display);
+    await this.deps.apply([{ op: "focus", address: selected[0].address }]);
     this.active = layer.id; this.saveStage(); this.emit("layers.changed", { active: index });
     return { ok: true, index, label: layer.label, count: selected.length, stage: this.stage() };
   }

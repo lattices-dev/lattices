@@ -85,6 +85,7 @@ final class VisitTrust {
             deviceID = UUID().uuidString.lowercased()
             hosts = []
         }
+        MachineArrangementStore.invalidateLegacyTunnelMonitors(for: hosts)
         persist()
     }
 
@@ -240,6 +241,7 @@ final class VisitTrust {
             placement: self.host(named: name)?.placement,
             unplaced: self.host(named: name)?.unplaced ?? (self.host(named: name) == nil)
         )
+        MachineArrangementStore.invalidateLegacyTunnelMonitors(for: [host])
         lock.lock()
         hosts.removeAll { $0.name.caseInsensitiveCompare(name) == .orderedSame }
         hosts.append(host)

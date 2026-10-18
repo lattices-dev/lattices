@@ -50,7 +50,7 @@ export function nonFlagArgs(args: string[]): string[] {
     "hud-width", "hudWidth", "hud-height", "hudHeight", "width", "height",
     "manifest", "root", "max-depth", "maxDepth", "read-access", "readAccess",
     "pause", "limit", "session", "app", "name", "bundle-id", "bundleId", "bundleIdentifier",
-    "path", "app-path", "appPath", "title", "filename", "run-id", "runId",
+    "path", "app-path", "appPath", "title", "filename", "out", "run-id", "runId",
     "text", "tty", "wid", "treatment", "mode", "phase", "transport", "capture",
     "appearance", "cursor-style", "cursorStyle", "shape", "marker-shape", "markerShape",
     "cursor-shape", "cursorShape", "angle-deg", "angleDeg", "rotation-deg", "rotationDeg",

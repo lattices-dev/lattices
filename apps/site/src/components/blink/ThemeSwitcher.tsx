@@ -68,16 +68,20 @@ export function ThemeSwitcher() {
 
     try {
       saved = normalize(localStorage.getItem('blink-theme'))
-    } catch {}
+    } catch {
+      saved = null
+    }
 
     const preference = query ?? bootPreference ?? saved ?? 'auto'
     const media = window.matchMedia(SYSTEM_DARK_QUERY)
 
-    setActive(preference)
+    queueMicrotask(() => setActive(preference))
     applyTheme(preference, media.matches)
     try {
       localStorage.setItem('blink-theme', preference)
-    } catch {}
+    } catch {
+      /* storage can be blocked */
+    }
 
     const syncSystemTheme = (event: MediaQueryListEvent) => {
       if (document.getElementById('blink-landing')!.getAttribute('data-theme-preference') === 'auto') {
@@ -107,7 +111,9 @@ export function ThemeSwitcher() {
       const url = new URL(window.location.href)
       url.searchParams.set('theme', preference)
       window.history.replaceState(window.history.state, '', url)
-    } catch {}
+    } catch {
+      /* storage or history can be blocked */
+    }
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {

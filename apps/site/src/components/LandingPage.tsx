@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
-import { ProductsMenu } from "./SiteChrome";
+import { ProductsMenu, SiteFooter } from "./SiteChrome";
+import { heroDesktopMaps, heroLayer, heroOverlapCount, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
+import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
+import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
+import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
 
-const latticesDownloadURL = "https://github.com/arach/lattices/releases/download/v0.13.3/Lattices.dmg";
+const latticesCliVersion = "0.15.0";
+const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
 declare global {
   interface Window {
@@ -237,26 +242,27 @@ const configExamples: Record<PaneLayout, string> = {
 }`,
 };
 
-const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/sdk'</span>
+const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span class="hl-kw">from</span> <span class="hl-str">'@lattices/lattices'</span>
 
 <span class="hl-cmt">// Find a window by title, app, session, or cwd</span>
 <span class="hl-kw">const</span> [match] = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'lattices.search'</span>, {
-  query: <span class="hl-str">'myproject'</span>
+  query: <span class="hl-str">'tideline'</span>
 })
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.focus'</span>, {
   wid: match.wid
 })
 
-<span class="hl-cmt">// Bring up a configured workspace</span>
+<span class="hl-cmt">// Bring up the project's layer</span>
 <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'layer.activate'</span>, {
-  name: <span class="hl-str">'review'</span>,
+  name: <span class="hl-str">'tideline'</span>,
   mode: <span class="hl-str">'launch'</span>,
 })
 
-<span class="hl-cmt">// Balance whatever is now visible</span>
-<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'space.optimize'</span>, {
-  scope: <span class="hl-str">'visible'</span>,
-  strategy: <span class="hl-str">'balanced'</span>,
+<span class="hl-cmt">// Or move one window, by app and title</span>
+<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'window.place'</span>, {
+  app: <span class="hl-str">'Safari'</span>,
+  title: <span class="hl-str">'Tideline'</span>,
+  placement: <span class="hl-str">'right'</span>,
 })`;
 
 const cuaSteps: Array<{
@@ -276,7 +282,8 @@ const cuaSteps: Array<{
     caption: "Read the Accessibility tree and optional screenshot so the agent chooses from stable element ids.",
     filename: "observe.ts",
     code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.windowState'</span>, {
-  app: <span class="hl-str">'Calculator'</span>,
+  app: <span class="hl-str">'Safari'</span>,
+  title: <span class="hl-str">'Tideline'</span>,
   mode: <span class="hl-str">'ax'</span>,
 })`,
   },
@@ -289,7 +296,7 @@ const cuaSteps: Array<{
     filename: "stage.ts",
     code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
-  elementId: <span class="hl-str">'e7'</span>,
+  elementId: <span class="hl-str">'e14'</span>, <span class="hl-cmt">// "Tomorrow"</span>
   action: <span class="hl-str">'press'</span>,
   treatment: <span class="hl-str">'stage'</span>,
 })`,
@@ -303,7 +310,7 @@ const cuaSteps: Array<{
     filename: "execute.ts",
     code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
   snapshotId: ui.snapshotId,
-  elementId: <span class="hl-str">'e7'</span>,
+  elementId: <span class="hl-str">'e14'</span>, <span class="hl-cmt">// "Tomorrow"</span>
   action: <span class="hl-str">'press'</span>,
   treatment: <span class="hl-str">'execute'</span>,
 })`,
@@ -316,54 +323,495 @@ const cuaSteps: Array<{
     caption: "Confirm the outcome with OCR or AX, then feed that receipt into the next observation.",
     filename: "verify.ts",
     code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.verify'</span>, {
-  app: <span class="hl-str">'Calculator'</span>,
+  app: <span class="hl-str">'Safari'</span>,
+  title: <span class="hl-str">'Tideline'</span>,
   mode: <span class="hl-str">'ocr'</span>,
-  contains: <span class="hl-str">'42'</span>,
+  contains: <span class="hl-str">'${tideTomorrowFirstHigh}'</span>,
 })`,
   },
 ];
 
 const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
+function HeroWindowContent({ id }: { id: HeroWindowId }) {
+  if (id === "session") {
+    // One tmux session split the way `lattices` splits two panes: claude on the
+    // left 60%, the dev server beside it, as in the two-pane .lattices.json
+    // example further down the page. The claude pane shows the tail of a
+    // longer session, pinned to its input box the way a terminal scrolls.
+    return (
+      <div className="desktop-tmux">
+        <div className="desktop-terminal-lines desktop-claude-pane">
+          <span className="agent-prompt"><b>&gt;</b> draw today&apos;s tides as a curve</span>
+          <div className="claude-block">
+            <span><i>⏺</i> Read(src/tides.ts)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> Read 67 lines</span>
+          </div>
+          <div className="claude-block">
+            <span><i>⏺</i> Write(src/chart.ts)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> Wrote 58 lines to src/chart.ts</span>
+          </div>
+          <span><i>⏺</i> Drew a half-cosine between each high and low.</span>
+          <span className="agent-prompt"><b>&gt;</b> mark where the tide is right now</span>
+          <div className="claude-block">
+            <span><i>⏺</i> Update(src/chart.ts)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> Updated src/chart.ts with 1 addition</span>
+            <span className="terminal-diff terminal-added"><b>51</b> +   markNow(svg, now);</span>
+          </div>
+          <span><i>⏺</i> A dashed line and a dot now mark the time.</span>
+          <span className="agent-prompt"><b>&gt;</b> tide times are showing in UTC</span>
+          <div className="claude-block">
+            <span><i>⏺</i> Read(src/format.ts)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> Read 42 lines</span>
+          </div>
+          <div className="claude-block">
+            <span><i>⏺</i> Update(src/format.ts)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> Updated src/format.ts with 1 addition</span>
+            <span className="terminal-diff"><b>14</b>       hour: &quot;numeric&quot;,</span>
+            <span className="terminal-diff"><b>15</b>       minute: &quot;2-digit&quot;,</span>
+            <span className="terminal-diff terminal-added"><b>16</b> +     timeZone: station.tz,</span>
+            <span className="terminal-diff"><b>17</b>     {"})"}</span>
+          </div>
+          <div className="claude-block">
+            <span><i>⏺</i> Bash(bun test format)</span>
+            <span className="terminal-out terminal-dim"><b>⎿</b> 9 pass · 0 fail</span>
+          </div>
+          <span><i>⏺</i> Times now follow each station&apos;s time zone.</span>
+          <div className="claude-block">
+            <span className="claude-input"><b>&gt;</b><i className="claude-cursor" /></span>
+            <span className="terminal-out terminal-dim">? for shortcuts</span>
+          </div>
+        </div>
+        <div className="desktop-terminal-lines desktop-dev-pane">
+          <span><b>~/dev/tideline</b> bun dev</span>
+          <span className="terminal-out"><strong>VITE</strong> v7.3.3 <span className="terminal-dim">ready in 488 ms</span></span>
+          <span className="terminal-out terminal-gap"><i>➜</i> Local: http://localhost:5173/</span>
+          <span className="terminal-out terminal-dim"><i>➜</i> Network: use --host to expose</span>
+          <span className="terminal-out terminal-dim"><i>➜</i> press h + enter to show help</span>
+          <span className="terminal-dim">9:41:07 AM [vite] (client) hmr update /src/format.ts</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "editor") {
+    return (
+      <div className="desktop-editor">
+        <div className="desktop-editor-sidebar">
+          <strong>TIDELINE</strong>
+          <span>src</span>
+          <span className="is-nested">chart.ts</span>
+          <span className="is-nested is-active">format.ts</span>
+          <span className="is-nested">stations.ts</span>
+          <span className="is-nested">tides.ts</span>
+        </div>
+        <div className="desktop-code-lines" aria-hidden="true">
+          <span><i>export function</i> tideTime(tide: Tide, station: Station) {'{'}</span>
+          <span className="indent"><i>return</i> tide.at.toLocaleTimeString(<b>&quot;en-US&quot;</b>, {'{'}</span>
+          <span className="indent-2">hour: <b>&quot;numeric&quot;</b>,</span>
+          <span className="indent-2">minute: <b>&quot;2-digit&quot;</b>,</span>
+          <span className="indent-2 is-changed">timeZone: station.tz,</span>
+          <span className="indent">{'})'}</span>
+          <span>{'}'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // tideline itself, open in Safari: the day's tide curve with the reading now.
+  return (
+    <div className="desktop-tide">
+      <div className="desktop-tide-head">
+        <span className="desktop-tide-place">
+          <strong>Tideline</strong>
+          <span>Half Moon Bay, CA</span>
+        </span>
+        <span className="desktop-tide-days">
+          <span className="is-active">Today</span>
+          <span>Tomorrow</span>
+        </span>
+      </div>
+      <p className="desktop-tide-reading">
+        <b>{tideNow.feet.toFixed(1)} ft</b> {tideNow.falling ? "falling" : "rising"} · {tideNow.time}
+      </p>
+      <div className="desktop-tide-chart">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="hero-tide-water" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="currentColor" stopOpacity="0.3" />
+              <stop offset="1" stopColor="currentColor" stopOpacity="0.03" />
+            </linearGradient>
+          </defs>
+          {[25, 50, 75].map((x) => (
+            <line key={x} className="desktop-tide-grid" x1={x} x2={x} y1={0} y2={100} vectorEffect="non-scaling-stroke" />
+          ))}
+          <path d={tidePaths.area} fill="url(#hero-tide-water)" />
+          <path className="desktop-tide-line" d={tidePaths.line} vectorEffect="non-scaling-stroke" />
+          <line className="desktop-tide-now" x1={tideNow.x} x2={tideNow.x} y1={0} y2={100} vectorEffect="non-scaling-stroke" />
+        </svg>
+        {tideToday.map((extreme) => (
+          <span
+            key={extreme.minute}
+            className={`desktop-tide-extreme is-${extreme.kind.toLowerCase()}${extreme.x > 90 ? " is-end" : ""}`}
+            style={{ left: `${extreme.x}%`, top: `${extreme.y}%` }}
+          >
+            <b>{extreme.time}</b> {extreme.feet.toFixed(1)} ft
+          </span>
+        ))}
+        <i className="desktop-tide-dot" style={{ left: `${tideNow.x}%`, top: `${tideNow.y}%` }} />
+      </div>
+      <div className="desktop-tide-axis">
+        <span>12 AM</span>
+        <span>6 AM</span>
+        <span>12 PM</span>
+        <span>6 PM</span>
+        <span>12 AM</span>
+      </div>
+    </div>
+  );
+}
+
+function HeroDesktopWindow({
+  id,
+  phase,
+  reducedMotion,
+  children,
+}: {
+  id: HeroWindowId;
+  phase: HeroDesktopPhase;
+  reducedMotion: boolean;
+  children: ReactNode;
+}) {
+  const layout = heroWindowLayouts[id][phase];
+  const meta = heroWindowMeta[id];
+
+  return (
+    <motion.div
+      className={`hero-desktop-window hero-window-${id}${meta.focused ? " is-focused" : ""}`}
+      style={{ zIndex: layout.z }}
+      initial={false}
+      animate={{
+        left: `${layout.left}%`,
+        top: `${layout.top}%`,
+        width: `${layout.width}%`,
+        height: `${layout.height}%`,
+      }}
+      transition={{ duration: reducedMotion ? 0 : 0.74, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="hero-window-bar">
+        <span className="hero-window-lights"><i /><i /><i /></span>
+        <span className="hero-window-title">{meta.title}</span>
+        <span className="hero-window-app">{meta.app}</span>
+      </div>
+      <div className="hero-window-body">{children}</div>
+    </motion.div>
+  );
+}
+
+/** The app's layer bezel: the pill Lattices shows on every layer switch. */
+function HeroLayerBezel() {
+  return (
+    <>
+      <svg className="hero-layer-bezel-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 1.8 14.2 5 8 8.2 1.8 5Z" />
+        <path d="m1.8 8 6.2 3.2L14.2 8M1.8 11l6.2 3.2 6.2-3.2" fill="none" />
+      </svg>
+      <span className="hero-layer-bezel-dots">
+        {Array.from({ length: heroLayer.total }, (_, index) => (
+          <i key={index} className={index === heroLayer.index ? "is-active" : undefined} />
+        ))}
+      </span>
+      <span className="hero-layer-bezel-rule" />
+      <span className="hero-layer-bezel-name">{heroLayer.name}</span>
+      <span className="hero-layer-bezel-tag">Lattices</span>
+    </>
+  );
+}
+
+const heroWindowIds = Object.keys(heroWindowMeta) as HeroWindowId[];
+
 function HeroWorkspaceStage() {
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const [phaseChoice, setPhaseChoice] = useState<HeroDesktopPhase>("messy");
+  // The loop alternates who restores the layer: your shortcut, then the agent.
+  const [driver, setDriver] = useState<"you" | "agent">("you");
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [inView, setInView] = useState(true);
+  // Counts layer switches, so the bezel plays once for each.
+  const [layerSwitches, setLayerSwitches] = useState(0);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  // Reduced-motion visitors land on the organized result instead of the loop.
+  const phase = prefersReducedMotion && autoPlay ? "organized" : phaseChoice;
+  const organized = phase === "organized";
+  const agentTurn = driver === "agent";
+  const keycastOn = !organized && autoPlay && driver === "you";
+  // The agent ran `lattices map` before it asked for the layer, so its map
+  // stays the scattered one. On your turn the map follows the desktop.
+  const mapPhase: HeroDesktopPhase = agentTurn ? "messy" : phase;
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!autoPlay || prefersReducedMotion || !inView) return;
+    // Linger on the organized result, longest after the agent's turn so the
+    // tiled desktop and the full transcript sit together. The scattered beat
+    // holds long enough to read, and longer on the agent's turn, where the
+    // request and the command appear before the switch.
+    const delay = organized
+      ? agentTurn ? 7200 : 4600
+      : agentTurn ? 4200 : 3000;
+    const timer = window.setTimeout(() => {
+      if (organized) {
+        setDriver(agentTurn ? "you" : "agent");
+        setPhaseChoice("messy");
+      } else {
+        setPhaseChoice("organized");
+        setLayerSwitches((count) => count + 1);
+      }
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [autoPlay, organized, agentTurn, prefersReducedMotion, inView]);
+
+  const selectPhase = (next: HeroDesktopPhase) => {
+    setAutoPlay(false);
+    setDriver("you");
+    if (next === "organized" && !organized) setLayerSwitches((count) => count + 1);
+    setPhaseChoice(next);
+  };
 
   return (
     <div className="hero-desktop-demo" id="workspace-demo">
       <div className="hero-stage-bar">
         <span className="hero-stage-label">
           <i aria-hidden="true" />
-          Homepage · live capture
+          Simulated desktop · {heroLayer.name}
         </span>
+        <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
+          <button
+            type="button"
+            className={!organized ? "is-active" : ""}
+            aria-pressed={!organized}
+            onClick={() => selectPhase("messy")}
+          >
+            <span aria-hidden="true">○</span>
+            Without Lattices
+          </button>
+          <button
+            type="button"
+            className={organized ? "is-active" : ""}
+            aria-pressed={organized}
+            onClick={() => selectPhase("organized")}
+          >
+            <span aria-hidden="true">●</span>
+            With Lattices
+          </button>
+        </div>
       </div>
 
-      <div className="hero-workspace-stage hero-video-stage">
-        {prefersReducedMotion ? (
-          <img
-            className="hero-video-media"
-            src="/hero/lattices-homepage-hero-loop-poster.jpg"
-            alt="The Lattices homepage hero preview"
-          />
-        ) : (
-          <video
-            className="hero-video-media"
-            src="/hero/lattices-homepage-hero-loop.mp4"
-            poster="/hero/lattices-homepage-hero-loop-poster.jpg"
-            autoPlay
-            loop
-            muted
-            playsInline
-            aria-label="Looping preview of the Lattices homepage"
-          />
-        )}
+      <div
+        ref={stageRef}
+        className={`hero-workspace-stage is-${phase}`}
+        role="img"
+        aria-label={organized
+          ? "A simulated Mac desktop with the tideline layer applied: a tmux session running Claude and a dev server on the left half, the tide chart in Safari and format.ts in Zed stacked on the right"
+          : "A simulated Mac desktop with three overlapping windows: a tmux session running Claude, the tideline tide chart in Safari, and format.ts in Zed"}
+      >
+        <div className="hero-desktop-screen">
+          <div className="hero-macos-bar">
+            <span className="hero-macos-brand"><span className="hero-macos-apple" aria-hidden="true"><AppleIcon /></span> Terminal</span>
+            <span className="hero-macos-menu">Shell&nbsp;&nbsp; Edit&nbsp;&nbsp; View&nbsp;&nbsp; Window</span>
+            <span className="hero-macos-status">
+              <LatticesMark theme="light" className="hero-macos-mark" size={12} />
+              9:41 AM
+            </span>
+          </div>
+
+          {heroWindowIds.map((id) => (
+            <HeroDesktopWindow key={id} id={id} phase={phase} reducedMotion={prefersReducedMotion}>
+              <HeroWindowContent id={id} />
+            </HeroDesktopWindow>
+          ))}
+
+          <motion.div
+            className="hero-keycast"
+            aria-hidden="true"
+            initial={false}
+            animate={{ opacity: keycastOn ? 1 : 0 }}
+            transition={keycastOn ? { duration: 0.26, delay: 1.4 } : { duration: 0.18 }}
+          >
+            <kbd>⌘</kbd>
+            <kbd>⌥</kbd>
+            <kbd>1</kbd>
+            <span>switch layer</span>
+          </motion.div>
+
+          {!prefersReducedMotion && layerSwitches > 0 && (
+            <motion.div
+              key={layerSwitches}
+              className="hero-layer-bezel"
+              aria-hidden="true"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: [0, 1, 1, 0], scale: [0.96, 1, 1, 1] }}
+              // The app's timing: 0.15s in, a 1.5s hold, 0.3s out.
+              transition={{ duration: 1.95, times: [0, 0.077, 0.846, 1], ease: "easeOut" }}
+            >
+              <HeroLayerBezel />
+            </motion.div>
+          )}
+        </div>
+      </div>
+
+      <div className="hero-understage">
+        <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop through Lattices">
+          <div className="hero-harness-head">
+            <span className="hero-harness-dot" aria-hidden="true" />
+            <span>claude</span>
+            <span className="hero-harness-cwd">~/dev/{heroLayer.name}</span>
+            <span className="hero-harness-transport">ws://127.0.0.1:9399</span>
+          </div>
+          <div className="hero-harness-body">
+            <span className="hero-harness-user">
+              <b>&gt;</b> what&apos;s on my screen?
+            </span>
+            <span className="hero-harness-tool">
+              <i aria-hidden="true">⏺</i> Bash(lattices map)
+            </span>
+            <motion.div
+              key={agentTurn ? "agent" : phase}
+              className="hero-harness-result hero-harness-map-result"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
+            >
+              <span className="hero-harness-summary">
+                <b aria-hidden="true">⎿</b> {heroWindowIds.length} windows · {heroOverlapCount[mapPhase]} overlaps ·{" "}
+                {mapPhase === "organized" ? `layer: ${heroLayer.name}` : "focused: Terminal"}
+              </span>
+              <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[mapPhase]}</pre>
+            </motion.div>
+            <motion.span
+              className="hero-harness-user"
+              initial={false}
+              animate={{ opacity: agentTurn ? 1 : 0 }}
+              transition={{ duration: agentTurn ? 0.3 : 0.2, delay: agentTurn ? 0.9 : 0 }}
+              style={{ visibility: agentTurn ? "visible" : "hidden" }}
+              aria-hidden={!agentTurn}
+            >
+              <b>&gt;</b> put my {heroLayer.name} layer back
+            </motion.span>
+            <motion.span
+              className="hero-harness-tool"
+              initial={false}
+              animate={{ opacity: agentTurn ? 1 : 0 }}
+              transition={{ duration: agentTurn ? 0.3 : 0.2, delay: agentTurn ? 2.1 : 0 }}
+              style={{ visibility: agentTurn ? "visible" : "hidden" }}
+              aria-hidden={!agentTurn}
+            >
+              <i aria-hidden="true">⏺</i> Bash(lattices layer {heroLayer.name})
+            </motion.span>
+            <motion.span
+              className="hero-harness-result"
+              initial={false}
+              animate={{ opacity: agentTurn && organized ? 1 : 0 }}
+              transition={{
+                duration: agentTurn && organized ? 0.3 : 0.2,
+                delay: agentTurn && organized ? 0.9 : 0,
+              }}
+              style={{ visibility: agentTurn && organized ? "visible" : "hidden" }}
+              aria-hidden={!agentTurn || !organized}
+            >
+              <b aria-hidden="true">⎿</b> Activated layer &quot;{heroLayer.name}&quot;
+            </motion.span>
+          </div>
+        </div>
+        <HeroGestureDemo />
       </div>
 
       <div className="hero-stage-foot" aria-hidden="true">
         <span>Lattices engine</span>
-        <span className="hero-plinth-state">state: synced</span>
+        <span className="hero-plinth-state">
+          {organized
+            ? `layer ${heroLayer.index + 1} · ${heroLayer.name}`
+            : `${heroWindowIds.length} windows · ${heroOverlapCount.messy} overlaps`}
+        </span>
         <PixelMascot />
       </div>
     </div>
+  );
+}
+
+const gesturePreviewStart = 9.25;
+const gesturePreviewEnd = 11.65;
+
+function HeroGestureDemo() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+
+  const playPreview = () => {
+    if (reducedMotion) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (
+      video.currentTime < gesturePreviewStart ||
+      video.currentTime >= gesturePreviewEnd
+    ) {
+      video.currentTime = gesturePreviewStart;
+    }
+    void video.play();
+  };
+
+  const resetPreview = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    video.currentTime = gesturePreviewStart;
+  };
+
+  const loopPreview = () => {
+    const video = videoRef.current;
+    if (!video || video.currentTime < gesturePreviewEnd) return;
+    video.currentTime = gesturePreviewStart;
+    void video.play();
+  };
+
+  return (
+    <a
+      className="hero-demo-peek"
+      href="/blog/gesture-completion-matrix"
+      aria-label="Watch the mouse gesture demo"
+      onMouseEnter={playPreview}
+      onMouseLeave={resetPreview}
+      onFocus={playPreview}
+      onBlur={resetPreview}
+    >
+      <video
+        ref={videoRef}
+        className="hero-demo-peek-media"
+        muted
+        playsInline
+        preload="metadata"
+        poster="/blog/gesture-completion-matrix-poster.png"
+        aria-hidden="true"
+        onLoadedMetadata={resetPreview}
+        onTimeUpdate={loopPreview}
+      >
+        <source src="/blog/gesture-completion-matrix.mp4" type="video/mp4" />
+      </video>
+      <span className="hero-demo-peek-copy">
+        <span className="hero-demo-peek-label">Gesture preview</span>
+        <strong>Draw a gesture. Lattices does the rest.</strong>
+        <span className="hero-demo-peek-link">Watch the demo &rarr;</span>
+      </span>
+    </a>
   );
 }
 
@@ -376,10 +824,57 @@ const handsShortcuts: Array<{ keys: string[]; action: string }> = [
   { keys: ["Hyper", "L"], action: "Studio / screen map" },
 ];
 
+// The ⌃⌥ placement HUD, drawn offscreen by the app's own view code. It plays
+// while on screen; reduced-motion visitors keep the poster.
+function PlacementFilm() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const reducedMotion = useReducedMotion() ?? false;
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold: 0.35 },
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (inView && !reducedMotion) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [inView, reducedMotion]);
+
+  return (
+    <figure className="hands-gesture-figure">
+      <video
+        ref={videoRef}
+        className="hands-gesture-film hands-placement-film"
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        poster="/hands/placement-hud-poster.png"
+        aria-label="The placement matrix: the pointer turns toward each side and corner, then becomes the knob over the centre"
+      >
+        <source src="/hands/placement-hud.mp4" type="video/mp4" />
+      </video>
+      <figcaption>
+        Hold ⌃⌥ and point at a side or a corner, then let go to put the front
+        window there. The centre fills the screen; dead centre cancels.
+      </figcaption>
+    </figure>
+  );
+}
+
 function HandsOnSection() {
   return (
     <section className="home-sec fade-in" id="hands">
-      <SectionHead kicker="Keyboard and mouse" title="Shortcuts and mouse gestures, not just the palette.">
+      <SectionHead title="Shortcuts and mouse gestures, not just the palette.">
         <p className="sec-lede">
           Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
@@ -394,6 +889,7 @@ function HandsOnSection() {
       <div className="hands-stage">
         <div className="hands-panel">
           <h3>Keyboard</h3>
+          <PlacementFilm />
           <ul className="hands-list">
             {handsShortcuts.map((row) => (
               <li key={row.action}>
@@ -418,10 +914,10 @@ function HandsOnSection() {
   );
 }
 
-function SectionHead({ kicker, title, children }: { kicker: string; title: string; children?: ReactNode }) {
+function SectionHead({ kicker, title, children }: { kicker?: string; title: string; children?: ReactNode }) {
   return (
     <header className="sec-head">
-      <p className="sec-kicker">{kicker}</p>
+      {kicker && <p className="sec-kicker">{kicker}</p>}
       <h2 className="sec-title">{title}</h2>
       {children}
     </header>
@@ -438,21 +934,40 @@ const tickerMethods = [
   "window.place",
   "layer.activate",
   "space.optimize",
-  "session.ensure",
-  "panes.launch",
+  "desktop.snapshot",
+  "session.launch",
+  "tabStacks.create",
   "computer.windowState",
   "computer.elementAction",
   "computer.verify",
 ];
 
 export default function App() {
+  const brewCommand = "brew tap arach/tap\nbrew trust arach/tap\nbrew install --cask arach/tap/lattices";
+  const [brewCopy, setBrewCopy] = useState("Copy");
+  async function copyBrew() {
+    try {
+      await navigator.clipboard.writeText(brewCommand);
+      setBrewCopy("Copied");
+      window.setTimeout(() => setBrewCopy("Copy"), 2000);
+    } catch { setBrewCopy("Select to copy"); }
+  }
+  const [installCopy, setInstallCopy] = useState("Copy");
+  async function copyInstall() {
+    try {
+      await navigator.clipboard.writeText("bun install -g @lattices/lattices");
+      setInstallCopy("Copied");
+      window.setTimeout(() => setInstallCopy("Copy"), 2000);
+    } catch { setInstallCopy("Select to copy"); }
+  }
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
   const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
   // (saved choice → system preference → dark). This re-syncs on toggle.
-  const [theme, setTheme] = useState<"light" | "dark">(
-    () => (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark",
-  );
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof document === "undefined") return "dark";
+    return (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark";
+  });
   const activeCuaStep = cuaSteps.find((step) => step.id === cuaStep) ?? cuaSteps[0];
 
   useEffect(() => {
@@ -463,7 +978,7 @@ export default function App() {
   return (
     <>
       {/* Nav */}
-      <nav className="nav">
+      <nav className="nav home-nav" aria-label="Main navigation">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
             <LatticesMark />
@@ -471,6 +986,7 @@ export default function App() {
           </a>
           <div className="nav-links">
             <ProductsMenu />
+            <a href="/learn" className="nav-link">Learn</a>
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
@@ -478,7 +994,7 @@ export default function App() {
               Docs
             </a>
             <a
-              href="https://github.com/arach/lattices"
+              href="https://github.com/lattices-dev/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-github"
@@ -498,8 +1014,8 @@ export default function App() {
       <main>
         <section className="hero fade-in">
           <div className="hero-inner">
-            <p className="hero-eyebrow">The programmable workspace for macOS</p>
-            <h1>Your workspace in your hands.</h1>
+
+            <h1>Workspaces for agents (and you)</h1>
             <p className="hero-sub">
               Organize windows, run your tools, and automate your workflow.
               Control your Mac by shortcut, mouse gesture, or code.
@@ -548,7 +1064,6 @@ export default function App() {
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
           <div className="shared-state-copy fade-in">
-            <div className="cua-kicker">One state, two operators</div>
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
               Agents can write code and run tests, but arranging the Mac around
@@ -562,17 +1077,17 @@ export default function App() {
             <div className="operator-row is-you">
               <span className="operator-row-label">You</span>
               <span className="operator-row-action">
-                <span>&ldquo;Put all my terminals in a grid.&rdquo;</span>
+                <span>&ldquo;Put the tide chart on the right half.&rdquo;</span>
               </span>
             </div>
             <div className="operator-row is-agent">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>space.optimize {'{'} app: &apos;iTerm2&apos;, strategy: &apos;mosaic&apos; {'}'}</code>
+                <code>window.place {'{'} app: &apos;Safari&apos;, title: &apos;Tideline&apos;, placement: &apos;right&apos; {'}'}</code>
               </span>
             </div>
             <p className="operator-result">
-              <i aria-hidden="true" /> All terminals, one grid — one live state.
+              <i aria-hidden="true" /> Chart on the right half — one live state.
             </p>
           </div>
          </div>
@@ -584,7 +1099,7 @@ export default function App() {
         {/* Computer use (CUA) */}
         <section className="home-sec" id="cua">
           <div className="fade-in">
-            <SectionHead kicker="Action · a Lattices product" title="Computer use you can control">
+            <SectionHead title="Computer use you can control">
               <p className="sec-lede">
                 Action is the focused computer-use product in the Lattices family.
                 Observe the screen, stage each action for review, execute on-device,
@@ -613,9 +1128,6 @@ export default function App() {
 
             <div className="cua-stage-panel">
               <div className="cua-stage-copy">
-                <p className="cua-stage-eyebrow">
-                  {activeCuaStep.number} / {activeCuaStep.title}
-                </p>
                 <h3>{activeCuaStep.heading}</h3>
                 <p>{activeCuaStep.caption}</p>
               </div>
@@ -657,12 +1169,11 @@ export default function App() {
           <section className="home-sec next-section fade-in fade-in-delay-2">
             <div className="next-card">
               <div className="next-copy">
-                <div className="next-kicker">Opening for TestFlight</div>
                 <h2>Lats.dev for iPad</h2>
                 <p>
-                  A new app and domain for controlling your Mac workspace from
-                  beside the keyboard: trackpad gestures, window actions, live state,
-                  and shortcuts tuned for iPad. Early testing starts next.
+                  Opening for TestFlight. A new app and domain for controlling
+                  your Mac workspace from beside the keyboard: trackpad gestures,
+                  window actions, live state, and shortcuts tuned for iPad.
                 </p>
               </div>
               <div className="next-preview" aria-hidden="true">
@@ -689,8 +1200,8 @@ export default function App() {
         <section className="home-sec" id="app">
           <div className="app-grid">
             <div className="app-copy">
-              <div className="app-kicker-row">
-                <span>Native macOS app</span>
+              <div className="app-title-row">
+                <h2 className="app-title">The whole workspace, visible.</h2>
                 <a
                   href={latticesDownloadURL}
                   className="app-download-icon"
@@ -701,7 +1212,6 @@ export default function App() {
                   <DownloadIcon />
                 </a>
               </div>
-              <h2 className="app-title">A calmer computing experience.</h2>
               <p className="app-desc">
                 Keep the windows for coding, research, or deep work together.
                 Switch workspace layers when it’s time to change focus.
@@ -734,7 +1244,7 @@ export default function App() {
 
         {/* Product spine */}
         <section className="home-sec fade-in fade-in-delay-2" id="features">
-          <SectionHead kicker="The product spine" title="Three jobs, one surface." />
+          <SectionHead title="See your workspace. Put it to work." />
           <div className="home-spine">
             <article>
               <span className="home-spine-num">01</span>
@@ -871,57 +1381,63 @@ export default function App() {
         <section className="home-sec" id="local-first">
           <div className="local-trust fade-in">
             <div>
-              <p className="sec-kicker">Local core, open source</p>
-              <h2>The core runs on your Mac.</h2>
+              <h2>Your workspace, under your control.</h2>
             </div>
             <p>
-              Lattices runs as a local service and exposes a typed API over
-              localhost. Workspace control and action traces stay on-device.
+              Arrange windows, switch projects, and see what your agents do.
+              Workspace control and action history stay on your Mac.
               Optional vision-model features may send screen context to the
-              provider you configure. The source is open, and agent actions are
-              recorded and verifiable.
+              provider you choose. Lattices is open source, so you can inspect
+              how it works.
             </p>
           </div>
         </section>
 
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
-            <div className="cua-kicker">Three ways in. One workspace.</div>
-            <h2>Start where you work.</h2>
+            <h2>Make yourself at home.</h2>
+            <p>Get Lattices for your Mac. Everything else is optional.</p>
           </div>
-          <div className="install-chooser-grid">
-            <article>
-              <span className="install-chooser-label">App</span>
-              <h3>Native macOS app</h3>
-              <p>Manage projects, windows, and layers with a click.</p>
-              <a
-                href={latticesDownloadURL}
-                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}
-              >
-                Download for macOS <span aria-hidden="true">↗</span>
+          <div className="install-main">
+            <div className="install-download">
+              <div className="install-app-mark"><LatticesMark width={48} height={48} aria-hidden="true" /></div>
+              <h3>Lattices for Mac</h3>
+              <p>Your windows, projects, and tools. A little more together.</p>
+              <a className="install-primary" href={latticesDownloadURL}
+                onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}>
+                <DownloadIcon /> Download for Mac
               </a>
-              <small>Apple Silicon · .dmg</small>
-            </article>
-            <article>
-              <span className="install-chooser-label">CLI</span>
-              <h3>Command line</h3>
-              <p>Launch, search, place, and script the same workspace.</p>
-              <a href="/docs/quickstart">
-                Get the CLI <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i -g @arach/lattices</code></small>
-            </article>
-            <article>
-              <span className="install-chooser-label">SDK</span>
-              <h3>Typed agent SDK</h3>
-              <p>Build agents and scripts against the whole desktop.</p>
-              <a href="/docs/api">
-                Read the API <span aria-hidden="true">→</span>
-              </a>
-              <small><code>npm i @lattices/sdk</code></small>
-            </article>
+              <small>{latticesDownloadMeta}</small>
+              <p className="install-directions">Open the download. Drag Lattices into Applications.</p>
+            </div>
+            <div className="install-brew">
+              <div className="install-brew-title"><h3>Prefer Homebrew?</h3></div>
+              <p>The same Mac app, installed from your terminal.</p>
+              <div className="install-command install-copy-command">
+                <code style={{ whiteSpace: "pre-wrap" }}>{brewCommand}</code>
+                <button type="button" onClick={copyBrew} aria-label="Copy Homebrew install commands">{brewCopy}</button>
+              </div>
+              <small>Apple Silicon · macOS 26 or later</small>
+              <span className="sr-only" role="status">{brewCopy === "Copied" ? "Homebrew commands copied" : ""}</span>
+            </div>
+            <div className="install-npm">
+              <h3>Install with Bun</h3>
+              <p>The command line for your workspace.</p>
+              <div className="install-command install-copy-command">
+                <code>bun install -g @lattices/lattices</code>
+                <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
+              </div>
+              <small>CLI {latticesCliVersion} · <a href="/docs/quickstart">Setup guide</a></small>
+              <span className="sr-only" role="status">{installCopy === "Copied" ? "Command copied" : ""}</span>
+            </div>
           </div>
-          <p className="install-chooser-footnote">Same service, same live state — pick the surface that fits.</p>
+          <details className="install-developer">
+            <summary>Developer setup <span>Agent skills &amp; API</span></summary>
+            <div className="install-developer-options">
+              <div><h3>Agent skills</h3><code>npx skills add lattices-dev/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
+              <div><h3>Typed API</h3><code>npm i @lattices/lattices</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
+            </div>
+          </details>
         </section>
 
         {/* CTA */}
@@ -939,7 +1455,7 @@ export default function App() {
               </span>
               <span className="cta-download-copy">
                 <span>Download for macOS</span>
-                <span className="cta-download-meta">Apple Silicon · .dmg</span>
+                <span className="cta-download-meta">{latticesDownloadMeta}</span>
               </span>
               <span className="cta-download-go" aria-hidden="true">
                 <DownloadIcon />
@@ -948,20 +1464,20 @@ export default function App() {
           </div>
           <div className="cta-actions">
             <a
-              href="https://github.com/arach/lattices"
+              href="https://github.com/lattices-dev/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_github', 'https://github.com/arach/lattices')}
+              onClick={() => trackCta('view_github', 'https://github.com/lattices-dev/lattices')}
             >
               View on GitHub
             </a>
             <a
-              href="https://www.npmjs.com/package/@arach/lattices"
+              href="https://www.npmjs.com/package/@lattices/lattices"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/lattices')}
+              onClick={() => trackCta('view_npm', 'https://www.npmjs.com/package/@lattices/lattices')}
             >
               CLI package
             </a>
@@ -975,48 +1491,9 @@ export default function App() {
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="footer">
-          <div className="footer-group">
-            <span>
-              Built by{" "}
-              <a
-                href="https://github.com/arach"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                @arach
-              </a>
-            </span>
-            <span className="footer-dot" aria-hidden="true">·</span>
-            <span>macOS only. tmux optional.</span>
-          </div>
-          <nav className="footer-links" aria-label="Footer">
-            <a href="/products">Products</a>
-            <a href="/docs/overview">Docs</a>
-            <a href="/blog">Blog</a>
-            <a href="/action">Action</a>
-            <a href="/blink">Blink</a>
-            <a href="/speech">Speech</a>
-            <a href="/rss.xml">RSS</a>
-            <a
-              href="https://github.com/arach/lattices"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub
-            </a>
-            <a
-                href="https://www.npmjs.com/package/@arach/lattices"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              npm
-            </a>
-          </nav>
-        </footer>
         </div>
       </main>
+      <SiteFooter current="/" className="site-footer-content-rail" />
     </>
   );
 }

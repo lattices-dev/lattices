@@ -66,7 +66,7 @@ export default {
 
     steps: [
       { description: 'Install tmux if not present', command: 'brew install tmux' },
-      { description: 'Clone the repository', command: 'git clone https://github.com/arach/lattices && cd lattices' },
+      { description: 'Clone the repository', command: 'git clone https://github.com/lattices-dev/lattices && cd lattices' },
       { description: 'Link the CLI globally', command: 'bun link' },
       { description: 'Build and launch the menu bar app', command: 'lattices app' },
       { description: 'Create a config in your project', command: 'cd ~/your-project && lattices init' },

@@ -1,0 +1,18 @@
+{
+  "duration": 36,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": ".head",
+      "bySec": 1
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": ".head"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": ".stage"
+    }
+  ]
+}

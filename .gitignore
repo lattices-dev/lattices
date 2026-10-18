@@ -22,6 +22,9 @@ apps/mac/Lattices.app/
 dist/
 *.dmg
 
+# Local receipts for successful Icon Composer asset compilations
+Assets.car.build.json
+
 # Site build artifacts
 site/dist/
 site/node_modules/
@@ -83,3 +86,8 @@ apps/ios/LatticesCompanion.xcodeproj/project.xcworkspace/xcuserdata/
 artifacts/
 apps/artifacts/
 apps/ios/.artifacts/
+
+# Local agent tooling and design reviews (at any depth)
+.agent/
+.agents/
+.impeccable/

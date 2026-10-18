@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="390" viewBox="0 0 600 390" role="img" aria-labelledby="title">
+<title id="title">Lattices. Workspaces for agents (and you).</title>
+<rect width="600" height="390" rx="16" fill="#f5f2eb"/>
+<g transform="translate(478 20) scale(4.6)"><rect x="2" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518"></rect><rect x="7.733333333333333" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518" fill-opacity="0.22"></rect><rect x="13.466666666666667" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518" fill-opacity="0.22"></rect><rect x="2" y="7.733333333333333" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518"></rect><path d="M7.733 12.267C7.698 12.231 7.733 12.161 7.809 12.059L9.337 7.861Q9.431 7.602 9.519 7.867L9.748 9.333Q9.925 10.075 10.667 10.252L12.133 10.481Q12.398 10.569 12.139 10.663L7.941 12.191C7.839 12.267 7.769 12.302 7.733 12.267Z" fill="#ef6a47"></path><rect x="13.466666666666667" y="7.733333333333333" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518" fill-opacity="0.22"></rect><rect x="2" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518"></rect><rect x="7.733333333333333" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518"></rect><rect x="13.466666666666667" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#101518"></rect></g>
+<g font-family="Arial, Helvetica, sans-serif">
+<text x="30" y="74" font-size="25" font-weight="700" letter-spacing="-.8" fill="#182022">Lattices<tspan fill="#ef6a47">.</tspan></text>
+<text x="28" y="173" font-size="58" font-weight="700" letter-spacing="-2.5" fill="#182022">Workspaces for</text>
+<text x="28" y="238" font-size="58" font-weight="700" letter-spacing="-2.5" fill="#182022">agents <tspan fill="#596360" font-weight="400">(and you)</tspan></text>
+<text x="30" y="291" font-size="22" fill="#596360">Native Mac tools. A shared desktop.</text>
+</g>
+<path d="M30 330H570" stroke="#d6d8cf"/>
+<g font-family="'Courier New', monospace" font-size="14" letter-spacing="1.4" fill="#596360">
+<text x="30" y="365">NATIVE macOS</text><text x="570" y="365" text-anchor="end">LATTICES.DEV</text>
+</g>
+</svg>

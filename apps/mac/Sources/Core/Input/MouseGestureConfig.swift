@@ -32,6 +32,27 @@ enum MouseShortcutActionType: String, Codable, Equatable {
     case appActivate = "app.activate"
 }
 
+/// Shift is sampled at mouse-down, so releasing it before the button cannot
+/// accidentally turn a window move into a desktop switch.
+enum MouseGestureSpaceMove {
+    static func offset(for action: MouseShortcutActionType, flags: CGEventFlags) -> Int? {
+        guard flags.contains(.maskShift) else { return nil }
+        switch action {
+        case .spacePrevious: return -1
+        case .spaceNext: return 1
+        default: return nil
+        }
+    }
+
+    /// Ordinary desktops only; fullscreen apps are not window destinations.
+    static func destination(in desktops: [Int], sourceSpaces: [Int], offset: Int) -> Int? {
+        guard sourceSpaces.count == 1, let source = sourceSpaces.first,
+              let index = desktops.firstIndex(of: source), abs(offset) == 1,
+              desktops.indices.contains(index + offset) else { return nil }
+        return desktops[index + offset]
+    }
+}
+
 enum MouseShortcutModifier: String, CaseIterable, Codable, Equatable {
     case command
     case control

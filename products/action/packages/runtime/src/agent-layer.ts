@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import type {
@@ -14,6 +14,7 @@ import type {
 } from "@action/protocol";
 
 import type { AgentLayerRouting } from "./interaction/index.js";
+import { withWorkspaceLock } from "./workspace-lock.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,11 +25,13 @@ const DEFAULT_CLOSE_WAIT_MS = 3000;
 const SIGTERM_WAIT_MS = 1500;
 const CONTROL_WAIT_MS = 1500;
 const RECORD_WAIT_MS = 5000;
+const workspaceMutations = new Map<string, Promise<unknown>>();
 
 export type AgentLayerHostRunner = (args: string[]) => Promise<{ stdout: string }>;
 
 export interface AgentLayerDisplayState {
   schemaVersion: 1;
+  workspace?: string;
   pid: number;
   displayId: number;
   startedAt: string;
@@ -38,6 +41,7 @@ export interface AgentLayerDisplayState {
 }
 
 export interface AgentLayerDisplayStatus {
+  workspace: string;
   active: boolean;
   state: "ready" | "missing" | "stale" | "invalid";
   display?: AgentLayerDisplayState;
@@ -47,6 +51,8 @@ export interface AgentLayerDisplayStatus {
 }
 
 export interface AgentLayerOpenInput {
+  previewDisplayId?: number;
+  previewFull?: boolean;
   bundleId?: string;
   pid?: number;
   width?: number;
@@ -110,6 +116,7 @@ interface AgentLayerRequest {
 
 export interface AgentLayerDirectorOptions {
   root?: string;
+  workspace?: string;
   runHost?: AgentLayerHostRunner;
   /** Liveness probe. Defaults to `process.kill(pid, 0)`. */
   isAlive?: (pid: number) => boolean;
@@ -120,8 +127,39 @@ export interface AgentLayerDirectorOptions {
   safetyPath?: string;
 }
 
-export function agentLayerStateDir(): string {
-  return resolve(homedir(), "Library/Application Support/Action/agent-layer");
+export function parseAgentWorkspace(value: unknown = "default"): string {
+  if (typeof value !== "string" || value.trim() !== value || !/^[a-z][a-z0-9-]{0,31}$/.test(value)) {
+    throw new Error("workspace must be 1–32 lowercase letters, digits, or hyphens, starting with a letter");
+  }
+  return value;
+}
+
+export function agentWorkspaceSerial(workspace: string): number {
+  const name = parseAgentWorkspace(workspace);
+  if (name === "default") return 0x41435401;
+  let hash = 2166136261;
+  for (const byte of new TextEncoder().encode(name)) hash = Math.imul(hash ^ byte, 16777619) >>> 0;
+  return (hash | 0x80000000) >>> 0;
+}
+
+export function agentLayerStateDir(workspace = "default"): string {
+  const root = resolve(homedir(), "Library/Application Support/Action/agent-layer");
+  return workspaceStateDir(root, parseAgentWorkspace(workspace));
+}
+
+function workspaceStateDir(root: string, workspace: string): string {
+  return workspace === "default" ? root : resolve(root, "workspaces", workspace);
+}
+
+export async function agentLayerWorkspaces(root = agentLayerStateDir()): Promise<string[]> {
+  try {
+    const entries = await readdir(resolve(root, "workspaces"), { withFileTypes: true });
+    return ["default", ...entries.filter(entry => entry.isDirectory() && entry.name !== "default"
+      && /^[a-z][a-z0-9-]{0,31}$/.test(entry.name)).map(entry => entry.name).sort()];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return ["default"];
+    throw error;
+  }
 }
 
 export function parseAgentLayerOpen(input: {
@@ -135,6 +173,8 @@ export function parseAgentLayerOpen(input: {
   url?: unknown;
   owner?: unknown;
   windowless?: unknown;
+  previewDisplayId?: unknown;
+  previewFull?: unknown;
 }): AgentLayerOpenInput {
   const bundleId = typeof input.bundleId === "string" && input.bundleId.trim() ? input.bundleId.trim() : undefined;
   const pid = optionalPositiveInt(input.pid, "pid");
@@ -158,6 +198,9 @@ export function parseAgentLayerOpen(input: {
     throw new Error("url opens in the app's front window, so it can't be combined with windowId or windowTitle");
   }
   const owner: AgentLayerOwner = input.owner === "detached" ? "detached" : DEFAULT_OWNER;
+  const previewDisplayId = optionalPositiveInt(input.previewDisplayId, "previewDisplayId");
+  if (input.previewFull !== undefined && typeof input.previewFull !== "boolean") throw new Error("previewFull must be a boolean");
+  if (previewDisplayId !== undefined && previewDisplayId > 0xffffffff) throw new Error("previewDisplayId must be a display identifier");
   return {
     ...(bundleId ? { bundleId } : {}),
     ...(pid !== undefined ? { pid } : {}),
@@ -167,6 +210,8 @@ export function parseAgentLayerOpen(input: {
     ...(windowTitle ? { windowTitle } : {}),
     ...(url ? { url } : {}),
     ...(input.windowless === true ? { windowless: true } : {}),
+    ...(previewDisplayId !== undefined ? { previewDisplayId } : {}),
+    ...(input.previewFull !== undefined ? { previewFull: input.previewFull as boolean } : {}),
     owner,
   };
 }
@@ -225,6 +270,8 @@ function defaultTerminate(pid: number): void {
 }
 
 export class AgentLayerDirector {
+  readonly workspace: string;
+  private readonly registryRoot: string;
   private readonly root: string;
   private readonly runHost: AgentLayerHostRunner;
   private readonly isAlive: (pid: number) => boolean;
@@ -232,13 +279,14 @@ export class AgentLayerDirector {
   private readonly stateWaitMs: number;
   private readonly closeWaitMs: number;
   private readonly safetyPath?: string;
-  private mutation: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly nativeHostPath: string,
     options: AgentLayerDirectorOptions = {},
   ) {
-    this.root = options.root ?? agentLayerStateDir();
+    this.workspace = parseAgentWorkspace(options.workspace);
+    this.registryRoot = options.root ?? agentLayerStateDir();
+    this.root = workspaceStateDir(this.registryRoot, this.workspace);
     this.runHost = options.runHost ?? ((args) => execFileAsync(this.nativeHostPath, args));
     this.isAlive = options.isAlive ?? defaultIsAlive;
     this.terminate = options.terminate ?? defaultTerminate;
@@ -264,7 +312,7 @@ export class AgentLayerDirector {
 
   async displayStatus(): Promise<AgentLayerDisplayStatus> {
     const paths = this.paths();
-    const base = { stateFile: paths.displayState, stopFile: paths.displayStop };
+    const base = { workspace: this.workspace, stateFile: paths.displayState, stopFile: paths.displayStop };
     let parsed: AgentLayerDisplayState;
     try {
       parsed = JSON.parse(await readFile(paths.displayState, "utf8")) as AgentLayerDisplayState;
@@ -275,7 +323,8 @@ export class AgentLayerDirector {
     }
     if (!parsed || parsed.schemaVersion !== 1 || !positiveInteger(parsed.pid) || parsed.pid <= 1 || !unsignedID(parsed.displayId)
       || !positiveInteger(parsed.width) || parsed.width < 640 || parsed.width > 8192 || !positiveInteger(parsed.height) || parsed.height < 400 || parsed.height > 8192
-      || !unsignedID(parsed.serialNumber) || typeof parsed.startedAt !== "string" || !Number.isFinite(Date.parse(parsed.startedAt))) {
+      || parsed.serialNumber !== agentWorkspaceSerial(this.workspace) || (parsed.workspace ?? "default") !== this.workspace
+      || typeof parsed.startedAt !== "string" || !Number.isFinite(Date.parse(parsed.startedAt))) {
       return { ...base, active: false, state: "invalid", detail: "Prepared display manifest has invalid identity or dimensions." };
     }
     return this.isAlive(parsed.pid)
@@ -307,6 +356,7 @@ export class AgentLayerDirector {
       const height = size.height ?? 900;
       const { stdout } = await this.runHost([
         "agent-display", "--state-file", paths.displayState, "--stop-file", paths.displayStop,
+        "--workspace", this.workspace,
         "--debug-log", paths.displayLog, "--width", String(width), "--height", String(height),
       ]);
       const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
@@ -337,9 +387,14 @@ export class AgentLayerDirector {
     return this.serialize(async () => {
       const current = await this.displayStatus();
       if (current.state === "invalid") throw new Error(current.detail);
-      const closed = await this.closeSession();
-      if (closed.active) throw new Error("Agent layer did not exit; refusing to release its prepared display");
+      if ((await this.status()).active) throw new Error("Close the active task explicitly before release; refusing to release its prepared display");
       if (!current.active || !current.display) return current;
+      for (const workspace of await agentLayerWorkspaces(this.registryRoot)) {
+        const state = await readJson<AgentLayerState>(resolve(workspaceStateDir(this.registryRoot, workspace), "state.json"));
+        if (state?.pip && state.previewDisplayId === current.display.displayId && this.isAlive(state.pid)) {
+          throw new Error(`Close the ${workspace} preview before releasing workspace ${this.workspace}`);
+        }
+      }
       const latest = await this.requirePreparedDisplay();
       this.assertSameDisplay(current.display, latest);
       await writeFile(this.paths().displayStop, "stop\n");
@@ -364,11 +419,9 @@ export class AgentLayerDirector {
     const request = parseAgentLayerOpen(input);
     const display = await this.requirePreparedDisplay();
     this.assertDisplaySize(display, request);
+    if (request.previewDisplayId !== undefined) await this.validatePreviewDestination(display.displayId, request.previewDisplayId);
     const owner = request.owner ?? DEFAULT_OWNER;
-    const closed = await this.closeSession();
-    if (closed.active) {
-      throw new Error(`Previous agent layer (pid ${closed.pid}) did not exit; refusing to open another`);
-    }
+    if ((await this.status()).active) throw new Error(`Workspace ${this.workspace} already has an active task; close it explicitly before opening another`);
 
     const paths = this.paths();
     await mkdir(this.root, { recursive: true });
@@ -381,6 +434,9 @@ export class AgentLayerDirector {
     const args = ["agent-layer", "--stop-file", paths.stop, "--state-file", paths.state, "--debug-log", paths.log,
       "--display-id", String(display.displayId), "--display-owner-pid", String(display.pid),
       "--display-started-at", display.startedAt, "--display-state-file", paths.displayState];
+    args.push("--workspace", this.workspace);
+    if (request.previewDisplayId !== undefined) args.push("--preview-display-id", String(request.previewDisplayId));
+    if (request.previewFull !== undefined) args.push("--preview-full", String(request.previewFull));
     // Same rule as the stage drape: a caller-owned layer watches this process and
     // restores the windows if it dies. A one-shot CLI exits right after open, so it
     // asks for `detached` and relies on `layer close`.
@@ -472,8 +528,17 @@ export class AgentLayerDirector {
     }
   }
 
-  close(): Promise<AgentLayerStatus> {
-    return this.serialize(() => this.closeSession());
+  close(expected?: Pick<AgentLayerState, "pid" | "displayId" | "startedAt">): Promise<AgentLayerStatus> {
+    return this.serialize(async () => {
+      if (expected) {
+        const current = await this.status();
+        if (current.active && (!current.layer || current.layer.pid !== expected.pid
+          || current.layer.displayId !== expected.displayId || current.layer.startedAt !== expected.startedAt)) {
+          throw new Error("Agent layer ownership changed; refusing to close a replacement session");
+        }
+      }
+      return this.closeSession();
+    });
   }
 
   private async closeSession(): Promise<AgentLayerStatus> {
@@ -487,7 +552,7 @@ export class AgentLayerDirector {
     const owner = request?.owner ?? DEFAULT_OWNER;
 
     if (!pid && !state && !request) {
-      return { active: false, owner };
+      return { active: false, owner, workspace: this.workspace };
     }
 
     await mkdir(this.root, { recursive: true });
@@ -508,6 +573,7 @@ export class AgentLayerDirector {
       // A layer still up after the stop file and SIGTERM holds the user's windows.
       // Report it rather than calling it closed.
       active: !gone,
+      workspace: this.workspace,
       owner,
       ...(request?.subject ? { subject: request.subject } : {}),
       ...(gone ? {} : { pid }),
@@ -515,10 +581,23 @@ export class AgentLayerDirector {
   }
 
   /** Brings the PiP viewer back after the user dismissed it. The layer itself never stopped. */
-  async showViewer(): Promise<AgentLayerStatus> {
+  async showViewer(input: { previewDisplayId?: number; previewFull?: boolean } = {}): Promise<AgentLayerStatus> {
+    return this.serialize(() => this.showViewerSession(input));
+  }
+
+  private async showViewerSession(input: { previewDisplayId?: number; previewFull?: boolean }): Promise<AgentLayerStatus> {
     const status = await this.status();
     if (!status.active || !status.layer) {
       throw new Error("No agent layer is up");
+    }
+    if (input.previewFull !== undefined && typeof input.previewFull !== "boolean") throw new Error("previewFull must be a boolean");
+    if (input.previewDisplayId !== undefined || input.previewFull !== undefined) {
+      if (input.previewDisplayId !== undefined) {
+        if (!unsignedID(input.previewDisplayId)) throw new Error("previewDisplayId must be a display identifier");
+        await this.validatePreviewDestination(status.layer.displayId, input.previewDisplayId);
+      }
+      await this.sendControl("show", { ...input }, CONTROL_WAIT_MS);
+      return this.status();
     }
     if (!status.layer.pip) {
       process.kill(status.layer.pid, "SIGUSR1");
@@ -582,6 +661,10 @@ export class AgentLayerDirector {
     payload: Record<string, unknown>,
     budgetMs = CONTROL_WAIT_MS,
   ): Promise<T> {
+    return this.serialize(() => this.sendControl<T>(op, payload, budgetMs));
+  }
+
+  private async sendControl<T extends { ok: boolean; detail?: string }>(op: string, payload: Record<string, unknown>, budgetMs: number): Promise<T> {
     const status = await this.status();
     if (!status.active || !status.layer) {
       throw new Error("No agent layer is up");
@@ -608,26 +691,23 @@ export class AgentLayerDirector {
     }
   }
 
-  /** The live layer, or an inactive status. Stale files from a dead layer are removed. */
+  /** The live layer, or an inactive status. */
   async status(): Promise<AgentLayerStatus> {
     const request = await this.readRequest();
     const state = await this.readState();
     const owner = request?.owner ?? DEFAULT_OWNER;
     const pid = state?.pid ?? request?.pid;
     if (!pid) {
-      if (state || request) {
-        await this.clearFiles();
-      }
-      return { active: false, owner };
+      return { active: false, owner, workspace: this.workspace };
     }
     if (!this.isAlive(pid)) {
-      await this.clearFiles();
-      return { active: false, owner };
+      return { active: false, owner, workspace: this.workspace };
     }
     if (!state) {
       // Alive but no state yet (still starting, or state lost). Closable, not routable.
       return {
         active: true,
+        workspace: this.workspace,
         owner,
         pid,
         ...(request?.subject ? { subject: request.subject } : {}),
@@ -664,6 +744,7 @@ export class AgentLayerDirector {
     const paths = this.paths();
     return {
       active,
+      workspace: this.workspace,
       owner: request.owner,
       ...(request.ownerPid ? { ownerPid: request.ownerPid } : {}),
       ...(request.subject ? { subject: request.subject } : {}),
@@ -671,13 +752,6 @@ export class AgentLayerDirector {
       stateFile: paths.state,
       layer: state,
     };
-  }
-
-  private async clearFiles(): Promise<void> {
-    const paths = this.paths();
-    await rm(paths.state, { force: true });
-    await rm(paths.request, { force: true });
-    await rm(paths.stop, { force: true });
   }
 
   private async waitForState(budgetMs: number): Promise<AgentLayerState | undefined> {
@@ -709,6 +783,9 @@ export class AgentLayerDirector {
 
   private async readState(): Promise<AgentLayerState | undefined> {
     const parsed = await readJson<AgentLayerState>(this.paths().state);
+    if (parsed && (parsed.workspace ?? "default") !== this.workspace) {
+      throw new Error("Agent layer state belongs to a different workspace");
+    }
     return parsed && positiveInteger(parsed.pid) && parsed.pid > 1 && unsignedID(parsed.displayId)
       && typeof parsed.startedAt === "string" && Number.isFinite(Date.parse(parsed.startedAt))
       && parsed.bounds && [parsed.bounds.x, parsed.bounds.y, parsed.bounds.width, parsed.bounds.height].every(Number.isFinite)
@@ -740,9 +817,26 @@ export class AgentLayerDirector {
     }
   }
 
+  private async validatePreviewDestination(source: number, destination: number): Promise<void> {
+    const edges = new Map<number, number>();
+    for (const workspace of await agentLayerWorkspaces(this.registryRoot)) {
+      const state = await readJson<AgentLayerState>(resolve(workspaceStateDir(this.registryRoot, workspace), "state.json"));
+      if (state && state.pip && this.isAlive(state.pid) && unsignedID(state.previewDisplayId)) edges.set(state.displayId, state.previewDisplayId);
+    }
+    const visited = new Set<number>([source]);
+    let next: number | undefined = destination;
+    while (next !== undefined) {
+      if (visited.has(next)) throw new Error("Preview destination would create a recursive workspace preview");
+      visited.add(next);
+      next = edges.get(next);
+    }
+  }
+
   private serialize<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const result = this.mutation.then(operation);
-    this.mutation = result.catch(() => undefined);
+    const result = (workspaceMutations.get(this.root) ?? Promise.resolve()).then(() => withWorkspaceLock(resolve(this.root, "transaction.lock"), operation));
+    const tail = result.catch(() => undefined);
+    workspaceMutations.set(this.root, tail);
+    void tail.then(() => { if (workspaceMutations.get(this.root) === tail) workspaceMutations.delete(this.root); });
     return result;
   }
 }

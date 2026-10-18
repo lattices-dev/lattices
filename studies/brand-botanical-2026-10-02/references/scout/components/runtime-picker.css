@@ -1,0 +1,296 @@
+/* RuntimePicker motion.
+ *
+ * The studio ships no animation library, so the panel's choreography is CSS
+ * only — which is also what the port into packages/web wants. Every duration
+ * here is short enough to read as physics rather than as a transition: the
+ * panel is a menu, and a menu that takes 300ms to arrive feels broken.
+ *
+ * One rule throughout: things enter from the direction of the trigger. The
+ * panel opens upward out of the chip, so it rises the last 6px into place and
+ * its rows arrive a beat behind it, top-down.
+ */
+
+/* ── Tints ──────────────────────────────────────────────────────────────────
+ *
+ * Tailwind's `/alpha` modifier cannot be used on the studio palette. The
+ * `studio-*` and `scout-*` tokens resolve to CSS vars holding a complete
+ * `oklch(...)` value, and Tailwind 3 implements the modifier by splicing alpha
+ * into bare channels — so `bg-studio-ink/[0.07]` emits an invalid color and
+ * computes to `rgba(0,0,0,0)`. It fails silently: the element simply has no
+ * background.
+ *
+ * Every translucent tint in this component is therefore declared here with
+ * `color-mix`, which the palette already uses (`--scout-accent-soft`). Mixing
+ * in oklab keeps the tint neutral instead of dragging it toward the ground's
+ * hue, and it inverts correctly between themes because it mixes the live token.
+ */
+
+.rp-chip {
+  background: color-mix(in oklab, var(--studio-ink) 7%, transparent);
+}
+.rp-chip:hover {
+  background: color-mix(in oklab, var(--studio-ink) 11%, transparent);
+}
+.rp-chip[data-open="true"] {
+  background: color-mix(in oklab, var(--studio-ink) 13%, transparent);
+}
+
+/* ── Chip geometry ──────────────────────────────────────────────────────────
+ *
+ * The chip holds a fixed character width open for the model name (see
+ * MODEL_CH_MIN/MAX), so cycling models inside one harness moves nothing. The
+ * reserved width DOES change when the harness changes, because a different
+ * vendor's names are a different length — and that is the one case worth
+ * easing rather than cutting. 220ms is long enough to read as the chip
+ * breathing and short enough that it has finished before the eye returns to
+ * the panel. */
+.rp-chip-model {
+  transition: min-width 220ms cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+
+/* The name cross-fades inside that reserved box. Opacity only: the box is
+ * `overflow: hidden` for the ellipsis, so anything that moves vertically gets
+ * clipped on the way in. */
+.rp-chip-model-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: rp-model-in 190ms ease-out both;
+}
+
+@keyframes rp-model-in {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rp-chip--disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.rp-chip--disabled:hover {
+  background: color-mix(in oklab, var(--studio-ink) 7%, transparent);
+}
+
+.rp-divider {
+  background: color-mix(in oklab, var(--studio-ink) 22%, transparent);
+}
+
+/* ── Unselectable options ───────────────────────────────────────────────────
+ *
+ * Marked with `aria-disabled`, not the `disabled` attribute. A disabled button
+ * is removed from the focus order entirely, which would put a hole in the
+ * roving cursor — arrowing down the harness rail would skip the uninstalled
+ * one without ever announcing why it is unavailable. `aria-disabled` keeps it
+ * reachable and announced; the click handler is what declines. */
+.rp-row[data-disabled],
+.rp-tile[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.rp-row[data-disabled]:hover,
+.rp-tile[data-disabled]:hover {
+  background: transparent;
+  border-color: var(--studio-edge);
+}
+
+/* Filter. Sits above the list it filters, so it carries the divider. */
+.rp-search {
+  border-bottom: 1px solid var(--studio-edge);
+}
+
+/* Row states — selected sits above hover so a selected row doesn't dim on
+ * pointer-out mid-transition. */
+.rp-row:hover {
+  background: color-mix(in oklab, var(--studio-ink) 5%, transparent);
+}
+.rp-row[data-on="true"],
+.rp-row[data-on="true"]:hover {
+  background: color-mix(in oklab, var(--studio-ink) 8%, transparent);
+}
+
+/* Ladder segments. The filled-but-not-current steps need to read as a level,
+ * so they sit well above the empty ones rather than a hair above. */
+.rp-seg[data-state="filled"] {
+  background: color-mix(in oklab, var(--studio-ink) 42%, transparent);
+}
+.rp-seg[data-state="empty"] {
+  background: color-mix(in oklab, var(--studio-ink) 14%, transparent);
+}
+.rp-seg[data-state="empty"]:hover,
+button:hover > .rp-seg[data-state="empty"] {
+  background: color-mix(in oklab, var(--studio-ink) 26%, transparent);
+}
+.rp-seg[data-state="current"] {
+  background: var(--scout-accent);
+}
+
+/* Accent-tinted selection for the bands treatment. */
+.rp-tile[data-on="true"] {
+  border-color: color-mix(in oklab, var(--scout-accent) 55%, transparent);
+  background: color-mix(in oklab, var(--scout-accent) 9%, transparent);
+}
+
+/* The panel is the editor opening out of the readout, so it arrives from the
+ * chip's corner and widens slightly as it rises. Anisotropic on purpose:
+ * scaleY leads, scaleX trails by a hair, which reads as unfolding rather than
+ * as a uniform zoom — a 460px box scaled evenly looks like it is rushing at
+ * you. */
+@keyframes rp-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.985, 0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes rp-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rp-swap-in {
+  from {
+    opacity: 0;
+    transform: translateX(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.rp-panel {
+  transform-origin: bottom left;
+  animation: rp-panel-in 170ms cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+.rp-panel[data-placement="down"] {
+  transform-origin: top left;
+}
+
+/* The list is the only unbounded content in the panel — a live catalog can be
+ * arbitrarily long, and the panel is positioned against a fixed height
+ * estimate. Cap it and scroll, so a long catalog overflows the list instead of
+ * the viewport (an up-panel is anchored by its bottom edge, so overflow there
+ * clips the first rows with no way to reach them). The vh term shrinks the cap
+ * on short viewports before the flip math ever sees them. */
+.rp-models {
+  max-height: min(248px, calc(100vh - 220px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Rows arrive after the box, stepped. The delay is set inline per row so the
+ * stagger survives a variant swap without a second keyframe set. */
+.rp-stagger {
+  animation: rp-row-in 160ms cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+/* Model list re-keys on harness change; it slides rather than cutting so the
+ * eye follows the swap instead of re-reading the whole column. */
+.rp-swap {
+  animation: rp-swap-in 150ms cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+/* Rows arrive a beat behind the column they are in, top-down. The step is
+ * deliberately tiny — 16ms is under a frame at 60Hz, so it reads as the list
+ * settling rather than as five separate animations. It also runs when the
+ * filter admits a new row, which is what makes typing feel like rows arriving
+ * instead of the list being rebuilt. */
+.rp-list-row {
+  animation: rp-row-in 150ms cubic-bezier(0.16, 0.84, 0.44, 1) both;
+}
+
+/* The selection dot is the one thing that should feel like it lands. */
+.rp-dot {
+  transition:
+    transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 130ms ease-out;
+  transform: scale(0.4);
+}
+.rp-row[data-on="true"] .rp-dot {
+  transform: scale(1);
+}
+
+/* The single selection marker that travels between harness rows. Moving one
+ * element beats fading a border on each row — it reads as the same object. */
+.rp-marker {
+  transition:
+    transform 200ms cubic-bezier(0.16, 0.84, 0.44, 1),
+    opacity 120ms linear;
+}
+
+.rp-caret {
+  transition: transform 180ms cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+.rp-caret[data-open="true"] {
+  transform: rotate(180deg);
+}
+
+/* Effort ladder. Segments fill left-to-right; the travelling one carries the
+ * accent so the level reads without counting. */
+.rp-seg {
+  transition:
+    background-color 140ms ease-out,
+    opacity 140ms ease-out,
+    transform 140ms cubic-bezier(0.16, 0.84, 0.44, 1);
+}
+
+/* Loading rows. Same height and rhythm as the real rows, so the panel does not
+ * resize when the catalog lands — the swap should read as the rows filling in,
+ * not as the menu being rebuilt. */
+@keyframes rp-skel-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.rp-skel {
+  background: color-mix(in oklab, var(--studio-ink) 6%, transparent);
+  animation: rp-skel-pulse 1.5s ease-in-out infinite both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-panel,
+  .rp-stagger,
+  .rp-swap,
+  .rp-list-row,
+  .rp-chip-model-text {
+    animation-duration: 0.01ms;
+    animation-delay: 0ms !important;
+  }
+  .rp-marker,
+  .rp-caret,
+  .rp-seg,
+  .rp-chip-model,
+  .rp-dot {
+    transition-duration: 0.01ms;
+  }
+  /* The dot still has to be visible at rest — only its arrival is suppressed. */
+  .rp-dot {
+    transform: scale(1);
+  }
+  /* The skeleton keeps a steady tone rather than freezing mid-pulse. */
+  .rp-skel {
+    animation: none;
+    opacity: 0.75;
+  }
+}

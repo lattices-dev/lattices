@@ -1,0 +1,17 @@
+Snapping, tiling, and workspaces
+
+Silent educational animation. Illustrative example, not a live desktop inspection.
+
+Opening: Lattices / Field Guide. ORGANIZE YOUR MAC. Snapping, tiling, and workspaces. Three jobs that window tools can help with.
+
+[0–10 seconds] Snap a window. You choose the position. Put the selected window on the left.
+
+[10–20 seconds] Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins.
+
+[20–30 seconds] Group a workspace. Keep related work together. Windows, projects, or sessions share a context.
+
+[30–40 seconds] Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app.
+
+On-screen diagram labels: Snapping; Place one; Automatic tiling; Arrange several; Workspace; Return to a context; Planning; Browser; Notes; Terminal; Tools may combine these jobs.
+
+Footer: Illustrative example · not a live desktop. lattices.dev/learn.

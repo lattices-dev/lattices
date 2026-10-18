@@ -1,0 +1,29 @@
+{
+  "checked": "2026-10-02",
+  "visuals": {
+    "type": "authored HTML and SVG diagrams",
+    "provenance": "Original illustrative Export window, accessibility hierarchy and comparison diagrams. No screen capture or live app inspection."
+  },
+  "audio": "none",
+  "fonts": [
+    {
+      "family": "Montserrat",
+      "weights": [400, 700],
+      "source": "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap",
+      "files": ["assets/fonts/montserrat-400.ttf", "assets/fonts/montserrat-700.ttf"],
+      "licenseFile": "assets/fonts/montserrat-LICENSE.txt"
+    },
+    {
+      "family": "IBM Plex Mono",
+      "weights": [400, 700],
+      "source": "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=IBM+Plex+Mono:wght@400;700&display=swap",
+      "files": ["assets/fonts/ibm-plex-mono-400.ttf", "assets/fonts/ibm-plex-mono-700.ttf"],
+      "licenseFile": "assets/fonts/ibm-plex-mono-LICENSE.txt"
+    }
+  ],
+  "animation": {
+    "engine": "GSAP 3.14.2 through HyperFrames 0.8.111",
+    "primitive": "svg-line-draw-loader",
+    "adaptation": "Measured SVG path lengths and seek-safe strokeDashoffset tweens reveal the tree relationships. The reference primitive is retained under ax-tree/compositions/components."
+  }
+}

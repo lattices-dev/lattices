@@ -4,18 +4,42 @@ description: Install lattices and launch your first workspace in 2 minutes
 order: 0.5
 ---
 
-Four steps to a running workspace on macOS. For Hyprland and Omarchy, use [Install on Linux](/docs/install-linux).
+Requires macOS 26 or later. Install the [Mac app](https://github.com/lattices-dev/lattices/releases/latest) for window management, or follow these steps to add the CLI and optional terminal sessions.
+
+For Hyprland and Omarchy, use [Install on Linux](/docs/install-linux).
 
 ## 1. Install lattices
 
+Install [Bun](https://bun.sh) first. The CLI needs Bun at runtime, including when installed with npm.
+
 ```bash
-git clone https://github.com/arach/lattices
-cd lattices && bun link
+npm install -g @lattices/lattices
 ```
 
 This installs the CLI as `lats`, with `lattices` as a long-form alias.
 
 Verify: `lats help` should print usage info.
+
+### One-command setup
+
+For a new Mac, the setup script installs Homebrew when needed, tmux, Bun,
+and the CLI. Review the [installer source](https://github.com/lattices-dev/lattices/blob/main/scripts/install.sh) before running:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
+```
+
+You can also install the Mac app with Homebrew:
+
+```bash
+brew tap arach/tap
+brew trust arach/tap
+brew install --cask arach/tap/lattices
+```
+
+The cask requires Apple Silicon and macOS 26 or later. It installs the app;
+the optional CLI is available with `bun install -g @lattices/lattices`.
+You can also download the [disk image](https://github.com/lattices-dev/lattices/releases/latest).
 
 ## 2. Launch the menu bar app
 
@@ -23,8 +47,8 @@ Verify: `lats help` should print usage info.
 lats app
 ```
 
-This builds (or downloads) and launches the native macOS companion.
-Open the command palette with **Cmd+Shift+M** to search and launch
+This launches the bundled Mac app. Grant Accessibility access when prompted. For screen-text search, grant Screen Recording permission and enable **Search & OCR** in Settings.
+Open the command palette with **Control+Option+Space** to search and launch
 any project, tile windows, or switch workspace layers.
 
 To also open Lattices automatically when you log in:

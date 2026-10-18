@@ -8,7 +8,7 @@ describe('prepareMarkdown', () => {
   })
 
   test('keeps imports inside code samples', () => {
-    const md = "```js\nimport { daemonCall } from '@lattices/cli'\n\nawait daemonCall('windows.list')\n```"
+    const md = "```js\nimport { daemonCall } from '@lattices/lattices'\n\nawait daemonCall('windows.list')\n```"
     expect(prepareMarkdown(md)).toBe(md)
   })
 

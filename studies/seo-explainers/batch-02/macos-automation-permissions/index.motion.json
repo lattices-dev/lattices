@@ -1,0 +1,22 @@
+{
+  "duration": 40,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": ".headline",
+      "bySec": 1
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": ".headline"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": ".caption-area"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": ".stage"
+    }
+  ]
+}

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { footerColumns, licenseUrl } from '../data/footer'
 import { productLinks } from '../data/products'
+import { actionMarkBox } from '../lib/marks'
+import { ActionMark } from './ActionMark'
+import { BlinkMark } from './blink/BlinkMark'
 import { LatticesMark } from './LatticesMark'
+import { SpeechMark } from './SpeechMark'
 import { ThemeToggle } from './ThemeToggle'
 
 declare global {
@@ -135,6 +140,7 @@ export function SiteHeader({ product }: { product?: HeaderProduct }) {
           )}
           <nav className="site-links" aria-label="Primary navigation">
             <ProductsMenu />
+            <a href="/learn">Learn</a>
             <a href="/blog" className="nav-blog-link">Blog</a>
             <a href="/docs/overview">Docs</a>
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
@@ -150,6 +156,79 @@ export function SiteHeader({ product }: { product?: HeaderProduct }) {
       </header>
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
+  )
+}
+
+/** Each product's mark beside its name in the footer, drawn in the link's colour. */
+const footerMarks: Record<string, ReactNode> = {
+  '/': <LatticesMark size={14} />,
+  '/action': (
+    <ActionMark
+      palette={{ ink: 'currentColor' }}
+      guides={false}
+      background={false}
+      viewBox={actionMarkBox.join(' ')}
+      decorative
+      style={{ width: 14, height: 14 }}
+    />
+  ),
+  '/blink': <BlinkMark width={14} height={14} />,
+  '/speech': <SpeechMark size={14} />,
+}
+
+export interface SiteFooterProps {
+  /** The page's path, so its own link reads as the current page. */
+  current?: string
+  className?: string
+}
+
+export function SiteFooter({ current, className }: SiteFooterProps) {
+  return (
+    <footer className={className ? `site-footer ${className}` : 'site-footer'} data-pagefind-ignore>
+      <div className="site-footer-inner">
+        <div className="site-footer-grid">
+          <div className="site-footer-brand">
+            <a className="site-footer-lockup" href="/" aria-label="Lattices home">
+              <LatticesMark size={22} />
+              <span>lattices</span>
+            </a>
+            <p>The programmable workspace for macOS. Free, open source, and local first.</p>
+          </div>
+          {footerColumns.map((column) => (
+            <div className="site-footer-col" key={column.title}>
+              <h2 className="site-footer-heading">{column.title}</h2>
+              <ul>
+                {column.links.map((link) => (
+                  <li key={link.href}>
+                    <a
+                      href={link.href}
+                      aria-current={link.href === current ? 'page' : undefined}
+                      target={link.external ? '_blank' : undefined}
+                      rel={link.external ? 'noopener noreferrer' : undefined}
+                    >
+                      {footerMarks[link.href]}
+                      <span>{link.label}</span>
+                      {link.external && <span className="site-footer-out" aria-hidden="true">↗</span>}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="site-footer-bar">
+          <p>
+            Built by{' '}
+            <a href="https://github.com/arach" target="_blank" rel="noopener noreferrer">@arach</a>
+            <span aria-hidden="true"> · </span>
+            macOS only. tmux optional.
+          </p>
+          <p>
+            <a href={licenseUrl} target="_blank" rel="noopener noreferrer">MIT licensed</a>
+          </p>
+        </div>
+      </div>
+    </footer>
   )
 }
 

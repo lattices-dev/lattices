@@ -60,6 +60,10 @@ icon="$repo_root/assets/AppIcon.icns"
 if [[ -f "$icon" ]]; then
   cp "$icon" "$app_path/Contents/Resources/AppIcon.icns"
 fi
+# The light and dark icons, which CFBundleIconName picks over the .icns.
+if [[ -f "$repo_root/assets/Assets.car" ]]; then
+  cp "$repo_root/assets/Assets.car" "$app_path/Contents/Resources/Assets.car"
+fi
 
 # Editor web bundle (built separately: cd web/editor && bun run build).
 editor_html="$repo_root/web/editor/dist/editor.html"
@@ -92,6 +96,8 @@ cat > "$app_path/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key>
   <string>${app_name}</string>
   <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIconName</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>

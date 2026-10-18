@@ -1,0 +1,5 @@
+Build a programmatic SEO content play for topics around what Lattices does. I like educational tools about AX, MacOS, UI automation
+Also competitor listings with analysis
+and explainer animation videos
+You can use my ssh hetz remote to run animations
+Audience: mid level aspiring power user

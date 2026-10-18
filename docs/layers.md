@@ -357,28 +357,24 @@ desktop or takes you there: a layer window on another desktop stays
 put. Re-tiling the active layer leaves the rest of the screen alone.
 Everything happens at the switch; nothing runs in the background.
 
-### Show All
+### Exiting layers
 
-Parked windows go back where they were when Lattices quits. Their
-frames are saved in `~/.lattices/layer-stage.json`, so after a crash
-the next launch puts them back. To bring everything back without
-quitting:
+Choose **Exit Layers** to return to ordinary desktop use. Lattices clears
+the active layer, restores windows it parked, and unhides apps it hid.
+Your saved layers and window assignments remain available.
 
-| Where                | How                                           |
-|----------------------|-----------------------------------------------|
-| **Command bar**      | Show All Windows, listed with the layers while anything is put away |
-| **Menu bar panel**   | Right-click a layer chip → Show All Windows   |
-| **CLI**              | `lats layer reveal` (or `show-all`)       |
-| **API**              | `layers.reveal`                               |
+```bash
+lats layer exit            # Exit layers
+lats layer off             # Same action
+```
 
-Show All puts back every parked window and unhides every app a switch
-hid. Apps you hid yourself stay hidden. A window parked on a desktop
-that isn't showing can only move once that desktop is showing, so run
-Show All again from there. It also brings back any window sitting in
-the park corner that Lattices lost track of, centred on the main screen.
+Windows stay on their existing macOS desktops. If a parked window belongs
+to a desktop that is not showing, Lattices keeps its saved position and
+retries restoration when you visit that desktop. Exiting layers does not
+move all windows onto the current desktop.
 
-⌘\` can land on a parked window: in Ghostty, a parked terminal. It
-stays in the corner until you switch layers or use Show All.
+Choose a layer to enter layers again. **Show All Windows**,
+`lats layer reveal`, and `lats layer show-all` use the same exit action.
 
 ### Named layer switching
 
@@ -439,17 +435,20 @@ Cmd+Option+5, or a slot without a layer, shows the layer you're on too.
 Agents and scripts can switch layers via the agent API:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // List available layers
 const { layers, active } = await daemonCall('layers.list')
-console.log(`Active: ${layers[active].label}`)
+console.log(active === null ? 'Layers off' : `Active: ${layers[active].label}`)
 
 // Switch to a layer by index
 await daemonCall('layers.switch', { index: 0 })
 
 // Switch to a layer by name
 await daemonCall('layers.switch', { name: 'hudson' })
+
+// Exit layers while keeping saved definitions and desktop assignments
+await daemonCall('layers.exit')
 ```
 
 The `layers.switch` call switches as ⌘⌥ does: it puts away what the
@@ -463,12 +462,17 @@ and `layers.reveal` brings it all back.
 
 More methods in the [Agent API reference](/docs/api).
 
-## Entry rules
+## Rule-backed layers
 
-An entry finds its windows by `app` and `title`. For a sharper rule, give
-it a `match` clause instead; the layer holds a window when any of its
-entries matches it. Inside one clause, every field given must match, and
-every clause in `not` must fail.
+All layer definitions, including rules created in Studio, live in
+`~/.lattices/workspace.json`. If that file is absent, Lattices imports the
+old `~/.lattices/layers.json` once and leaves the old file unchanged.
+Subsequent edits belong in `workspace.json`. Exiting layers preserves
+these definitions.
+
+Give a project entry a `match` clause to find windows by rule. A layer
+matches a window through any of its entries. Inside one clause, every
+present positive field must match, and every clause in `not` must fail.
 
 ```json
 {
@@ -501,9 +505,8 @@ every clause in `not` must fail.
 | `spaceId` | Window belongs to this macOS Space id |
 | `not` | Exclusion clauses; any match rejects the window |
 
-Hyperspace's layer piles write these clauses; Screen Map scopes its canvas
-to a layer's windows. `~/.lattices/layers.json`, the old Studio layer file,
-is no longer read.
+`app` and `titleContains` match substrings. Use `appEquals` to match an
+exact app name.
 
 ### One layer per window
 

@@ -17,9 +17,11 @@ APP="$STAGE/Voice.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Voice" "$APP/Contents/MacOS/Voice"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
-# Prebuilt and committed: `bun run brand speech` in apps/site renders it from
-# SpeechMark in apps/site/src/components/SpeechMark.tsx.
+# Prebuilt and committed: `bun run brand speech` in apps/site renders them from
+# SpeechMark in apps/site/src/components/SpeechMark.tsx. Assets.car holds the
+# light and dark icons, which CFBundleIconName picks over the .icns.
 cp "$ROOT/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$ROOT/assets/Assets.car" "$APP/Contents/Resources/Assets.car"
 # SwiftPM resource bundles load from Contents/Resources; a missing one traps on first use.
 for RESOURCE in "$BIN_DIR"/*.bundle; do
     [ -d "$RESOURCE" ] || continue

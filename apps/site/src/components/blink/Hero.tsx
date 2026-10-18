@@ -52,7 +52,7 @@ export default function Hero() {
                 </span>{' '}
                 download for macOS
               </PrimaryButton>
-              <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
+              <GhostButton href="https://github.com/lattices-dev/lattices/tree/main/products/blink">
                 github <span className="text-faintx" aria-hidden>↗</span>
               </GhostButton>
             </div>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Lattices. Workspaces for agents (and you).</title>
+  <desc id="desc">Native Mac tools for a shared desktop. The Lattices window grid and orange pointer sit beside the headline.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#344042"/></pattern>
+  </defs>
+  <rect width="1200" height="420" rx="16" fill="#101518"/>
+  <rect x="794" y="24" width="382" height="332" rx="12" fill="#172023"/>
+  <rect x="794" y="24" width="382" height="332" rx="12" fill="url(#grid)"/>
+  <path d="M818 62V48h14 M1138 48h14v14 M818 318v14h14 M1138 332h14v-14" fill="none" stroke="#a4afaf" stroke-opacity=".5"/>
+  <g transform="translate(835 40) scale(15)"><rect x="2" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#f2f2f2"></rect><rect x="7.733333333333333" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#ffffff" fill-opacity="0.18"></rect><rect x="13.466666666666667" y="2" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#ffffff" fill-opacity="0.18"></rect><rect x="2" y="7.733333333333333" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#f2f2f2"></rect><path d="M7.733 12.267C7.698 12.231 7.733 12.161 7.809 12.059L9.337 7.861Q9.431 7.602 9.519 7.867L9.748 9.333Q9.925 10.075 10.667 10.252L12.133 10.481Q12.398 10.569 12.139 10.663L7.941 12.191C7.839 12.267 7.769 12.302 7.733 12.267Z" fill="#ef6a47"></path><rect x="13.466666666666667" y="7.733333333333333" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#ffffff" fill-opacity="0.18"></rect><rect x="2" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#f2f2f2"></rect><rect x="7.733333333333333" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#f2f2f2"></rect><rect x="13.466666666666667" y="13.466666666666667" width="4.533333333333333" height="4.533333333333333" rx="1" fill="#f2f2f2"></rect></g>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="54" y="78" font-size="25" font-weight="700" letter-spacing="-.8" fill="#f2f2ef">Lattices<tspan fill="#ef6a47">.</tspan></text>
+    <text x="50" y="183" font-size="65" font-weight="700" letter-spacing="-2.8" fill="#f2f2ef">Workspaces for</text>
+    <text x="50" y="256" font-size="65" font-weight="700" letter-spacing="-2.8" fill="#f2f2ef">agents <tspan fill="#a4afaf" font-weight="400">(and you)</tspan></text>
+    <text x="54" y="311" font-size="20" fill="#a4afaf">Native Mac tools. A shared desktop.</text>
+  </g>
+  <path d="M54 355H1146" stroke="#344042"/>
+  <g font-family="'Courier New', monospace" font-size="12" letter-spacing="1.7" fill="#a4afaf">
+    <text x="54" y="389">WINDOWS / TERMINALS / AGENTS</text>
+    <text x="1146" y="389" text-anchor="end">LATTICES.DEV</text>
+  </g>
+</svg>

@@ -3,10 +3,16 @@
   --font-display: "Cormorant Garamond", Georgia, serif;
   --font-text: "Space Grotesk", -apple-system, sans-serif;
   --font-jetbrains-mono: "JetBrains Mono", monospace;
-  --logo-ink: var(--text);
-  --logo-dim: var(--line-2);
+  /* The family marks keep the family ink on Blink's own themes. */
+  --logo-ink: #101518;
+  --logo-dim: rgba(16, 21, 24, 0.22);
+  --logo-accent: #ef6a47;
   min-height: 100vh;
   line-height: 1.5;
+}
+#blink-landing[data-theme="black"] {
+  --logo-ink: #f2f2f2;
+  --logo-dim: rgba(255, 255, 255, 0.18);
 }
 #blink-landing h2 { font-family: var(--font-display); font-size: clamp(32px, 3vw, 42px); font-weight: 600; }
 #blink-landing #top p:first-of-type,
@@ -24,6 +30,19 @@
 #blink-landing .blink-nav-download { background: var(--acc); color: var(--on-acc); padding: 8px 12px; border-radius: 5px; font-weight: 600; }
 #blink-landing .blink-section-nav { max-width: 1024px; margin: auto; display: flex; gap: 24px; padding: 0 24px 10px; font-size: 11px; color: var(--dim); }
 #blink-landing section { scroll-margin-top: 110px; }
+/* The family footer: Blink's palette and rail. The scoped preflight's ID rules
+   (borders, link colour, h2 and p resets) would otherwise win over its classes. */
+#blink-landing .site-footer { --footer-rail: 976px; --footer-text: var(--text); --footer-dim: var(--dim); --footer-muted: var(--faint); --footer-rule: var(--line); }
+#blink-landing .site-footer,
+#blink-landing .site-footer-bar { border-top: 1px solid var(--footer-rule); }
+#blink-landing .site-footer a { color: var(--footer-dim); }
+#blink-landing .site-footer a:hover,
+#blink-landing .site-footer a[aria-current='page'],
+#blink-landing .site-footer .site-footer-lockup { color: var(--footer-text); }
+#blink-landing .site-footer .site-footer-bar a { color: var(--footer-text); }
+#blink-landing .site-footer .site-footer-bar a:hover { color: var(--logo-accent); }
+#blink-landing .site-footer .site-footer-heading { margin: 0 0 16px; font-family: var(--font-jetbrains-mono); font-size: 10.5px; font-weight: 500; line-height: normal; }
+#blink-landing .site-footer .site-footer-brand p { margin-top: 14px; }
 @media (max-width: 639px) {
   #blink-landing .blink-family-inner { padding: 0 16px; gap: 10px; flex-wrap: wrap; min-height: 64px; }
   #blink-landing .blink-family-brand { font-size: 12px; gap: 7px; }

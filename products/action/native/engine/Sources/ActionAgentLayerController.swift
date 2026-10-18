@@ -1,3 +1,4 @@
+import ActionCore
 import AppKit
 import ApplicationServices
 import AVFoundation
@@ -18,6 +19,7 @@ final class ActionAgentLayerController: NSObject {
         let width: Double
         let height: Double
         let serialNumber: UInt32
+        let workspace: String?
     }
 
     private struct MovedWindow {
@@ -32,11 +34,16 @@ final class ActionAgentLayerController: NSObject {
     }
 
     private let displayManifest: DisplayManifest
+    private let workspace: ActionVirtualWorkspace
     private let displayStateFile: URL
     private let displaySessionLock: Int32
     private let requestedWidth: String?
     private let requestedHeight: String?
     private var showsPiP: Bool
+    private var previewDisplayID: CGDirectDisplayID?
+    private var previewFull: Bool
+    private var previewLease: ActionWorkspaceLock?
+    private var subjectLease: ActionWorkspaceLock?
     private let startedAt = Date()
     /// The subject app. Nil until launched when the layer was asked for a bundle id
     /// that isn't running.
@@ -85,6 +92,22 @@ final class ActionAgentLayerController: NSObject {
     private var actObserver: NSObjectProtocol?
 
     init(options: CommandOptions) throws {
+        let workspace = try ActionVirtualWorkspace(options.options["workspace"] ?? "default")
+        self.workspace = workspace
+        if let value = options.options["preview-full"]?.lowercased() {
+            guard ["on", "true", "1", "yes", "off", "false", "0", "no"].contains(value) else {
+                throw ActionHostError.unsupportedOS("preview-full must be a boolean")
+            }
+            self.previewFull = ["on", "true", "1", "yes"].contains(value)
+        } else {
+            self.previewFull = false
+        }
+        if let destination = options.options["preview-display-id"] {
+            guard let identifier = CGDirectDisplayID(destination), identifier != 0 else {
+                throw ActionHostError.unsupportedOS("preview-display-id must be a positive display identifier")
+            }
+            self.previewDisplayID = identifier
+        }
         self.writer = ResponseWriter(replyFile: options.options["reply-file"])
         self.logger = DebugLogger(path: options.options["debug-log"])
         let displayID = try options.required("display-id")
@@ -113,7 +136,8 @@ final class ActionAgentLayerController: NSObject {
               ISO8601DateFormatter().date(from: manifest.startedAt) != nil || fractionalDateFormatter.date(from: manifest.startedAt) != nil,
               manifest.width.isFinite, manifest.width > 0,
               manifest.height.isFinite, manifest.height > 0,
-              manifest.serialNumber != 0 else {
+              (manifest.workspace ?? "default") == workspace.name,
+              manifest.serialNumber == workspace.serialNumber else {
             throw ActionHostError.unsupportedOS("the persistent display manifest does not match the requested display owner")
         }
         self.displayManifest = manifest
@@ -168,7 +192,10 @@ final class ActionAgentLayerController: NSObject {
         signal(SIGUSR1, SIG_IGN)
         let showSource = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
         showSource.setEventHandler { [weak self] in
-            Task { @MainActor in await self?.showPiP() }
+            Task { @MainActor in
+                do { try await self?.showPiP() }
+                catch { self?.logger.log("agent-layer: preview refused: \(error.localizedDescription)") }
+            }
         }
         showSource.resume()
         signalSources.append(showSource)
@@ -203,6 +230,7 @@ final class ActionAgentLayerController: NSObject {
 
     private func start() async throws {
         bounds = try validateDisplayAttachment()
+        if showsPiP { _ = try previewDestination() }
         logDisplayDiagnostic("attached-to-persistent-display")
         logger.log("agent-layer: attached to display \(displayID), owner \(displayManifest.pid), at \(bounds)")
 
@@ -213,6 +241,7 @@ final class ActionAgentLayerController: NSObject {
         }
         _ = try validateDisplayAttachment()
         if let target {
+            subjectLease = try ActionWorkspaceLock(url: registryURL.appendingPathComponent("subject-\(target.processIdentifier).lock"))
             await takeWindows(of: target)
         }
         _ = try validateDisplayAttachment()
@@ -231,6 +260,7 @@ final class ActionAgentLayerController: NSObject {
         }
         _ = try validateDisplayAttachment()
         try writeState()
+        if showsPiP { try await showPiP() }
         layerReady = true
         try writer.write(
             ActionHostResponse(
@@ -247,24 +277,85 @@ final class ActionAgentLayerController: NSObject {
         ) { [weak self] note in
             let act = ActionAgentLayerAct(info: note.userInfo ?? [:])
             Task { @MainActor in
-                self?.lastActivity = Date()
-                self?.pip?.mark(act)
+                guard let self,
+                      act.point.map(self.bounds.contains) ?? act.frame.map(self.bounds.intersects) ?? false else { return }
+                self.lastActivity = Date()
+                self.pip?.mark(act)
             }
         }
 
-        if showsPiP {
-            await showPiP()
-        }
     }
 
     private var liveState: ActionAgentLayerLiveState {
         paused ? .paused : (feed?.recordingPath != nil ? .recording : .live)
     }
 
-    private func showPiP() async {
-        guard pip == nil, !shuttingDown, let feed else { return }
+    private var registryURL: URL {
+        ActionLayerSafetyGate.defaultURL.deletingLastPathComponent()
+    }
+
+    private func previewDestination() throws -> CGDirectDisplayID {
+        let displays = NSScreen.screens.compactMap { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value }
+        let destination = previewDisplayID ?? displays.first(where: { !ActionAgentLayerDisplay.isAgentLayer($0) })
+        guard let destination, destination != displayID,
+              CGDisplayIsOnline(destination) != 0, CGDisplayIsActive(destination) != 0,
+              displays.contains(destination) else {
+            throw ActionHostError.unsupportedOS("The preview destination is unavailable or would capture itself")
+        }
+        return destination
+    }
+
+    private func acquirePreviewLease(destination: CGDirectDisplayID) throws -> ActionWorkspaceLock? {
+        var directories = [registryURL]
+        directories += (try? FileManager.default.contentsOfDirectory(at: registryURL.appendingPathComponent("workspaces"), includingPropertiesForKeys: nil)) ?? []
+        var edges: [CGDirectDisplayID: CGDirectDisplayID] = [:]
+        var destinationDirectory: URL?
+        for directory in directories {
+            if let data = try? Data(contentsOf: directory.appendingPathComponent("display.json")),
+               let manifest = try? JSONDecoder().decode(DisplayManifest.self, from: data),
+               manifest.displayId == destination,
+               manifest.pid > 1, kill(manifest.pid, 0) == 0,
+               let identity = try? ActionVirtualWorkspace(manifest.workspace ?? "default"),
+               manifest.serialNumber == identity.serialNumber,
+               CGDisplaySerialNumber(destination) == manifest.serialNumber {
+                destinationDirectory = directory
+            }
+            if let data = try? Data(contentsOf: directory.appendingPathComponent("state.json")),
+               let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let pid = state["pid"] as? Int32, pid > 1, kill(pid, 0) == 0,
+               state["pip"] as? Bool == true,
+               let source = state["displayId"] as? UInt32,
+               let target = state["previewDisplayId"] as? UInt32 {
+                edges[source] = target
+            }
+        }
+        guard !ActionVirtualWorkspace.previewWouldCycle(source: displayID, destination: destination, edges: edges) else {
+            throw ActionHostError.unsupportedOS("Preview routing would create a recursive display capture")
+        }
+        guard ActionAgentLayerDisplay.isAgentLayer(destination) else { return nil }
+        guard let destinationDirectory else {
+            throw ActionHostError.unsupportedOS("The preview destination has no matching live Action display owner")
+        }
+        return try ActionWorkspaceLock(url: destinationDirectory.appendingPathComponent("display-preview.lock"), shared: true)
+    }
+
+    private func showPiP() async throws {
+        guard !shuttingDown, let feed else {
+            throw ActionHostError.unsupportedOS("The layer has no preview feed")
+        }
+        let routingLock = try ActionWorkspaceLock(url: registryURL.appendingPathComponent("preview-routing.lock"))
+        defer { withExtendedLifetime(routingLock) {} }
+        let destination = try previewDestination()
+        if pip?.destinationDisplayID == destination, pip?.previewFull == previewFull { return }
+        let lease = try acquirePreviewLease(destination: destination)
+        _ = try previewDestination()
+        pip?.stop(animated: false)
+        previewLease = lease
+        previewDisplayID = destination
         lastActivity = Date()
-        let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger)
+        let noteURL = stateFile.map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("notes.jsonl") }
+        let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger, destinationDisplayID: destination,
+                                      noteURL: noteURL, workspace: workspace.name, previewFull: previewFull)
         pip.hasOwner = !ownerPIDs.isEmpty
         pip.onTogglePause = { [weak self] in self?.togglePause() }
         pip.onStop = { [weak self] in self?.stopByOperator() }
@@ -274,16 +365,24 @@ final class ActionAgentLayerController: NSObject {
             // The operator closed the viewer; the layer keeps working unseen.
             guard let self else { return }
             self.pip = nil
+            self.previewLease = nil
             self.showsPiP = false
             try? self.writeState()
             self.logger.log("agent-layer: pip dismissed")
         }
         self.pip = pip
-        if !showsPiP {
-            showsPiP = true
+        showsPiP = true
+        try writeState()
+        do {
+            try await pip.start(expectsWindows: !moved.isEmpty, state: liveState)
+        } catch {
+            pip.stop(animated: false)
+            self.pip = nil
+            showsPiP = false
+            previewLease = nil
             try? writeState()
+            throw error
         }
-        await pip.start(expectsWindows: !moved.isEmpty, state: liveState)
     }
 
     // MARK: Operator controls
@@ -540,6 +639,9 @@ final class ActionAgentLayerController: NSObject {
         let state: [String: Any] = [
             "pid": Int(ProcessInfo.processInfo.processIdentifier),
             "displayId": Int(displayID),
+            "workspace": workspace.name,
+            "previewDisplayId": previewDisplayID.map { Int($0) } ?? NSNull(),
+            "previewFull": previewFull,
             "displayOwnerPid": Int(displayManifest.pid),
             "displayStartedAt": displayManifest.startedAt,
             "bounds": rectJSON(bounds),
@@ -588,6 +690,32 @@ final class ActionAgentLayerController: NSObject {
             reply = ["ok": true]
         } else if let feed {
             switch json["op"] as? String {
+            case "show":
+                let previous = previewDisplayID
+                let previousFull = previewFull
+                do {
+                    if let raw = json["previewDisplayId"] {
+                        guard let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+                              number.doubleValue > 0, number.doubleValue <= Double(UInt32.max),
+                              number.doubleValue.rounded() == number.doubleValue else {
+                            throw ActionHostError.unsupportedOS("previewDisplayId must be a positive display identifier")
+                        }
+                        previewDisplayID = number.uint32Value
+                    }
+                    if let raw = json["previewFull"] {
+                        guard let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                            throw ActionHostError.unsupportedOS("previewFull must be a boolean")
+                        }
+                        previewFull = number.boolValue
+                    }
+                    try await showPiP()
+                    reply = ["ok": true, "previewDisplayId": previewDisplayID.map { Int($0) } ?? NSNull(), "previewFull": previewFull]
+                } catch {
+                    previewDisplayID = previous
+                    previewFull = previousFull
+                    try? writeState()
+                    reply = ["ok": false, "detail": error.localizedDescription]
+                }
             case "snapshot":
                 reply = ActionAgentLayerSnapshotRequest(json: json).map(feed.snapshot)
                     ?? ["ok": false, "detail": "snapshot needs an out path"]
@@ -679,6 +807,7 @@ final class ActionAgentLayerController: NSObject {
 
         pip?.stop(animated: false)
         pip = nil
+        previewLease = nil
         // A take in progress has to be finished, or the movie is unreadable.
         Task { @MainActor in
             await self.feed?.stop()
@@ -1078,6 +1207,11 @@ final class ActionAgentLayerPiP {
     private let feed: ActionAgentLayerFeed
     private let logger: DebugLogger
     private let startedAt: Date
+    let destinationDisplayID: CGDirectDisplayID
+    let previewFull: Bool
+    private let workspace: String
+    private let destinationSerialNumber: UInt32
+    private let noteURL: URL?
     private var panel: NSPanel?
     private var viewer: ActionAgentLayerViewerView?
     private var crop: CGRect = .zero
@@ -1095,23 +1229,31 @@ final class ActionAgentLayerPiP {
     var onGoToOwner: (() -> Void)?
     var hasOwner = false
 
-    init(feed: ActionAgentLayerFeed, startedAt: Date, logger: DebugLogger) {
+    init(feed: ActionAgentLayerFeed, startedAt: Date, logger: DebugLogger, destinationDisplayID: CGDirectDisplayID, noteURL: URL?, workspace: String, previewFull: Bool) {
         self.feed = feed
         self.startedAt = startedAt
         self.logger = logger
+        self.destinationDisplayID = destinationDisplayID
+        self.destinationSerialNumber = CGDisplaySerialNumber(destinationDisplayID)
+        self.noteURL = noteURL
+        self.workspace = workspace
+        self.previewFull = previewFull
     }
 
     private var fullCrop: CGRect { CGRect(origin: .zero, size: feed.displayBounds.size) }
 
-    func start(expectsWindows: Bool, state: ActionAgentLayerLiveState) async {
-        crop = feed.windowsRect(padding: Self.cropPadding) ?? fullCrop
+    func start(expectsWindows: Bool, state: ActionAgentLayerLiveState) async throws {
+        crop = previewFull ? fullCrop : (feed.windowsRect(padding: Self.cropPadding) ?? fullCrop)
         // Windows the layer just moved reach the window list a beat later; launching on
         // the full display would snap to the window half a second in.
-        if expectsWindows {
+        if expectsWindows && !previewFull {
             for _ in 0..<15 where crop == fullCrop {
                 try? await Task.sleep(for: .milliseconds(40))
                 crop = feed.windowsRect(padding: Self.cropPadding) ?? fullCrop
             }
+        }
+        guard operatorScreen != nil else {
+            throw ActionHostError.unsupportedOS("The preview destination disappeared before presentation")
         }
         showPanel()
         guard let viewer else { return }
@@ -1126,8 +1268,13 @@ final class ActionAgentLayerPiP {
 
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.followWindows()
-                self?.readNote()
+                guard let self else { return }
+                guard self.operatorScreen != nil else {
+                    self.dismiss()
+                    return
+                }
+                self.followWindows()
+                self.readNote()
             }
         }
         cropTimer = timer
@@ -1197,8 +1344,10 @@ final class ActionAgentLayerPiP {
     // MARK: Panel
 
     private var operatorScreen: NSScreen? {
-        let displayID = feed.displayID
-        return NSScreen.screens.first(where: { screenNumber($0) != displayID }) ?? NSScreen.main
+        guard destinationDisplayID != feed.displayID,
+              CGDisplayIsOnline(destinationDisplayID) != 0,
+              CGDisplaySerialNumber(destinationDisplayID) == destinationSerialNumber else { return nil }
+        return NSScreen.screens.first(where: { screenNumber($0) == destinationDisplayID })
     }
 
     private func showPanel() {
@@ -1212,12 +1361,13 @@ final class ActionAgentLayerPiP {
             height: height
         )
 
-        let panel = NSPanel(
+        let panel = ActionAgentLayerPreviewPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .resizable],
             backing: .buffered,
             defer: false
         )
+        panel.destinationDisplayID = destinationDisplayID
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -1227,7 +1377,7 @@ final class ActionAgentLayerPiP {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.animationBehavior = .utilityWindow
-        panel.title = "Action Agent Layer"
+        panel.title = "Action · \(workspace)"
         panel.setAccessibilityElement(true)
         panel.setAccessibilityRole(.window)
         panel.setAccessibilitySubrole(.floatingWindow)
@@ -1272,7 +1422,7 @@ final class ActionAgentLayerPiP {
         content.addControl(symbol: "arrow.uturn.backward", label: "Take over") { [weak self] in
             self?.onTakeOver?()
         }
-        let preview = ActionAgentLayerPreviewView(frame: CGRect(origin: .zero, size: frame.size), viewer: content)
+        let preview = ActionAgentLayerPreviewView(frame: CGRect(origin: .zero, size: frame.size), viewer: content, workspace: workspace)
         preview.onDoubleClick = { [weak self] in self?.toggleEnlarged() }
         preview.onHide = { [weak self] in self?.dismiss() }
         panel.contentView = preview
@@ -1383,6 +1533,7 @@ final class ActionAgentLayerPiP {
     }
 
     private func followWindows() {
+        guard !previewFull else { return }
         let next = feed.windowsRect(padding: Self.cropPadding) ?? fullCrop
         guard abs(next.minX - crop.minX) > 4 || abs(next.minY - crop.minY) > 4
             || abs(next.width - crop.width) > 4 || abs(next.height - crop.height) > 4 else { return }
@@ -1399,17 +1550,14 @@ final class ActionAgentLayerPiP {
 
     /// The latest `action.drive.note`, while it's fresh and from this layer's lifetime.
     private func readNote() {
-        guard let note = Self.latestNote(), note.at != shownNoteAt else { return }
+        guard let noteURL, let note = Self.latestNote(at: noteURL), note.at != shownNoteAt else { return }
         guard let date = ISO8601DateFormatter.withFractions.date(from: note.at) ?? ISO8601DateFormatter().date(from: note.at),
               date > startedAt, Date().timeIntervalSince(date) < Self.noteLifetime else { return }
         shownNoteAt = note.at
         viewer?.show(note: note.line, for: Self.noteLifetime - Date().timeIntervalSince(date))
     }
 
-    private static let notesURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Action/runtime/supervision/notes.jsonl")
-
-    private static func latestNote() -> (at: String, line: String)? {
+    private static func latestNote(at notesURL: URL) -> (at: String, line: String)? {
         guard let handle = try? FileHandle(forReadingFrom: notesURL) else { return nil }
         defer { try? handle.close() }
         let end = (try? handle.seekToEnd()) ?? 0
@@ -1436,6 +1584,29 @@ enum ActionAgentLayerOperatorInput {
     case scroll(CGPoint, Double, Double)
 }
 
+private final class ActionAgentLayerPreviewPanel: NSPanel {
+    var destinationDisplayID: CGDirectDisplayID?
+
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        guard let destinationDisplayID else {
+            super.setFrame(frameRect, display: flag)
+            return
+        }
+        guard let screen = NSScreen.screens.first(where: {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == destinationDisplayID
+        }) else {
+            orderOut(nil)
+            return
+        }
+        let visible = screen.visibleFrame
+        let width = min(frameRect.width, visible.width)
+        let height = min(frameRect.height, visible.height)
+        let origin = CGPoint(x: min(max(frameRect.minX, visible.minX), visible.maxX - width),
+                             y: min(max(frameRect.minY, visible.minY), visible.maxY - height))
+        super.setFrame(CGRect(origin: origin, size: CGSize(width: width, height: height)), display: flag)
+    }
+}
+
 private final class ActionAgentLayerPreviewView: NSView {
     static let headerHeight: CGFloat = 26
     static let footerHeight: CGFloat = 38
@@ -1447,9 +1618,10 @@ private final class ActionAgentLayerPreviewView: NSView {
     var onHide: (() -> Void)?
     var onDoubleClick: (() -> Void)?
 
-    init(frame: CGRect, viewer: ActionAgentLayerViewerView) {
+    init(frame: CGRect, viewer: ActionAgentLayerViewerView, workspace: String) {
         self.viewer = viewer
         super.init(frame: frame)
+        hostname.stringValue = "\(workspace) · \(hostname.stringValue)"
         appearance = NSAppearance(named: .darkAqua)
         wantsLayer = true
         layer?.cornerRadius = 10
@@ -1462,7 +1634,7 @@ private final class ActionAgentLayerPreviewView: NSView {
         hostname.lineBreakMode = .byTruncatingMiddle
         hostname.maximumNumberOfLines = 1
         hostname.toolTip = hostname.stringValue
-        hostname.setAccessibilityLabel("Host: \(hostname.stringValue)")
+        hostname.setAccessibilityLabel("Virtual workspace and host: \(hostname.stringValue)")
         hideButton.toolTip = "Hide the viewer; the layer task continues"
         hideButton.onPress = { [weak self] in self?.onHide?() }
         addSubview(viewer)

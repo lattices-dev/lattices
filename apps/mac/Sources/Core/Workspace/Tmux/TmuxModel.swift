@@ -6,6 +6,12 @@ final class TmuxModel: ObservableObject {
     @Published private(set) var sessions: [TmuxSession] = []
     @Published private(set) var isAvailable: Bool = TmuxQuery.isAvailable
     private var timer: Timer?
+    private let pollWorker = BackgroundPollWorker(label: "lattices.tmux-inventory")
+    private let query: () -> [TmuxSession]
+
+    init(query: @escaping () -> [TmuxSession] = TmuxQuery.listSessions) {
+        self.query = query
+    }
 
     func start(interval: TimeInterval = 3.0) {
         guard timer == nil else { return }
@@ -28,15 +34,18 @@ final class TmuxModel: ObservableObject {
     }
 
     func poll() {
-        let fresh = TmuxQuery.listSessions()
-        let changed = sessionsChanged(old: sessions, new: fresh)
-
-        DispatchQueue.main.async {
-            self.sessions = fresh
-        }
-
-        if changed {
-            EventBus.shared.post(.tmuxChanged(sessions: fresh))
+        // Process launch and tmux's response can take hundreds of milliseconds.
+        // Never put either on the input/animation thread, or queue obsolete scans.
+        pollWorker.request { [weak self] in
+            guard let self else { return }
+            let fresh = self.query()
+            DispatchQueue.main.async {
+                let changed = self.sessionsChanged(old: self.sessions, new: fresh)
+                self.sessions = fresh
+                if changed {
+                    EventBus.shared.post(.tmuxChanged(sessions: fresh))
+                }
+            }
         }
     }
 

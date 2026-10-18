@@ -62,13 +62,20 @@ final class DesktopModel: ObservableObject {
     @Published private(set) var focusedWindowID: UInt32?
     private var timer: Timer?
     private var lastFocusedWindowID: UInt32?
+    private let pollWorker = BackgroundPollWorker(label: "lattices.desktop-inventory")
+    // Explicit synchronous refreshes still return fresh truth. Serialize them
+    // with the timer's worker so an older scan cannot overwrite a newer one.
+    private let inventoryLock = NSRecursiveLock()
+    private var lastInventory: [WindowEntry] = []
+    private var inventoryRevision = 0
+    private var publishedRevision = 0 // main only
 
     func start(interval: TimeInterval = 1.5) {
         guard timer == nil else { return }
         DiagnosticLog.shared.info("DesktopModel: starting (interval=\(interval)s)")
-        poll()
+        pollInBackground()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.poll()
+            self?.pollInBackground()
         }
     }
 
@@ -274,6 +281,11 @@ final class DesktopModel: ObservableObject {
     private var lastPollTime: Date = .distantPast
     private static let minPollInterval: TimeInterval = 1.0
 
+    private func pollInBackground() {
+        guard Date().timeIntervalSince(lastPollTime) >= Self.minPollInterval else { return }
+        pollWorker.request { [weak self] in self?.performPoll() }
+    }
+
     /// Poll only if stale. Call `forcePoll()` to bypass the freshness check.
     func poll() {
         let now = Date()
@@ -310,16 +322,12 @@ final class DesktopModel: ObservableObject {
 
     @discardableResult
     private func performPoll() -> [WindowEntry] {
-        guard let list = Self.cgWindowList() else {
-            if Thread.isMainThread {
-                lastPollTime = Date()
-                return allWindows()
-            }
-            return DispatchQueue.main.sync {
-                lastPollTime = Date()
-                return allWindows()
-            }
-        }
+        inventoryLock.lock()
+        defer { inventoryLock.unlock() }
+        // Never synchronously hop back to main while holding this lock: an
+        // explicit main-thread refresh may itself be waiting for this scan.
+        guard let list = Self.cgWindowList() else { return lastInventory }
+        inventoryRevision &+= 1
         var sweep = Self.sweep(list, sources: .live, recoverCollapsed: true)
 
         // AX reconciliation: which windows on showing desktops AX lists
@@ -342,7 +350,8 @@ final class DesktopModel: ObservableObject {
         }
         Self.dropProxies(&sweep.entries, facts: sweep.facts)
         remember(sweep.entries, asked: asked)
-        return finishPoll(sweep.entries)
+        lastInventory = finishPoll(sweep.entries, revision: inventoryRevision)
+        return lastInventory
     }
 
     private static func cgWindowList() -> [[String: Any]]? {
@@ -656,18 +665,19 @@ final class DesktopModel: ObservableObject {
         return windows
     }
 
-    private func finishPoll(_ fresh: [UInt32: WindowEntry]) -> [WindowEntry] {
+    private func finishPoll(_ fresh: [UInt32: WindowEntry], revision: Int) -> [WindowEntry] {
         let focusedWid = resolveFocusedWindowID(in: fresh)
         let interactionTime = Date()
         let sorted = Array(fresh.values).sorted { $0.zIndex < $1.zIndex }
 
         // Diff and publish run entirely on main — every field counts, since a
         // Space switch flips `isOnScreen` and reorders `zIndex` without
-        // touching titles, frames, or the window set. `refreshNow()` may run
-        // this body on the switch queue while the timer polls on main, so
-        // `windows`/`interactionDates`/`lastFocusedWindowID` must only be
-        // read and written here.
+        // touching titles, frames, or the window set. Recurring scans and
+        // `refreshNow()` can run off main. Reject an older queued publication
+        // if an explicit main-thread refresh has already published newer truth.
         let apply = {
+            guard revision > self.publishedRevision else { return }
+            self.publishedRevision = revision
             self.lastPollTime = Date()
 
             let oldKeys = Set(self.windows.keys)

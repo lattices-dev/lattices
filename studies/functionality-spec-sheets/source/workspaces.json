@@ -1,0 +1,632 @@
+[
+  {
+    "id": "W01",
+    "group": "Projects",
+    "capability": "Project discovery",
+    "details": "Scan a configurable root for .lattices.json, list configured projects, and show their panes and running session status.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/ProjectScanner.swift",
+        "lines": "21-76"
+      }
+    ],
+    "caveat": "Discovery scans up to three levels and skips .git and node_modules."
+  },
+  {
+    "id": "W02",
+    "group": "Projects",
+    "capability": "Development command detection",
+    "details": "Detect Bun, pnpm, Yarn, or npm and select dev, start, serve, or watch from package.json.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/ProjectScanner.swift",
+        "lines": "88-109"
+      },
+      {
+        "path": "bin/lattices.ts",
+        "lines": "415-442"
+      }
+    ],
+    "caveat": "CLI and app have different package-manager precedence if multiple lockfiles exist."
+  },
+  {
+    "id": "W03",
+    "group": "Projects",
+    "capability": "Stable project identity",
+    "details": "Identify each project session by its directory basename and six hexadecimal SHA-256 characters from the absolute path.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/Project.swift",
+        "lines": "16-26"
+      },
+      {
+        "path": "docs/concepts.md",
+        "lines": "51-62"
+      }
+    ],
+    "caveat": "Renaming or moving a project changes its session identity."
+  },
+  {
+    "id": "W04",
+    "group": "Sessions",
+    "capability": "Declarative pane setup",
+    "details": "Declare pane names, commands and first-pane width; build a two-pane split or a main pane with supporting panes.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "447-521"
+      },
+      {
+        "path": "docs/config.md",
+        "lines": "36-105"
+      }
+    ],
+    "caveat": "Requires tmux. With no detected dev command and no configured panes, the default is a single shell."
+  },
+  {
+    "id": "W05",
+    "group": "Sessions",
+    "capability": "Persistent session lifecycle",
+    "details": "Create or reconnect to a project session; launch, attach, detach, list or kill sessions through CLI and native controls.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "2971-2997"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/SessionManager.swift",
+        "lines": "11-78"
+      },
+      {
+        "path": "docs/config.md",
+        "lines": "127-134"
+      }
+    ],
+    "caveat": "Requires tmux. Sessions survive terminal closure or disconnection; reboot survival is not implemented by ordinary tmux creation."
+  },
+  {
+    "id": "W06",
+    "group": "Sessions",
+    "capability": "Ensure and prefill",
+    "details": "On reattach, rerun exited commands automatically with ensure, or type them into idle panes for manual submission with prefill.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "524-558"
+      },
+      {
+        "path": "bin/lattices.ts",
+        "lines": "2975-2984"
+      }
+    ],
+    "caveat": "Requires tmux and an idle pane recognized as a shell. Ensure takes precedence when both flags are enabled."
+  },
+  {
+    "id": "W07",
+    "group": "Sessions",
+    "capability": "Session reconciliation",
+    "details": "Recreate missing panes, restore pane labels and restart declared commands in idle panes.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "699-774"
+      }
+    ],
+    "caveat": "Requires tmux. Layout is reapplied when missing panes are recreated; this is not a continuous background reconciler."
+  },
+  {
+    "id": "W08",
+    "group": "Sessions",
+    "capability": "Pane restart",
+    "details": "Restart a pane command by name or index, first interrupting it and escalating if it remains running.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "778-854"
+      }
+    ],
+    "caveat": "Requires tmux. Restart can terminate child processes; a pane without a declared command is left at its shell."
+  },
+  {
+    "id": "W09",
+    "group": "Sessions",
+    "capability": "Terminal choice",
+    "details": "Launch work in Terminal, iTerm2, Warp, Ghostty, Kitty or Alacritty, choosing among installed terminals.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift",
+        "lines": "3-33"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift",
+        "lines": "182-241"
+      }
+    ],
+    "caveat": "Terminal and iTerm2 have specific focus/attach scripting; other terminals use app activation on this path."
+  },
+  {
+    "id": "W10",
+    "group": "Projects",
+    "capability": "Toolchain-aware development commands",
+    "details": "Detect Node, Swift, Rust, Go, Make or the Lattices hybrid project and run or build it with lats dev.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/lattices.ts",
+        "lines": "572-684"
+      }
+    ],
+    "caveat": "The corresponding toolchain must be installed. Non-Lattices restart delegates to build rather than restarting an arbitrary service."
+  },
+  {
+    "id": "W11",
+    "group": "Groups",
+    "capability": "Configured cross-app groups",
+    "details": "Group terminal projects and application windows; match app titles, open missing URLs or apps, and select tabs by label or index.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "15-110"
+      },
+      {
+        "path": "bin/lattices.ts",
+        "lines": "191-246"
+      }
+    ],
+    "caveat": "Configured groups persist in workspace.json; terminal project members require tmux."
+  },
+  {
+    "id": "W12",
+    "group": "Groups",
+    "capability": "Live cross-app tab stacks",
+    "details": "Create a group from selected existing windows, focus its members, split them side by side, collapse them or ungroup them.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "112-134"
+      }
+    ],
+    "caveat": "Live stacks are runtime-only. Hiding floating controls does not delete the group."
+  },
+  {
+    "id": "W13",
+    "group": "Layers",
+    "capability": "Named workspace contexts",
+    "details": "Gather project and app windows into named layers; switch context, explicitly apply tiles, or launch missing members.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "136-145"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "175-209"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "308-335"
+      }
+    ],
+    "caveat": "Current configuration is ~/.lattices/workspace.json. Switching, tiling and launching are distinct operations."
+  },
+  {
+    "id": "W14",
+    "group": "Layers",
+    "capability": "Matching rules",
+    "details": "Match app names, titles and sessions with exact, substring or regular-expression criteria, plus Space, visibility and exclusions.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "466-506"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/StudioLayer.swift",
+        "lines": "10-121"
+      }
+    ],
+    "caveat": "Every field inside a clause must match. The retired ~/.lattices/layers.json file is no longer read."
+  },
+  {
+    "id": "W15",
+    "group": "Layers",
+    "capability": "Manual window membership",
+    "details": "Add a window to a layer, pin it across title changes, remove eligible single-window entries, or move it between layers.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerEditing.swift",
+        "lines": "75-119"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "396-412"
+      }
+    ],
+    "caveat": "A broad entry that also matches other windows can prevent removing only one member; edit the rule instead."
+  },
+  {
+    "id": "W16",
+    "group": "Layers",
+    "capability": "Deterministic ownership",
+    "details": "Resolve each content window to at most one layer using pin, matching rule, group, project, then app/title precedence.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerMembership.swift",
+        "lines": "3-28"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "508-538"
+      }
+    ],
+    "caveat": "Configured entries and live matching windows are separate states. Saved pins have explicit close/rebind semantics."
+  },
+  {
+    "id": "W17",
+    "group": "Layers",
+    "capability": "Automatic layer layouts",
+    "details": "Arrange layer windows with Auto, Columns or Master-stack; adapt Auto to standard and ultrawide displays.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "275-306"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerArrange.swift",
+        "lines": "11-64"
+      }
+    ],
+    "caveat": "Automatic layout acts on the main display's current desktop. Explicit tile or display entries keep their assigned place."
+  },
+  {
+    "id": "W18",
+    "group": "Layers",
+    "capability": "Context staging and scenes",
+    "details": "Hide unused apps, park other windows of shared apps, and restore a layer's additional scene windows when returning.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "337-358"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerStage.swift",
+        "lines": "283-409"
+      }
+    ],
+    "caveat": "Operates on the main display and current desktop. Some apps refuse off-screen parking; other displays and desktops stay in place."
+  },
+  {
+    "id": "W19",
+    "group": "Layers",
+    "capability": "Reveal and recovery",
+    "details": "Restore parked frames and apps hidden by layer switches, including saved parking recovery after an app crash.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/layers.md",
+        "lines": "360-381"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerStage.swift",
+        "lines": "444-522"
+      }
+    ],
+    "caveat": "Windows on another desktop may need that desktop to be shown before restoration. Apps hidden independently by the user stay hidden."
+  },
+  {
+    "id": "W20",
+    "group": "Layers",
+    "capability": "Spatial layer pad",
+    "details": "Switch using eight direct slots around a 3×3 pad or directional arrows; use the center slot to show the current layer.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerSlots.swift",
+        "lines": "3-46"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "308-317"
+      }
+    ],
+    "caveat": "Eight is the direct shortcut capacity, not a demonstrated hard maximum on saved layer count."
+  },
+  {
+    "id": "W21",
+    "group": "Layers",
+    "capability": "Layer editing",
+    "details": "Create, rename or delete layers; add, replace or remove entries; change layout while maintaining active-layer selection.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerEditing.swift",
+        "lines": "64-72"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LayerEditing.swift",
+        "lines": "121-176"
+      }
+    ],
+    "caveat": "Saved configuration changes take effect through the documented switch or explicit rearrangement actions."
+  },
+  {
+    "id": "W22",
+    "group": "Overview",
+    "capability": "Desk-wide spatial overview",
+    "details": "See scaled monitor maps and their desktops, with a tray for windows the maps cannot place and an on-demand working list.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewView.swift",
+        "lines": "4-55"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewProjection.swift",
+        "lines": "39-59"
+      }
+    ],
+    "caveat": "Current working-source implementation, including uncommitted changes; release and installed-app behavior were not reverified in this audit."
+  },
+  {
+    "id": "W23",
+    "group": "Overview",
+    "capability": "Inspection scope and selection",
+    "details": "Browse by layer, monitor, desktop, window kind or search, and select or extend a window selection without rearranging the desktop.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewView.swift",
+        "lines": "73-120"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewProjection.swift",
+        "lines": "9-36"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewModel.swift",
+        "lines": "314-371"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewModel.swift",
+        "lines": "397-471"
+      }
+    ],
+    "caveat": "Choosing a layer in Overview scopes inspection; it does not activate that layer."
+  },
+  {
+    "id": "W24",
+    "group": "Overview",
+    "capability": "Honest window state",
+    "details": "Distinguish live, last-known and saved-home positions, and show whether a window is visible, elsewhere, full screen, hidden, parked or unlocated.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewProjection.swift",
+        "lines": "63-138"
+      }
+    ],
+    "caveat": "Unknown placement is labeled rather than invented. Saved configuration does not prove a currently open matching window."
+  },
+  {
+    "id": "W25",
+    "group": "Overview",
+    "capability": "Window and selection actions",
+    "details": "Focus or place one window, carry it to another desktop on its monitor, or tile, distribute and arrange a selected group per monitor.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewModel.swift",
+        "lines": "616-674"
+      }
+    ],
+    "caveat": "Only eligible windows are moved; excluded windows remain selected and untouched. Individual placement requires the monitor's current desktop."
+  },
+  {
+    "id": "W26",
+    "group": "Overview",
+    "capability": "Save versus rearrange",
+    "details": "Edit a layer's layout and tucked windows, save configuration alone, or save and rearrange the active layer.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewView.swift",
+        "lines": "816-864"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewModel.swift",
+        "lines": "678-727"
+      }
+    ],
+    "caveat": "Save and rearrange is offered only for the active layer; failed saving prevents rearrangement."
+  },
+  {
+    "id": "W27",
+    "group": "Search",
+    "capability": "Unified workspace search",
+    "details": "Find windows, applications, configured projects, sessions, layers, groups and actions from a shared search surface.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/OmniSearch/OmniSearchState.swift",
+        "lines": "8-39"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/OmniSearch/OmniSearchState.swift",
+        "lines": "154-272"
+      }
+    ],
+    "caveat": "Search results depend on the available inventory. The default daemon search excludes OCR unless explicitly requested."
+  },
+  {
+    "id": "W28",
+    "group": "Search",
+    "capability": "Deep terminal and screen-text search",
+    "details": "Search titles, apps, sessions, working directories, terminal tabs, tmux metadata, processes and indexed OCR with explicit source selection.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "650-703"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "816-886"
+      },
+      {
+        "path": "bin/cli/search.ts",
+        "lines": "62-90"
+      }
+    ],
+    "caveat": "--deep and --all request every source. Terminal inspection and OCR availability depend on the relevant app support and permissions."
+  },
+  {
+    "id": "W29",
+    "group": "Search",
+    "capability": "Scriptable search results",
+    "details": "Filter search by time and recency, return JSON or window IDs, and report matched sources and terminal details.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/cli/search.ts",
+        "lines": "19-35"
+      },
+      {
+        "path": "bin/cli/search.ts",
+        "lines": "62-105"
+      }
+    ],
+    "caveat": "Results refer to the observed inventory and can become stale before a later mutation."
+  },
+  {
+    "id": "W30",
+    "group": "Map",
+    "capability": "Read-only desktop map",
+    "details": "Draw a proportional terminal floor plan or versioned JSON projection, preserving monitor topology, window geometry and per-display front-to-back order.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/workspace-map.md",
+        "lines": "7-15"
+      },
+      {
+        "path": "docs/workspace-map.md",
+        "lines": "58-71"
+      },
+      {
+        "path": "docs/workspace-map.md",
+        "lines": "127-141"
+      },
+      {
+        "path": "bin/cli/map.ts",
+        "lines": "804-821"
+      }
+    ],
+    "caveat": "Current-Space windows only. Prefers desktop.snapshot and falls back on older builds; this opens no visible Lattices UI."
+  },
+  {
+    "id": "W31",
+    "group": "Navigation",
+    "capability": "Monitor movement",
+    "details": "Move one or several selected windows to the next or a named monitor while keeping normalized frames, or move and place one in a specific slot.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "docs/app.md",
+        "lines": "169-203"
+      }
+    ],
+    "caveat": "Requires available display topology and Accessibility. Move-and-place is intentionally omitted for multi-selection to avoid stacking it into one slot."
+  },
+  {
+    "id": "W32",
+    "group": "Navigation",
+    "capability": "Window and Space navigation",
+    "details": "Focus a project's terminal across Spaces, using window tags and available native fallback paths, and switch adjacent Spaces with instant navigation.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "docs/app.md",
+        "lines": "205-241"
+      },
+      {
+        "path": "docs/concepts.md",
+        "lines": "64-93"
+      }
+    ],
+    "caveat": "Permission-dependent. Instant switching temporarily overrides the corresponding Mission Control hotkeys and restores them when disabled or on quit."
+  },
+  {
+    "id": "W33",
+    "group": "Arrangement",
+    "capability": "In-place window tools",
+    "details": "Select real windows, fill open space, grid a selection, swap two windows or stage a placement; keep changes or restore the original arrangement.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "docs/app.md",
+        "lines": "360-386"
+      }
+    ],
+    "caveat": "Fill, Grid and Swap act immediately; Place is staged. Restore returns frames and stacking to the opening state. Requires window-control permissions."
+  },
+  {
+    "id": "W34",
+    "group": "Entry points",
+    "capability": "Command palette and workspace home",
+    "details": "Open a searchable palette for project/session, group, layer, tiling and application commands; bare lats shows status without attaching.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/app.md",
+        "lines": "41-99"
+      },
+      {
+        "path": "docs/config.md",
+        "lines": "125-153"
+      },
+      {
+        "path": "bin/lattices.ts",
+        "lines": "3109-3116"
+      }
+    ],
+    "caveat": "tmux-specific actions require tmux; native window operations require the running app."
+  },
+  {
+    "id": "W35",
+    "group": "Configuration",
+    "capability": "Shareable workspace declarations",
+    "details": "Keep project pane configuration in .lattices.json and layer/group declarations in ~/.lattices/workspace.json, refreshed by the app.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/config.md",
+        "lines": "7-59"
+      },
+      {
+        "path": "docs/layers.md",
+        "lines": "7-13"
+      },
+      {
+        "path": "docs/app.md",
+        "lines": "93-99"
+      }
+    ],
+    "caveat": "This provides declarative configuration; a dedicated reusable template catalog and Git-management interface were not found in the audited core."
+  }
+]

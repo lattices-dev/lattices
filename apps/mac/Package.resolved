@@ -1,0 +1,42 @@
+{
+  "originHash" : "d935d36608e80e5cad68ed99a833680035e406292d690fd9a9bdfc186d8102c1",
+  "pins" : [
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidInference/FluidAudio.git",
+      "state" : {
+        "revision" : "4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b",
+        "version" : "0.15.6"
+      }
+    },
+    {
+      "identity" : "hudson",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:arach/hudson.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "421514520ce92eb472fe3b9ed865fef3178752fd"
+      }
+    },
+    {
+      "identity" : "moonshine-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/moonshine-ai/moonshine-swift.git",
+      "state" : {
+        "revision" : "45a14f9edf1f2a6913d3aff38c1fd4e72d5b7daa",
+        "version" : "0.1.5"
+      }
+    },
+    {
+      "identity" : "vox",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arach/vox.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "9190158f071083f22d0bda2f73f4e8d5f8763a90"
+      }
+    }
+  ],
+  "version" : 3
+}

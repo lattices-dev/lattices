@@ -1,0 +1,232 @@
+/* Overview design studies — the approved Lattices shell, as a fixed baseline.
+ * Tokens mirror apps/mac/Sources/UI/Theme.swift (Palette) and the Hudson
+ * sidebar/stage metrics. Studies style only what sits inside .content. */
+
+:root {
+  color-scheme: dark;
+  --bg: #141417;            /* Palette.bg */
+  --surface: #1a1a1a;       /* Palette.surface */
+  --surface-hov: #242424;   /* Palette.surfaceHov */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-lit: rgba(255, 255, 255, 0.14);
+  --text: rgba(255, 255, 255, 0.92);
+  --dim: rgba(255, 255, 255, 0.58);
+  --muted: rgba(255, 255, 255, 0.40);
+  --faint: rgba(255, 255, 255, 0.22);
+  --running: #33c773;       /* Palette.running — shell accent only */
+  --amber: #f5a623;         /* Palette.detach */
+  --red: #f04d59;           /* Palette.kill */
+  --ink-sel: #ecedf0;       /* selection ink inside Overview: neutral, not a hue */
+  --sel-fill: rgba(236, 237, 240, 0.10);
+  --ui: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* shell geometry */
+  --win-w: 1760px;
+  --win-h: 760px;
+  --titlebar-inset: 32px;
+  --sidebar-w: 168px;
+  --rail-w: 48px;
+  --gutter: 6px;
+  --stage-r: 10px;
+  --title-h: 46px;
+  --status-h: 28px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: #0b0b0d;
+  color: var(--text);
+  font: 13px/1.35 var(--ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: auto;
+}
+button { font: inherit; color: inherit; }
+
+/* ---------- study bar (outside the app window) ---------- */
+.study-bar {
+  width: min(var(--win-w), calc(100vw - 24px));
+  margin: 12px auto 10px;
+  display: flex; align-items: center; gap: 14px;
+  font: 12px/1 var(--sans); color: var(--dim);
+}
+.study-bar .tag {
+  font: 600 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: #0b0b0d; background: #d9d9de; padding: 4px 6px; border-radius: 4px;
+}
+.study-bar .name { color: var(--text); font-weight: 600; font-size: 13px; }
+.study-bar .spacer { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--border-lit); border-radius: 7px; overflow: hidden; }
+.seg button {
+  background: transparent; border: 0; padding: 5px 10px; font-size: 12px; color: var(--dim); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: rgba(255,255,255,0.10); color: var(--text); }
+.study-bar .reset { background: none; border: 1px solid var(--border-lit); border-radius: 7px; padding: 5px 10px; color: var(--dim); cursor: pointer; }
+.embedded .study-bar { display: none; }
+
+/* ---------- the window ---------- */
+.win {
+  position: relative;
+  width: min(var(--win-w), calc(100vw - 24px));
+  height: var(--win-h);
+  margin: 0 auto 24px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgba(255,255,255,0.16), 0 30px 80px rgba(0,0,0,0.55);
+}
+.embedded .win { margin: 0; width: 100vw; height: 100vh; border-radius: 0; box-shadow: none; }
+.embedded body, body.embedded { background: transparent; overflow: hidden; }
+
+/* Glass: the sidebar material over a dark desktop, as ShellGlassBackdrop paints it. */
+.win .backdrop {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.040), rgba(255,255,255,0.018) 50%, rgba(0,0,0,0.060)),
+    linear-gradient(rgba(20,20,23,0.40), rgba(20,20,23,0.40)),
+    radial-gradient(120% 90% at 0% 0%, #2a2c33 0%, #1d1e23 45%, #17171b 100%);
+}
+.traffic { position: absolute; top: 12px; left: 14px; display: flex; gap: 8px; z-index: 3; }
+.traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.traffic i:nth-child(1) { background: #ff5f57; }
+.traffic i:nth-child(2) { background: #febc2e; }
+.traffic i:nth-child(3) { background: #28c840; }
+
+/* ---------- sidebar (HudNavigationSidebar, .glass, expanded) ---------- */
+.sidebar {
+  position: absolute; top: 0; bottom: 0; left: 0; width: var(--sidebar-w);
+  display: flex; flex-direction: column;
+}
+.sidebar .brand {
+  /* header frame: top padding 10, height 40, then offset onto the page header line (32 + 23) */
+  height: 64px; position: relative;
+}
+.sidebar .brand .row {
+  position: absolute; left: 0; right: 0; top: calc(var(--titlebar-inset) + var(--title-h) / 2 - 12px);
+  height: 24px; display: flex; align-items: center;
+}
+.sidebar .brand .mark { width: var(--rail-w); display: grid; place-items: center; }
+.sidebar .brand .word { font: 600 14px/1 var(--ui); padding-left: 4px; }
+.sidebar nav { flex: 1; }
+.sidebar .section {
+  height: 28px; margin-top: 8px; display: flex; align-items: flex-end; padding: 0 0 6px var(--rail-w);
+  font: 600 10px/1 var(--ui); letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase;
+}
+.sidebar .item {
+  position: relative; height: 30px; display: flex; align-items: center; color: var(--dim); cursor: default;
+}
+.sidebar .item .ico { width: var(--rail-w); display: grid; place-items: center; }
+.sidebar .item .lbl { padding-left: 4px; font: 500 13px/1 var(--ui); }
+.sidebar .item.active { color: var(--running); }
+.sidebar .item.active .lbl { font-weight: 600; }
+.sidebar .item.active::before {
+  content: ""; position: absolute; inset: 2px 4px; border-radius: 6px;
+  background: rgba(255,255,255,0.07); box-shadow: inset 0 0 0 0.5px var(--border);
+}
+.sidebar .foot { border-top: 0.5px solid var(--border); padding: 4px 0; }
+.sidebar .foot .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--running); }
+.sidebar .foot .port { font: 11px/1 var(--mono); color: var(--muted); margin-left: 4px; }
+.sidebar::after { /* glass trailing rule */
+  content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 0.5px;
+  background: linear-gradient(rgba(255,255,255,0.02), rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+}
+
+/* ---------- stage (rounded card, 0.5px continuous perimeter) ---------- */
+.stage {
+  position: absolute;
+  top: var(--titlebar-inset); left: var(--sidebar-w); right: var(--gutter); bottom: var(--gutter);
+  background: var(--bg);
+  border-radius: var(--stage-r);
+  box-shadow: inset 0 0 0 0.5px var(--border);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.titlebar {
+  height: var(--title-h); flex: none; display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  border-bottom: 0.5px solid var(--border);
+}
+.titlebar h1 { margin: 0; font: 600 15px/1 var(--ui); }
+.titlebar .grow { flex: 1; }
+.pa { /* PageActionButton */
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px;
+  background: transparent; border: 0.5px solid var(--border-lit); color: var(--text); font: 500 12px/1 var(--ui); cursor: pointer;
+}
+.pa:hover { background: rgba(255,255,255,0.06); }
+.pa kbd { font: 10px/1 var(--mono); color: var(--muted); }
+.content { flex: 1; min-height: 0; position: relative; display: flex; }
+.statusbar {
+  height: var(--status-h); flex: none; display: flex; align-items: center; gap: 18px; padding: 0 14px;
+  border-top: 0.5px solid var(--border); font: 11px/1 var(--mono); color: var(--muted);
+}
+.statusbar .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 6px; }
+
+/* ---------- demo toast ---------- */
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(8px);
+  display: flex; align-items: center; gap: 10px; max-width: 70%;
+  padding: 8px 12px; border-radius: 9px; background: rgba(34,34,38,0.96);
+  box-shadow: 0 0 0 0.5px var(--border-lit), 0 10px 30px rgba(0,0,0,0.5);
+  font: 12px/1.3 var(--sans); color: var(--text); opacity: 0; pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease; z-index: 40;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast b { font: 600 9px/1 var(--mono); letter-spacing: .08em; padding: 3px 5px; border-radius: 4px; background: rgba(255,255,255,0.12); color: var(--dim); }
+.toast.blocked b { background: rgba(245,166,35,0.16); color: var(--amber); }
+
+/* ---------- shared atoms used by studies ---------- */
+.glyph {
+  width: 18px; height: 18px; flex: none; border-radius: 5px; display: inline-grid; place-items: center;
+  font: 600 8.5px/1 var(--ui); letter-spacing: -0.02em; color: rgba(255,255,255,0.86);
+  background: var(--g, #3a3a40); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.12);
+}
+.mono { font-family: var(--mono); }
+.dim { color: var(--dim); }
+.muted { color: var(--muted); }
+.kbd { font: 10px/1 var(--mono); color: var(--muted); border: 0.5px solid var(--border-lit); border-radius: 4px; padding: 2px 4px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 7px;
+  background: rgba(255,255,255,0.06); border: 0.5px solid var(--border-lit); color: var(--text);
+  font: 500 12px/1 var(--ui); cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: rgba(255,255,255,0.10); }
+.btn.primary { background: var(--ink-sel); color: #121214; border-color: transparent; font-weight: 600; }
+.btn.primary:hover { background: #fff; }
+.btn.ghost { background: transparent; }
+.btn[disabled], .btn.is-disabled { opacity: 0.38; cursor: not-allowed; }
+.btn .kbd { border: 0; padding: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 6px;
+  border: 0.5px solid var(--border); background: transparent; color: var(--dim); font: 500 12px/1 var(--ui); cursor: pointer; white-space: nowrap;
+}
+.chip:hover { color: var(--text); border-color: var(--border-lit); }
+.chip[aria-pressed="true"] { color: var(--text); background: rgba(255,255,255,0.08); border-color: var(--border-lit); }
+.chip .n { font: 10px/1 var(--mono); color: var(--muted); }
+.label-caps { font: 600 10px/1 var(--ui); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.proposed {
+  font: 600 8.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  border: 0.5px dashed var(--faint); border-radius: 4px; padding: 2px 4px;
+}
+.scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent; }
+
+/* monitor map (shared renderer) */
+.mon {
+  position: relative; border-radius: 6px; background: #0f0f11;
+  box-shadow: inset 0 0 0 0.5px var(--border-lit);
+}
+.mon .w {
+  position: absolute; border-radius: 4px; overflow: hidden; cursor: pointer;
+  background: #202024; box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.16);
+  display: flex; flex-direction: column; padding: 6px 7px; gap: 3px; min-width: 0;
+  transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease, opacity .15s;
+}
+.mon .w:hover { background: #26262b; }
+.mon .w .t1 { display: flex; align-items: center; gap: 5px; font: 600 11px/1.1 var(--ui); white-space: nowrap; }
+.mon .w .t2 { font: 11px/1.25 var(--sans); color: var(--dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mon .w.ghost { background: transparent; box-shadow: none; border: 1px dashed rgba(255,255,255,0.22); }
+.mon .w.out { opacity: 0.32; }
+.mon .w.sel { box-shadow: inset 0 0 0 1.5px var(--ink-sel), 0 0 0 3px rgba(236,237,240,0.12); background: #2a2a2f; z-index: 5; }
+.mon .w.ghost.sel { border-color: var(--ink-sel); }
+.mon .w.tiny { padding: 3px 4px; }
+.mon .w.tiny .t2 { display: none; }

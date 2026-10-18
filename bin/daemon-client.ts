@@ -157,7 +157,10 @@ async function sendRequest(
   timeoutMs: number
 ): Promise<unknown> {
   const id = randomBytes(4).toString("hex");
-  const request = JSON.stringify({ id, method, params: params ?? null });
+  const deadline = Date.now() + timeoutMs;
+  const request = JSON.stringify({ id, method, params: params ?? null, deadline });
+  const mutation = method.startsWith("computer.") && !/\.(observe|capture|status)$/.test(method);
+  const uncertain = () => new Error("Daemon connection lost or deadline exceeded; action outcome uncertain; do not retry blindly");
 
   return new Promise((resolve, reject) => {
     const { host, port } = endpoint;
@@ -165,14 +168,15 @@ async function sendRequest(
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
+    let sent = false;
 
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
         socket.destroy();
-        reject(new Error("Daemon request timed out"));
+        reject(mutation && sent ? uncertain() : new Error("Daemon request timed out"));
       }
-    }, timeoutMs);
+    }, timeoutMs + (mutation ? 1500 : 0));
 
     const cleanup = () => {
       clearTimeout(timer);
@@ -183,10 +187,17 @@ async function sendRequest(
       if (!settled) {
         settled = true;
         cleanup();
-        reject(err);
+        reject(mutation && sent ? uncertain() : err);
       }
     });
 
+    socket.on("close", () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(mutation && sent ? uncertain() : new Error("Daemon connection closed"));
+      }
+    });
     socket.on("connect", () => {
       // Send HTTP upgrade request
       const key = randomBytes(16).toString("base64");
@@ -228,6 +239,7 @@ async function sendRequest(
         buffer = buffer.subarray(headerEnd + 4);
 
         // Send the request as a masked WebSocket text frame
+        sent = true;
         sendFrame(socket, request);
       }
 
@@ -260,7 +272,7 @@ async function sendRequest(
           if (!settled) {
             settled = true;
             cleanup();
-            reject(new Error("Invalid JSON response from daemon"));
+            reject(mutation && sent ? uncertain() : new Error("Invalid JSON response from daemon"));
           }
           return;
         }

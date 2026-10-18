@@ -11,13 +11,43 @@ protocol OverviewActions {
     func place(wid: UInt32, pid: Int32, position: TilePosition, displayId: UInt32)
     /// Moves one window to an absolute Space on any display. Slow: calls
     /// `completion` on the main queue with nil, or why it failed.
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void)
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void)
     /// Writes the layer's layout and tucked lists. Never activates it.
     /// Resolves `plan.layerId` again, so a reorder can't edit another layer.
     func saveLayer(_ plan: LayerEditPlan) throws
     /// Runs the switch of `layerId` if it is still the active layer, which
     /// moves its windows.
     func rearrange(layerId: String) throws
+}
+
+struct OverviewMoveFailure: Equatable {
+    let details: String
+    var originalPositionRestored = false
+
+    static func from(_ receipt: JSON) -> Self? {
+        guard let details = WindowMovementService.failureMessage(for: receipt) else { return nil }
+        return Self(details: details, originalPositionRestored: receipt["rollback"]?["verified"]?.boolValue == true)
+    }
+
+    var message: String {
+        let reason = details.localizedCaseInsensitiveContains("Mission Control")
+            ? "Lattices couldn’t complete the move through Mission Control."
+            : "Lattices couldn’t confirm that the window reached its destination."
+        return reason + (originalPositionRestored
+            ? " The window is back at its original position."
+            : " Check the window’s current Desktop before trying again.")
+    }
+}
+
+struct OverviewMoveError: Equatable {
+    let wid: UInt32
+    let pid: Int32?
+    let app: String
+    let windowTitle: String
+    let destination: OverviewMoveDestination?
+    let failure: OverviewMoveFailure
+
+    var title: String { "Couldn’t move \(app)" }
 }
 
 enum OverviewEditError: LocalizedError, Equatable {
@@ -104,19 +134,19 @@ struct LiveOverviewActions: OverviewActions {
         WindowTiler.tileWindowById(wid: wid, pid: pid, to: position, on: screen)
     }
 
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void) {
         // Absolute Space identity resolves its display in the shared movement
         // runtime. It handles inactive source desktops and verifies the landing.
         DispatchQueue.global(qos: .userInitiated).async {
-            let failure: String?
+            let failure: OverviewMoveFailure?
             do {
                 let receipt = try ActionRuntime.shared.executeWindowMove(
                     params: .object(["wid": .int(Int(wid)), "spaceId": .int(spaceId)]),
                     source: "app.overview"
                 )
-                failure = WindowMovementService.failureMessage(for: receipt)
+                failure = OverviewMoveFailure.from(receipt)
             } catch {
-                failure = error.localizedDescription
+                failure = OverviewMoveFailure(details: error.localizedDescription)
             }
             DispatchQueue.main.async { completion(failure) }
         }
@@ -177,7 +207,7 @@ final class OverviewModel: ObservableObject {
     /// draft open; a failed rearrange comes after the draft closed.
     @Published private(set) var editError: String?
     /// Why the last direct action (place, move) didn't land.
-    @Published private(set) var actionError: String?
+    @Published private(set) var actionError: OverviewMoveError?
     /// Screen hosting Overview, captured before a move can focus another app.
     @Published var hostDisplayId: UInt32?
     /// Windows with a Space move under way.
@@ -708,11 +738,13 @@ final class OverviewModel: ObservableObject {
     func move(_ wid: UInt32, toSpace spaceId: Int) -> Bool {
         guard moving.isEmpty else { return false }
         guard let row = projection.all[wid] else {
-            actionError = "Couldn't move window: it is no longer available"
+            actionError = OverviewMoveError(wid: wid, pid: nil, app: "window", windowTitle: "", destination: nil,
+                                            failure: .init(details: "The window is no longer available."))
             return false
         }
-        guard projection.moveTargets(for: wid).contains(where: { $0.spaceId == spaceId }) else {
-            actionError = "Couldn't move \(row.app): the window or destination Desktop is no longer available"
+        guard let destination = projection.moveTargets(for: wid).first(where: { $0.spaceId == spaceId }) else {
+            actionError = OverviewMoveError(wid: wid, pid: row.pid, app: row.app, windowTitle: row.title, destination: nil,
+                                            failure: .init(details: "The window or destination Desktop is no longer available."))
             return false
         }
         actionError = nil
@@ -721,9 +753,28 @@ final class OverviewModel: ObservableObject {
             guard let self else { return }
             self.moving.remove(wid)
             // The desktop watch picks up where it landed.
-            if let failure { self.actionError = "Couldn't move \(row.app): \(failure)" }
+            if let failure {
+                self.actionError = OverviewMoveError(wid: wid, pid: row.pid, app: row.app, windowTitle: row.title,
+                                                     destination: destination, failure: failure)
+            }
         }
         return true
+    }
+
+    var canRetryMove: Bool {
+        guard moving.isEmpty, let error = actionError, let destination = error.destination,
+              let row = projection.all[error.wid], row.pid == error.pid else { return false }
+        return projection.moveTargets(for: error.wid).contains(destination)
+    }
+
+    @discardableResult
+    func retryMove() -> Bool {
+        guard canRetryMove, let error = actionError, let destination = error.destination else { return false }
+        return move(error.wid, toSpace: destination.spaceId)
+    }
+
+    func dismissActionError() {
+        actionError = nil
     }
 
     func focus(_ wid: UInt32) {

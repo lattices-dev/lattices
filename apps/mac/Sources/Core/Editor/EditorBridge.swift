@@ -206,7 +206,7 @@ final class EditorBridge {
 
     /// Freeze every external resolver source before projecting. In particular,
     /// never use keepRebinds, activation, reloadConfig or any editing primitive.
-    static func liveSnapshot() throws -> Snapshot {
+    static func liveSnapshot(includeGeometry: Bool = true) throws -> Snapshot {
         let manager = WorkspaceManager.shared
         let url = URL(fileURLWithPath: manager.configPath)
         let data: Data
@@ -228,7 +228,10 @@ final class EditorBridge {
         }
         let sources = LayerMembership.Sources(group: { groups[$0] }, projectWindows: { companions[$0] ?? [] },
                                               isContent: DesktopModel.isContent, isRunning: { running[$0] ?? false })
-        return Snapshot(subject: subject, projection: try subject.project(windows: windows, sources: sources, geometry: EditorGeometry.live(windows: windows.filter(DesktopModel.isContent))))
+        // Sidebar counts need membership only. Building placement geometry
+        // queries every app through AX and must not run on its 500ms timer.
+        let geometry = includeGeometry ? EditorGeometry.live(windows: windows.filter(DesktopModel.isContent)) : nil
+        return Snapshot(subject: subject, projection: try subject.project(windows: windows, sources: sources, geometry: geometry))
     }
 }
 

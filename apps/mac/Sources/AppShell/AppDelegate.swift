@@ -163,6 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
                 LayerStage.shared.restoreParked(reason: "signal \(sig)")
                 SpaceSwitchHotkeys.restoreForTermination()
+                SpaceZoomInput.terminate()
                 exit(128 + sig)
             }
             source.resume()
@@ -171,6 +172,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        SpaceZoomInput.terminate()
         LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()

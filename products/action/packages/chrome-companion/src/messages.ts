@@ -1,4 +1,7 @@
+import type { FastChoice } from "./fast-actions.js";
 export type ActionMethod =
+  | "action.fast.observe"
+  | "action.fast.act"
   | "action.tabs.query"
   | "action.tabs.ensure"
   | "action.observe"
@@ -32,6 +35,8 @@ export type RoutedParams = {
 };
 
 export type ActionMessage =
+  | { method: "action.fast.observe"; params: RoutedParams }
+  | { method: "action.fast.act"; params: RoutedParams & FastChoice }
   | {
       method: "action.tabs.query";
       params?: BrowserSurfaceTarget;

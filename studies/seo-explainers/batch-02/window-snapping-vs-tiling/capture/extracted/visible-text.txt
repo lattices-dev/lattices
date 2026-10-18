@@ -1,0 +1,7 @@
+User: ok, let's build more explainers
+Audience: mid level aspiring power user
+Source-reviewed teaching text:
+Snap a window. You choose the position. Put the selected window on the left.
+Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins.
+Group a workspace. Keep related work together. Windows, projects, or sessions share a context.
+Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app.

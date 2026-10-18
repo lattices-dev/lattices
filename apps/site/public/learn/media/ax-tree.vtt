@@ -1,0 +1,17 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:08.000
+You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools.
+
+2
+00:00:08.000 --> 00:00:16.000
+That description is a tree. An app contains a window. The window contains controls, such as buttons.
+
+3
+00:00:16.000 --> 00:00:26.000
+An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it.
+
+4
+00:00:26.000 --> 00:00:36.000
+The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps.

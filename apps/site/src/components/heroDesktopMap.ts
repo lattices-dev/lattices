@@ -1,11 +1,15 @@
 /**
- * The hero desktop's four windows, in one place.
+ * The hero desktop's windows, in one place.
  *
- * Both surfaces that describe this fictional desktop read from here: the styled
- * window chrome in `LandingPage`, and the `lattices — map` transcript below it.
- * The map used to be a hand-drawn string literal, which is why its outlines and
- * junctions drifted away from the frames they claimed to describe. Now it is
- * rasterised from these same percentages, so the two can no longer disagree.
+ * The desktop belongs to "tideline", a made-up tide-chart app: its tmux
+ * session (a claude pane beside a `bun dev` pane), the page in Safari, and the
+ * file being fixed in Zed. The organized phase is the project's layer —
+ * session on the left half, browser and editor stacked on the right.
+ *
+ * Everything that describes this desktop reads from here: the styled windows
+ * in `LandingPage`, and the `lattices map` output in the transcript below
+ * them. The map is rasterised from these same percentages, so the two can no
+ * longer disagree about where a window is.
  */
 import {
   assertBoxGrid,
@@ -17,7 +21,7 @@ import {
 } from "../lib/asciiBoxMap";
 
 export type HeroDesktopPhase = "messy" | "organized";
-export type HeroWindowId = "agent" | "editor" | "browser" | "terminal";
+export type HeroWindowId = "session" | "browser" | "editor";
 
 export type HeroWindowLayout = {
   left: number;
@@ -27,34 +31,59 @@ export type HeroWindowLayout = {
   z: number;
 };
 
+/** The layer ⌘⌥1 switches to, as the layer bezel reports it. */
+export const heroLayer = { name: "tideline", index: 0, total: 3 };
+
 export const heroWindowLayouts: Record<HeroWindowId, Record<HeroDesktopPhase, HeroWindowLayout>> = {
-  agent: {
-    messy: { left: 18, top: 22, width: 49, height: 56, z: 6 },
-    organized: { left: 1.6, top: 10.5, width: 58, height: 86, z: 6 },
-  },
-  editor: {
-    messy: { left: 6, top: 14, width: 35, height: 29, z: 3 },
-    organized: { left: 61, top: 10.5, width: 37.4, height: 28, z: 3 },
+  session: {
+    messy: { left: 26, top: 25, width: 42, height: 60, z: 6 },
+    organized: { left: 0.5, top: 5.2, width: 49.25, height: 93.8, z: 6 },
   },
   browser: {
-    messy: { left: 54, top: 11, width: 41, height: 42, z: 2 },
-    organized: { left: 61, top: 41.5, width: 37.4, height: 32, z: 2 },
+    messy: { left: 50, top: 10, width: 44, height: 50, z: 2 },
+    organized: { left: 50.25, top: 5.2, width: 49.25, height: 46.3, z: 2 },
   },
-  terminal: {
-    messy: { left: 46, top: 55, width: 38, height: 29, z: 4 },
-    organized: { left: 61, top: 76.5, width: 37.4, height: 20, z: 4 },
+  editor: {
+    messy: { left: 5, top: 13, width: 37, height: 44, z: 3 },
+    organized: { left: 50.25, top: 52.7, width: 49.25, height: 46.3, z: 3 },
   },
 };
 
 export const heroWindowMeta: Record<
   HeroWindowId,
-  { app: string; title: string; tint: string; focused?: boolean; mapLabel: string }
+  { app: string; title: string; focused?: boolean; mapLabel: string }
 > = {
-  agent: { app: "Terminal", title: "atlas — codex", tint: "#d277ff", focused: true, mapLabel: "1 Terminal · codex" },
-  editor: { app: "Code", title: "session.ts — atlas", tint: "#62a0ff", mapLabel: "3 Code · session.ts" },
-  browser: { app: "Browser", title: "localhost:5173", tint: "#f3c969", mapLabel: "4 Browser · localhost" },
-  terminal: { app: "Terminal", title: "atlas — bun dev", tint: "#34d399", mapLabel: "2 Terminal · bun dev" },
+  session: {
+    app: "Terminal",
+    title: "[lattices:tideline-5e354e] claude",
+    focused: true,
+    mapLabel: "1 Terminal · tideline",
+  },
+  browser: { app: "Safari", title: "localhost:5173", mapLabel: "3 Safari · Tideline" },
+  editor: { app: "Zed", title: "format.ts — tideline", mapLabel: "2 Zed · format.ts" },
 };
+
+const heroWindowIds = Object.keys(heroWindowLayouts) as HeroWindowId[];
+
+function overlaps(a: HeroWindowLayout, b: HeroWindowLayout) {
+  return a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+}
+
+/** Pairs of windows that cover part of each other, per phase. */
+export const heroOverlapCount: Record<HeroDesktopPhase, number> = {
+  messy: countOverlaps("messy"),
+  organized: countOverlaps("organized"),
+};
+
+function countOverlaps(phase: HeroDesktopPhase) {
+  let count = 0;
+  heroWindowIds.forEach((id, index) => {
+    for (const other of heroWindowIds.slice(index + 1)) {
+      if (overlaps(heroWindowLayouts[id][phase], heroWindowLayouts[other][phase])) count++;
+    }
+  });
+  return count;
+}
 
 /** Character dimensions of the rendered map, including the display border. */
 const MAP_WIDTH = 68;
@@ -66,7 +95,7 @@ const SCREEN_AREA = { x: 1, y: 1, w: MAP_WIDTH - 2, h: MAP_HEIGHT - 2 };
 const DISPLAY_LABEL = " Display 0 · MacBook Pro · Space 1";
 
 function buildHeroDesktopGrid(phase: HeroDesktopPhase): BoxGrid {
-  const windows = (Object.keys(heroWindowLayouts) as HeroWindowId[]).map((id) => {
+  const windows = heroWindowIds.map((id) => {
     const frame = heroWindowLayouts[id][phase];
     return rectFromPercent(frame, SCREEN_AREA, { label: heroWindowMeta[id].mapLabel, z: frame.z });
   });

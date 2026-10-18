@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" role="img" aria-labelledby="title desc">
+<title id="title">Action — native computer use for agents</title>
+<desc id="desc">A fine-line illustration of an app window beside its accessibility target inspector. The Export button is selected.</desc>
+<rect width="640" height="560" fill="#151719"/>
+<g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-weight="400">
+<text x="44" y="48" font-size="11" fill="#a3a6a7" letter-spacing="1.4">LATTICES / COMPUTER USE</text>
+<text x="42" y="118" font-size="62" fill="#eeeae4" font-family="Georgia, Times New Roman, serif" letter-spacing="-1.7">Action</text>
+<text x="44" y="158" font-size="18" fill="#a3a6a7" >Native computer use for agents.</text>
+<g transform="translate(44 212) scale(0.92)">
+<rect x=".5" y=".5" width="599" height="239" rx="9" fill="#1b1e20" stroke="#3b4144" stroke-width="1"/>
+<path d="M.5 35.5H599.5M340.5 35.5V239.5" fill="none" stroke="#3b4144" stroke-width=".75"/>
+<g fill="none" stroke="#a3a6a7" stroke-width=".75"><circle cx="17" cy="18" r="3"/><circle cx="29" cy="18" r="3"/><circle cx="41" cy="18" r="3"/></g>
+<text x="59" y="22" font-size="11" fill="#a3a6a7" >Workspace</text>
+<text x="357" y="22" font-size="11" fill="#a3a6a7" >Accessibility</text>
+<rect x="22.5" y="57.5" width="295" height="157" rx="5" fill="#202426" stroke="#3b4144" stroke-width=".75"/>
+<text x="39" y="83" font-size="15" fill="#eeeae4" >Export report</text>
+<text x="39" y="108" font-size="10" fill="#a3a6a7" >Name</text>
+<rect x="39.5" y="118.5" width="259" height="29" rx="3" fill="#1b1e20" stroke="#3b4144" stroke-width=".75"/>
+<text x="49" y="137" font-size="11" fill="#eeeae4" >Weekly report</text>
+<rect x="154.5" y="168.5" width="63" height="25" rx="3" fill="#1b1e20" stroke="#3b4144" stroke-width=".75"/>
+<text x="167" y="185" font-size="11" fill="#a3a6a7" >Cancel</text>
+<rect x="228.5" y="168.5" width="70" height="25" rx="3" fill="#2d2725" stroke="#d7a18b" stroke-width=".75"/>
+<text x="246" y="185" font-size="11" fill="#d7a18b" >Export</text>
+<path d="M224 173v-9h9M294 164h9v9M303 189v9h-9M233 198h-9v-9" stroke="#d7a18b" stroke-width=".75" fill="none"/>
+<path d="m279 185 7 24 4-8 9-3Z" fill="#1b1e20" stroke="#d7a18b" stroke-width="1" stroke-linejoin="round"/>
+<text x="359" y="69" font-size="9" fill="#a3a6a7" letter-spacing="1.3">TARGET</text>
+<text x="359" y="96" font-size="18" fill="#eeeae4" >Export</text>
+<path d="M359 112.5H579" stroke="#3b4144" stroke-width=".75"/>
+<text x="359" y="137" font-size="11" fill="#a3a6a7" >Role</text>
+<text x="446" y="137" font-size="11" fill="#eeeae4" font-family="SFMono-Regular, Consolas, monospace">AXButton</text>
+<text x="359" y="162" font-size="11" fill="#a3a6a7" >Enabled</text>
+<text x="446" y="162" font-size="11" fill="#eeeae4" font-family="SFMono-Regular, Consolas, monospace">true</text>
+<text x="359" y="187" font-size="11" fill="#a3a6a7" >Action</text>
+<text x="446" y="187" font-size="11" fill="#eeeae4" font-family="SFMono-Regular, Consolas, monospace">press</text>
+<circle cx="363" cy="213" r="2.5" fill="#d7a18b"/>
+<text x="374" y="217" font-size="10" fill="#a3a6a7" >Target resolved</text>
+</g>
+<path d="M44 510.5H596" stroke="#3b4144" stroke-width=".75"/>
+<text x="44" y="535" font-size="11" fill="#a3a6a7" >macOS</text>
+<text x="596" y="535" font-size="11" fill="#a3a6a7" text-anchor="end">CLI · MCP</text>
+</g>
+</svg>

@@ -22,10 +22,10 @@ final class OverviewProjectionTests: XCTestCase {
 
     private func window(
         _ wid: UInt32, _ app: String, _ title: String, spaces: [Int], frame: CGRect,
-        hidden: Bool = false, collapsed: Bool = false, session: String? = nil
+        hidden: Bool = false, collapsed: Bool = false, session: String? = nil, pid: Int32? = nil
     ) -> WindowEntry {
         var entry = WindowEntry(
-            wid: wid, app: app, pid: Int32(wid) + 100, title: title,
+            wid: wid, app: app, pid: pid ?? Int32(wid) + 100, title: title,
             frame: WindowFrame(x: frame.minX, y: frame.minY, w: frame.width, h: frame.height),
             spaceIds: spaces, isOnScreen: false, latticesSession: session, zIndex: Int(wid), appHidden: hidden
         )
@@ -245,6 +245,22 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(Set(store.windowIds), [1, 2], "released, Overview stops publishing")
         store.clear()
         drainMain()
+    }
+
+    func testDesktopListsExposeExactDropDestinations() throws {
+        let model = model()
+        let groups = OverviewTray(model: model).groups
+        let source = try XCTUnwrap(groups.first { $0.id == "1" })
+        let destination = try XCTUnwrap(groups.first { $0.id == "3" }?.destination)
+        XCTAssertEqual(source.destination?.spaceId, 1)
+        XCTAssertEqual(destination.spaceId, 3)
+        XCTAssertEqual(destination.displayId, 1)
+        XCTAssertEqual(OverviewWindowDrop.window(
+            from: [.init(wid: 1)], to: destination, projection: model.projection, moving: []
+        ), 1)
+        XCTAssertTrue(model.move(1, toSpace: destination.spaceId))
+        XCTAssertNil(groups.first { $0.id == "12" }?.destination)
+        XCTAssertNil(groups.first { $0.id == "unplaced" }?.destination)
     }
 
     private func drainMain() {
@@ -523,10 +539,72 @@ final class OverviewProjectionTests: XCTestCase {
         XCTAssertEqual(model.moving, [1])
         XCTAssertFalse(model.move(1, toSpace: 2), "one move at a time")
         XCTAssertFalse(model.move(2, toSpace: 2), "Mission Control moves serialize across windows")
-        spy.finishMove?("Mission Control didn't open")
+        spy.finishMove?(.init(details: "Mission Control didn't open"))
         XCTAssertEqual(model.moving, [])
-        XCTAssertEqual(model.actionError, "Couldn't move Ghostty: Mission Control didn't open")
+        XCTAssertEqual(model.actionError?.title, "Couldn’t move Ghostty")
+        XCTAssertEqual(model.actionError?.failure.details, "Mission Control didn't open")
+        XCTAssertEqual(model.actionError?.destination?.title, "Side · Desktop 2")
         XCTAssertEqual(spy.calls, ["move 1 to 11"])
+    }
+
+    func testMoveFailureCanRetryExactDestinationAndDismiss() {
+        let model = model()
+        XCTAssertTrue(model.move(1, toSpace: 11))
+        spy.finishMove?(.init(details: "Mission Control controls unavailable"))
+        XCTAssertTrue(model.canRetryMove)
+        XCTAssertTrue(model.retryMove())
+        XCTAssertNil(model.actionError)
+        XCTAssertFalse(model.canRetryMove)
+        XCTAssertEqual(spy.calls, ["move 1 to 11", "move 1 to 11"])
+        spy.finishMove?(.init(details: "Still unavailable"))
+        model.dismissActionError()
+        XCTAssertNil(model.actionError)
+        XCTAssertFalse(model.retryMove())
+    }
+
+    func testMoveRetryRejectsClosedOrReusedWindow() {
+        let model = model()
+        XCTAssertTrue(model.move(1, toSpace: 11))
+        spy.finishMove?(.init(details: "Failed"))
+        model.update(inputs(windows: windows.filter { $0.wid != 1 }))
+        XCTAssertFalse(model.retryMove())
+        var reused = windows
+        reused[0] = window(1, "Ghostty", "Replacement", spaces: [1], frame: main, pid: 999)
+        model.update(inputs(windows: reused))
+        XCTAssertFalse(model.retryMove())
+        XCTAssertEqual(spy.calls, ["move 1 to 11"])
+    }
+
+    func testMoveRetryRejectsDestinationThatDisappearedOrAlreadyReached() {
+        let model = model()
+        XCTAssertTrue(model.move(1, toSpace: 11))
+        spy.finishMove?(.init(details: "Failed"))
+        var changed = inputs()
+        changed.displays.removeLast()
+        model.update(changed)
+        XCTAssertFalse(model.retryMove())
+        var arrived = windows
+        arrived[0] = window(1, "Ghostty", "Arrived", spaces: [11], frame: CGRect(x: 3500, y: 100, width: 1200, height: 800))
+        model.update(inputs(windows: arrived))
+        XCTAssertFalse(model.retryMove())
+        XCTAssertEqual(spy.calls, ["move 1 to 11"])
+    }
+
+    func testMoveFailureOnlyPromisesRestorationWhenVerified() throws {
+        let failed: JSON = .object([
+            "status": .string("failed"), "failureReason": .string("Mission Control unavailable"),
+            "rollback": .object(["attempted": .bool(true), "verified": .bool(false)]),
+        ])
+        let failure = try XCTUnwrap(OverviewMoveFailure.from(failed))
+        XCTAssertFalse(failure.originalPositionRestored)
+        XCTAssertTrue(failure.message.contains("Check the window’s current Desktop"))
+        XCTAssertFalse(failure.message.contains("back at its original"))
+        let restored = OverviewMoveFailure.from(.object([
+            "status": .string("failed"), "rollback": .object(["verified": .bool(true)]),
+        ]))
+        XCTAssertEqual(restored?.originalPositionRestored, true)
+        XCTAssertNil(OverviewMoveFailure.from(.object(["status": .string("ok"), "verified": .bool(true)])))
+        XCTAssertNotNil(OverviewMoveFailure.from(.object(["status": .string("ok"), "verified": .bool(false)])))
     }
 
     func testBringHereUsesHostShowingSpaceRegardlessOfBrowsedOrSourceDesktop() throws {
@@ -925,7 +1003,7 @@ final class LayerStageTuckTests: XCTestCase {
 private final class SpyActions: OverviewActions {
     var calls: [String] = []
     var distributed: [(wids: [UInt32], displayId: UInt32, shape: [Int]?)] = []
-    var finishMove: ((String?) -> Void)?
+    var finishMove: ((OverviewMoveFailure?) -> Void)?
     var saveError: Error?
     var rearrangeError: Error?
 
@@ -940,7 +1018,7 @@ private final class SpyActions: OverviewActions {
         calls.append("place \(wid) \(position.rawValue) on \(displayId)")
     }
 
-    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (String?) -> Void) {
+    func moveToSpace(wid: UInt32, pid: Int32, spaceId: Int, completion: @escaping (OverviewMoveFailure?) -> Void) {
         calls.append("move \(wid) to \(spaceId)")
         finishMove = completion
     }

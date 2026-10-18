@@ -9,6 +9,22 @@ test("layer parsing preserves documented flags and record verbs", () => {
   assert.deepEqual(parseLayerCommand(["snapshot", "--full", "--out", "a file.png"]).flags, { full: "true", out: "a file.png" });
   assert.deepEqual(parseLayerCommand(["record", "start", "--out=a.mov"]).positionals, ["record", "start"]);
   assert.deepEqual(parseLayerCommand([]).positionals, ["status"]);
+  assert.equal(parseLayerCommand(["pip", "--preview-full"]).flags["preview-full"], "true");
+  assert.equal(parseLayerCommand(["open", "--preview-full=false"]).flags["preview-full"], "false");
+  assert.throws(() => parseLayerCommand(["open", "--preview-full=maybe"]), /expected true or false/);
+});
+
+test("named workspaces target every operation and reject recursive previews", () => {
+  for (const verb of ["prepare", "display-status", "open", "close", "release", "status", "snapshot", "pip"]) {
+    assert.equal(parseLayerCommand([verb, "--workspace", "agent"]).flags.workspace, "agent");
+  }
+  assert.equal(parseLayerCommand(["record", "start", "--workspace", "stage"]).flags.workspace, "stage");
+  assert.equal(parseLayerCommand(["record", "stop", "--workspace", "agent"]).flags.workspace, "agent");
+  assert.deepEqual(parseLayerCommand(["pip", "--workspace", "agent", "--preview-workspace", "stage"]).flags,
+    { workspace: "agent", "preview-workspace": "stage" });
+  for (const args of [["open", "--workspace", "../stage"], ["pip", "--workspace", "agent", "--preview-workspace", "agent"], ["list", "--workspace", "stage"]]) {
+    assert.throws(() => parseLayerCommand(args));
+  }
 });
 
 test("unsupported browser flags and interaction verbs give MCP routing", () => {

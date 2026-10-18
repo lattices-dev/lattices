@@ -1,0 +1,32 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const media=path.resolve(root,'../../../apps/site/public/learn/media');
+const videos=JSON.parse(fs.readFileSync(path.join(root,'videos.json'),'utf8'));
+const manifest={},evidence={};
+fs.mkdirSync(path.join(root,'evidence'),{recursive:true});
+for(const v of videos){
+ const file=path.join(media,v.id+'.mp4');
+ const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_format','-show_streams','-of','json',file],{encoding:'utf8'}));
+ const stream=probe.streams.find(s=>s.codec_type==='video');
+ const duration=Number(probe.format.duration);
+ if(stream.width!==1280||stream.height!==720||stream.r_frame_rate!=='30/1'||duration!==40||Number(stream.nb_frames)!==1200)throw new Error('Unexpected output geometry or timing: '+v.id);
+ if(probe.streams.some(s=>s.codec_type==='audio'))throw new Error('Unexpected audio in silent film: '+v.id);
+ execFileSync('ffmpeg',['-v','error','-i',file,'-f','null','-'],{stdio:'pipe'});
+ const posterAt=v.id==='macos-automation-permissions'?33:v.id==='observe-act-verify'?25:33;
+ execFileSync('ffmpeg',['-y','-v','error','-ss',String(posterAt),'-i',file,'-frames:v','1','-q:v','2',path.join(media,v.id+'-poster.jpg')]);
+ execFileSync('ffmpeg',['-y','-v','error','-i',file,'-vf',"select='eq(n,180)+eq(n,450)+eq(n,750)+eq(n,1050)',scale=640:360,tile=2x2",'-frames:v','1','-q:v','2',path.join(root,'evidence',v.id+'-contact.jpg')]);
+ execFileSync('ffmpeg',['-y','-v','error','-ss',String(1199/30),'-i',file,'-frames:v','1','-q:v','2',path.join(root,'evidence',v.id+'-final.jpg')]);
+ const text=fs.readFileSync(path.join(media,v.id+'.vtt'),'utf8');
+ const stamp=s=>s.split(':').reduce((a,c)=>a*60+Number(c),0);
+ const transcript=text.trim().split(/\n\n+/).slice(1).map(c=>{const lines=c.split('\n');const [start,end]=lines[1].split(' --> ');return {start:stamp(start),end:stamp(end),text:lines.slice(2).join('\n')};});
+ manifest[v.id]={durationSeconds:duration,width:stream.width,height:stream.height,transcript,fullTranscript:fs.readFileSync(path.join(media,v.id+'-transcript.txt'),'utf8')};
+ evidence[v.id]={durationSeconds:duration,width:stream.width,height:stream.height,frames:Number(stream.nb_frames),fps:stream.r_frame_rate,codec:stream.codec_name,bytes:fs.statSync(file).size,sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex'),decodedWithoutError:true,posterAtSeconds:posterAt};
+ fs.writeFileSync(path.join(root,'evidence',v.id+'-ffprobe.json'),JSON.stringify(probe,null,2)+'\n');
+}
+fs.writeFileSync(path.join(media,'batch-02-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+fs.writeFileSync(path.join(root,'evidence/media-verification.json'),JSON.stringify(evidence,null,2)+'\n');
+console.log(JSON.stringify(evidence,null,2));

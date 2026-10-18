@@ -3,10 +3,9 @@ set -euo pipefail
 
 # ── Lattices Installer ─────────────────────────────────────────────────
 # Public entry point is the root shim, which forwards here:
-#   curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
 # ───────────────────────────────────────────────────────────────────────
 
-REPO="arach/lattices"
 BOLD="\033[1m"
 DIM="\033[2m"
 GREEN="\033[32m"
@@ -25,7 +24,7 @@ if [[ "$(uname -s)" == "Linux" ]]; then
   if [[ -f "$linux_script_dir/install-linux.sh" ]]; then
     exec bash "$linux_script_dir/install-linux.sh" "$@"
   fi
-  linux_installer="$(curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/scripts/install-linux.sh)"
+  linux_installer="$(curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/scripts/install-linux.sh)"
   exec bash -c "$linux_installer" -- "$@"
 fi
 
@@ -88,20 +87,20 @@ install_dep bun "oven-sh/bun/bun" "oven-sh/bun"
 # ── Install CLI ───────────────────────────────────────────────────────
 # If run from inside the source repo, link the local checkout instead of
 # fetching from npm. Detected by package.json next to this script with
-# name "@arach/lattices" (also published as @lattices/cli).
+# name "@lattices/lattices" (also published as @lattices/cli).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"   # this script lives in scripts/
 LOCAL_MODE=0
 if [[ -f "$REPO_ROOT/package.json" ]] && \
-   grep -qE '"@arach/lattices"|"@lattices/cli"' "$REPO_ROOT/package.json"; then
+   grep -qE '"@lattices/lattices"|"@arach/lattices"|"@lattices/cli"' "$REPO_ROOT/package.json"; then
   LOCAL_MODE=1
 fi
 
 if [[ "$LOCAL_MODE" -eq 1 ]]; then
-  info "Linking @arach/lattices from $REPO_ROOT..."
+  info "Linking @lattices/lattices from $REPO_ROOT..."
 else
-  info "Installing @arach/lattices..."
+  info "Installing @lattices/lattices..."
 fi
 
 if command -v lattices &>/dev/null; then
@@ -109,9 +108,9 @@ if command -v lattices &>/dev/null; then
 fi
 
 if [[ "$LOCAL_MODE" -eq 1 ]]; then
-  (cd "$REPO_ROOT" && bun link && bun link @arach/lattices)
+  (cd "$REPO_ROOT" && bun link)
 else
-  bun install -g @arach/lattices
+  bun install -g @lattices/lattices
 fi
 ok "CLI installed → $(command -v lattices)"
 

@@ -1,0 +1,1088 @@
+/* ── Brand page: the marks, icons and cards, with the rules that draw them ── */
+
+.brand-page {
+  --brand-rail: min(1088px, calc(100% - 48px));
+  --brand-sunk: #1b1b1e;
+  --brand-raised: #242427;
+  --brand-line: rgba(255, 255, 255, 0.08);
+  --brand-line-strong: rgba(255, 255, 255, 0.18);
+  --brand-faint: rgba(255, 255, 255, 0.38);
+  --brand-guide: #45b9f4;
+  --brand-mono: "JetBrains Mono", "SF Mono", monospace;
+  background: var(--bg);
+}
+
+:root[data-theme='light'] .brand-page {
+  --brand-sunk: #f1f0ec;
+  --brand-raised: #ffffff;
+  --brand-line: rgba(16, 21, 24, 0.09);
+  --brand-line-strong: rgba(16, 21, 24, 0.2);
+  --brand-faint: rgba(16, 21, 24, 0.42);
+}
+
+@media (max-width: 640px) {
+  .brand-page {
+    --brand-rail: calc(100% - 32px);
+  }
+}
+
+.brand-page .site-footer {
+  --footer-rail: 1088px;
+}
+
+.brand-page :where(a, button):focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+.brand-main img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.brand-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.brand-main {
+  width: var(--brand-rail);
+  margin: 0 auto;
+  padding: 40px 0 96px;
+}
+
+.brand-main :where(ul, ol) {
+  list-style: none;
+}
+
+@media (min-width: 720px) {
+  .brand-main {
+    padding: 64px 0 128px;
+  }
+}
+
+/* ── Intro ── */
+
+.brand-intro h1 {
+  font-size: clamp(34px, 7vw, 52px);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.brand-intro > p {
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: 17px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.brand-toc ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.brand-toc a {
+  display: block;
+  padding: 6px 12px;
+  border: 1px solid var(--brand-line-strong);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.brand-toc a:hover {
+  border-color: var(--brand-faint);
+  color: var(--text);
+}
+
+/* ── Sections ── */
+
+.brand-section {
+  margin-top: 64px;
+  scroll-margin-top: 88px;
+}
+
+@media (min-width: 720px) {
+  .brand-section {
+    margin-top: 88px;
+  }
+}
+
+.brand-section-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--brand-line-strong);
+}
+
+.brand-section-head h2 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+.brand-section-head p {
+  max-width: 640px;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.brand-section-head code {
+  color: var(--text);
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+.brand-sub {
+  margin: 40px 0 12px;
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.brand-sub-first {
+  margin-top: 0;
+}
+
+.brand-card {
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--brand-line);
+}
+
+.brand-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.brand-files a {
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-decoration: underline;
+  text-decoration-color: var(--brand-line-strong);
+  text-underline-offset: 3px;
+  transition:
+    color 0.15s,
+    text-decoration-color 0.15s;
+}
+
+.brand-files a:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+/* ── Desks: the four app icons on a light and a dark Dock ── */
+
+.brand-desks {
+  display: grid;
+  gap: 12px;
+  margin-top: 40px;
+}
+
+.brand-desk {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 28px 12px 16px;
+  border-radius: 20px;
+}
+
+.brand-desk[data-ground='light'] {
+  background: #e9e7e2;
+  color: rgba(16, 21, 24, 0.55);
+}
+
+.brand-desk[data-ground='dark'] {
+  background: #1c1c1f;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.brand-desk li {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.brand-desk img {
+  width: min(152px, 100%);
+}
+
+.brand-desk span {
+  font-family: var(--brand-mono);
+  font-size: 11px;
+}
+
+@media (min-width: 720px) {
+  .brand-desk {
+    gap: 16px;
+    padding: 44px 32px 24px;
+  }
+
+  .brand-desk li {
+    gap: 16px;
+  }
+
+  .brand-desk span {
+    font-size: 12px;
+  }
+}
+
+/* ── Marks ── */
+
+.brand-marks {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 600px) {
+  .brand-marks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1000px) {
+  .brand-marks {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.brand-mark-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.brand-mark-grounds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.brand-mark-ground {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+}
+
+.brand-mark-ground[data-ground='light'] {
+  background: #fafaf9;
+}
+
+.brand-mark-ground[data-ground='dark'] {
+  background: #111113;
+}
+
+.brand-mark-ground img {
+  width: 40%;
+}
+
+@media (min-width: 1000px) {
+  .brand-mark-ground {
+    aspect-ratio: 1;
+  }
+
+  .brand-mark-ground img {
+    width: 44%;
+  }
+}
+
+.brand-mark-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 16px 14px;
+}
+
+.brand-mark-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.brand-mark-body p {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.brand-mark-body .brand-files {
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+/* ── Accent ── */
+
+.brand-accent {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 820px) {
+  .brand-accent {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+
+.brand-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 220px;
+  padding: 20px;
+  border-radius: 16px;
+}
+
+.brand-swatch-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.brand-swatch-name strong {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.brand-swatch-name code {
+  font-size: 13px;
+}
+
+.brand-swatch dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.brand-swatch dt {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.brand-swatch dd {
+  margin-top: 2px;
+  font-family: var(--brand-mono);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.brand-swatch > p:last-child {
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* The marks recede so only their accents keep their colour. */
+.brand-accent-marks {
+  --logo-ink: color-mix(in srgb, var(--text) 18%, transparent);
+  --logo-dim: color-mix(in srgb, var(--text) 7%, transparent);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--brand-line);
+  box-shadow: 0 0 0 1px var(--brand-line);
+  color: var(--logo-ink);
+}
+
+.brand-accent-marks li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  background: var(--surface);
+}
+
+.brand-accent-marks svg {
+  flex: none;
+  margin-bottom: 14px;
+}
+
+.brand-accent-marks strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.brand-accent-marks span {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+/* The default pointer takes the full row on narrow screens, so the other four pair up. */
+.brand-centres li:first-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 820px) {
+  .brand-centres {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .brand-centres li:first-child {
+    grid-column: auto;
+  }
+}
+
+.brand-centre-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brand-centre-name code {
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+}
+
+/* ── App icon ladders ── */
+
+.brand-ladders {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 1000px) {
+  .brand-ladders {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.brand-ladder {
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px var(--brand-line);
+}
+
+.brand-ladder[data-ground='light'] {
+  background: #fafaf9;
+  color: rgba(16, 21, 24, 0.55);
+}
+
+.brand-ladder[data-ground='dark'] {
+  background: #111113;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.brand-ladder table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.brand-ladder caption {
+  margin-bottom: 8px;
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  text-align: left;
+}
+
+.brand-ladder th {
+  font-family: var(--brand-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.brand-ladder thead th {
+  padding: 0 10px 8px;
+}
+
+.brand-ladder :is(tbody th, td) {
+  padding: 9px 10px;
+  vertical-align: bottom;
+}
+
+.brand-ladder :is(thead th, tbody th):first-child {
+  padding-left: 0;
+}
+
+.brand-ladder img {
+  max-width: none;
+}
+
+.brand-x128 {
+  display: none;
+}
+
+@media (min-width: 520px) {
+  .brand-x128 {
+    display: table-cell;
+  }
+}
+
+/* ── Favicons ── */
+
+.brand-strips {
+  display: grid;
+  gap: 12px;
+}
+
+.brand-tabs {
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.brand-tabs ul {
+  display: flex;
+  gap: 2px;
+  padding: 8px 8px 0;
+}
+
+.brand-tab {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 240px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 9px 9px 0 0;
+  font: 12px/1 system-ui, -apple-system, sans-serif;
+}
+
+@media (min-width: 720px) {
+  .brand-tab {
+    padding: 0 12px;
+  }
+}
+
+.brand-tab img {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.brand-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-tabs-bar {
+  height: 10px;
+}
+
+.brand-tabs[data-ground='light'] {
+  background: #dee1e6;
+  color: #3c4043;
+}
+
+.brand-tabs[data-ground='light'] .brand-tab {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.brand-tabs[data-ground='light'] :is(.brand-tab[data-active], .brand-tabs-bar) {
+  background: #ffffff;
+  color: #202124;
+}
+
+.brand-tabs[data-ground='dark'] {
+  background: #202124;
+  color: #bdc1c6;
+}
+
+.brand-tabs[data-ground='dark'] .brand-tab {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.brand-tabs[data-ground='dark'] :is(.brand-tab[data-active], .brand-tabs-bar) {
+  background: #35363a;
+  color: #e8eaed;
+}
+
+.brand-touch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 28px;
+}
+
+.brand-touch li {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 11px;
+}
+
+.brand-touch img {
+  width: 60px;
+  height: 60px;
+  border-radius: 13.5px;
+}
+
+/* ── Open Graph ── */
+
+.brand-og-plan-wrap {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .brand-og-plan-wrap {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 40px;
+  }
+}
+
+.brand-og-plan {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: var(--brand-sunk);
+}
+
+.brand-og-plan :is(.brand-plan-cell, .brand-plan-guide, .brand-plan-box, .brand-plan-line, .brand-plan-dim, .brand-plan-preview) {
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-plan-cell {
+  fill: none;
+  stroke: var(--brand-line);
+}
+
+.brand-plan-preview {
+  fill: var(--brand-raised);
+  stroke: var(--brand-line-strong);
+}
+
+.brand-plan-guide {
+  fill: none;
+  stroke: var(--brand-guide);
+  stroke-dasharray: 3 5;
+}
+
+.brand-plan-box {
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-dasharray: 6 4;
+}
+
+.brand-plan-ink {
+  fill: var(--text);
+}
+
+.brand-plan-soft {
+  fill: var(--brand-line-strong);
+}
+
+.brand-plan-mid {
+  fill: var(--brand-faint);
+}
+
+.brand-plan-line,
+.brand-plan-dim {
+  fill: none;
+  stroke: var(--brand-faint);
+}
+
+.brand-plan-label {
+  fill: var(--brand-faint);
+  font: 500 34px var(--brand-mono);
+  text-anchor: middle;
+}
+
+.brand-plan-note {
+  text-anchor: start;
+}
+
+.brand-og-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 40px 0 12px;
+}
+
+.brand-og-head .brand-sub {
+  margin: 0;
+}
+
+.brand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid var(--brand-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.brand-toggle::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-line-strong);
+  transition: background-color 0.15s;
+}
+
+.brand-toggle:hover {
+  border-color: var(--brand-faint);
+  color: var(--text);
+}
+
+.brand-toggle[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--brand-guide) 60%, transparent);
+  background: color-mix(in srgb, var(--brand-guide) 12%, transparent);
+  color: var(--text);
+}
+
+.brand-toggle[aria-pressed='true']::before {
+  background: var(--brand-guide);
+}
+
+.brand-og {
+  display: grid;
+  gap: 24px 20px;
+}
+
+@media (min-width: 760px) {
+  .brand-og {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .brand-og li:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.brand-og li {
+  display: grid;
+  gap: 8px;
+}
+
+.brand-og code {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.brand-og-card {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 1200 / 630;
+  border-radius: 12px;
+  background: #111113;
+  box-shadow: 0 0 0 1px var(--brand-line);
+}
+
+.brand-og-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brand-og-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.brand-og[data-guides] .brand-og-lines {
+  opacity: 1;
+}
+
+.brand-og-fill {
+  fill: var(--brand-guide);
+  fill-opacity: 0.13;
+}
+
+.brand-og-line,
+.brand-og-box {
+  fill: none;
+  stroke: var(--brand-guide);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-og-line {
+  stroke-dasharray: 4 4;
+  stroke-opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-og-lines,
+  .brand-toggle,
+  .brand-toggle::before {
+    transition: none;
+  }
+}
+
+/* ── Colour ── */
+
+.brand-colours {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 32px 24px;
+}
+
+.brand-swatches {
+  display: grid;
+  gap: 14px;
+}
+
+.brand-swatches li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+
+.brand-swatches svg {
+  grid-row: span 2;
+}
+
+.brand-swatches strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.brand-swatches code {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.brand-chip-edge {
+  fill: none;
+  stroke: var(--brand-line-strong);
+  stroke-width: 1;
+}
+
+/* ── Icon grid ── */
+
+.brand-gridspec {
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (min-width: 820px) {
+  .brand-gridspec {
+    grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+    gap: 48px;
+  }
+}
+
+.brand-diagram {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+}
+
+.brand-diagram-canvas {
+  fill: none;
+  stroke: var(--brand-line-strong);
+  stroke-width: 3;
+  stroke-dasharray: 14 12;
+}
+
+.brand-diagram-tile {
+  fill: var(--brand-sunk);
+  stroke: var(--brand-faint);
+  stroke-width: 3;
+}
+
+.brand-diagram-dim {
+  fill: none;
+  stroke: var(--brand-faint);
+  stroke-width: 3;
+}
+
+.brand-diagram-label {
+  fill: var(--text-dim);
+  font: 500 36px var(--brand-mono);
+  text-anchor: middle;
+}
+
+.brand-spec div {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--brand-line);
+}
+
+.brand-spec div:first-child {
+  padding-top: 0;
+}
+
+.brand-spec dt {
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  line-height: 21px;
+}
+
+.brand-spec dd {
+  font-size: 14px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* ── Files ── */
+
+.brand-kits {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 720px) {
+  .brand-kits {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.brand-kit {
+  padding: 20px;
+}
+
+.brand-kit-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.brand-kit-head h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.brand-kit-head a {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.brand-kit-head a:hover {
+  color: var(--text);
+}
+
+.brand-kit dl {
+  display: grid;
+  gap: 12px;
+}
+
+.brand-kit dt {
+  margin-bottom: 4px;
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 11px;
+}
+
+.brand-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+/* A hanging indent, so a step that wraps continues under its path, not its arrow. */
+.brand-flow li + li {
+  padding-left: 24px;
+  text-indent: -24px;
+}
+
+.brand-flow li + li::before {
+  content: '→';
+  display: inline-block;
+  width: 24px;
+  color: var(--brand-faint);
+  text-indent: 0;
+}
+
+.brand-flow code {
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* Each step's own path gets a pill; names in the prose after it stay inline. */
+.brand-flow code:first-child {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--brand-sunk);
+}
+
+.brand-tree div {
+  display: grid;
+  align-items: baseline;
+  gap: 2px 24px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--brand-line);
+}
+
+@media (min-width: 900px) {
+  .brand-tree div {
+    grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+  }
+}
+
+.brand-tree dt {
+  color: var(--text-dim);
+  font-family: var(--brand-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.brand-tree code {
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.brand-tree dd {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}

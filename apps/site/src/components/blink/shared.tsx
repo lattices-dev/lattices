@@ -19,7 +19,7 @@ export function Reveal({
   const [inView, setInView] = useState(false)
 
   useEffect(() => {
-    setArmed(true)
+    queueMicrotask(() => setArmed(true))
     const el = ref.current
     if (!el) return
     const io = new IntersectionObserver(

@@ -16,6 +16,7 @@ final class LayerIndexState: ObservableObject {
     @Published private(set) var readAt = Date()
     private var cached: EditorBridge.Snapshot?
     private var capturedAt = Date.distantPast
+    private var rowsRevision: String?
     private let defaults: UserDefaults
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -36,8 +37,21 @@ final class LayerIndexState: ObservableObject {
         if let cached, Date().timeIntervalSince(capturedAt) < 0.5 { return cached }
         let next = try EditorBridge.liveSnapshot()
         capturedAt = Date()
-        if cached?.subject.revision != next.subject.revision { readAt = capturedAt }
         cached = next
+        updateRows(next)
+        return next
+    }
+
+    /// Overview's sidebar does not need the editor's live AX layout preview.
+    /// Keep this separate from the full snapshot cache so opening the editor
+    /// cannot receive a membership-only projection without geometry.
+    func refreshRows() throws {
+        updateRows(try EditorBridge.liveSnapshot(includeGeometry: false))
+    }
+
+    private func updateRows(_ next: EditorBridge.Snapshot) {
+        if rowsRevision != next.subject.revision { readAt = Date() }
+        rowsRevision = next.subject.revision
         let groups = next.projection["groups"] as? [[String: Any]] ?? []
         let updated = groups.compactMap { group -> Row? in
             guard let id = group["id"] as? String, let label = group["label"] as? String else { return nil }
@@ -45,7 +59,6 @@ final class LayerIndexState: ObservableObject {
             return Row(id: id, label: label, windows: windows)
         }
         if rows != updated { rows = updated }
-        return next
     }
 }
 

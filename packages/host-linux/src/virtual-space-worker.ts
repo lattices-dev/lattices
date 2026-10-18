@@ -9,6 +9,8 @@ import * as input from "./input.ts";
 import { PointerSession, type Button, type Extent } from "./wayland.ts";
 import { bool, num, requireStr, str, type Params } from "./router.ts";
 
+import { VirtualRequestQueue } from "./virtual-request-queue.ts";
+
 interface Node { id: number; app_id?: string; name?: string; focused?: boolean; rect: { x: number; y: number; width: number; height: number }; nodes?: Node[]; floating_nodes?: Node[] }
 // D-Bus activated services can write to stdout; fd 3 is reserved for RPC.
 const protocol = createWriteStream("", { fd: 3, autoClose: false });
@@ -34,6 +36,7 @@ export async function runVirtualSpaceWorker() {
   let compositor: ChildProcess | undefined;
   let pointer: PointerSession | undefined;
   let closing = false;
+  let requests: VirtualRequestQueue | undefined;
   let log = "";
   let socket = "";
   let lastInputAt = 0;
@@ -41,6 +44,7 @@ export async function runVirtualSpaceWorker() {
   async function stop() {
     if (closing) return;
     closing = true;
+    requests?.stop();
     await pointer?.close().catch(() => {});
     for (const app of apps) { try { if (app.pid) process.kill(-app.pid, "SIGTERM"); } catch {} }
     if (compositor?.exitCode === null) compositor.kill("SIGTERM");
@@ -59,6 +63,7 @@ export async function runVirtualSpaceWorker() {
     const config = join(directory, "config");
     writeFileSync(config, `xwayland disable\noutput HEADLESS-1 mode ${width}x${height}\ndefault_border none\nseat seat0 hide_cursor 1500\n`, { mode: 0o600 });
     compositor = spawn(sway, ["--config", config, "--unsupported-gpu"], { env: compositorEnv, stdio: ["ignore", "ignore", "pipe"] });
+    compositor.on("spawn", () => emit({ event: "owned-group", pid: compositor!.pid }));
     compositor.stderr?.on("data", append);
     let startupError: Error | undefined;
     compositor.on("error", error => { startupError = error; });
@@ -140,6 +145,7 @@ export async function runVirtualSpaceWorker() {
         if (!executable) throw new Error(`Missing application: ${app}`);
         const child = spawn(executable, args, { env: process.env, detached: true, stdio: ["ignore", "ignore", "pipe"] });
         await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+        emit({ event: "owned-group", pid: child.pid });
         apps.add(child); child.stderr?.on("data", append);
         child.once("exit", () => {
           // Finish any descendants while this launch's process group is ours.
@@ -201,13 +207,13 @@ export async function runVirtualSpaceWorker() {
       return { ok: true, space: "virtual", executed: execute, status: execute ? "executed" : "staged", ...plan };
     }
     emit({ event: "ready", width, height });
-    let queue = Promise.resolve();
+    requests = new VirtualRequestQueue(perform, emit);
     lines.on("line", line => {
-      queue = queue.then(async () => {
-        let id: number | undefined;
-        try { const request = JSON.parse(line); id = request.id; const result = await perform(request.method, request.params ?? {}); emit({ id, result }); }
-        catch (error) { emit({ id, error: (error as Error).message }); }
-      });
+      try {
+        const request = JSON.parse(line);
+        if (request.cancel !== undefined) requests!.cancel(request.cancel);
+        else void requests!.enqueue(request);
+      } catch (error) { emit({ error: (error as Error).message }); }
     });
   } catch (error) { emit({ event: "failed", message: (error as Error).message }); await stop(); process.exit(1); }
 }

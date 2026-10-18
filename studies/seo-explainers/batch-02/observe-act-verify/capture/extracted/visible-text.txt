@@ -1,0 +1,7 @@
+User: ok, let's build more explainers
+Audience: mid level aspiring power user
+Source-reviewed teaching text:
+Observe. Goal: save Weekend plans. Find the right window and the Save control.
+Act. Press Save once. An accepted action does not prove the file was saved.
+Verify. The app reports “Could not save”. The error means the goal is still unmet.
+Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help.

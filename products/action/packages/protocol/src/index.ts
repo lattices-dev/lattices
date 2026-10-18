@@ -542,6 +542,9 @@ export interface AgentLayerWindow {
  * top-left origin, in points.
  */
 export interface AgentLayerState {
+  workspace?: string;
+  previewDisplayId?: number | null;
+  previewFull?: boolean;
   pid: number;
   displayId: number;
   bounds: Bounds;
@@ -555,6 +558,7 @@ export interface AgentLayerState {
 }
 
 export interface AgentLayerStatus {
+  workspace?: string;
   active: boolean;
   owner: AgentLayerOwner;
   ownerPid?: number;

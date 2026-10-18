@@ -1,3 +1,4 @@
+import { createFastActions } from "./fast-actions.js";
 import type {
   ActionMessage,
   ActionResponse,
@@ -21,13 +22,16 @@ declare const chrome: {
   };
 };
 
+const fastActions = createFastActions(document, setElementValue);
+
 const companionGlobal = globalThis as { __ACTION_CHROME_COMPANION_LOADED__?: boolean };
 
 if (!companionGlobal.__ACTION_CHROME_COMPANION_LOADED__) {
   companionGlobal.__ACTION_CHROME_COMPANION_LOADED__ = true;
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const response = handleMessage(message);
-    sendResponse(response);
+    Promise.resolve(response).then(sendResponse, error => sendResponse({ ok: false, error: String(error) }));
+    return true;
   });
 }
 
@@ -43,13 +47,17 @@ const defaultObserveSelector = [
   "[contenteditable='plaintext-only']"
 ].join(",");
 
-function handleMessage(message: unknown): ActionResponse {
+function handleMessage(message: unknown): ActionResponse | Promise<ActionResponse> {
   if (!isActionMessage(message)) {
     return { ok: false, error: "Unsupported Action companion message." };
   }
 
   try {
     switch (message.method) {
+      case "action.fast.observe":
+        return { ok: true, result: fastActions.observe() };
+      case "action.fast.act":
+        return fastActions.act(message.params).then(result => ({ ok: true as const, result }));
       case "action.observe":
         return { ok: true, result: observe(message.params) };
       case "action.resolve":
@@ -504,6 +512,8 @@ function isActionMessage(message: unknown): message is ActionMessage {
   return (
     method === "action.tabs.query" ||
     method === "action.tabs.ensure" ||
+    method === "action.fast.observe" ||
+    method === "action.fast.act" ||
     method === "action.observe" ||
     method === "action.resolve" ||
     method === "action.setValue" ||

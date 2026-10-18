@@ -3842,14 +3842,14 @@ func waitForFinishedSignal(at path: String) throws {
     }
 }
 
-/// Quit every running copy of Action and wait for it to actually be gone.
+/// Quit the launcher without disconnecting persistent monitors or stopping independent tasks.
 ///
 /// Asks first with `terminate()` — the quit Apple Event, which lets the app run
 /// `applicationWillTerminate` and stop its agent child — and escalates to
 /// `forceTerminate()` only for whatever is still standing when the grace period
 /// runs out. A single healthy instance answers in about 0.15s; the long tail is
 /// an instance that is wedged, and forcing that one is the point.
-func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
+func terminateRunningActionApps(timeout: TimeInterval = 6, logger: DebugLogger) -> Bool {
     let bundleId = ActionAppIdentity.mainBundleIdentifier
 
     // Everything except this process. `bun run native:host -- quit-app` runs the same
@@ -3858,10 +3858,17 @@ func terminateRunningActionApps(timeout: TimeInterval = 6) -> Bool {
     // before it can write its reply, and the caller sees a hang followed by
     // "ActionHost did not write a reply file".
     let selfPid = ProcessInfo.processInfo.processIdentifier
-    func running() -> [NSRunningApplication] {
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
-            .filter { $0.processIdentifier != selfPid }
-    }
+    // Snapshot only positively identified launchers. Unknown processes are preserved;
+    // a shared bundle ID is not ownership of a display, recording, or another task.
+    let launchers = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        .filter { $0.processIdentifier != selfPid }
+        .filter { app in
+            let args = ActionProcessRole.arguments(pid: app.processIdentifier)
+            let quit = ActionProcessRole.isLauncher(args)
+            logger.log("quit-app: pid=\(app.processIdentifier) role=\(args?.dropFirst().first ?? "unknown") action=\(quit ? "quit-launcher" : "preserve-helper")")
+            return quit
+        }
+    func running() -> [NSRunningApplication] { launchers.filter { !$0.isTerminated } }
 
     guard !running().isEmpty else {
         return true
@@ -3922,13 +3929,13 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         let runner = GuidedCaptureSessionRunner(writer: writer, logger: logger, options: options)
         try await runner.run()
     case .quitApp:
-        let didQuit = terminateRunningActionApps()
+        let didQuit = terminateRunningActionApps(logger: logger)
         try writer.write(
             ActionHostResponse(
                 status: didQuit ? "quit" : "error",
                 outputPath: nil,
                 detail: didQuit
-                    ? "terminated-running-action-apps"
+                    ? "terminated-action-launchers-preserved-independent-helpers"
                     : "action-still-running-after-force-terminate"
             )
         )

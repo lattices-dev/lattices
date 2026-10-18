@@ -11,6 +11,7 @@ import SwiftUI
 /// through the same verified path as the window's Move menu.
 struct OverviewStage: View {
     @ObservedObject var model: OverviewModel
+    var canvas = false
 
     static let headHeight: CGFloat = 16
     static let spacing: CGFloat = 8
@@ -62,29 +63,33 @@ struct OverviewStage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GeometryReader { geo in
-                let layout = Self.layout(model.projection.desk, in: geo.size)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: Self.displayGap) {
-                        ForEach(Array(model.projection.desk.enumerated()), id: \.element.id) { index, monitor in
-                            OverviewDisplayBlock(
-                                model: model, monitor: monitor,
-                                mapSize: layout.maps[index], thumbSize: layout.thumbs[index],
-                                quiet: model.workingRows.isEmpty
-                            )
+            if canvas {
+                OverviewDesktopCanvas(model: model)
+            } else {
+                GeometryReader { geo in
+                    let layout = Self.layout(model.projection.desk, in: geo.size)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: Self.displayGap) {
+                            ForEach(Array(model.projection.desk.enumerated()), id: \.element.id) { index, monitor in
+                                OverviewDisplayBlock(
+                                    model: model, monitor: monitor,
+                                    mapSize: layout.maps[index], thumbSize: layout.thumbs[index],
+                                    quiet: model.workingRows.isEmpty
+                                )
+                            }
+                        }
+                        .frame(minWidth: geo.size.width, minHeight: geo.size.height)
+                    }
+                    .overlay {
+                        if model.workingRows.isEmpty, !model.projection.desk.isEmpty {
+                            OverviewEmptyScope(model: model)
                         }
                     }
-                    .frame(minWidth: geo.size.width, minHeight: geo.size.height)
                 }
-                .overlay {
-                    if model.workingRows.isEmpty, !model.projection.desk.isEmpty {
-                        OverviewEmptyScope(model: model)
-                    }
-                }
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 14)
-            .padding(.bottom, 4)
             Group {
                 if let edit = model.editing {
                     OverviewDraftBar(model: model, edit: edit)
@@ -254,10 +259,11 @@ struct OverviewMap: View {
     /// Don't say "nothing in scope" here: another monitor has the focus, or
     /// the stage says it once for all of them.
     let quiet: Bool
+    var connected = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.35))
+            RoundedRectangle(cornerRadius: connected ? 0 : 6).fill(Color.black.opacity(0.35))
             ForEach(context, id: \.wid) { tile in contextView(tile) }
             ForEach(tiles.reversed(), id: \.row.wid) { tile in tileView(tile) }
             if !quiet, !space.rows.contains(where: \.inScope) {
@@ -267,17 +273,17 @@ struct OverviewMap: View {
                     .frame(width: size.width, height: size.height)
                     .allowsHitTesting(false)
             }
-            if !space.isCurrent {
+            if !space.isCurrent && !connected {
                 peekBar
             }
         }
         .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: connected ? 0 : 6))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: connected ? 0 : 6)
                 .strokeBorder(
-                    space.isCurrent ? Palette.borderLit : Palette.textMuted,
-                    style: StrokeStyle(lineWidth: OverviewChrome.stroke, dash: space.isCurrent ? [] : [4, 3])
+                    connected ? Palette.border : space.isCurrent ? Palette.borderLit : Palette.textMuted,
+                    style: StrokeStyle(lineWidth: OverviewChrome.stroke, dash: connected || space.isCurrent ? [] : [4, 3])
                 )
         )
         .modifier(OverviewWindowDropTarget(model: model, display: display, spaceId: space.spaceId))
@@ -582,6 +588,7 @@ struct OverviewTray: View {
         let title: String
         let detail: String
         let rows: [OverviewRow]
+        let destination: OverviewMoveDestination?
     }
 
     var groups: [Group] {
@@ -595,13 +602,14 @@ struct OverviewTray: View {
                 let state = onMap ? "on the map" : space.isCurrent ? "live" : (space.mapNote ?? "not showing")
                 let group = Group(
                     id: "\(space.spaceId)", title: space.title,
-                    detail: "\(monitor.display.name) · \(state)", rows: space.rows
+                    detail: "\(monitor.display.name) · \(state)", rows: space.rows,
+                    destination: OverviewWindowDrop.destination(on: monitor.display, spaceId: space.spaceId)
                 )
                 if onMap { shown.append(group) } else { rest.append(group) }
             }
         }
         if !model.projection.unplaced.isEmpty {
-            rest.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced))
+            rest.append(Group(id: "unplaced", title: "Not on a Space", detail: "hidden · minimized", rows: model.projection.unplaced, destination: nil))
         }
         return shown + rest
     }
@@ -622,9 +630,12 @@ struct OverviewTray: View {
                             ForEach(groups) { group in
                                 groupView(group)
                                     .frame(width: width, height: geo.size.height, alignment: .topLeading)
+                                    .contentShape(Rectangle())
                                     .overlay(alignment: .trailing) {
                                         Rectangle().fill(Palette.border).frame(width: 1)
                                     }
+                                    .modifier(OverviewWindowDropTarget(model: model, destination: group.destination))
+                                    .accessibilityHint(group.destination.map { "Drop a window to move it to \($0.title)" } ?? "")
                             }
                         }
                     }

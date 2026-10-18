@@ -1,10 +1,13 @@
+import { distribution } from './distribution';
+
 /** Product-scoped release policy shared by companion installer entry points. */
 export type CompanionReleaseProduct = 'blink' | 'action' | 'speech';
 
 export const companionDistribution = {
-  releasesAPI: 'https://api.github.com/repos/arach/lattices/releases',
+  releasesAPI: distribution.releasesAPI,
   downloadOrigin: 'https://github.com',
-  downloadPrefix: '/arach/lattices/releases/download/',
+  downloadPrefix: `/${distribution.repository}/releases/download/`,
+  legacyDownloadPrefix: `/${distribution.legacyRepository}/releases/download/`,
   products: {
     blink: { tagPrefix: 'blink-v', asset: 'Blink.dmg', bundleID: 'dev.arach.blink' },
     action: { tagPrefix: 'action-v', asset: 'Action.dmg', bundleID: 'dev.lattices.Action' },
@@ -58,9 +61,10 @@ export function selectCompanionRelease(
         || typeof asset.browser_download_url !== 'string') continue;
     let url: URL;
     try { url = new URL(asset.browser_download_url); } catch { continue; }
-    const expectedPath = `${companionDistribution.downloadPrefix}${encodeURIComponent(tag)}/${policy.asset}`;
+    const expectedPaths = [companionDistribution.downloadPrefix, companionDistribution.legacyDownloadPrefix]
+      .map(prefix => `${prefix}${encodeURIComponent(tag)}/${policy.asset}`);
     if (url.origin !== companionDistribution.downloadOrigin || url.username || url.password
-        || url.pathname !== expectedPath || url.search || url.hash) continue;
+        || !expectedPaths.includes(url.pathname) || url.search || url.hash) continue;
     const comparison = parts.reduce((result, part, i) => result || Math.sign(part - selectedVersion[i]!), 0);
     if (comparison <= 0) continue;
     selected = { product, version, tag, assetURL: url.href, size: asset.size, bundleID: policy.bundleID };

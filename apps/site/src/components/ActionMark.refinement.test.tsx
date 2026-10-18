@@ -12,13 +12,15 @@ describe('ActionMark', () => {
     expect(new Set(ids).size).toBe(ids.length);
     for (const [, ref] of html.matchAll(/url\(#([^)]+)\)/g)) expect(ids).toContain(ref);
   });
-  test('clean mark removes all construction layers and can be transparent', () => {
+  test('clean mark removes all construction layers and draws the A in the ink, the cursor in the accent', () => {
     const html = render({ guides: false, background: false });
     expect(html).not.toContain('<text');
     expect(html).not.toContain('<rect');
     expect(html).not.toContain('stroke-dasharray');
     expect(html).toContain('mask=');
-    expect(html).toContain('#c58a70');
+    const fills = (markup: string) => [...markup.matchAll(/fill="(#[0-9a-f]{6})"/g)].map(m => m[1]);
+    expect(fills(html)).toEqual(['#101518', '#ef6a47']);
+    expect(fills(render({ guides: false, background: false, accent: false }))).toEqual(['#101518', '#101518']);
   });
   test('supports dark palette, paper padding, and independent title block', () => {
     const html = render({ theme: 'dark', padding: 40, guides: false, titleBlock: true, year: 2027 });

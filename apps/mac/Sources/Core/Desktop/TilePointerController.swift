@@ -145,7 +145,7 @@ final class TilePointerController {
     private func handleKeyDown(_ event: NSEvent) -> Bool {
         // When another feature owns the Ctrl+Option hold, chords fall through
         // to the registered tiling hotkeys instead of committing here.
-        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !WindowQuickMenu.shared.isActive else { return false }
+        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !SpaceZoomInput.engaged, !WindowQuickMenu.shared.isActive else { return false }
         guard !Self.modifierKeyCodes.contains(event.keyCode) else { return false }
         guard Self.ctrlOptionHeld(event.modifierFlags) else {
             cancelApply()
@@ -175,7 +175,7 @@ final class TilePointerController {
 
     private func handleFlags(_ flags: NSEvent.ModifierFlags) {
         // A ⌃⌥ right-click's menu owns the hold until it closes.
-        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !WindowQuickMenu.shared.isActive else {
+        guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !SpaceZoomInput.engaged, !WindowQuickMenu.shared.isActive else {
             pendingArm?.cancel()
             pendingArm = nil
             if armed {
@@ -210,7 +210,7 @@ final class TilePointerController {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.pendingArm = nil
-                guard Self.ctrlOptionHeld(NSEvent.modifierFlags), !self.armed else { return }
+                guard !SpaceZoomInput.engaged, Self.ctrlOptionHeld(NSEvent.modifierFlags), !self.armed else { return }
                 DiagnosticLog.shared.info("TilePointer: arm flags=\(NSEvent.modifierFlags.rawValue)")
                 self.arm()
             }

@@ -115,7 +115,7 @@ async function fixture(options: {
 }
 
 function displayFor(pid: number, width = 1280, height = 800): AgentLayerDisplayState {
-  return { schemaVersion: 1, pid, displayId: 7, startedAt: "2026-09-29T11:00:00.000Z", width, height, serialNumber: 42 };
+  return { schemaVersion: 1, pid, displayId: 7, startedAt: "2026-09-29T11:00:00.000Z", width, height, serialNumber: 0x41435401 };
 }
 
 describe("parseAgentLayerOpen", () => {
@@ -219,10 +219,13 @@ describe("AgentLayerDirector", () => {
     } finally { await cleanup(); }
   });
 
-  test("release closes the session first and then removes the prepared display", async () => {
+  test("release requires explicit task closure before removing the prepared display", async () => {
     const { director, live, terminated, cleanup } = await fixture();
     try {
       const opened = await director.open();
+      await assert.rejects(director.releaseDisplay(), /Close the active task explicitly/);
+      assert.equal(live.has(opened.layer!.pid), true);
+      await director.close();
       const released = await director.releaseDisplay();
       assert.equal(released.state, "missing");
       assert.equal(released.active, false);
@@ -254,13 +257,13 @@ describe("AgentLayerDirector", () => {
   test("queued prepare and open calls keep one display and separate session identities", async () => {
     const { director, calls, cleanup } = await fixture({ prepared: false });
     try {
-      const [prepared, first, second] = await Promise.all([director.prepareDisplay(), director.open(), director.open()]);
+      const preparation = director.prepareDisplay();
+      const opening = director.open();
+      await assert.rejects(director.open(), /already has an active task/);
+      const [prepared, first] = await Promise.all([preparation, opening]);
       assert.equal(calls.filter(call => call[0] === "agent-display").length, 1);
       assert.equal(first.layer?.displayId, prepared.display?.displayId);
-      assert.equal(second.layer?.displayId, prepared.display?.displayId);
-      assert.notEqual(first.layer?.pid, second.layer?.pid);
-      assert.notEqual(first.layer?.startedAt, second.layer?.startedAt);
-      assert.equal((await director.status()).layer?.pid, second.layer?.pid);
+      assert.equal((await director.status()).layer?.pid, first.layer?.pid);
     } finally { await cleanup(); }
   });
 
@@ -356,10 +359,13 @@ describe("AgentLayerDirector", () => {
     }
   });
 
-  test("opening again closes the previous layer first", async () => {
+  test("opening again preserves the existing task until explicit close", async () => {
     const { director, live, cleanup } = await fixture();
     try {
       const first = await director.open({ bundleId: "com.apple.calculator" });
+      await assert.rejects(director.open({ bundleId: "com.apple.TextEdit" }), /already has an active task/);
+      assert.equal(live.has(first.layer!.pid), true);
+      await director.close();
       const second = await director.open({ bundleId: "com.apple.TextEdit" });
       assert.equal(live.has(first.layer!.pid), false);
       assert.equal(live.has(second.layer!.pid), true);
@@ -401,7 +407,7 @@ describe("AgentLayerDirector", () => {
     }
   });
 
-  test("status cleans up after a layer that died", async () => {
+  test("status reports a dead layer without racing lifecycle file mutations", async () => {
     const { director, live, cleanup } = await fixture();
     try {
       const opened = await director.open({ bundleId: "com.apple.calculator" });
@@ -409,7 +415,7 @@ describe("AgentLayerDirector", () => {
       const status = await director.status();
       assert.equal(status.active, false);
       assert.equal(status.layer, undefined);
-      assert.equal(await exists(director.paths().state), false);
+      assert.equal(await exists(director.paths().state), true);
       assert.equal(await director.routing(), undefined);
     } finally {
       await cleanup();

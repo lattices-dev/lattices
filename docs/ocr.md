@@ -57,7 +57,7 @@ timestamp.
 
 ### From the command palette
 
-The OmniSearch bar (Cmd+Shift+M) searches OCR content alongside windows,
+The OmniSearch bar (Control+Option+Space) searches OCR content alongside windows,
 projects, and sessions. Matches show as "Screen Text" results with
 contextual snippets.
 
@@ -105,7 +105,7 @@ Agents can query OCR data through four API methods:
 Returns the latest OCR results for all on-screen windows.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 const snapshot = await daemonCall('ocr.snapshot')
 // [{ wid, app, title, frame, fullText, blocks, timestamp }, ...]
@@ -176,7 +176,7 @@ Entries older than 3 days are automatically deleted.
 A typical agent workflow: trigger a scan, then search for relevant content.
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Trigger a fresh scan
 await daemonCall('ocr.scan')

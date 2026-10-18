@@ -1,11 +1,22 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ArrowRight, Command } from "lucide-react";
 import type { StudioHudsonRenderContext } from "studio/app-shell";
 import { useStudioRouter } from "studio/router";
+import { CursorStudy } from "@/studio/studies/Cursor";
+import { DocStudy } from "@/studio/studies/Doc";
 import { DeckBuilderStudy } from "@/studio/studies/DeckBuilder";
+import { HandsoffStudy } from "@/studio/studies/Handsoff";
+import { MenubarStudy } from "@/studio/studies/Menubar";
+import { IntentsStudy } from "@/studio/studies/Intents";
+import { ShellStudy } from "@/studio/studies/Shell";
+import { ShellBStudy } from "@/studio/studies/ShellB";
+import { TilingStudy } from "@/studio/studies/Tiling";
 import { CrossAppTabsStudy } from "@/studio/studies/CrossAppTabs";
 import { SpaceBezelStudy } from "@/studio/studies/SpaceBezel";
+import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
+import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
 import {
   HOME_HREF,
@@ -18,12 +29,53 @@ import {
 
 type RenderContext = StudioHudsonRenderContext<Bucket, Surface, Status>;
 
+/**
+ * Studies that own a second path segment — `/studio/studies/shell/home` is the
+ * Home exhibit of the shell study. `resolvePath` in StudioApp hands the nav the
+ * parent href so the rail stays lit; the exhibit is recovered here.
+ */
+type ExhibitStudy = (props: { entry: LatticesPage; exhibit?: string }) => ReactNode;
+
+const EXHIBIT_STUDIES: Record<string, ExhibitStudy> = {
+  "/studio/studies/shell": ShellStudy,
+  "/studio/studies/shell-b": ShellBStudy,
+  "/studio/studies/tiling": TilingStudy,
+};
+
+/**
+ * `resolvePath` collapses `/studio/studies/shell/home` to the parent href so the
+ * nav rail lights, which means `pathname` here has already lost the exhibit.
+ * Read it back off the router, which still holds the real location.
+ */
+function ExhibitRoute({ base, page }: { base: string; page: LatticesPage }) {
+  const { usePathname } = useStudioRouter();
+  const live = (usePathname() ?? base).replace(/\/$/, "");
+  const Study = EXHIBIT_STUDIES[base];
+  const exhibit = live.startsWith(`${base}/`) ? live.slice(base.length + 1) : undefined;
+  return <Study entry={page} exhibit={exhibit || undefined} />;
+}
+
 export function renderStudioPage({ pathname, page }: RenderContext) {
   if (pathname === HOME_HREF) return <HomePage />;
+
+  if (page && EXHIBIT_STUDIES[page.href]) {
+    return <ExhibitRoute base={page.href} page={page} />;
+  }
+
+  if (page?.bucket === "docs") {
+    return <DocStudy slug={page.href.slice("/studio/eng/".length)} />;
+  }
+
+  if (page?.href === "/studio/studies/intents") return <IntentsStudy entry={page} />;
+  if (page?.href === "/studio/studies/handsoff") return <HandsoffStudy entry={page} />;
+  if (page?.href === "/studio/studies/cursor") return <CursorStudy entry={page} />;
   if (page?.href === "/studio/studies/nexus") return <NexusStudy page={page} />;
+  if (page?.href === "/studio/studies/menubar") return <MenubarStudy page={page} />;
   if (page?.href === "/studio/studies/deck-builder") return <DeckBuilderStudy page={page} />;
+  if (page?.href === "/studio/studies/action-definitions") return <ActionDefinitionsStudy page={page} />;
   if (page?.href === "/studio/studies/cross-app-tabs") return <CrossAppTabsStudy page={page} />;
   if (page?.href === "/studio/studies/space-bezel") return <SpaceBezelStudy page={page} />;
+  if (page?.href === "/studio/studies/linux-command-center") return <LinuxCommandCenterStudy page={page} />;
   if (page?.href === "/studio/studies/product-family") return <ProductFamilyStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;

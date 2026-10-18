@@ -1,0 +1,31 @@
+{
+  "checked": [
+    "local HTTP preview loads",
+    "rendering picker arrow navigation and Enter selection",
+    "Escape restores focus to rendering trigger",
+    "four treatment selections",
+    "graphite and paper surfaces",
+    "artwork and page modes",
+    "presence adjustment",
+    "drift play and pause",
+    "workspace rows update window labels and layout",
+    "PNG export reached Downloads and image was visually inspected",
+    "preview.js and renderer.js syntax checks"
+  ],
+  "consoleErrors": [],
+  "visualEvidence": [
+    "paper-page.jpg",
+    "components.jpg"
+  ],
+  "limitations": [
+    "Browser viewport override did not take effect; desktop-width screenshot was not verified.",
+    "Reduced-motion and back-forward-cache behavior checked in source, not simulated."
+  ],
+  "reviewFixes": [
+    "Preserve renderer on cached navigation",
+    "Expose example window names to assistive technology",
+    "Stack inspector below 500 pixels",
+    "Raise smallest labels to 11 pixels"
+  ],
+  "scope": "Local exploratory study only. No production, app, or remote source changes."
+}

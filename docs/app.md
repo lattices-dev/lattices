@@ -32,7 +32,7 @@ and remove it with `lats app login disable`.
 lats update           # Update the CLI and app together
 ```
 
-`lats update` reinstalls `@arach/lattices` with the package manager
+`lats update` reinstalls `@lattices/lattices` with the package manager
 that owns your global install (npm, bun, or pnpm). It re-registers
 launch-at-login so the LaunchAgent points at the new install, and it
 relaunches the app if it was running. Pass `--force` to reinstall when
@@ -40,7 +40,7 @@ you already have the latest version.
 
 ## Command palette
 
-Press **Cmd+Shift+M** from anywhere to open the command palette.
+Press **Control+Option+Space** from anywhere to open the command palette.
 It's a searchable list of every action the app can perform, with
 fuzzy matching on titles and subtitles.
 
@@ -166,41 +166,44 @@ frontmost window.
 | Right Third  | Right third                     |
 | Center       | 80% width, 80% height, centered (20% margin all sides) |
 
-## Moving windows between monitors
+## Moving windows between displays and desktops
 
-Window movement is a right-click action wherever a window is listed.
-Both surfaces share one movement engine — the same canonical
-`windows.move` / `windows.place` semantics the CLI and daemon API use —
-so moving from the app, the CLI, or the API always behaves identically.
+In **Overview**, select a window and open **Move** in the floating controls.
+Each destination includes the display name and desktop number, such as
+**DELL S3422DWG · Desktop 2** or **Action Agent Layer · Desktop 2**.
+**Bring Here** selects the current desktop on the display that contains the
+Overview window.
 
-Right-click a window in either surface:
+Drag a window shape onto another display map to move it to that display's
+current desktop. Drop it onto a desktop thumbnail to choose that exact
+desktop. The destination highlight identifies the drop target. Selecting a
+window shows its controls over the canvas; the display maps and arrangement
+tray keep their positions.
 
-- **Desktop Inventory** — window rows in the inventory list.
-- **Studio** — window shapes on the canvas and window rows in the
-  sidebar (both the visible-windows list and the layer trees).
+Desktop Inventory and Studio also offer window movement in their context
+menus:
 
-The menu offers, top to bottom:
+- **Bring Here** moves the selection to the UI's display and current desktop.
+- **Move to Desktop** lists each display and its desktops.
+- **Move to Next Monitor** cycles through displays and preserves normalized
+  window position and size.
+- **Move to Monitor** selects a display's current desktop.
+- **Move & Place** selects a display and a placement slot for one window.
 
-- **Move to Next Monitor** — one click; cycles deterministically
-  through the display topology and wraps. The window keeps its
-  normalized position and size on the target display's visible frame,
-  clamped to fit.
-- **Move to Monitor** — submenu listing each display by name; the
-  current display is checked and disabled.
-- **Move & Place** — single-window only; pick an exact display, then a
-  canonical slot (maximize, center, halves, quarters, thirds).
+A right-click on a member of a multi-selection targets the whole selection.
+Each window keeps its own normalized frame. Move & Place is available for a
+single window. Desktop destinations remain available with one display.
 
-Right-clicking a member of a multi-selection moves the whole selection
-("Move 3 Windows to Next Monitor"); each window keeps its own
-normalized frame, so selections never collapse into one slot. Move &
-Place is omitted for multi-selections because a single slot would
-stack the windows. On a single-display machine the movement section
-disappears entirely.
+The UI, CLI, and daemon use the same verified movement operation. If a window
+is on an inactive desktop, Lattices first carries it onto its source display's
+current desktop. It then transfers the window to the chosen display and
+desktop. Mission Control can appear during the move. Keep the pointer free
+until the operation finishes.
 
-Moves happen immediately — no dialog. A short flash reports the
-truthful outcome (moved, partially moved, unverified, or blocked on
-the Accessibility permission), and the list or canvas refreshes with
-the selection preserved.
+A move succeeds only after Lattices verifies the final display, desktop, and
+frame. If a step fails, Lattices attempts to restore the original location
+and reports the failure. The interface keeps the selection and refreshes the
+observed window state.
 
 ## Space navigation
 
@@ -227,11 +230,37 @@ With Accessibility permission, the app intercepts Ctrl+← / Ctrl+→ before
 Mission Control and switches Spaces through a synthetic Dock swipe under
 a screen-update freeze — the real switch path, so Dock's space model,
 Mission Control, and space-change observers all stay consistent, while
-the freeze makes it render as an instant cut (the SkyLight switch the
-mouse gesture uses remains as fallback). A small Lattices tray confirms
-the landing Space — a boxy row of logo cells, one per Space, with the
-active cell lit — docked top-center by default, and shows an amber
-"EDGE" state when there is no adjacent Space. Agents can move it via
+the freeze makes it render as an instant cut. A desktop filmstrip appears
+mid-screen over a subtle neutral dimmed backdrop. The focus frame stays
+centered while window-layout previews slide through it; the small rail below
+represents every desktop. The preview reads the existing desktop inventory
+without taking screenshots or scanning windows on each keypress.
+Pressing past the first or last desktop is silent. Reduce Motion updates the
+selection without sliding; Reduce Transparency makes the tray and canvas backdrop opaque.
+
+While the filmstrip is visible, Control+Up, Control+Down, or Control+minus opens the full
+connected desktop canvas in one motion. You can also open it directly under
+the pointer: hold the right mouse button and pull upward, or hold
+Control+Option and scroll down. An ordinary right-click still opens its
+context menu. The opening scroll's remaining movement and momentum are
+consumed so they cannot immediately change the new canvas camera.
+
+The canvas stays open when you release the button or modifiers. Moving the
+pointer highlights a desktop without moving the canvas; Left/Right or a
+single click also chooses it. Up (with or without Control) and plus zoom
+toward the highlighted desktop. Down and minus zoom back out. Enter or a
+double-click lands there; Escape cancels without switching. Zooming never lands. Control+Option+scroll
+zooms around the pointer, ordinary scrolling pans, and the bottom-left minimap
+repositions the view. Pinch, Command+scroll, and the zoom buttons also work.
+Fit shows all desktops. Text fields keep their arrow keys. The Control+Option
+tiling HUD and Spatial Lens stay inactive while this navigator owns the gesture.
+
+Every page in the main window has a **Zoom out** control in its header. It
+opens the same connected desktop canvas over the current page. **Back to…**
+returns to that page with its draft, filters, and local view state intact.
+Choosing a sidebar page leaves the canvas and navigates normally.
+
+Agents can move the tray via
 `settings.spaceBezel.set` (`top`, `bottom`, `center`, or `travelEdge`
 to dock at the edge of travel). Only bare Ctrl+arrows are claimed;
 Ctrl+Option+arrows still tile. While the feature is on, the app
@@ -280,6 +309,18 @@ The settings window has five tabs:
 - hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
 - tap Caps Lock -> Escape
 
+With **Spatial Lens** enabled, holding physical Control + Option reveals
+eight contextual placement targets around the pointer. Choose a side to preview
+left, right, top, or bottom placement, or choose a corner for quarter placement.
+A deliberate outer flick well beyond a side target previews the physically adjacent display in that direction;
+release either modifier to commit the one visible proposal. Pull back before
+release to return to the original display; release in the neutral center or
+press another key to cancel.
+
+Repeated placement follows the window's live geometry: half, third,
+two-thirds, then half again. The exact Control + Option hold deliberately
+excludes Command and Shift, so Caps Lock continues to own the Hyper layer.
+
 Rules live in `~/.lattices/keyboard-remaps.json`, and the Settings toggle
 can turn the layer off. Keyboard remaps require Accessibility permission
 because they use a local event tap.
@@ -317,7 +358,7 @@ from Settings > Shortcuts.
 
 | Shortcut          | Action              |
 |-------------------|----------------------|
-| Cmd+Shift+M       | Open command palette |
+| Control+Option+Space       | Open command palette |
 | Hyper+1            | Workspace home       |
 | Hyper+L            | Studio / screen map  |
 | Hyper+2            | Window bezel         |
@@ -325,6 +366,7 @@ from Settings > Shortcuts.
 | Ctrl+Cmd+M         | Hands-off mode       |
 | Hyper+Space        | Hyperspace window survey |
 | Hyper+G            | In-place window tools |
+| Hold Ctrl+Option + pointer | Preview Spatial Lens placement; release to commit |
 | Hyper+H            | Window navigation hints |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
@@ -456,7 +498,7 @@ Agents can query OCR data through four API methods:
 | `ocr.scan`     | Trigger an immediate scan (bypasses timer)     |
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 // Find windows showing error messages
 const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
@@ -499,7 +541,7 @@ lats daemon status
 Or programmatically:
 
 ```js
-import { isDaemonRunning, daemonCall } from '@lattices/cli'
+import { isDaemonRunning, daemonCall } from '@lattices/lattices'
 
 if (await isDaemonRunning()) {
   const status = await daemonCall('daemon.status')

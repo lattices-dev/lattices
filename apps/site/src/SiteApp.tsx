@@ -7,9 +7,14 @@ import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
 import ConceptExperimentPage from './components/ConceptExperimentPage'
-import FamilyPage from './components/FamilyPage'
+import LearnPage from './components/LearnPage'
+import { getLearningRoute, LEARNING_SITE_URL } from './lib/learning'
+import BrandPage from './components/BrandPage'
+import { SiteFooter, SiteHeader } from './components/SiteChrome'
 import { defaultDoc, getBlogPost, getDoc } from './lib/content'
+import FamilyPage from './components/FamilyPage'
 import { routeBrand } from './lib/brand'
+import { routeMeta } from './seo/routes'
 
 export default function SiteApp() {
   const [path, setPath] = useState(() => normalizePath(window.location.pathname))
@@ -18,7 +23,15 @@ export default function SiteApp() {
   useEffect(() => {
     document.title = route.title
     setMeta('description', route.description)
-  }, [route.description, route.title])
+    // Keep metadata correct when entering or leaving a lesson through client navigation.
+    const canonicalPath = routeMeta(path)?.canonicalPath ?? (path === '/docs' ? `/docs/${defaultDoc().slug}` : path.replace(/^\/docs\/blog/, '/blog'))
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', `${LEARNING_SITE_URL}${canonicalPath}`)
+    for (const prefix of ['og', 'twitter']) {
+      document.querySelector(`meta[property="${prefix}:title"]`)?.setAttribute('content', route.title)
+      document.querySelector(`meta[property="${prefix}:description"]`)?.setAttribute('content', route.description)
+    }
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', `${LEARNING_SITE_URL}${canonicalPath}`)
+  }, [path, route.description, route.title])
 
   useEffect(() => {
     const brand = routeBrand(path)
@@ -58,53 +71,60 @@ export default function SiteApp() {
   }, [])
 
   if (route.kind === 'home') return <LandingPage />
+  if (route.kind === 'learning') return <LearnPage path={path} />
   if (route.kind === 'experiment') return <ConceptExperimentPage />
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'speech') return <SpeechPage />
   if (route.kind === 'products') return <ProductsPage />
   if (route.kind === 'family') return <FamilyPage />
+  if (route.kind === 'brand') return <BrandPage />
   if (route.kind === 'docs') return <DocsPage slug={route.slug} />
   if (route.kind === 'blog-index') return <BlogIndex />
   if (route.kind === 'blog-post') return <BlogPostPage slug={route.slug} />
 
   return (
-    <main className="not-found-shell" data-pagefind-ignore>
-      <div className="not-found-card">
-        <p className="not-found-kicker">404</p>
-        <h1 className="not-found-title">We couldn't find that page</h1>
-        <p className="not-found-desc">
-          The link may be outdated, or we may have moved the page. Try one of these instead:
-        </p>
-        <ul className="not-found-suggestions">
-          <li>
-            <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
-          </li>
-          <li>
-            <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
-          </li>
-          <li>
-            <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
-          </li>
-          <li>
-            <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
-          </li>
-          <li>
-            <a href="/blog">Blog</a> — release notes and engineering write-ups
-          </li>
-          <li>
-            <a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">
-              GitHub
-            </a>{' '}
-            — open an issue if the link should work
-          </li>
-        </ul>
-      </div>
-    </main>
+    <div className="docs-page">
+      <SiteHeader />
+      <main className="not-found-shell" data-pagefind-ignore>
+        <div className="not-found-card">
+          <p className="not-found-kicker">404</p>
+          <h1 className="not-found-title">We couldn't find that page</h1>
+          <p className="not-found-desc">
+            The link may be outdated, or we may have moved the page. Try one of these instead:
+          </p>
+          <ul className="not-found-suggestions">
+            <li>
+              <a href="/docs/overview">Documentation overview</a> — what lattices is and how to install it
+            </li>
+            <li>
+              <a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
+            </li>
+            <li>
+              <a href="/products">Products</a> — Lattices, Action, Blink, and Speech
+            </li>
+            <li>
+              <a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts
+            </li>
+            <li>
+              <a href="/blog">Blog</a> — release notes and engineering write-ups
+            </li>
+            <li>
+              <a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">
+                GitHub
+              </a>{' '}
+              — open an issue if the link should work
+            </li>
+          </ul>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
   )
 }
 
 type Route =
+  | { kind: 'learning'; title: string; description: string }
   | { kind: 'home'; title: string; description: string }
   | { kind: 'experiment'; title: string; description: string }
   | { kind: 'action'; title: string; description: string }
@@ -112,68 +132,35 @@ type Route =
   | { kind: 'speech'; title: string; description: string }
   | { kind: 'products'; title: string; description: string }
   | { kind: 'family'; title: string; description: string }
+  | { kind: 'brand'; title: string; description: string }
   | { kind: 'docs'; slug?: string; title: string; description: string }
   | { kind: 'blog-index'; title: string; description: string }
   | { kind: 'blog-post'; slug: string; title: string; description: string }
   | { kind: 'not-found'; title: string; description: string }
 
+function copyFor(path: string): { title: string; description: string } {
+  const meta = routeMeta(path)
+  if (!meta) throw new Error(`Missing SEO metadata for ${path}`)
+  return { title: meta.title, description: meta.description }
+}
+
 function resolveRoute(path: string): Route {
+  const learning = getLearningRoute(path)
+  if (learning) return { kind: 'learning', title: `${learning.title} — Lattices`, description: learning.description }
   if (path === '/experiment' || path === '/concept') {
-    return {
-      kind: 'experiment',
-      title: 'SYS. 01 — Lattices Architectural Study',
-      description: 'An architectural design study: Dieter Rams meets Teenage Engineering for macOS and agent workspaces.',
-    }
+    return { kind: 'experiment', ...copyFor('/experiment') }
   }
 
-  if (path === '/') {
-    return {
-      kind: 'home',
-      title: 'Lattices — the programmable workspace for Mac',
-      description: 'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
-    }
-  }
-
-  if (path === '/action') {
-    return {
-      kind: 'action',
-      title: 'Action — computer use from Lattices',
-      description: 'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
-    }
-  }
-
-  if (path === '/speech') return { kind: 'speech', title: 'Speech — a standalone player from Lattices', description: 'Queue text, choose a voice, and control playback independently.' }
-
-  if (path === '/products') {
-    return {
-      kind: 'products',
-      title: 'Products — Lattices',
-      description: 'Browse Lattices, Action, Blink, Speech, and the agent API.',
-    }
-  }
-
-  if (path === '/family') {
-    return {
-      kind: 'family',
-      title: 'What Lattices can do — Lattices',
-      description: 'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
-    }
-  }
-
-  if (path === '/blink') {
-    return {
-      kind: 'blink',
-      title: 'Blink — spatial notes from Lattices',
-      description: 'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
-    }
-  }
+  if (path === '/') return { kind: 'home', ...copyFor('/') }
+  if (path === '/action') return { kind: 'action', ...copyFor('/action') }
+  if (path === '/speech') return { kind: 'speech', ...copyFor('/speech') }
+  if (path === '/products') return { kind: 'products', ...copyFor('/products') }
+  if (path === '/family') return { kind: 'family', ...copyFor('/family') }
+  if (path === '/brand') return { kind: 'brand', ...copyFor('/brand') }
+  if (path === '/blink') return { kind: 'blink', ...copyFor('/blink') }
 
   if (path === '/blog' || path === '/docs/blog') {
-    return {
-      kind: 'blog-index',
-      title: 'Blog — Lattices',
-      description: 'Ideas and engineering notes from the Lattices team.',
-    }
+    return { kind: 'blog-index', ...copyFor('/blog') }
   }
 
   if (path.startsWith('/blog/') || path.startsWith('/docs/blog/')) {

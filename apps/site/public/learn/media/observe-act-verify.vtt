@@ -1,0 +1,17 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:10.000
+Observe. Goal: save Weekend plans. Find the right window and the Save control.
+
+2
+00:00:10.000 --> 00:00:20.000
+Act. Press Save once. An accepted action does not prove the file was saved.
+
+3
+00:00:20.000 --> 00:00:30.000
+Verify. The app reports “Could not save”. The error means the goal is still unmet.
+
+4
+00:00:30.000 --> 00:00:40.000
+Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help.

@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "@arach/lattices",
+      "name": "@lattices/lattices",
       "devDependencies": {
         "bun-types": "^1.3.10",
         "typescript": "^5.9.3",

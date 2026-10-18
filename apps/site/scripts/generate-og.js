@@ -75,13 +75,13 @@ function lights() {
 // The app's screen map, drawn at its compact 360px width and scaled up to fill the window.
 function screenMapPreview() {
   const zoom = PREVIEW.w / 360;
-  const layer = (color, name, count, active = false) => `
-          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; ${active ? "background: rgba(51,199,115,0.08); color: rgba(255,255,255,0.6); border-radius: 4px; margin: 0 4px;" : "color: rgba(255,255,255,0.35);"}">
-            <div style="width: 5px; height: 5px; border-radius: 50%; background: ${color};"></div>${name}
+  const layer = (name, count, active = false) => `
+          <div style="display: flex; align-items: center; gap: 5px; padding: 4px 10px; font-size: 9px; ${active ? "background: rgba(239,106,71,0.08); color: rgba(255,255,255,0.6); border-radius: 4px; margin: 0 4px;" : "color: rgba(255,255,255,0.35);"}">
+            <div style="width: 5px; height: 5px; border-radius: 50%; background: ${active ? "#ef6a47" : "rgba(255,255,255,0.25)"};"></div>${name}
             <span style="margin-left: auto; color: rgba(255,255,255,${active ? 0.25 : 0.15});">${count}</span>
           </div>`;
   const key = (label, lit = false) => `
-        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; ${lit ? "background: rgba(51,199,115,0.1); border: 1px solid rgba(51,199,115,0.2); color: #33c773;" : "background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);"}">${label}</div>`;
+        <div style="font-size: 8px; padding: 3px 8px; border-radius: 3px; ${lit ? "background: rgba(239,106,71,0.1); border: 1px solid rgba(239,106,71,0.2); color: #ef6a47;" : "background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.3);"}">${label}</div>`;
   return `
     <div class="mock" style="width: 360px; height: ${(PREVIEW.h / zoom).toFixed(2)}px; zoom: ${zoom.toFixed(4)};">
       <div style="display: flex; align-items: center; padding: 12px 16px 8px; gap: 8px;">
@@ -96,29 +96,29 @@ function screenMapPreview() {
       <div style="flex: 1; display: flex; overflow: hidden;">
         <div style="width: 86px; border-right: 1px solid rgba(255,255,255,0.06); padding: 8px 0; flex-shrink: 0;">
           <div style="font-size: 8px; font-weight: 600; color: rgba(255,255,255,0.25); padding: 0 10px 6px; letter-spacing: 0.1em;">LAYERS</div>
-          ${layer("#33c773", "All", 19)}
-          ${layer("#f5a623", "L0", 6)}
-          ${layer("#33c773", "L1", 4, true)}
-          ${layer("#f07c4f", "L2", 7)}
-          ${layer("#e74c8a", "L3", 4)}
-          ${layer("#e74c8a", "L4", 3)}
+          ${layer("All", 19)}
+          ${layer("L0", 6)}
+          ${layer("L1", 4, true)}
+          ${layer("L2", 7)}
+          ${layer("L3", 4)}
+          ${layer("L4", 3)}
         </div>
         <div style="flex: 1; position: relative; padding: 10px; display: flex; flex-direction: column;">
           <div style="display: flex; gap: 4px; margin-bottom: 8px; padding: 0 2px;">
             <div style="font-size: 8px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); font-weight: 500;">ALL</div>
             <div style="font-size: 8px; padding: 3px 8px; border-radius: 4px; color: rgba(255,255,255,0.2);">1</div>
-            <div style="font-size: 8px; padding: 3px 8px; border-radius: 10px; background: rgba(51,199,115,0.15); color: #33c773; font-weight: 600; border: 1px solid rgba(51,199,115,0.3);">2</div>
+            <div style="font-size: 8px; padding: 3px 8px; border-radius: 10px; background: rgba(239,106,71,0.15); color: #ef6a47; font-weight: 600; border: 1px solid rgba(239,106,71,0.3);">2</div>
           </div>
           <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px;">
-            <div style="grid-column: 1 / 3; background: rgba(51,199,115,0.06); border: 1px solid rgba(51,199,115,0.2); border-radius: 5px; padding: 8px;">
+            <div style="grid-column: 1 / 3; background: rgba(239,106,71,0.06); border: 1px solid rgba(239,106,71,0.2); border-radius: 5px; padding: 8px;">
               <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.6);">Google Chrome</div>
               <div style="font-size: 7px; color: rgba(255,255,255,0.15); margin-top: 2px;">688×720</div>
             </div>
-            <div style="background: rgba(245,166,35,0.06); border: 1px solid rgba(245,166,35,0.15); border-radius: 5px; padding: 8px;">
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; padding: 8px;">
               <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.6);">Terminal</div>
               <div style="font-size: 7px; color: rgba(255,255,255,0.15); margin-top: 2px;">arach@~</div>
             </div>
-            <div style="background: rgba(231,76,138,0.06); border: 1px solid rgba(231,76,138,0.15); border-radius: 5px; padding: 8px;">
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; padding: 8px;">
               <div style="font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.6);">Finder</div>
               <div style="font-size: 7px; color: rgba(255,255,255,0.15); margin-top: 2px;">wallpapers</div>
             </div>
@@ -136,7 +136,7 @@ function screenMapPreview() {
       </div>
       <div style="display: flex; align-items: center; padding: 6px 14px; border-top: 1px solid rgba(255,255,255,0.04); font-size: 8px; color: rgba(255,255,255,0.2);">
         <div style="display: flex; align-items: center; gap: 5px;">
-          <div style="width: 5px; height: 5px; border-radius: 50%; background: #33c773;"></div>
+          <div style="width: 5px; height: 5px; border-radius: 50%; background: #ef6a47;"></div>
           <span>:9399</span>
         </div>
         <span style="margin-left: auto;">4 pending</span>
@@ -272,8 +272,62 @@ function speechPreview() {
     </div>`;
 }
 
+// The Action mark's arrowhead (ActionMark.tsx), tip at the origin; rotate(45) points it up-left, like a pointer.
+const ACTION_CURSOR =
+  "M 0 0 C 0 -2 3 -3 8 -3.730461265239989 L 170 -79.27230188634977 Q 180 -83.93537846789975 175 -73.93537846789975 L 140 -26 Q 124 0 140 26 L 175 73.93537846789975 Q 180 83.93537846789975 170 79.27230188634977 L 8 3.730461265239989 C 3 3 0 2 0 0 Z";
+
+// The HUD's brand chip: the light app icon, cropped to its tile.
+function actionTile(size) {
+  return kitFile("action", "action-icon-light.svg").replace(
+    'viewBox="0 0 1024 1024"',
+    `viewBox="100 100 824 824" width="${size}" height="${size}"`,
+  );
+}
+
+// Action driving an app in the background: its cursor on Save inside the aim
+// frame, the driver badge beside it, and the supervision HUD top-right, where
+// Action puts it, narrating the drive.
+function actionPreview() {
+  return `
+    <div class="action-desk">
+      <div class="action-window">
+        <div class="chrome"><div class="lights action-lights"><i></i><i></i><i></i></div><span class="chrome-title">release-notes.md</span></div>
+        <div class="action-sheet">
+          <label>Export As</label><div class="action-field">release-notes.pdf</div>
+          <label>Where</label><div class="action-field">Documents<i>⌄</i></div>
+          <div class="action-buttons">
+            <span>Cancel</span>
+            <span class="action-target">Save
+              <svg class="action-cursor" width="50" height="50"><path d="${ACTION_CURSOR}" transform="scale(${(50 / 181.39).toFixed(4)}) rotate(45)" /></svg>
+              <b class="action-badge"><i></i>Codex  ·  Save</b>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="action-hud">
+        <div class="action-hud-head">
+          ${actionTile(30)}
+          <div><strong>Action</strong><small>1 active session</small></div>
+          <span class="action-hud-toggle"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 7.5 6 4l3.5 3.5" /></svg></span>
+        </div>
+        <div class="action-hud-log">
+          <strong>Codex · export release notes</strong>
+          <em>Using app controls in the background</em>
+          <span>Opening File ▸ Export</span>
+          <span>Naming it release-notes.pdf</span>
+          <b>Saving to Documents</b>
+        </div>
+        <div class="action-hud-foot">
+          <span class="action-hud-quit">Quit</span>
+          <span class="action-hud-stop"><i></i>STOP</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ── Pages config ────────────────────────────────────────────────
-const latticesAccent = ["#33c773", "#1a8f4a"];
+// Every card, product or not, carries the family coral, the accent on every mark.
+const latticesAccent = ["#ef6a47", "#d4502c"];
 
 const pages = [
   {
@@ -315,9 +369,7 @@ const pages = [
     title: "action",
     subtitle:
       "Native macOS automation, capture, and review for agents.",
-    accent: ["#c58a70", "#9a6450"],
-    preview: () =>
-      artPreview("products/action/assets/brand/landing/landing-hero-observe-act-record.webp", "85% center"),
+    preview: actionPreview,
   },
   {
     filename: "og-blink.png",
@@ -326,7 +378,6 @@ const pages = [
     title: "blink",
     subtitle:
       "Spatial notes: each note is a floating panel, and the desktop is the workspace.",
-    accent: ["#f0b45a", "#c2872f"],
     preview: () => artPreview("products/blink/landing/public/hero-desk.png"),
   },
   {
@@ -343,7 +394,7 @@ const pages = [
 // ── HTML builder ────────────────────────────────────────────────
 function buildHTML(config) {
   const { tag, title, subtitle, product } = config;
-  const [accentFrom, accentTo] = config.accent ?? latticesAccent;
+  const [accentFrom, accentTo] = latticesAccent;
 
   return `<!DOCTYPE html>
 <html>
@@ -494,7 +545,7 @@ function buildHTML(config) {
 
     pre { font-family: inherit; white-space: pre; }
     pre b { font-weight: 400; color: #7ec8e3; }
-    pre em { font-style: normal; color: #33c773; }
+    pre em { font-style: normal; color: #ef6a47; }
 
     /* docs */
     .docs { flex: 1; display: flex; min-height: 0; }
@@ -515,7 +566,7 @@ function buildHTML(config) {
     }
     .docs-group:first-child { margin-top: 0; }
     .docs-item { font-size: 14px; color: rgba(255,255,255,0.45); padding: 5px 0 5px 12px; border-left: 2px solid transparent; }
-    .docs-item.is-active { color: #33c773; border-left-color: #33c773; }
+    .docs-item.is-active { color: #ef6a47; border-left-color: #ef6a47; }
     .docs-page { flex: 1; padding: 28px 30px 0; font-family: 'Space Grotesk', sans-serif; min-width: 0; }
     .docs-kicker {
       font-family: 'JetBrains Mono', monospace;
@@ -559,7 +610,7 @@ function buildHTML(config) {
       font-size: 12px;
       color: rgba(255,255,255,0.7);
     }
-    .panes .is-main { grid-row: 1 / 3; border-color: rgba(51,199,115,0.3); background: rgba(51,199,115,0.06); }
+    .panes .is-main { grid-row: 1 / 3; border-color: rgba(239,106,71,0.3); background: rgba(239,106,71,0.06); }
     .panes small { font-size: 11px; color: rgba(255,255,255,0.35); }
 
     /* terminal */
@@ -568,10 +619,10 @@ function buildHTML(config) {
     .term-stack .term-pane + .term-pane { border-top: 1px solid rgba(255,255,255,0.1); }
     .term-pane { padding: 16px 14px; font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.7); overflow: hidden; }
     .term-pane pre { color: rgba(255,255,255,0.55); margin: 2px 0; }
-    .t-prompt { color: #33c773; }
+    .t-prompt { color: rgba(255,255,255,0.4); }
     .t-dim { color: rgba(255,255,255,0.38); }
     .t-soft { color: rgba(255,255,255,0.6); }
-    .t-ok { color: #33c773; }
+    .t-ok { color: rgba(255,255,255,0.85); }
     .t-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: rgba(255,255,255,0.5); }
     .tmux-status {
       flex-shrink: 0;
@@ -579,19 +630,19 @@ function buildHTML(config) {
       padding: 0 12px;
       display: flex;
       align-items: center;
-      background: rgba(51,199,115,0.14);
-      color: #33c773;
+      background: rgba(239,106,71,0.14);
+      color: #ef6a47;
       font-size: 12px;
     }
 
     /* api */
-    .ws-badge { font-size: 12px; color: #33c773; padding: 4px 9px; background: rgba(51,199,115,0.1); border-radius: 5px; }
+    .ws-badge { font-size: 12px; color: rgba(255,255,255,0.55); padding: 4px 9px; background: rgba(255,255,255,0.06); border-radius: 5px; }
     .rpc-log { flex: 1; padding: 22px 22px 0; display: flex; flex-direction: column; gap: 20px; font-size: 15px; line-height: 1.7; }
     .rpc-dir { color: rgba(255,255,255,0.3); }
-    .rpc-method { color: #33c773; }
+    .rpc-method { color: #ef6a47; }
     .rpc-params { color: rgba(255,255,255,0.6); }
     .rpc-result { color: rgba(255,255,255,0.38); white-space: pre; }
-    .live { width: 7px; height: 7px; border-radius: 50%; background: #33c773; display: inline-block; margin-right: 8px; vertical-align: 1px; }
+    .live { width: 7px; height: 7px; border-radius: 50%; background: #ef6a47; display: inline-block; margin-right: 8px; vertical-align: 1px; }
 
     /* speech: the queue window and the HUD, on a desk ruled like the page's */
     .speech-desk {
@@ -624,7 +675,7 @@ function buildHTML(config) {
       font-size: 13px;
     }
     .speech-queue strong { color: rgba(255,255,255,0.92); font-weight: 550; font-size: 16px; }
-    .speech-queue .is-playing { background: rgba(51,199,115,0.15); color: #33c773; }
+    .speech-queue .is-playing { background: rgba(239,106,71,0.15); color: #ef6a47; }
     .speech-foot {
       display: flex;
       align-items: center;
@@ -647,12 +698,152 @@ function buildHTML(config) {
       background: #1c1c1e;
       box-shadow: 0 18px 40px -18px rgba(0,0,0,0.9);
     }
-    .speech-hud-dot { width: 8px; height: 8px; border-radius: 50%; background: #33c773; box-shadow: 0 0 10px #33c773; }
+    .speech-hud-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef6a47; box-shadow: 0 0 10px #ef6a47; }
     .speech-hud-text { display: grid; gap: 4px; min-width: 0; }
     .speech-hud-text strong { color: rgba(255,255,255,0.92); font-size: 13px; font-weight: 550; }
     .speech-hud-text span { color: rgba(255,255,255,0.35); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .speech-hud-text b { font-weight: 400; color: rgba(255,255,255,0.85); }
-    .speech-hud time { color: #33c773; font-size: 13px; }
+    .speech-hud time { color: rgba(255,255,255,0.55); font-size: 13px; }
+
+    /* action: a background app's export sheet, Action's cursor aimed at Save, the supervision HUD over it */
+    .action-desk {
+      position: relative;
+      width: 100%; height: 100%;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+      background-size: 32px 32px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .action-window {
+      position: absolute;
+      top: 150px; left: 28px; width: 330px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      background: #1c1c1e;
+    }
+    .action-lights i { background: rgba(255,255,255,0.14); }
+    .action-sheet {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px 16px;
+      align-items: center;
+      padding: 28px 24px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+    }
+    .action-field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 40px;
+      padding: 0 14px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+      font-size: 15px;
+      color: rgba(255,255,255,0.85);
+      white-space: nowrap;
+    }
+    .action-field i { font-style: normal; color: rgba(255,255,255,0.35); }
+    .action-buttons { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px; }
+    .action-buttons > span {
+      position: relative;
+      display: flex;
+      align-items: center;
+      height: 40px;
+      padding: 0 22px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      font-size: 15px;
+      color: rgba(255,255,255,0.7);
+    }
+    .action-buttons > .action-target { background: rgba(255,255,255,0.9); border-color: transparent; color: #111113; font-weight: 600; }
+    .action-target::after {
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border: 2px solid rgba(255,255,255,0.45);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.07);
+      box-shadow: inset 0 0 0 2px rgba(239,106,71,0.55);
+    }
+    .action-cursor {
+      position: absolute;
+      left: 60px; top: 29px;
+      z-index: 2;
+      overflow: visible;
+      fill: #ef6a47;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.6));
+    }
+    .action-badge {
+      position: absolute;
+      left: 108px; top: 68px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 4px;
+      background: linear-gradient(#333335, #1a1a1b 50%, #151516 75%, #1d1d1f);
+      box-shadow: 0 12px 28px -10px rgba(0,0,0,0.9);
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.82);
+      white-space: pre;
+    }
+    .action-badge i { width: 7px; height: 7px; border-radius: 1px; background: #ef6a47; }
+    .action-hud {
+      position: absolute;
+      top: 28px; right: 28px; width: 304px;
+      z-index: 3;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      background: #1c1c1e;
+      box-shadow: 0 18px 40px -18px rgba(0,0,0,0.9);
+      overflow: hidden;
+    }
+    .action-hud-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 54px;
+      padding: 0 14px 0 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .action-hud-head svg { display: block; flex-shrink: 0; }
+    .action-hud-head strong { display: block; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.92); }
+    .action-hud-head small { display: block; font-size: 12px; color: rgba(255,255,255,0.4); }
+    .action-hud-toggle {
+      margin-left: auto;
+      display: grid;
+      place-items: center;
+      width: 30px; height: 30px;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 50%;
+      color: rgba(255,255,255,0.6);
+    }
+    .action-hud-toggle path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .action-hud-log { display: grid; gap: 5px; padding: 16px 18px 18px; background: rgba(0,0,0,0.2); }
+    .action-hud-log strong { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.92); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .action-hud-log em { font-style: normal; font-size: 12px; color: rgba(255,255,255,0.4); margin-bottom: 10px; }
+    .action-hud-log span, .action-hud-log b { font-size: 13px; font-weight: 400; color: rgba(255,255,255,0.46); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .action-hud-log b { font-weight: 500; color: rgba(255,255,255,0.92); }
+    .action-hud-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      padding: 0 14px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .action-hud-foot span { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; }
+    .action-hud-quit { border: 1px solid rgba(255,255,255,0.19); background: #242426; color: rgba(255,255,255,0.86); font-weight: 500; }
+    .action-hud-stop { background: #ef6a47; color: #101518; font-weight: 700; letter-spacing: 0.06em; }
+    .action-hud-stop i { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 
     .accent-bar {
       position: absolute;

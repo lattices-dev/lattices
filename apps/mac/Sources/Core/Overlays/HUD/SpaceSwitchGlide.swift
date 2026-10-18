@@ -2,10 +2,9 @@ import AppKit
 import QuartzCore
 
 /// Gives an instant Space switch a hint of the system slide without playing
-/// it: a small swoosh of speed streaks at the pointer, whipping the way the
-/// content travels and dropping out. Nothing is captured and nothing covers
-/// the desktop, so the switch stays a clean cut. At the edge the streaks lean
-/// toward the wall and snap back instead.
+/// it: two quiet trails at the pointer, easing the way the content travels
+/// and dissolving. Nothing is captured and nothing covers
+/// the desktop, so the switch stays a clean cut.
 ///
 /// Main-thread only.
 final class SpaceSwitchGlide {
@@ -20,14 +19,12 @@ final class SpaceSwitchGlide {
     /// Fixed lanes (y offset from the pointer, length, delay) so the pattern
     /// reads as one gesture rather than noise.
     private static let lanes: [(y: CGFloat, length: CGFloat, delay: CFTimeInterval)] = [
-        (22, 44, 0.000),
-        (8, 78, 0.014),
-        (-6, 96, 0.004),
-        (-20, 58, 0.022),
+        (10, 58, 0.000),
+        (-10, 42, 0.016),
     ]
 
-    /// When off (setting or Reduce Motion) the bezel falls back to the
-    /// top-edge sweep.
+    /// Optional pointer echo; the filmstrip handles navigation feedback.
+    /// Reduce Motion suppresses this spatial cue.
     var isEnabled: Bool {
         Preferences.shared.spaceSwitchGlideEnabled
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -35,8 +32,8 @@ final class SpaceSwitchGlide {
 
     /// `direction` is the Space direction (+1 = next). `steps` is how many
     /// Spaces the press travelled; bursts merge, so a bigger jump throws
-    /// farther. `edge` plays the lean-and-return instead.
-    func fire(direction: Int, steps: Int, edge: Bool) {
+    /// farther.
+    func fire(direction: Int, steps: Int) {
         guard isEnabled else { return }
         generation &+= 1
         let mine = generation
@@ -56,9 +53,9 @@ final class SpaceSwitchGlide {
         CATransaction.setDisableActions(true)
         for (layer, lane) in zip(streaks, Self.lanes) {
             layer.removeAllAnimations()
-            layer.bounds = CGRect(x: 0, y: 0, width: lane.length, height: 2)
+            layer.bounds = CGRect(x: 0, y: 0, width: lane.length, height: 1.5)
             // Start just behind the pointer so the streaks pass through it.
-            layer.position = CGPoint(x: center.x - heading * 34, y: center.y + lane.y)
+            layer.position = CGPoint(x: center.x - heading * 22, y: center.y + lane.y)
             // Bright head on the leading side, tail trailing behind it.
             layer.startPoint = CGPoint(x: heading < 0 ? 1 : 0, y: 0.5)
             layer.endPoint = CGPoint(x: heading < 0 ? 0 : 1, y: 0.5)
@@ -67,7 +64,7 @@ final class SpaceSwitchGlide {
         CATransaction.commit()
 
         p.alphaValue = 1
-        p.orderFrontRegardless()
+        if !p.isVisible { p.orderFrontRegardless() }
 
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in
@@ -76,32 +73,18 @@ final class SpaceSwitchGlide {
         }
         let now = CACurrentMediaTime()
         for (layer, lane) in zip(streaks, Self.lanes) {
-            let move: CAAnimation
-            if edge {
-                let lean = heading * 16
-                let bump = CAKeyframeAnimation(keyPath: "transform.translation.x")
-                bump.values = [0, lean, lean * 0.2]
-                bump.keyTimes = [0, 0.5, 1]
-                bump.timingFunctions = [
-                    CAMediaTimingFunction(name: .easeOut),
-                    CAMediaTimingFunction(name: .easeIn),
-                ]
-                move = bump
-            } else {
-                let slide = CABasicAnimation(keyPath: "transform.translation.x")
-                slide.fromValue = 0
-                slide.toValue = heading * (84 + 26 * (throwScale - 1))
-                slide.timingFunction = CAMediaTimingFunction(controlPoints: 0.15, 0.7, 0.35, 1)
-                move = slide
-            }
+            let move = CABasicAnimation(keyPath: "transform.translation.x")
+            move.fromValue = 0
+            move.toValue = heading * (62 + 14 * (throwScale - 1))
+            move.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
 
             let flash = CAKeyframeAnimation(keyPath: "opacity")
-            flash.values = [0, 1, 0]
-            flash.keyTimes = [0, 0.25, 1]
+            flash.values = [0, 0.65, 0]
+            flash.keyTimes = [0, 0.18, 1]
 
             let group = CAAnimationGroup()
             group.animations = [move, flash]
-            group.duration = edge ? 0.22 : 0.2
+            group.duration = 0.24
             group.beginTime = now + lane.delay
             group.fillMode = .both
             group.isRemovedOnCompletion = false

@@ -4,10 +4,10 @@ import {
   parseFlagValue,
   parseOptionalNumber,
 } from "./helpers.ts";
-import { withDaemon } from "./daemon.ts";
-import { existsSync, readFileSync } from "node:fs";
+import { remoteHostName, withDaemon } from "./daemon.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 
 const CAPTURE_AUDIT_FILE = join(homedir(), ".lattices/audit/captures.jsonl");
 
@@ -45,16 +45,71 @@ export type CaptureDisplayArgs = {
   clipboard: boolean;
   delaySeconds: number;
   filename?: string;
+  out?: string;
   runId?: string;
   json: boolean;
 };
+
+/** Where a capture from another host lands on this Mac. */
+export function remoteCapturePath(
+  host: string,
+  kind: string,
+  format: string,
+  options: { out?: string; filename?: string; now?: Date } = {},
+): string {
+  if (options.out) return resolve(options.out);
+  const ext = format === "jpeg" || format === "jpg" ? "jpg" : "png";
+  const stamp = (options.now ?? new Date()).toISOString().replace(/[:.]/gu, "-").replace(/Z$/u, "");
+  const name = options.filename ? basename(options.filename) : `${host}-${kind}-${stamp}.${ext}`;
+  return join(homedir(), ".lattices/captures", host, extname(name) ? name : `${name}.${ext}`);
+}
+
+/**
+ * Save an inline capture from another host here. A host that can't return the
+ * image (a Mac daemon writes its captures to its own disk) keeps the remote path.
+ */
+async function saveRemoteCapture(
+  host: string,
+  kind: string,
+  result: any,
+  options: { out?: string; filename?: string; clipboard?: boolean; json?: boolean },
+): Promise<void> {
+  const remotePath = result.path ?? result.artifact?.path;
+  if (typeof result.data !== "string") {
+    if (options.json) { console.log(JSON.stringify(result, null, 2)); return; }
+    console.log(`Captured ${kind.replace("-", " ")} on ${host}; ${host} kept the image.`);
+    console.log(`  ${host}: ${remotePath ?? "?"}`);
+    return;
+  }
+  const format = result.format ?? "png";
+  const path = remoteCapturePath(host, kind, format, options);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, Buffer.from(result.data, "base64"));
+
+  let copied: boolean | undefined;
+  if (options.clipboard) {
+    const cls = format === "jpeg" || format === "jpg" ? "JPEG" : "PNGf";
+    const proc = Bun.spawnSync(["osascript", "-e", `set the clipboard to (read (POSIX file ${JSON.stringify(path)}) as «class ${cls}»)`]);
+    copied = proc.exitCode === 0;
+  }
+
+  const { data: _data, ...rest } = result;
+  if (options.json) {
+    console.log(JSON.stringify({ ...rest, host, path, remotePath, clipboard: copied === undefined ? undefined : { copied } }, null, 2));
+    return;
+  }
+  const size = result.width && result.height ? ` ${result.width}×${result.height}` : "";
+  console.log(`Captured ${kind.replace("-", " ")} on ${host}${size}`);
+  console.log(`  saved: ${path}`);
+  if (copied !== undefined) console.log(`  clipboard: ${copied ? "copied" : "not copied"}`);
+}
 
 /** Parse `lats capture display` without the loose shared positional parser. */
 export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   const flags = new Map<string, string | true>();
   const positional: string[] = [];
   const booleanFlags = new Set(["clipboard", "json"]);
-  const valueFlags = new Set(["delay", "filename", "run-id", "runId"]);
+  const valueFlags = new Set(["delay", "filename", "out", "run-id", "runId"]);
 
   for (let index = 0; index < args.length; index++) {
     const argument = args[index]!;
@@ -115,6 +170,7 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   }
 
   const filename = flags.get("filename");
+  const out = flags.get("out");
   const runId = flags.get("run-id") ?? flags.get("runId");
   return {
     display,
@@ -123,6 +179,7 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
     filename: typeof filename === "string" ? filename : undefined,
     runId: typeof runId === "string" ? runId : undefined,
     json: flags.get("json") === true,
+    ...(typeof out === "string" ? { out } : {}),
   };
 }
 
@@ -133,6 +190,8 @@ Usage:
   lats capture window [wid] [--json]
   lats capture screenshot [wid] [--session name] [--app name]
   lats capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
+  lats --host <name> capture display [index] [--out path]   saved on this Mac, ~/.lattices/captures/<name>/
+  lats --host <name> capture window [wid] [--app name] [--out path]
   lats capture record window [wid] [--app name] [--duration-ms 5000] [--json]
   lats capture record region --x N --y N --width N --height N [--duration-ms 5000]
   lats capture record-command --app Scout --filename demo.mov -- <command> [...args]
@@ -357,12 +416,25 @@ Usage:
     if (options.filename) params.filename = options.filename;
     if (options.runId) params.runId = options.runId;
 
+    const host = remoteHostName();
+    if (host) {
+      // The Linux host reads `displayIndex`; `inline` brings the image back.
+      if (options.display !== undefined) params.displayIndex = options.display;
+      params.inline = true;
+      params.clipboard = false;
+    }
+
     await withDaemon(async ({ daemonCall }) => {
       if (options.delaySeconds > 0) {
         await new Promise((resolve) => setTimeout(resolve, options.delaySeconds * 1000));
       }
 
       const result = await daemonCall("capture.screenshotDisplay", params, 20000) as any;
+      if (host) {
+        const kind = `display-${result.displayIndex ?? options.display ?? 0}`;
+        await saveRemoteCapture(host, kind, result, options);
+        return;
+      }
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
@@ -403,9 +475,18 @@ Usage:
   if (title) params.title = title;
   if (filename) params.filename = filename;
   if (runId) params.runId = runId;
+  const host = remoteHostName();
+  if (host) params.inline = true;
 
   await withDaemon(async ({ daemonCall }) => {
     const result = await daemonCall("capture.screenshotWindow", params, 20000) as any;
+    if (host) {
+      const out = parseFlagValue(commandArgs, "out");
+      await saveRemoteCapture(host, `window-${result.wid ?? params.wid ?? "front"}`, result, {
+        out: out || undefined, filename: filename || undefined, clipboard: hasFlag(commandArgs, "clipboard"), json: jsonFlag,
+      });
+      return;
+    }
     if (jsonFlag) {
       console.log(JSON.stringify(result, null, 2));
       return;

@@ -113,8 +113,9 @@ final class ActionRuntime {
 
     /// The UI, API, and placement actions share one serialized relocation.
     /// Display and absolute Space ID identify a single destination together.
-    func executeWindowMove(params: JSON?, source: String = "daemon") throws -> JSON {
-        let receipt = try executeWindowRelocation(params: params, source: source)
+    func executeWindowMove(params: JSON?, source: String = "daemon", target: WindowEntry? = nil, followWindow: Bool = false) throws -> JSON {
+        let captured = target.map { ResolvedWindowTarget(kind: "wid", resolution: "gesture-start", confidence: 1.0, entry: $0) }
+        let receipt = try executeWindowRelocation(params: params, source: source, resolvedTarget: captured, followWindow: followWindow)
         history.record(receipt)
         return receipt
     }
@@ -127,7 +128,8 @@ final class ActionRuntime {
         params: JSON?,
         source: String,
         context: ActionInvocationContext? = nil,
-        resolvedTarget: ResolvedWindowTarget? = nil
+        resolvedTarget: ResolvedWindowTarget? = nil,
+        followWindow: Bool = false
     ) throws -> JSON {
         let dryRun = params?["dryRun"]?.boolValue == true
         if !dryRun && Thread.isMainThread {
@@ -151,7 +153,7 @@ final class ActionRuntime {
         guard let wid = resolved.wid, let pid = resolved.pid else {
             throw RouterError.custom("window.move requires a resolvable window")
         }
-        let environment = relocationEnvironment(wid: wid, pid: pid)
+        let environment = relocationEnvironment(wid: wid, pid: pid, followWindow: followWindow)
         let before = environment.snapshot()
         guard let beforeFrame = before.frame, before.spaceIds.count == 1,
               let sourceSpaceId = before.spaceIds.first else {
@@ -176,11 +178,21 @@ final class ActionRuntime {
         } else {
             targetDisplay = sourceDisplay
         }
+        // macOS holds an app assigned to a desktop (Dock › Options › Assign
+        // To) on that desktop. Sent to its display, it goes there; sent to
+        // another desktop on that display, macOS would pull it straight back.
+        let binding = SpaceAssignments.binding(forPid: pid)
+        let assignedHere: Int? = {
+            guard case .desktop(let assigned)? = binding,
+                  targetDisplay.spaces.contains(where: { $0.id == assigned }) else { return nil }
+            return assigned
+        }()
         // A placement without a display keeps the window on its own desktop.
-        let spaceId = requestedSpaceId ?? (displayIndex == nil ? sourceSpaceId : targetDisplay.currentSpaceId)
+        let spaceId = requestedSpaceId ?? (displayIndex == nil ? sourceSpaceId : assignedHere ?? targetDisplay.currentSpaceId)
         guard targetDisplay.spaces.contains(where: { $0.id == spaceId }) else {
             throw RouterError.custom("Desktop \(spaceId) does not belong to display \(targetDisplay.displayIndex), or is a full-screen Space")
         }
+        let assignedConflict = SpaceAssignments.conflict(binding, destinationSpaceId: spaceId, displays: displays)
         guard let sourceScreen = onMain({ DisplayGeometryMapper.screen(for: sourceDisplay, in: NSScreen.screens) }),
               let targetScreen = onMain({ DisplayGeometryMapper.screen(for: targetDisplay, in: NSScreen.screens) }) else {
             throw RouterError.custom("Could not resolve source and destination displays")
@@ -201,11 +213,17 @@ final class ActionRuntime {
         let tolerance = Self.verificationTolerance(forApp: resolved.app)
         var outcome: WindowRelocation.Result?
         var blockedReason: String?
+        var assignmentMessage: String?
         if dryRun {
             trace.append("dry run; skipped relocation")
         } else if !AXIsProcessTrusted() {
             blockedReason = "accessibility-not-trusted"
             trace.append("blocked: Accessibility permission required")
+        } else if let assigned = assignedConflict {
+            blockedReason = "app-assigned-desktop"
+            let name = resolved.app ?? "This app"
+            assignmentMessage = "\(name) is assigned to \(SpaceAssignments.describe(spaceId: assigned, displays: displays)) in macOS (Dock › Options › Assign To), which pulls its windows back there"
+            trace.append("blocked: \(name) is assigned to desktop \(assigned)")
         } else {
             DiagnosticLog.shared.info("WindowRelocation: wid=\(wid) display=\(sourceDisplay.displayIndex) spaces=\(before.spaceIds) → display=\(targetDisplay.displayIndex) space=\(spaceId)")
             outcome = WindowRelocation.execute(from: before, to: destination, tolerance: tolerance, environment: environment)
@@ -269,9 +287,31 @@ final class ActionRuntime {
         if let title = resolved.title { receipt["title"] = .string(title) }
         if let session = resolved.session { receipt["session"] = .string(session) }
         if let failure = outcome?.failure { receipt["failureReason"] = .string(failure) }
-        if let blockedReason {
+        if let assigned = assignedConflict {
+            receipt["assignedSpaceId"] = .int(assigned)
+        }
+        if let assignmentMessage {
+            receipt["blockedReason"] = .string("app-assigned-desktop")
+            receipt["message"] = .string(assignmentMessage)
+        } else if let blockedReason {
             receipt["blockedReason"] = .string(blockedReason)
             receipt["requiredPermissions"] = .array([.string("accessibility")])
+        }
+        if verified && followWindow {
+            // Verify the viewed desktop too, including when CGS moved the window
+            // without needing the Mission Control carry fallback.
+            let followed = WindowSpaceCarry.selectDesktop(spaceId, on: targetDisplay.displayId,
+                                                          at: CGPoint(x: targetFrame.midX, y: targetFrame.midY))
+            receipt["followed"] = .bool(followed)
+            if followed {
+                onMain {
+                    NSRunningApplication(processIdentifier: pid)?.activate()
+                    if let axWindow = WindowTiler.findAXWindowByFrame(wid: wid, pid: pid) {
+                        AXUIElementSetAttributeValue(axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+                        AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+                    }
+                }
+            }
         }
         if verified {
             receipt["undo"] = .object(["strategy": .string("restore-frame-and-space"), "requiresCurrentFrameMatch": .bool(true), "requiresCurrentSpaceMatch": .bool(true), "frameSource": .string("mutations.from")])
@@ -279,7 +319,7 @@ final class ActionRuntime {
         return .object(receipt)
     }
 
-    private func relocationEnvironment(wid: UInt32, pid: Int32) -> WindowRelocation.Environment {
+    private func relocationEnvironment(wid: UInt32, pid: Int32, followWindow: Bool = false) -> WindowRelocation.Environment {
         let snapshot = { [self] () -> WindowRelocation.Snapshot in
             let frame = Self.cgWindowFrameTopLeft(wid: wid)
             let spaces = WindowTiler.getSpacesForWindow(wid).sorted()
@@ -308,7 +348,7 @@ final class ActionRuntime {
                 if from == [space] { return nil }
                 let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
                 if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
-                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space) { return reason }
+                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space, followWindow: followWindow) { return reason }
                 return nil
             },
             moveFrame: { [self] frame in

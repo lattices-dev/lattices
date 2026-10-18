@@ -10,10 +10,13 @@ on:
         default: false
         type: boolean
       build_app:
-        description: 'Rebuild the bundled macOS app before publishing'
+        description: 'Rebuild the app (false reuses the signed app from the matching GitHub release)'
         required: false
         default: true
         type: boolean
+
+permissions:
+  contents: read
 
 jobs:
   publish:
@@ -30,10 +33,15 @@ jobs:
       LATTICES_HUDSON_SOURCE: git
       HUDSON_VOX_SOURCE: git
       HUDSONKIT_WITH_VOICE: "1"
+      # Public packages use the same free tier as the signed release feed.
+      LATTICES_TIER: free
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Select Xcode 26
+        if: ${{ inputs.build_app || !inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,6 +56,7 @@ jobs:
           sudo xcode-select -s "$xcode/Contents/Developer"
 
       - name: Configure private HudsonKit access
+        if: ${{ inputs.build_app || !inputs.publish }}
         shell: bash
         run: |
           set -euo pipefail
@@ -57,15 +66,19 @@ jobs:
           fi
           git config --global url."https://x-access-token:${HUDSON_READ_TOKEN}@github.com/".insteadOf "git@github.com:"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Cache verified speech binary dependency
+        if: ${{ inputs.build_app || !inputs.publish }}
+        run: bash tools/release/cache-speech-artifact.sh
 
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
@@ -90,18 +103,45 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.publish }}
         run: |
           set -euo pipefail
-          # Build once for normal releases. CLI-only releases may deliberately
-          # reuse the committed app bundle, avoiding an unrelated Swift rebuild.
+          # Reuse the verified release app when requested, so npm and the DMG
+          # carry identical signed binaries without resolving dependencies again.
           if [[ "${{ github.event_name }}" == "push" || "${{ inputs.build_app }}" == "true" ]]; then
             npm run prepack
           else
-            echo "Reusing committed apps/mac/Lattices.app for this CLI-only release."
+            version="$(node -p 'require("./package.json").version')"
+            assets="$(mktemp -d)"
+            mount_dir="$(mktemp -d)"
+            trap 'hdiutil detach "$mount_dir" >/dev/null 2>&1 || true' EXIT
+            gh release download "v$version" --dir "$assets" --pattern Lattices.dmg --pattern release-manifest.json
+            python3 - "$assets" "$version" <<'PY'
+          import hashlib, json, pathlib, sys
+          assets = pathlib.Path(sys.argv[1])
+          manifest = json.loads((assets / 'release-manifest.json').read_text())
+          assert manifest['version'] == sys.argv[2], 'Release version mismatch'
+          assert manifest['tier'] == 'free', 'Public packages require the free tier'
+          assert manifest['notarization'] == 'Accepted', 'Release was not notarized'
+          assert hashlib.sha256((assets / 'Lattices.dmg').read_bytes()).hexdigest() == manifest['assets']['Lattices.dmg'], 'DMG hash mismatch'
+          PY
+            hdiutil attach "$assets/Lattices.dmg" -readonly -nobrowse -mountpoint "$mount_dir"
+            app="$mount_dir/Lattices.app"
+            codesign --verify --deep --strict "$app"
+            spctl --assess --type execute "$app"
+            signing_details="$(codesign -dv "$app" 2>&1)"
+            [[ "$signing_details" == *"TeamIdentifier=2U83JFPW66"* ]]
+            [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$version" ]]
+            revision="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sourceCommit"])' "$assets/release-manifest.json")"
+            [[ "$(/usr/libexec/PlistBuddy -c 'Print :LatticesBuildRevision' "$app/Contents/Info.plist")" == "$revision" ]]
+            ditto "$app" apps/mac/Lattices.app
+            test -x apps/mac/Lattices.app/Contents/MacOS/Lattices
           fi
-          # Primary package (@arach/lattices) — updates the public npm page.
-          npm publish --ignore-scripts --provenance --access public
-          # Back-compat alias for existing @lattices/cli installs/imports.
-          npm pkg set name=@lattices/cli
-          npm publish --ignore-scripts --provenance --access public
-          npm pkg set name=@arach/lattices
+          # Publish the same payload under all supported names. Never replace
+          # legacy packages with wrappers: installs, imports and startup paths stay valid.
+          trap 'npm pkg set name=@lattices/lattices; hdiutil detach "${mount_dir:-/nonexistent}" >/dev/null 2>&1 || true' EXIT
+          for package in @lattices/lattices @arach/lattices @lattices/cli; do
+            npm pkg set "name=$package"
+            npm publish --ignore-scripts --provenance --access public
+          done
+          npm pkg set name=@lattices/lattices
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview A · Map Table</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* Study A — the map is the page. No inspector column: the selected window
+     carries its own action capsule, and everything not on a current Space
+     waits in a tray below, grouped by why it is not on screen. */
+  .a { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .scope { height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 0.5px solid var(--border); overflow: hidden; }
+  .scope .sep { width: 0.5px; height: 18px; background: var(--border-lit); margin: 0 6px; }
+  .scope .lead { margin-right: 2px; }
+  .scope input[type=search] {
+    width: 170px; height: 24px; border-radius: 6px; border: 0.5px solid var(--border-lit); background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 0 8px; font: 12px var(--ui); outline: none;
+  }
+  .scope input[type=search]:focus { border-color: rgba(255,255,255,0.32); }
+  .hint .counts { margin-left: auto; font: 11px/1 var(--mono); color: var(--muted); white-space: nowrap; }
+  .hint .counts b { color: var(--text); font-weight: 500; }
+
+  .mapband { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; padding: 14px 24px 0; }
+  .maprow { flex: 1; min-height: 0; display: flex; justify-content: safe center; align-items: flex-start; gap: 36px; }
+  .display { display: flex; flex-direction: column; gap: 8px; }
+  .display .head { display: flex; align-items: baseline; gap: 8px; height: 16px; }
+  .display .head .name { font: 600 12px/1 var(--ui); }
+  .display .head .meta { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .display .head .live { margin-left: auto; font: 10.5px/1 var(--mono); color: var(--dim); }
+  .display.scoped-out .mon { opacity: .55; }
+  .peekbar { position: absolute; left: 8px; right: 8px; top: 8px; z-index: 6; display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; background: rgba(20,20,23,0.92); box-shadow: 0 0 0 0.5px var(--border-lit); font: 11px/1.2 var(--sans); color: var(--dim); }
+  .peekbar button { margin-left: auto; }
+  .spaces { display: flex; gap: 8px; }
+  .sp { display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+  .sp .thumb { position: relative; border-radius: 4px; background: #0f0f11; box-shadow: inset 0 0 0 0.5px var(--border-lit); overflow: hidden; }
+  .sp .thumb i { position: absolute; border-radius: 1.5px; background: rgba(255,255,255,0.16); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18); }
+  .sp .thumb.fs { display: grid; place-items: center; font: 600 9px/1 var(--ui); color: var(--dim); }
+  .sp .cap { font: 10.5px/1 var(--mono); color: var(--muted); display: flex; gap: 5px; align-items: center; }
+  .sp.current .cap { color: var(--text); }
+  .sp.current .cap::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-sel); }
+  .sp.viewing .thumb { box-shadow: inset 0 0 0 1.5px var(--ink-sel); }
+  .sp.drop .thumb { box-shadow: inset 0 0 0 1.5px var(--ink-sel), 0 0 0 4px rgba(236,237,240,0.14); }
+  .hint { flex: none; height: 34px; display: flex; align-items: center; gap: 14px; font: 11px/1 var(--sans); color: var(--muted); white-space: nowrap; overflow: hidden; }
+
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; z-index: 4; pointer-events: none; }
+  .empty > div { pointer-events: auto; background: rgba(20,20,23,0.94); padding: 14px 16px; border-radius: 9px; box-shadow: 0 0 0 0.5px var(--border-lit); max-width: 300px; }
+  .empty h3 { margin: 0 0 4px; font: 600 13px/1.2 var(--ui); }
+  .empty p { margin: 0 0 10px; font: 12px/1.35 var(--sans); color: var(--dim); }
+
+  /* action capsule */
+  .capsule { position: absolute; z-index: 20; display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 10px;
+    background: rgba(30,30,34,0.97); box-shadow: 0 0 0 0.5px var(--border-lit), 0 12px 32px rgba(0,0,0,0.55); white-space: nowrap; }
+  .capsule .who { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; max-width: 260px; }
+  .capsule .who .tt { overflow: hidden; text-overflow: ellipsis; font: 12px/1 var(--sans); color: var(--dim); }
+  .capsule .who .ap { font: 600 12px/1 var(--ui); }
+  .capsule .div { width: 0.5px; align-self: stretch; background: var(--border-lit); margin: 3px 2px; }
+  .capsule .ib { height: 26px; min-width: 28px; padding: 0 7px; border-radius: 6px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font: 500 12px/1 var(--ui); }
+  .capsule .ib:hover { background: rgba(255,255,255,0.08); }
+  .capsule .ib[disabled] { opacity: .35; cursor: not-allowed; }
+  .capsule .ib.primary { background: var(--ink-sel); color: #121214; font-weight: 600; }
+  .capsule .why { font: 11px/1.2 var(--sans); color: var(--muted); padding: 0 6px; max-width: 280px; white-space: normal; }
+  .capsule .tag { font: 10px/1 var(--mono); color: var(--muted); padding: 0 6px; }
+
+  /* tray */
+  .tray { height: 150px; flex: none; border-top: 0.5px solid var(--border); display: flex; min-width: 0; }
+  .groups { flex: 1; display: flex; gap: 0; min-width: 0; overflow-x: auto; }
+  .group { min-width: 190px; max-width: 280px; flex: 1; padding: 12px 14px; border-right: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+  .group .gh { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; }
+  .group .gh .label-caps { color: var(--dim); }
+  .group .gh .sub { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .chiprow { display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; min-width: 0; }
+  .chiprow:hover { background: rgba(255,255,255,0.05); }
+  .chiprow.sel { background: var(--sel-fill); box-shadow: inset 0 0 0 1px rgba(236,237,240,0.5); }
+  .chiprow .ap { font: 600 12px/1 var(--ui); flex: none; }
+  .chiprow .tt { font: 11.5px/1 var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chiprow.out { opacity: .45; }
+  .chiprow .why { margin-left: auto; font: 10px/1 var(--mono); color: var(--muted); flex: none; }
+
+  .arrange { width: 330px; flex: none; padding: 12px 16px; display: flex; flex-direction: column; gap: 7px; background: rgba(255,255,255,0.015); }
+  .arrange .row { display: flex; gap: 8px; }
+  .arrange .row .btn { flex: 1; justify-content: center; height: 30px; }
+  .arrange .split { display: flex; gap: 12px; font: 11px/1.3 var(--mono); color: var(--dim); }
+  .arrange .left-out { font: 11px/1.35 var(--sans); color: var(--muted); }
+  .arrange .layerline { margin-top: auto; display: flex; align-items: center; gap: 8px; font: 12px/1 var(--sans); color: var(--dim); }
+  .arrange .layerline .btn { margin-left: auto; }
+
+  .draft { flex: none; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 4px 0 10px; margin: 0 -10px; border-radius: 8px;
+    background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 0.5px var(--border-lit); font: 12px/1 var(--sans); white-space: nowrap; overflow: hidden; }
+  .draft .muted { overflow: hidden; text-overflow: ellipsis; }
+  .draft .grow { flex: 1; }
+  .draft b { font-weight: 600; }
+  .badge { position: absolute; right: 4px; top: 4px; font: 600 9px/1 var(--mono); padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,0.45); color: var(--dim); }
+  .badge.add { color: var(--text); background: rgba(236,237,240,0.18); }
+
+  .scope .kinds { display: contents; }
+  @media (max-width: 1500px) { .scope .kinds { display: none; } .arrange { width: 280px; } .group { min-width: 170px; } }
+  @media (max-width: 1340px) { .hint .wide { display: none; } .scope input[type=search] { width: 130px; } .scope .lead { display: none; } }
+</style>
+</head>
+<body>
+<script src="shared/fixture.js"></script>
+<script src="shared/model.js"></script>
+<script src="shared/shell.js"></script>
+<script>
+(function () {
+  const { h } = LT;
+  const m = LT.createModel();
+  const ui = { peek: {}, menu: null, drag: null, dropSpace: null };
+
+  const viewSpace = (d) => ui.peek[d.id] ?? (m.scope.display === d.id && m.scope.spaceId ? m.scope.spaceId : d.current);
+
+  function scopeStrip() {
+    const s = m.scope;
+    const monitorChips = [
+      h("button.chip", { "aria-pressed": String(s.display == null), onClick: () => m.setScope({ display: null }) }, "All monitors"),
+      ...m.displays.map((d) => h("button.chip", { "aria-pressed": String(s.display === d.id), onClick: () => m.setScope({ display: d.id }) }, d.short)),
+    ];
+    const d = s.display != null ? m.display(s.display) : null;
+    const spaceChips = d
+      ? [h("span.sep"), h("button.chip", { "aria-pressed": String(s.spaceId == null), onClick: () => m.setScope({ spaceId: null }) }, "All Spaces"),
+         ...d.spaces.filter((sp) => !sp.fullScreen).map((sp) => h("button.chip", { "aria-pressed": String(s.spaceId === sp.id), onClick: () => { ui.peek = {}; m.setScope({ spaceId: sp.id }); } }, `Desktop ${sp.n}`, sp.id === d.current ? h("span.n", "•") : null))]
+      : [];
+    return h("div.scope",
+      h("span.label-caps.lead", "Scope"),
+      ...monitorChips, ...spaceChips,
+      h("span.sep"),
+      ...m.layers.map((l) => h("button.chip", { "aria-pressed": String(s.layerId === l.id), onClick: () => m.setScope({ layerId: s.layerId === l.id ? null : l.id }) }, LT.icon("layer"), l.name)),
+      h("span.sep"),
+      h("span.kinds", ...m.kinds.map((k) => h("button.chip", { "aria-pressed": String(s.kind === k.id), onClick: () => m.setScope({ kind: k.id }) }, k.label))),
+      LT.searchField(m, "Filter windows  /"));
+  }
+
+  function spaceThumb(d, sp) {
+    const W = 84, H = Math.round(W / d.aspect);
+    const viewing = viewSpace(d) === sp.id;
+    const thumb = h("div.thumb" + (sp.fullScreen ? ".fs" : ""), { style: { width: W + "px", height: H + "px" } });
+    if (sp.fullScreen) thumb.append(sp.fullScreen);
+    else for (const w of m.windows.filter((w) => w.space === sp.id && w.frame)) {
+      const [x, y, ww, hh] = w.frame;
+      thumb.append(h("i", { style: { left: x * W + 1 + "px", top: y * H + 1 + "px", width: ww * W - 2 + "px", height: hh * H - 2 + "px", opacity: m.inScope(w) ? 1 : 0.35 } }));
+    }
+    const n = m.windows.filter((w) => w.space === sp.id).length;
+    const el = h("div.sp" + (sp.id === d.current ? ".current" : "") + (viewing ? ".viewing" : "") + (ui.dropSpace === sp.id ? ".drop" : ""),
+      { title: sp.fullScreen ? "Full-screen Space" : sp.id === d.current ? "Current Space — live" : "View last known positions",
+        onClick: () => { ui.peek[d.id] = sp.id === d.current ? undefined : sp.id; m.emit(); } },
+      thumb, h("span.cap", sp.fullScreen ? "Full screen" : `Desktop ${sp.n}`, h("span", { style: { color: "var(--muted)" } }, n ? `· ${n}` : "· empty")));
+    if (!sp.fullScreen) {
+      el.addEventListener("dragover", (e) => { if (ui.drag && sp.id !== d.current) { e.preventDefault(); if (ui.dropSpace !== sp.id) { ui.dropSpace = sp.id; el.classList.add("drop"); } } });
+      el.addEventListener("dragleave", () => { ui.dropSpace = null; el.classList.remove("drop"); });
+      el.addEventListener("drop", (e) => { e.preventDefault(); const wid = ui.drag; ui.drag = null; ui.dropSpace = null; m.moveToSpace(wid, sp.id); });
+    }
+    return el;
+  }
+
+  function displayBlock(d, width) {
+    const sid = viewSpace(d);
+    const live = sid === d.current;
+    const scopedOut = m.scope.display != null && m.scope.display !== d.id;
+    const mon = LT.monitor(m, d, {
+      width, spaceId: sid,
+      isOut: (w) => !m.inScope(w),
+      onSelect: (w, ev) => { ui.menu = null; m.select(w.wid, { toggle: ev.metaKey || ev.shiftKey }); },
+      extra: (w, node) => {
+        if (m.isLive(w)) {
+          node.draggable = true;
+          node.addEventListener("dragstart", (e) => { ui.drag = w.wid; e.dataTransfer.setData("text/plain", String(w.wid)); });
+        }
+        if (m.draft) {
+          const r = m.roleIn(w, m.draft.layerId);
+          if (r && r.role === "member") node.append(h("span.badge" + (r.entry.id.startsWith("d") ? ".add" : ""), r.entry.id.startsWith("d") ? "+ pin" : r.entry.via));
+          else if (r && r.role === "tucked") node.append(h("span.badge", "tucked"));
+          else if (r) node.append(h("span.badge", "unclaimed"));
+        }
+      },
+    });
+    mon.addEventListener("click", () => { m.clearSelection(); });
+    const sp = m.spaceOf(sid).space;
+    const wrap = h("div", { style: { position: "relative" } }, mon);
+    if (!live) wrap.append(h("div.peekbar", LT.icon("reveal"),
+      sp.fullScreen ? "Full-screen Space — Keynote owns the display" : `Desktop ${sp.n} — last known positions. Not live, so nothing here can be placed or arranged.`,
+      h("button.btn.ghost", { onClick: (e) => { e.stopPropagation(); ui.peek[d.id] = d.current; if (m.scope.spaceId === sid) m.setScope({ spaceId: null }); else m.emit(); } }, "Back to live")));
+    const visible = m.windows.filter((w) => w.display === d.id && w.space === sid && m.inScope(w));
+    if (!visible.length && !scopedOut) wrap.append(h("div.empty", h("div",
+      h("h3", live ? "Nothing in scope here" : `Nothing in scope on Desktop ${sp.n}`),
+      h("p", scopeSentence()),
+      h("div", { style: { display: "flex", gap: "6px", justifyContent: "center" } },
+        m.scope.kind !== "all" ? h("button.btn", { onClick: () => m.setScope({ kind: "all" }) }, "Clear kind") : null,
+        m.scope.spaceId ? h("button.btn", { onClick: () => { ui.peek = {}; m.setScope({ spaceId: null }); } }, "All Spaces") : null,
+        m.scope.layerId ? h("button.btn", { onClick: () => m.setScope({ layerId: null }) }, "No layer") : null))));
+    return h("div.display" + (scopedOut ? ".scoped-out" : ""),
+      h("div.head", h("span.name", d.name), h("span.meta", d.size), h("span.live", live ? "live · Desktop " + sp.n : "viewing " + (sp.fullScreen ? "full screen" : "Desktop " + sp.n))),
+      wrap,
+      h("div.spaces", ...d.spaces.map((s) => spaceThumb(d, s))));
+  }
+
+  function scopeSentence() {
+    const s = m.scope, parts = [];
+    if (s.kind !== "all") parts.push(m.kinds.find((k) => k.id === s.kind).label.toLowerCase());
+    else parts.push("windows");
+    if (s.layerId) parts.push(`in ${s.layerId}`);
+    if (s.spaceId) parts.push(`on Desktop ${m.spaceNumber(s.spaceId)}`);
+    if (s.search) parts.push(`matching “${s.search}”`);
+    return `No ${parts.join(" ")}. The scope only filters what you see — your selection is kept.`;
+  }
+
+  function capsule() {
+    const w = m.primary();
+    if (!w) return null;
+    const placeWhy = m.blocker(w, "place");
+    const focusWhy = m.blocker(w, "focus");
+    const outWhy = m.scopeExclusion(w);
+    const d = m.display(w.display);
+    const kids = [h("div.who", LT.glyph(w.app), h("span.ap", w.app), h("span.tt", w.title))];
+    if (m.selection.length > 1) kids.push(h("span.tag", `+${m.selection.length - 1} selected`));
+    kids.push(h("span.div"));
+    kids.push(h("button.ib.primary", { disabled: !!focusWhy, title: m.focusNote(w), onClick: () => m.focus(w.wid) }, LT.icon("focus"), "Focus", h("span", { style: { opacity: .55, fontWeight: 400 } }, "↵")));
+    if (outWhy) kids.push(h("button.ib", { onClick: () => { ui.peek = {}; m.reveal(w.wid); } }, LT.icon("reveal"), "Show in scope"));
+    if (ui.menu === "move" && !placeWhy) {
+      kids.push(h("span.div"), h("span.tag", "Move to"));
+      for (const sp of d.spaces.filter((s) => !s.fullScreen && s.id !== w.space)) kids.push(h("button.ib", { onClick: () => { ui.menu = null; m.moveToSpace(w.wid, sp.id); } }, `Desktop ${sp.n}`));
+      kids.push(h("button.ib", { "aria-label": "Close Desktop picker", onClick: () => { ui.menu = null; m.emit(); } }, LT.icon("x")));
+    } else if (ui.menu === "layer") {
+      kids.push(h("span.div"));
+      const scoped = m.scope.layerId || "tideline";
+      if (!m.draft) {
+        const memberOf = m.layersOf(w).map((l) => l.name);
+        kids.push(h("span.tag", memberOf.length ? `in ${memberOf.join(", ")}` : "in no layer"));
+        kids.push(h("button.ib", { onClick: () => { ui.menu = "layer"; m.beginEdit(scoped); } }, LT.icon("layer"), `Edit ${scoped}…`));
+      } else {
+        const r = m.roleIn(w, m.draft.layerId);
+        if (!r || r.role === "unclaimed") kids.push(h("button.ib", { onClick: () => m.draftPin(w.wid) }, LT.icon("pin"), `Pin to ${m.draft.layerId}`));
+        else {
+          kids.push(h("button.ib", { onClick: () => m.draftTuck(w.wid) }, LT.icon("tuck"), r.role === "tucked" ? "Untuck" : "Tuck"));
+          kids.push(h("button.ib", { onClick: () => m.draftRemove(w.wid) }, LT.icon("x"), "Remove"));
+        }
+      }
+      kids.push(h("button.ib", { onClick: () => { ui.menu = null; m.emit(); } }, "Done"));
+    } else {
+      for (const k of ["left", "right", "max", "center"]) kids.push(h("button.ib", { "aria-label": `Place ${LT.PLACE[k].label.toLowerCase()}`, disabled: !!placeWhy, title: placeWhy || `Place ${LT.PLACE[k].label.toLowerCase()} on ${d.name}`, onClick: () => m.place(w.wid, k) }, LT.icon(k)));
+      kids.push(h("button.ib", { disabled: !!placeWhy, title: placeWhy || "Move to another Desktop (or drag onto one)", onClick: () => { ui.menu = "move"; m.emit(); } }, LT.icon("move"), "Move", LT.icon("down")));
+      kids.push(h("span.div"));
+      kids.push(h("button.ib", { onClick: () => { ui.menu = "layer"; m.emit(); } }, LT.icon("layer"), "Layer", LT.icon("down")));
+      if (placeWhy && !outWhy) kids.push(h("span.why", placeWhy));
+      else if (outWhy) kids.push(h("span.why", `Selected but ${m.exclusionLabel(outWhy, w)}`));
+    }
+    return h("div.capsule", { onClick: (e) => e.stopPropagation() }, ...kids);
+  }
+
+  function tray() {
+    const groups = [];
+    for (const d of m.displays) for (const sp of d.spaces) {
+      if (sp.id === d.current) continue;
+      const ws = m.windows.filter((w) => w.space === sp.id);
+      if (ws.length) groups.push({ title: sp.fullScreen ? "Full screen" : `Desktop ${sp.n}`, sub: `${d.short} · last known`, ws });
+    }
+    const hidden = m.windows.filter((w) => w.space == null);
+    if (hidden.length) groups.push({ title: "Not on a Space", sub: "hidden · minimized", ws: hidden });
+    const row = (w) => h("div.chiprow" + (m.isSelected(w.wid) ? ".sel" : "") + (m.inScope(w) ? "" : ".out"),
+      { "data-wid": w.wid, title: `${w.app} — ${w.title}`, onClick: (e) => { e.stopPropagation(); ui.menu = null; m.select(w.wid, { toggle: e.metaKey || e.shiftKey }); }, onDblclick: () => m.focus(w.wid) },
+      LT.glyph(w.app), h("span.ap", w.app), h("span.tt", w.title),
+      h("span.why", w.space == null ? m.stateLabel(w).toLowerCase() : !m.inScope(w) ? m.exclusionLabel(m.scopeExclusion(w), w) : ""));
+
+    const plan = m.plan("Tile"), dist = m.plan("Distribute");
+    const l = m.scope.layerId ? m.layer(m.scope.layerId) : null;
+    return h("div.tray",
+      h("div.groups.scroll", { "data-keep": "groups" }, ...groups.map((g) => h("div.group", h("div.gh", h("span.label-caps", g.title), h("span.sub", g.sub)), ...g.ws.map(row)))),
+      h("div.arrange",
+        h("div.gh", h("span.label-caps", "Arrange this scope")),
+        h("div.row",
+          h("button.btn" + (plan.enabled ? "" : ".is-disabled"), { onClick: () => m.runBulk("Tile") }, LT.icon("tile"), `Tile ${plan.count}`, h("span.kbd", "T")),
+          h("button.btn" + (dist.enabled ? "" : ".is-disabled"), { onClick: () => m.runBulk("Distribute") }, LT.icon("distribute"), `Distribute ${dist.count}`, h("span.kbd", "D"))),
+        h("div.split", plan.groups.length ? plan.groups.map((g) => `${g.display.short} ${g.windows.length}`).join(" · ") : "No live windows in scope"),
+        h("div.left-out", { title: "Only live windows on a display's current Space are moved" }, plan.excludedText ? `Left out: ${plan.excludedText}` : "Every window in scope is live"),
+        l ? h("div.layerline", LT.icon("layer"), h("span", h("b", { style: { color: "var(--text)", fontWeight: 600 } }, l.name), l.active ? " · active layer" : " · not active"),
+          m.draft ? null : h("button.btn.ghost", { onClick: () => m.beginEdit(l.id) }, "Edit layer")) : null));
+  }
+
+  function draftBar() {
+    if (!m.draft) return null;
+    const l = m.layer(m.draft.layerId), n = m.draft.changes.length;
+    return h("div.draft",
+      LT.icon("layer"), h("span", "Editing ", h("b", l.name)),
+      h("span.muted", n ? `${n} change${n > 1 ? "s" : ""}: ${m.draft.changes.join(", ")}` : "no changes yet — select a window, then Layer ▾"),
+      h("span.grow"),
+      h("button.btn.ghost", { onClick: () => m.cancelEdit() }, "Discard"),
+      h("button.btn", { onClick: () => m.saveEdit(false) }, "Save"),
+      h("button.btn.primary" + (l.active ? "" : ".is-disabled"), { title: l.active ? "Save, then arrange the layer's live members" : "Only the active layer can be arranged", onClick: () => m.saveEdit(true) }, "Save & arrange"));
+  }
+
+  function render() {
+    const band = h("div.mapband", { onClick: () => { ui.menu = null; m.clearSelection(); } });
+    const row = h("div.maprow");
+    // Size the maps to the stage: Studio is the reference, the MacBook is drawn
+    // 12% larger than true scale so its labels stay readable.
+    const winW = document.body.classList.contains("embedded") ? innerWidth : Math.min(1760, innerWidth - 24);
+    const avail = winW - 168 - 6 - 48 - 36;
+    const macRatio = (1512 / 2560) * 1.12;
+    const studioW = Math.max(300, Math.min(530, Math.floor(avail / (1 + macRatio))));
+    for (const d of m.displays) row.append(displayBlock(d, d.id === 1 ? studioW : Math.round(studioW * macRatio)));
+    const c = m.counts();
+    const counts = h("span.counts", h("b", c.inScope), " in scope · ", h("b", c.eligible), " can arrange · ", c.elsewhere, " elsewhere");
+    band.append(row, draftBar() || h("div.hint", h("span", "Click to select · ⌘-click to add · double-click to focus"), h("span.wide", "Drag a live window onto a Desktop to move it"), h("span", "T · D · /"), counts));
+    const root = h("div.a", scopeStrip(), band, tray());
+    const cap = capsule();
+    if (cap) {
+      root.append(cap);
+      requestAnimationFrame(() => {
+        const sel = root.querySelector(`[data-wid="${m.primary().wid}"]`);
+        if (!sel) return cap.remove();
+        const rr = root.getBoundingClientRect(), r = sel.getBoundingClientRect(), c = cap.getBoundingClientRect();
+        // Ride the window: sit just inside its lower edge so the capsule never
+        // covers the Space strip or the tray beneath the map.
+        const mon = sel.closest(".mon");
+        const limit = (mon ? mon.getBoundingClientRect().bottom : r.bottom) - rr.top - 8;
+        let top = Math.min(r.bottom - rr.top - 8, limit) - c.height;
+        if (!mon) top = root.querySelector(".tray").getBoundingClientRect().top - rr.top - c.height - 2; // tray rows: float over the hint line
+        const left = Math.max(8, Math.min(rr.width - c.width - 8, r.left - rr.left + r.width / 2 - c.width / 2));
+        cap.style.top = top + "px"; cap.style.left = left + "px";
+      });
+    }
+    return root;
+  }
+
+  addEventListener("resize", () => m.emit());
+  LT.mountShell({
+    letter: "A", name: "Map Table", blurb: "The desk drawn to scale; actions ride the selected window.",
+    model: m, render,
+  });
+})();
+</script>
+</body>
+</html>

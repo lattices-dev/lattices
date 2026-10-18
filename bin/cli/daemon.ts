@@ -5,6 +5,14 @@ let target: HostEntry | undefined;
 export function targetHost(name: string): void { target = name === "local" ? undefined : resolveHost(name); _client = undefined; }
 export function isRemoteTarget(): boolean { return target !== undefined; }
 
+/** The host daemon calls go to, from `@name` or `--host name`; undefined for this Mac. */
+export function remoteHostName(): string | undefined {
+  if (target) return target.name;
+  const host = process.env.LATTICES_DAEMON_HOST?.trim();
+  if (!host || ["127.0.0.1", "localhost", "::1", "local"].includes(host)) return undefined;
+  return host;
+}
+
 let _client: DaemonClient | undefined;
 
 /** Lazy-load daemon client — avoids import cost for pure tmux commands. */

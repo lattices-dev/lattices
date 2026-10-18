@@ -200,6 +200,10 @@ final class SpatialLensModifierMonitor {
         switch type {
         case .flagsChanged:
             let flags = event.flags
+            if SpaceZoomInput.engaged {
+                transition = monitor.state.cancel()
+                break
+            }
             transition = monitor.state.flagsChanged(
                 control: flags.contains(.maskControl),
                 option: flags.contains(.maskAlternate),

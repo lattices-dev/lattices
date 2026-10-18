@@ -16,6 +16,9 @@ import Foundation
 /// click on the operator's own screen would be exactly the stolen click this exists to
 /// avoid. `--any-display` lifts that for tests.
 enum ActionBlinkInput {
+    private static func acquireInputLease() throws -> ActionWorkspaceLock {
+        try ActionWorkspaceLock(url: ActionLayerSafetyGate.defaultURL.deletingLastPathComponent().appendingPathComponent("native-input.lock"))
+    }
     /// A click this short is still one click to every app we've driven; the whole blink,
     /// warp to warp-back, stays under ~25ms.
     static let clickHoldMilliseconds = 8
@@ -32,6 +35,8 @@ enum ActionBlinkInput {
         pointerEventLogPath: String?,
         handBack: Bool = true
     ) throws -> String {
+        let inputLease = try acquireInputLease()
+        defer { withExtendedLifetime(inputLease) {} }
         if !anyDisplay {
             guard ActionAgentLayerDisplay.contains(point) else {
                 throw ActionHostError.accessibilityActionFailed(
@@ -87,6 +92,8 @@ enum ActionBlinkInput {
     /// don't reach web content, so the mouse-down activates the app until focus is
     /// handed back.
     static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true) throws -> String {
+        let inputLease = try acquireInputLease()
+        defer { withExtendedLifetime(inputLease) {} }
         try requireOnLayer([start, end], command: "blink-drag", anyDisplay: anyDisplay)
         let previous = frontmostPID().flatMap(NSRunningApplication.init(processIdentifier:))
         let target = ownerOfWindow(at: start)
@@ -103,6 +110,8 @@ enum ActionBlinkInput {
     /// Scroll wheel events go to the window under the pointer and activate nothing, so a
     /// scroll needs the pointer on the layer only for the instant the events post.
     static func scroll(at point: CGPoint, deltaX: Double, deltaY: Double, durationMs: Int, anyDisplay: Bool) throws -> String {
+        let inputLease = try acquireInputLease()
+        defer { withExtendedLifetime(inputLease) {} }
         try requireOnLayer([point], command: "blink-scroll", anyDisplay: anyDisplay)
         let saved = try borrowPointer {
             try ActionNativeAutomation.scroll(at: point, deltaX: deltaX, deltaY: deltaY, durationMs: durationMs)
@@ -208,6 +217,8 @@ enum ActionBlinkInput {
         accessibilityFirst: Bool,
         anyDisplay: Bool
     ) throws -> String {
+        let inputLease = try acquireInputLease()
+        defer { withExtendedLifetime(inputLease) {} }
         try requireLayerWindow(app, anyDisplay: anyDisplay)
         // "url\n" is text plus a submit. An accessibility write can't press Return, and a
         // single-line field drops the newline, so insert the text and press Return after.
@@ -289,6 +300,8 @@ enum ActionBlinkInput {
     }
 
     static func press(_ key: String, modifiers: [String], into app: NSRunningApplication, anyDisplay: Bool) throws -> String {
+        let inputLease = try acquireInputLease()
+        defer { withExtendedLifetime(inputLease) {} }
         let combo = modifiers.isEmpty ? key : "\(modifiers.joined(separator: "+"))+\(key)"
         // Most chords are a menu's key equivalent (⌘N, ⌘L, ⌘T). Pressing that item
         // through accessibility runs the same command without bringing the app forward.

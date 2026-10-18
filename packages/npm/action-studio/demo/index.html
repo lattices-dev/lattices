@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lattices Action Studio</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #dfe8f5;
+        color: #182037;
+        transition: background 160ms ease;
+      }
+      body:has(.skin-lattices) { background: #0a0b0b; }
+
+      .shell {
+        width: min(1240px, calc(100vw - 32px));
+        margin: 16px auto;
+        overflow: hidden;
+        border: 1px solid #1e2d441f;
+        border-radius: 14px;
+        background: #f8f7f4;
+        box-shadow: 0 24px 70px #00000026;
+      }
+
+      .titlebar {
+        height: 42px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 14px;
+        border-bottom: 1px solid #1e2d441f;
+      }
+      .traffic { display: flex; gap: 7px; }
+      .traffic i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ff5f57;
+      }
+      .traffic i:nth-child(2) { background: #febc2e; }
+      .traffic i:nth-child(3) { background: #28c840; }
+      .mark::after { content: attr(data-talkie); }
+      .skin-lattices .mark::after { content: attr(data-lattices); }
+      .mark {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        margin-left: 6px;
+        border-radius: 6px;
+        background: #0a1d40;
+        color: white;
+        font: 700 10px ui-monospace, monospace;
+      }
+      .product { font-size: 13px; font-weight: 650; }
+      .host-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+      .host-controls span { color: #5f6779; font-size: 11px; }
+      .segmented {
+        display: flex;
+        padding: 2px;
+        border: 1px solid #1e2d4422;
+        border-radius: 7px;
+        background: #00000008;
+      }
+      .segmented button {
+        min-height: 25px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: inherit;
+      }
+      .segmented button[aria-pressed="true"] {
+        background: white;
+        box-shadow: 0 1px 3px #0002;
+      }
+
+      /* Library --------------------------------------------------------- */
+      /* Saved actions are a compact strip, not a column. Picking one is a
+         two-second errand; the canvas below is where the time is spent. */
+      .library {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 40px;
+        padding: 0 14px;
+        overflow-x: auto;
+        border-bottom: 1px solid #1e2d441f;
+        background: #f4f2ee;
+        scrollbar-width: thin;
+      }
+      .library header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding-right: 12px;
+        border-right: 1px solid #1e2d441f;
+      }
+      .library h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .library header button {
+        width: 23px;
+        height: 23px;
+        border: 0;
+        border-radius: 6px;
+        background: #00000010;
+        font-size: 15px;
+        line-height: 1;
+      }
+      .library header button:hover { background: #0000001c; }
+      .group {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .group-label {
+        flex: 0 0 auto;
+        color: #5f6779;
+        font: 650 10px ui-monospace, monospace;
+        letter-spacing: 0.12em;
+      }
+      .group > p {
+        margin: 0;
+        color: #5f6779;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .action-row {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 5px 11px;
+        border: 1px solid #1e2d4426;
+        border-radius: 999px;
+        background: #ffffffcc;
+        color: inherit;
+        text-align: left;
+      }
+      .action-row:hover { background: #ffffff; border-color: #1e2d4440; }
+      .action-row.active,
+      .action-row.active:hover {
+        border-color: #1768e8;
+        background: #e1ebfc;
+        color: #155fd3;
+      }
+      .action-row strong {
+        font-size: 12px;
+        font-weight: 560;
+        white-space: nowrap;
+      }
+      /* The group label already says where these live, so the per-chip
+         repetition of it is hidden rather than printed twice. */
+      .action-row small { display: none; }
+
+      .shell :focus-visible {
+        outline: 2px solid #1768e8;
+        outline-offset: 2px;
+      }
+      .skin-lattices :focus-visible { outline-color: #e56832; }
+
+      .canvas {
+        min-width: 0;
+        padding: 14px 16px 16px;
+        background: #fbfaf7;
+      }
+      lattices-action-editor {
+        display: block;
+        max-width: 1120px;
+        margin: 0 auto;
+      }
+
+      /* Lattices skin --------------------------------------------------- */
+      .skin-lattices {
+        background: #101111;
+        color: #f0eee8;
+      }
+      .skin-lattices lattices-action-editor {
+        --las-surface: #171818;
+        --las-surface-raised: #212222;
+        --las-live-surface: #090a0a;
+        --las-text: #f0eee8;
+        --las-text-secondary: #99978f;
+        --las-text-on-live: #f4f1e8;
+        --las-accent: #e56832;
+        --las-separator: #ffffff1a;
+        --las-control: #ffffff0b;
+      }
+      .skin-lattices .titlebar,
+      .skin-lattices .library {
+        border-color: #ffffff17;
+        background: #181919;
+      }
+      .skin-lattices .library header { border-color: #ffffff17; }
+      .skin-lattices .library header button {
+        background: #ffffff12;
+        color: #f0eee8;
+      }
+      .skin-lattices .library header button:hover { background: #ffffff1f; }
+      .skin-lattices .canvas { background: #101111; }
+      .skin-lattices .group-label,
+      .skin-lattices .group > p { color: #99978f; }
+      .skin-lattices .action-row {
+        border-color: #ffffff1f;
+        background: #ffffff08;
+      }
+      .skin-lattices .action-row:hover {
+        border-color: #ffffff33;
+        background: #ffffff12;
+      }
+      .skin-lattices .action-row.active,
+      .skin-lattices .action-row.active:hover {
+        border-color: #e56832;
+        background: #34251e;
+        color: #f27b48;
+      }
+      .skin-lattices .mark {
+        background: #e56832;
+        color: #1b120d;
+      }
+      .skin-lattices .host-controls span { color: #8c8a83; }
+      .skin-lattices .segmented {
+        border-color: #ffffff1f;
+        background: #ffffff08;
+      }
+      .skin-lattices .segmented button[aria-pressed="true"] {
+        background: #2f3030;
+        box-shadow: 0 1px 3px #00000066;
+      }
+      .skin-lattices .shell { box-shadow: 0 24px 70px #00000073; }
+
+      @media (max-width: 720px) {
+        .shell { width: 100vw; margin: 0; border: 0; border-radius: 0; }
+        .host-controls span { display: none; }
+        .canvas { padding: 14px 10px 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      THESIS: An action is the workspace it produces, so the outcome and the picture of it lead; the parts are edited beside it.
+      OWN-WORLD: Porcelain native shell, one navy voice control, cobalt state, hairline structure, instrument labels.
+      STORY: Say what you want, watch the workspace take that shape, then correct any window in place and save it.
+      FIRST VIEWPORT: Library strip, the intent, the workspace stage, and every window row — together at a laptop viewport.
+      FORM: Approved Talkie Actions document editor; established-surface extension, no seed required.
+      FINISH: source, interaction, accessibility, and both host skins are reviewed; this package contains no raster assets.
+    -->
+    <div class="shell skin-talkie" id="shell">
+      <header class="titlebar">
+        <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="mark" data-talkie="T" data-lattices="L" aria-hidden="true"></span>
+        <span class="product" id="product-name">Talkie · Actions</span>
+        <div class="host-controls">
+          <span>HOST SKIN</span>
+          <div class="segmented" aria-label="Host skin">
+            <button type="button" data-skin="talkie" aria-pressed="true">Talkie</button>
+            <button type="button" data-skin="lattices" aria-pressed="false">Lattices</button>
+          </div>
+        </div>
+      </header>
+
+      <aside class="library" aria-label="Saved actions">
+        <header>
+          <h1>Actions</h1>
+          <button aria-label="New action" title="New action">+</button>
+        </header>
+        <!-- Groups are rendered by demo.js from saved documents. -->
+      </aside>
+
+      <main class="canvas">
+        <lattices-action-editor></lattices-action-editor>
+      </main>
+    </div>
+    <script type="module" src="/demo/demo.js"></script>
+  </body>
+</html>

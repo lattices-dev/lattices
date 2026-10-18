@@ -26,6 +26,10 @@ export interface HyprMonitor {
   id: number;
   name: string;
   description: string;
+  /** Empty on headless (virtual) outputs. */
+  make?: string;
+  model?: string;
+  serial?: string;
   x: number;
   y: number;
   width: number;
@@ -70,6 +74,7 @@ export function usesLua(): Promise<boolean> {
 export type Op =
   | { op: "focus"; address: string }
   | { op: "float"; address: string }
+  | { op: "tile"; address: string }
   | { op: "resize"; address: string; w: number; h: number }
   | { op: "move"; address: string; x: number; y: number }
   | { op: "toWorkspace"; address: string; workspace: number | string }
@@ -93,6 +98,8 @@ export function spell(op: Op, lua: boolean): string {
         return `hl.dsp.focus({ ${w} })`;
       case "float":
         return `hl.dsp.window.float({ action = "enable", ${w} })`;
+      case "tile":
+        return `hl.dsp.window.float({ action = "disable", ${w} })`;
       case "resize":
         return `hl.dsp.window.resize({ x = ${int(op.w)}, y = ${int(op.h)}, ${w} })`;
       case "move":
@@ -110,6 +117,8 @@ export function spell(op: Op, lua: boolean): string {
       return `focuswindow ${win}`;
     case "float":
       return `setfloating ${win}`;
+    case "tile":
+      return `settiled ${win}`;
     case "resize":
       return `resizewindowpixel exact ${int(op.w)} ${int(op.h)},${win}`;
     case "move":

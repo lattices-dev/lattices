@@ -21,7 +21,7 @@ Tailscale is optional for local use. Set up Tailscale separately to pair with an
 Run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
 ```
 
 The installer installs missing Arch dependencies and Bun, copies the Linux runtime, adds `lats`, `lattices` and `lattices-host`, and creates the app launcher. It then enables the host and tray as systemd user services, runs `lats doctor`, and opens the app.
@@ -33,7 +33,7 @@ If the installer cannot reach the desktop or the user service manager, it report
 ### Install from a checkout
 
 ```sh
-git clone https://github.com/arach/lattices.git
+git clone https://github.com/lattices-dev/lattices.git
 cd lattices
 bash install.sh
 ```
@@ -53,7 +53,7 @@ Dry-run mode does not download packages, write files or start services.
 The core install leaves desktop bindings unchanged. Add Forward-button gestures with:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arach/lattices/main/install.sh | bash -s -- --gestures
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash -s -- --gestures
 ```
 
 Hold the Forward button, draw the gesture, then release:

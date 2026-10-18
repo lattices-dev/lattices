@@ -1,0 +1,68 @@
+{
+  "checkedAt": "2026-10-02",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "learningAudit": {
+    "routes": 17,
+    "internalContentMediaLinks": 204,
+    "comparisons": 6,
+    "lessons": 3,
+    "videos": 5
+  },
+  "encodedContactSheets": "root visually reviewed all three",
+  "firstBatchVideoHashes": "unchanged",
+  "publication": "not deployed",
+  "browser": [
+    {
+      "canonical": "https://lattices.dev/watch/macos-automation-permissions",
+      "currentTime": 32.078547,
+      "documentWidth": 421,
+      "duration": 40,
+      "ended": false,
+      "paused": false,
+      "playerHeight": 216.5634307861328,
+      "playerWidth": 385.0131530761719,
+      "readyState": 4,
+      "slug": "macos-automation-permissions",
+      "title": "Three Mac permissions, three different jobs \u2014 Lattices",
+      "videoHeight": 720,
+      "videoWidth": 1280,
+      "viewport": 421
+    },
+    {
+      "canonical": "https://lattices.dev/watch/observe-act-verify",
+      "currentTime": 40,
+      "documentWidth": 421,
+      "duration": 40,
+      "ended": true,
+      "paused": true,
+      "playerHeight": 216.5634307861328,
+      "playerWidth": 385.0131530761719,
+      "readyState": 4,
+      "slug": "observe-act-verify",
+      "title": "Observe, act, verify: checking Mac automation results \u2014 Lattices",
+      "videoHeight": 720,
+      "videoWidth": 1280,
+      "viewport": 421
+    },
+    {
+      "canonical": "https://lattices.dev/watch/window-snapping-vs-tiling",
+      "captionSource": "http://127.0.0.1:5186/learn/media/window-snapping-vs-tiling.vtt",
+      "currentTime": 40,
+      "documentWidth": 421,
+      "duration": 40,
+      "ended": true,
+      "hasMediaError": false,
+      "paused": true,
+      "playerHeight": 216.6047210693359,
+      "playerWidth": 385.0759887695313,
+      "readyState": 4,
+      "slug": "window-snapping-vs-tiling",
+      "title": "Window snapping, tiling, and workspaces \u2014 Lattices",
+      "videoHeight": 720,
+      "videoWidth": 1280,
+      "viewport": 421
+    }
+  ],
+  "limitation": "Existing shared JavaScript bundle size warning remains; deployed performance not measured."
+}

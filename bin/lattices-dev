@@ -20,6 +20,7 @@ LAUNCH_AGENT_LABEL="$BUNDLE_ID.login"
 LAUNCH_AGENT_PLIST="$HOME/Library/LaunchAgents/$LAUNCH_AGENT_LABEL.plist"
 LAUNCH_AGENT_LOG="$HOME/.lattices/lattices-dev-launchagent.log"
 ICON="$ROOT/assets/AppIcon.icns"
+ICON_CATALOG="$ROOT/assets/Assets.car"
 TAP_SOUND="$APP_DIR/Resources/tap.wav"
 DECK_BUILDER_RESOURCES="$APP_DIR/Resources/DeckBuilder"
 VERSION="$(node -p "require('$ROOT/package.json').version" 2>/dev/null || echo '0.1.0')"
@@ -227,6 +228,8 @@ write_info_plist() {
     <string>Lattices</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleURLTypes</key>
@@ -237,6 +240,19 @@ write_info_plist() {
             <key>CFBundleURLSchemes</key>
             <array>
                 <string>lattices</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.lattices.overview-window</string>
+            <key>UTTypeDescription</key>
+            <string>Lattices Overview Window</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
             </array>
         </dict>
     </array>
@@ -286,6 +302,9 @@ cmd_build() {
     cp "$BINARY" "$BUNDLE_BIN"
     if [ -f "$ICON" ]; then
         cp "$ICON" "$RESOURCES_DIR/AppIcon.icns"
+    fi
+    if [ -f "$ICON_CATALOG" ]; then
+        cp "$ICON_CATALOG" "$RESOURCES_DIR/Assets.car"
     fi
     if [ -f "$TAP_SOUND" ]; then
         cp "$TAP_SOUND" "$RESOURCES_DIR/tap.wav"
@@ -419,7 +438,6 @@ cmd_link() {
     fi
     cd "$ROOT"
     bun link
-    bun link @lattices/cli
     if command -v lattices >/dev/null 2>&1; then
         green "Linked. \`lattices\` -> $(command -v lattices)"
     else
@@ -433,7 +451,9 @@ cmd_unlink() {
         red "bun not found."
         exit 1
     fi
-    bun remove -g @lattices/cli >/dev/null 2>&1 || true
+    for package in @lattices/lattices @arach/lattices @lattices/cli; do
+        bun remove -g "$package" >/dev/null 2>&1 || true
+    done
     green "Unlinked."
 }
 

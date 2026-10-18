@@ -1,0 +1,278 @@
+[
+  {
+    "slug": "rectangle",
+    "name": "Rectangle",
+    "category": "Window snapping",
+    "summary": "Rectangle puts window placement behind keyboard shortcuts and screen-edge snap areas. It is a focused starting point for arranging windows by hand.",
+    "bestFor": "Choose Rectangle when your main job is to put windows into halves, thirds, corners, or another display with a shortcut or drag. Start by choosing the shortcuts and snap areas you want.",
+    "tradeoff": "An app's minimum window size can prevent the requested layout from fitting. Rectangle and Rectangle Pro have different feature sets, so check the edition before choosing a workflow.",
+    "latticesFit": "Lattices is worth considering when you want window placement tied to named projects and groups of windows, with optional terminal sessions that keep running in the background. For snapping alone, Rectangle is a direct fit.",
+    "capabilities": [
+      {
+        "label": "Placement",
+        "value": "Keyboard shortcuts and edge or corner snap areas"
+      },
+      {
+        "label": "Layouts",
+        "value": "Halves, thirds, quarters, and other preset positions"
+      },
+      {
+        "label": "Displays",
+        "value": "Commands to move a window to another display"
+      },
+      {
+        "label": "Automation entry",
+        "value": "Documented rectangle:// URLs for window actions"
+      },
+      {
+        "label": "Layout constraint",
+        "value": "Target apps can enforce a minimum window size"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Rectangle official site",
+        "url": "https://rectangleapp.com/"
+      },
+      {
+        "title": "Rectangle README and known issues",
+        "url": "https://github.com/rxhanson/Rectangle"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  },
+  {
+    "slug": "aerospace",
+    "name": "AeroSpace",
+    "category": "Automatic tiling",
+    "summary": "AeroSpace automatically arranges windows in a tiling tree: split regions that you navigate with the keyboard. It also provides its own virtual workspaces.",
+    "bestFor": "Choose AeroSpace when you want keyboard-driven tiling to define how you navigate the desktop. Its setup suits someone willing to edit a text file and learn workspace bindings.",
+    "tradeoff": "Its virtual workspaces use a different model from native macOS Spaces. You will need to learn that model and its layout commands. The project labels itself Beta, so review configuration changes when updating.",
+    "latticesFit": "Lattices centers named projects, groups of windows called layers, and optional terminal sessions. AeroSpace is the more direct candidate when you want automatic tiling to organize the whole desktop. Running both layout systems together needs a separate compatibility check.",
+    "capabilities": [
+      {
+        "label": "Layout model",
+        "value": "Tree-based tiling with tiles and accordion layouts"
+      },
+      {
+        "label": "Workspaces",
+        "value": "Emulated virtual workspaces distinct from macOS Spaces"
+      },
+      {
+        "label": "Configuration",
+        "value": "Text configuration in TOML format, including sets of keyboard shortcuts"
+      },
+      {
+        "label": "Automation entry",
+        "value": "Terminal commands and callbacks that run when specified events occur"
+      },
+      {
+        "label": "Displays",
+        "value": "Workspace-to-monitor assignments"
+      },
+      {
+        "label": "System integrity",
+        "value": "Project states that disabling SIP is not required"
+      }
+    ],
+    "sources": [
+      {
+        "title": "AeroSpace project overview and status",
+        "url": "https://github.com/nikitabobko/AeroSpace"
+      },
+      {
+        "title": "AeroSpace configuration and workspace guide",
+        "url": "https://nikitabobko.github.io/AeroSpace/guide"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  },
+  {
+    "slug": "yabai",
+    "name": "yabai",
+    "category": "Automatic tiling",
+    "summary": "yabai automatically divides the screen into tiled regions. You control its windows, macOS Spaces, and displays with terminal commands.",
+    "bestFor": "Choose yabai when you want automatic tiling built around macOS Spaces and detailed window control. Expect to edit a shell configuration and use a separate tool for keyboard shortcuts.",
+    "tradeoff": "Some additional features use an optional addition to the macOS Dock and require changes to System Integrity Protection (SIP). That is not required for every workflow. Check the requirements for the commands you need.",
+    "latticesFit": "Lattices connects window arrangements to named projects, layers, and optional terminal sessions. yabai is a strong candidate when automatic tiling and command-line control of Spaces are the main job. This review does not establish safe simultaneous layout control.",
+    "capabilities": [
+      {
+        "label": "Layout model",
+        "value": "Automatic tiling by dividing screen regions into two parts"
+      },
+      {
+        "label": "Configuration",
+        "value": "Shell configuration with settings changeable at runtime"
+      },
+      {
+        "label": "Automation entry",
+        "value": "Terminal commands to control windows, Spaces, and displays"
+      },
+      {
+        "label": "Per-Space behavior",
+        "value": "Tiled or floating layouts, padding, and gaps"
+      },
+      {
+        "label": "Keyboard bindings",
+        "value": "Configured through a separate hotkey tool such as skhd"
+      },
+      {
+        "label": "Permissions",
+        "value": "Accessibility access; extra privileged features have additional requirements"
+      }
+    ],
+    "sources": [
+      {
+        "title": "yabai overview, requirements, and caveats",
+        "url": "https://github.com/asmvik/yabai"
+      },
+      {
+        "title": "yabai configuration guide",
+        "url": "https://github.com/asmvik/yabai/wiki/Configuration"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  },
+  {
+    "slug": "hammerspoon",
+    "name": "Hammerspoon",
+    "category": "macOS scripting",
+    "summary": "Hammerspoon lets you write Lua code to control your Mac. You define the events, window rules, and system behavior that make up your workflow.",
+    "bestFor": "Choose Hammerspoon when you want to build your own automation rules and are willing to learn or edit Lua. It can also help you explore the interface information apps expose through Accessibility.",
+    "tradeoff": "You own the Lua configuration and its maintenance. Accessibility operations depend on what each target app exposes; an accepted action does not by itself prove that the intended interface change occurred.",
+    "latticesFit": "Lattices provides a defined way to organize projects and groups of windows, with an API for scripts. Hammerspoon is a strong fit when you want to design custom behavior yourself. Connecting the tools would require its own implementation and verification.",
+    "capabilities": [
+      {
+        "label": "Programming model",
+        "value": "Lua configuration connecting events to actions"
+      },
+      {
+        "label": "Windows",
+        "value": "Window movement, resizing, filters, and multi-window layouts"
+      },
+      {
+        "label": "System events",
+        "value": "APIs for screens, applications, input, and other macOS services"
+      },
+      {
+        "label": "Accessibility",
+        "value": "hs.axuielement exposes supported UI attributes and actions"
+      },
+      {
+        "label": "Extensions",
+        "value": "Reusable plugins called Spoons"
+      },
+      {
+        "label": "Verification",
+        "value": "Accessibility documentation recommends reading the result after making a change"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Hammerspoon overview",
+        "url": "https://www.hammerspoon.org/"
+      },
+      {
+        "title": "Hammerspoon getting started guide",
+        "url": "https://www.hammerspoon.org/go/"
+      },
+      {
+        "title": "Hammerspoon Accessibility API reference",
+        "url": "https://www.hammerspoon.org/docs/hs.axuielement.html"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  },
+  {
+    "slug": "keyboard-maestro",
+    "name": "Keyboard Maestro",
+    "category": "Macro automation",
+    "summary": "Keyboard Maestro builds macOS workflows from triggers and actions. Its scope includes applications, text, images, websites, and window arrangement.",
+    "bestFor": "Choose Keyboard Maestro when repeated work spans several apps and you want to assemble macros in an editor. You can start with a trigger and a few actions, then add conditions and loops.",
+    "tradeoff": "Macros still need workflow-specific testing. The manual cautions that mouse-click actions depend on the expected screen state and can break when an app's interface changes.",
+    "latticesFit": "Lattices is relevant when the repeated work is organizing named projects, terminal sessions, and groups of windows. Keyboard Maestro is a strong candidate for broader application workflows. Shared window-control duties need explicit coordination.",
+    "capabilities": [
+      {
+        "label": "Programming model",
+        "value": "Macros assembled from triggers and actions"
+      },
+      {
+        "label": "Workflow logic",
+        "value": "Conditions, loops, and flow-control actions"
+      },
+      {
+        "label": "Applications",
+        "value": "Launch apps, open documents, and arrange windows"
+      },
+      {
+        "label": "Text and images",
+        "value": "Text transformations, clipboard tools, and image OCR"
+      },
+      {
+        "label": "Macro authoring",
+        "value": "Editor, wizard, and recording as a starting point"
+      },
+      {
+        "label": "Runtime",
+        "value": "A separate engine runs macros after the editor closes"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Keyboard Maestro official feature overview",
+        "url": "https://www.keyboardmaestro.com/main/"
+      },
+      {
+        "title": "Keyboard Maestro manual: authoring and running macros",
+        "url": "https://wiki.keyboardmaestro.com/manual/How_do_I"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  },
+  {
+    "slug": "raycast",
+    "name": "Raycast",
+    "category": "Command launcher",
+    "summary": "Raycast brings window commands and personal scripts into a searchable command interface. Its documentation also covers custom window commands and layouts.",
+    "bestFor": "Choose Raycast when you want window placement and frequently used scripts in the same launcher. Start with built-in commands and hotkeys; add custom scripts when you need them.",
+    "tradeoff": "Custom scripts remain code you maintain. The window-management manual documents limitations with custom-command gaps and Stage Manager layouts; check those against your setup and current plan.",
+    "latticesFit": "Lattices organizes named projects, groups of windows, and optional terminal sessions. A Raycast Script Command could run a Lattices terminal command, making the tools complementary. That is an integration possibility, not a tested recipe in this review.",
+    "capabilities": [
+      {
+        "label": "Placement",
+        "value": "Window commands accessible from search or global hotkeys"
+      },
+      {
+        "label": "Displays",
+        "value": "Move the focused window between displays"
+      },
+      {
+        "label": "Custom layouts",
+        "value": "Documented commands for arranging multiple app windows"
+      },
+      {
+        "label": "Automation entry",
+        "value": "Script Commands turn local scripts into searchable commands"
+      },
+      {
+        "label": "Script languages",
+        "value": "macOS scripts can use AppleScript, shell, Python, Node.js, and other interpreters"
+      },
+      {
+        "label": "Permissions",
+        "value": "Accessibility access is required for window movement and resizing"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Raycast window-management manual",
+        "url": "https://manual.raycast.com/window-management"
+      },
+      {
+        "title": "Raycast Script Commands manual",
+        "url": "https://manual.raycast.com/script-commands"
+      }
+    ],
+    "reviewedAt": "2026-10-02"
+  }
+]

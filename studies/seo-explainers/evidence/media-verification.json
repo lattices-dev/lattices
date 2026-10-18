@@ -1,0 +1,30 @@
+{
+  "renderedOn": "hetz",
+  "verified": "2026-10-02",
+  "fullDecode": "passed for both MP4s with ffmpeg -v error -f null",
+  "visualReview": "Decoded contact sheets and both full-size posters inspected; footer reads lattices.dev/learn.",
+  "videos": [
+    {
+      "slug": "ax-tree",
+      "durationSeconds": 36,
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "fps": "30/1",
+      "frames": 1080,
+      "bytes": 1397277,
+      "sha256": "b13f2ebdde1560f39984a0d072e0ce82316e6ae5990eb945243cd45afea812ff"
+    },
+    {
+      "slug": "ax-vs-screenshots",
+      "durationSeconds": 36,
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "fps": "30/1",
+      "frames": 1080,
+      "bytes": 1816741,
+      "sha256": "ca81cc5f7c0f3c938ea9fdd571855bb4e640a24e24944cd0312b6a5f8a8f44c8"
+    }
+  ]
+}

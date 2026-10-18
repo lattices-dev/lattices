@@ -18,23 +18,36 @@ import { copyActionReferences } from './action-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import { stripMdxImports } from '../src/lib/markdown.ts'
+import LandingPage from '../src/components/LandingPage.tsx'
+import ConceptExperimentPage from '../src/components/ConceptExperimentPage.tsx'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
+import LearnPage from '../src/components/LearnPage.tsx'
+import { learningRoutes } from '../src/lib/learning.ts'
 import ProductsPage from '../src/components/ProductsPage.tsx'
 import FamilyPage from '../src/components/FamilyPage.tsx'
-import { routeBrand } from '../src/lib/brand.ts'
+import BrandPage from '../src/components/BrandPage.tsx'
+import { SiteFooter } from '../src/components/SiteChrome.tsx'
+import { routeBrand, routeOgImage } from '../src/lib/brand.ts'
+import { clampMeta, navBlurb, rewriteDocMarkdown } from '../src/seo/describe.ts'
+import { articleJsonLd, routeJsonLd } from '../src/seo/jsonld.ts'
+import { absoluteUrl, routeMeta, SITE_ORIGIN as SITE_URL } from '../src/seo/routes.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
 const distDir = join(siteDir, 'dist')
 const actionAssetSourceDir = join(repoRoot, 'products', 'action', 'docs', 'assets')
 const actionMediaPath = '/action/media/'
-const SITE_URL = 'https://lattices.dev'
+const sitemapUrls = []
+
+function recordSitemap(path, { priority = '0.7', lastmod } = {}) {
+  sitemapUrls.push({ loc: absoluteUrl(path), priority, lastmod })
+}
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
-const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/arach/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/arach/lattices/releases/download/blink-v2.1.0/Blink.dmg'
+const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/blink-v2.1.0/Blink.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -74,52 +87,69 @@ const postUpdated = await getLastUpdatedBatch(
   })),
 )
 
-await writeRoute(
-  '/action',
-  'Action — computer use from Lattices',
-  'Action is the focused computer-use product from Lattices: native macOS automation, capture, and review for agents.',
-  renderActionPage(),
-)
+await writeStaticRoute('/', renderToString(createElement(LandingPage)))
+await writeStaticRoute('/experiment', renderToString(createElement(ConceptExperimentPage)))
+await writeStaticRoute('/concept', renderToString(createElement(ConceptExperimentPage)))
+await writeStaticRoute('/action', renderActionPage())
 await copyActionDocs()
+await patchActionAgentsHead()
 await writeActionDownloadRedirect()
-await writeRoute(
-  '/blink',
-  'Blink — spatial notes from Lattices',
-  'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
-  renderToString(createElement(BlinkPage)),
-)
-await writeRoute('/speech', 'Speech — a standalone player from Lattices', 'Queue text, choose a voice, and control playback independently.', renderToString(createElement(SpeechPage)))
-await writeRoute('/products', 'Products — Lattices', 'Browse Lattices, Action, Blink, Speech, and the agent API.', renderToString(createElement(ProductsPage)))
-await writeRoute(
-  '/family',
-  'What Lattices can do — Lattices',
-  'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
-  renderToString(createElement(FamilyPage)),
-)
+await writeStaticRoute('/blink', renderToString(createElement(BlinkPage)))
+await writeStaticRoute('/speech', renderToString(createElement(SpeechPage)))
+await writeStaticRoute('/products', renderToString(createElement(ProductsPage)))
+await writeStaticRoute('/family', renderToString(createElement(FamilyPage)))
+await writeStaticRoute('/brand', renderToString(createElement(BrandPage)))
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
-await writeRoute('/docs', 'Docs — Lattices', 'Lattices documentation', renderDoc(docs.find((doc) => doc.slug === 'overview') || docs[0]))
+const overview = docs.find((doc) => doc.slug === 'overview') || docs[0]
+const overviewPage = docPage(overview)
+await writeRoute('/docs', `${overviewPage.title} — Lattices Docs`, overviewPage.description, overviewPage.html, {
+  canonicalPath: `/docs/${overview.slug}`,
+  sitemap: false,
+  ogImage: routeOgImage('/docs'),
+})
 
 for (const doc of docs) {
-  await writeRoute(
-    `/docs/${doc.slug}`,
-    `${doc.data.title || titleFromSlug(doc.slug)} — Lattices Docs`,
-    doc.data.description || 'Lattices documentation',
-    renderDoc(doc),
-  )
+  const page = doc.slug === overview.slug ? overviewPage : docPage(doc)
+  await writeRoute(`/docs/${doc.slug}`, `${page.title} — Lattices Docs`, page.description, page.html, {
+    priority: '0.7',
+    lastmod: docUpdated[doc.slug] || doc.data.date || undefined,
+    ogImage: routeOgImage(`/docs/${doc.slug}`),
+  })
 }
 
-await writeRoute('/blog', 'Blog — Lattices', 'Ideas and engineering notes from the Lattices team.', renderBlogIndex(posts))
-await writeRoute('/docs/blog', 'Blog — Lattices', 'Ideas and engineering notes from the Lattices team.', renderBlogIndex(posts))
+await writeStaticRoute('/blog', renderBlogIndex(posts))
+await writeStaticRoute('/docs/blog', renderBlogIndex(posts))
 
 for (const post of posts) {
   const html = renderPost(post)
-  await writeRoute(`/blog/${post.slug}`, `${post.data.title} — Lattices`, post.data.description || '', html)
-  await writeRoute(`/docs/blog/${post.slug}`, `${post.data.title} — Lattices`, post.data.description || '', html)
+  const description = clampMeta(post.data.description || post.data.title || '')
+  const jsonLd = articleJsonLd({
+    title: post.data.title || titleFromSlug(post.slug),
+    description,
+    path: `/blog/${post.slug}`,
+    date: post.data.date,
+    author: post.data.author,
+  })
+  await writeRoute(`/blog/${post.slug}`, `${post.data.title} — Lattices`, description, html, {
+    priority: '0.6',
+    lastmod: postUpdated[post.slug] || post.data.date || undefined,
+    ogType: 'article',
+    jsonLd,
+  })
+  await writeRoute(`/docs/blog/${post.slug}`, `${post.data.title} — Lattices`, description, html, {
+    canonicalPath: `/blog/${post.slug}`,
+    sitemap: false,
+    ogType: 'article',
+    jsonLd,
+  })
 }
 
 await copyDocsAssets()
+for (const route of learningRoutes) {
+  await writeRoute(route.path, `${route.title} — Lattices`, route.description, renderToString(createElement(LearnPage, { path: route.path })))
+}
 await writeAgentArtifacts({ siteDir, repoRoot, distDir })
 
 // Emit a tiny manifest the React SPA can read on hydration for last-updated
@@ -160,27 +190,10 @@ await writeRssFeed()
 await writeNotFound()
 
 async function writeSitemap() {
-  const urls = [
-    { loc: `${SITE_URL}/`, priority: '1.0' },
-    { loc: `${SITE_URL}/action`, priority: '0.9' },
-    { loc: `${SITE_URL}/action/agents`, priority: '0.7' },
-    { loc: `${SITE_URL}/blink`, priority: '0.9' },
-    { loc: `${SITE_URL}/speech`, priority: '0.9' },
-    { loc: `${SITE_URL}/products`, priority: '0.9' },
-    { loc: `${SITE_URL}/family`, priority: '0.9' },
-    { loc: `${SITE_URL}/blink/agents.md`, priority: '0.7' },
-    { loc: `${SITE_URL}/blog`, priority: '0.8' },
-    ...docs.map((doc) => ({
-      loc: `${SITE_URL}/docs/${doc.slug}`,
-      lastmod: docUpdated[doc.slug] || doc.data.date || undefined,
-      priority: '0.7',
-    })),
-    ...posts.map((post) => ({
-      loc: `${SITE_URL}/blog/${post.slug}`,
-      lastmod: postUpdated[post.slug] || post.data.date || undefined,
-      priority: '0.6',
-    })),
-  ]
+  // Copied agent docs keep the URL their own canonical and the site footer already use.
+  recordSitemap('/action/agents/', { priority: '0.7' })
+  recordSitemap('/blink/agents.md', { priority: '0.7' })
+  const urls = sitemapUrls
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -259,8 +272,30 @@ async function readEntries(directory, extensions) {
   }))
 }
 
-async function writeRoute(route, title, description, appHtml) {
-  const brand = routeBrand(route)
+async function writeStaticRoute(route, appHtml) {
+  const meta = routeMeta(route)
+  if (!meta) throw new Error(`Missing SEO metadata for ${route}`)
+  await writeRoute(route, meta.title, meta.description, appHtml, {
+    canonicalPath: meta.canonicalPath,
+    noindex: meta.noindex,
+    sitemap: meta.sitemap,
+    priority: meta.priority,
+    jsonLd: routeJsonLd(meta, meta.ogImage || routeOgImage(meta.canonicalPath || route)),
+    ogImage: meta.ogImage,
+  })
+}
+
+async function writeRoute(route, title, description, appHtml, options = {}) {
+  const canonicalPath = options.canonicalPath || route
+  const brand = routeBrand(canonicalPath)
+  const ogImage = options.ogImage || routeOgImage(canonicalPath)
+  const ogImageUrl = `${SITE_URL}${ogImage}`
+  const canonical = absoluteUrl(canonicalPath)
+  const jsonLdTag = options.jsonLd ? `<script type="application/ld+json">${options.jsonLd}</script>` : ''
+  const robotsTag = options.noindex ? '<meta name="robots" content="noindex" />' : ''
+  const rssTag = route === '/' || route === '/blog'
+    ? '<link rel="alternate" type="application/rss+xml" title="lattices blog" href="/rss.xml" />'
+    : ''
   const html = template
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
     .replace(
@@ -273,11 +308,11 @@ async function writeRoute(route, title, description, appHtml) {
     )
     .replace(
       /<meta property="og:image" content=".*?" \/>/,
-      `<meta property="og:image" content="${SITE_URL}${brand.ogImage}" />`,
+      `<meta property="og:image" content="${ogImageUrl}" />`,
     )
     .replace(
       /<meta property="twitter:image" content=".*?" \/>/,
-      `<meta property="twitter:image" content="${SITE_URL}${brand.ogImage}" />`,
+      `<meta property="twitter:image" content="${ogImageUrl}" />`,
     )
     .replace(
       /<meta name="description" content=".*?" \/>/,
@@ -285,7 +320,11 @@ async function writeRoute(route, title, description, appHtml) {
     )
     .replace(
       /<link rel="canonical" href=".*?" \/>/,
-      `<link rel="canonical" href="${SITE_URL}${route}" />`,
+      `<link rel="canonical" href="${canonical}" />`,
+    )
+    .replace(
+      /<meta property="og:type" content=".*?" \/>/,
+      `<meta property="og:type" content="${options.ogType || 'website'}" />`,
     )
     .replace(
       /<meta property="og:title" content=".*?" \/>/,
@@ -297,7 +336,7 @@ async function writeRoute(route, title, description, appHtml) {
     )
     .replace(
       /<meta property="og:url" content=".*?" \/>/,
-      `<meta property="og:url" content="${SITE_URL}${route}" />`,
+      `<meta property="og:url" content="${canonical}" />`,
     )
     .replace(
       /<meta property="twitter:title" content=".*?" \/>/,
@@ -309,15 +348,14 @@ async function writeRoute(route, title, description, appHtml) {
     )
     .replace(
       /<link rel="alternate" type="application\/rss\+xml".*?\/>/,
-      '',
+      rssTag,
     )
-    .replace(
-      '<div id="root"></div>',
-      `<div id="root">${appHtml}</div>` +
-        (route === '/'
-          ? '<link rel="alternate" type="application/rss+xml" title="lattices blog" href="/rss.xml" />'
-          : ''),
-    )
+    .replace('</head>', `    ${robotsTag}\n    ${jsonLdTag}\n  </head>`)
+    .replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+
+  if (options.sitemap !== false && !options.noindex && canonicalPath === route) {
+    recordSitemap(route, { priority: options.priority, lastmod: options.lastmod })
+  }
 
   const filePath = route === '/' ? join(distDir, 'index.html') : join(distDir, route.slice(1), 'index.html')
   await mkdir(dirname(filePath), { recursive: true })
@@ -333,11 +371,13 @@ async function writeActionDownloadRedirect() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
+    <meta name="description" content="Download Action for macOS. This page finds the latest Action release and starts the download." />
     <link rel="canonical" href="${SITE_URL}${route}" />
     <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
-    <title>Downloading Action…</title>
+    <title>Download Action for macOS — Lattices</title>
   </head>
   <body>
+    <h1>Download Action for macOS</h1>
     <p id="download-status">Finding the latest Action release…</p>
     <p><a id="download-link" href="${escapeHtml(ACTION_LEGACY_DOWNLOAD_URL)}">Download the current Action release manually</a>.</p>
     <script>
@@ -385,6 +425,23 @@ async function writeActionDownloadRedirect() {
   await writeFile(filePath, html)
 }
 
+async function patchActionAgentsHead() {
+  const filePath = join(distDir, 'action', 'agents', 'index.html')
+  let html = await readFile(filePath, 'utf8')
+  const title = html.match(/<title>([^<]*)<\/title>/)?.[1] || 'Action for agents'
+  const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1] || ''
+  const image = html.match(/<meta property="og:image" content="([^"]*)"/)?.[1] || `${SITE_URL}/og-action.png`
+  if (!html.includes('name="twitter:title"') && !html.includes("name='twitter:title'")) {
+    const tags = [
+      `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+      `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+      `<meta name="twitter:image" content="${image}">`,
+    ].join('\n  ')
+    html = html.replace('</head>', `  ${tags}\n</head>`)
+  }
+  await writeFile(filePath, html)
+}
+
 async function writeNotFound() {
   const title = 'Page not found — Lattices'
   const description = "We couldn't find that page. Here are some good places to start."
@@ -399,10 +456,11 @@ async function writeNotFound() {
           <li><a href="/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes</li>
           <li><a href="/docs/api">Agent API</a> — WebSocket reference for agents and scripts</li>
           <li><a href="/blog">Blog</a> — release notes and engineering write-ups</li>
-          <li><a href="https://github.com/arach/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
+          <li><a href="https://github.com/lattices-dev/lattices" target="_blank" rel="noopener noreferrer">GitHub</a> — open an issue if the link should work</li>
         </ul>
       </div>
     </main>
+    ${renderFooter()}
   `
   const html = template
     .replace(/<title>.*?<\/title>/, `<title>${escapeHtml(title)}</title>`)
@@ -410,20 +468,34 @@ async function writeNotFound() {
       /<meta name="description" content=".*?" \/>/,
       `<meta name="description" content="${escapeHtml(description)}" />`,
     )
+    .replace(/<link rel="canonical" href=".*?" \/>/, '')
+    .replace(/<meta property="og:url" content=".*?" \/>/, '')
+    .replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${escapeHtml(title)}" />`)
+    .replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${escapeHtml(description)}" />`)
+    .replace(/<meta property="twitter:title" content=".*?" \/>/, `<meta property="twitter:title" content="${escapeHtml(title)}" />`)
+    .replace(/<meta property="twitter:description" content=".*?" \/>/, `<meta property="twitter:description" content="${escapeHtml(description)}" />`)
+    .replace('</head>', '    <meta name="robots" content="noindex" />\n  </head>')
     .replace('<div id="root"></div>', `<div id="root">${body}</div>`)
 
   await writeFile(join(distDir, '404.html'), html)
 }
 
-function renderDoc(doc) {
-  if (!doc) return ''
+/** The sitewide footer, so crawlers find its links on the hand-written pages too. */
+function renderFooter(current) {
+  return renderToString(createElement(SiteFooter, { current }))
+}
 
-  const title = doc.data.title || titleFromSlug(doc.slug)
-  const description = doc.data.description || ''
+function docPage(doc) {
+  const explicitTitle = typeof doc.data.title === 'string' ? doc.data.title : ''
   const { content, components } = prepareMarkdown(doc.content)
-  const rendered = substituteMdxComponents(marked.parse(content), components)
+  const rewritten = rewriteDocMarkdown(content, explicitTitle || undefined)
+  const title = explicitTitle || rewritten.firstH1 || titleFromSlug(doc.slug)
+  const description = clampMeta(
+    (typeof doc.data.description === 'string' && doc.data.description) || navBlurb(doc.slug) || rewritten.summary || 'Lattices documentation',
+  )
+  const rendered = demoteHtmlH1(substituteMdxComponents(marked.parse(rewritten.markdown), components))
   const updated = docUpdated[doc.slug]
-  return `
+  const html = `
     <main class="docs-shell" data-pagefind-body>
       <article class="docs-article">
         <header class="docs-article-header">
@@ -437,7 +509,13 @@ function renderDoc(doc) {
         <div class="markdown-body">${rendered}</div>
       </article>
     </main>
+    ${renderFooter(`/docs/${doc.slug}`)}
   `
+  return { title, description, html }
+}
+
+function demoteHtmlH1(html) {
+  return html.replace(/<h1(\s|>)/g, '<h2$1').replace(/<\/h1>/g, '</h2>')
 }
 
 function renderTagList(tags) {
@@ -467,12 +545,13 @@ function renderBlogIndex(items) {
         `).join('')}
       </div>
     </main>
+    ${renderFooter('/blog')}
   `
 }
 
 function renderPost(post) {
   const { content, components } = prepareMarkdown(post.content)
-  const rendered = substituteMdxComponents(marked.parse(content), components)
+  const rendered = demoteHtmlH1(substituteMdxComponents(marked.parse(content), components))
   const updated = postUpdated[post.slug]
   const index = posts.findIndex((p) => p.slug === post.slug)
   const newer = index > 0 ? posts[index - 1] : null // posts are sorted newest first
@@ -498,6 +577,7 @@ function renderPost(post) {
         ${older ? `<a class="post-pager post-pager-next" href="/blog/${older.slug}"><span class="post-pager-label">Older</span><strong>${escapeHtml(older.data.title || titleFromSlug(older.slug))}</strong></a>` : '<span></span>'}
       </nav>
     </article>
+    ${renderFooter()}
   `
 }
 
@@ -623,11 +703,13 @@ async function writeBlinkDownloadRedirect() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
+    <meta name="description" content="Download Blink for macOS. This page finds the latest Blink release and starts the download." />
     <link rel="canonical" href="${SITE_URL}${route}" />
     <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
-    <title>Downloading Blink…</title>
+    <title>Download Blink for macOS — Lattices</title>
   </head>
   <body>
+    <h1>Download Blink for macOS</h1>
     <p id="download-status">Finding the latest Blink release…</p>
     <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Blink release manually</a>.</p>
     <script>

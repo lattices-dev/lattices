@@ -1,0 +1,98 @@
+{
+  "ok": true,
+  "strict": true,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "filesScanned": 3
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "duration": 40,
+    "samples": [
+      2.222,
+      6.667,
+      11.111,
+      15.556,
+      20,
+      24.444,
+      28.889,
+      33.333,
+      37.778
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 0,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "specPath": "/Users/arach/dev/lattices-design/studies/seo-explainers/batch-02/macos-automation-permissions/index.motion.json",
+    "samples": 300
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      2.222,
+      11.111,
+      20,
+      28.889,
+      37.778
+    ],
+    "checked": 75,
+    "passed": 75
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": true,
+    "files": [
+      "snapshots/frame-00-at-2.2s.png",
+      "snapshots/frame-01-at-11.1s.png",
+      "snapshots/frame-02-at-20.0s.png",
+      "snapshots/frame-03-at-28.9s.png",
+      "snapshots/frame-04-at-37.8s.png"
+    ],
+    "times": [
+      2.222,
+      11.111,
+      20,
+      28.889,
+      37.778
+    ],
+    "findingFiles": []
+  },
+  "_meta": {
+    "version": "0.8.112",
+    "latestVersion": "0.8.112",
+    "updateAvailable": false
+  }
+}

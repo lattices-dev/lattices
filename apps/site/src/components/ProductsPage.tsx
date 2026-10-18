@@ -1,5 +1,5 @@
 import { productLinks } from '../data/products'
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 
 const directoryLinks = [
   {
@@ -62,6 +62,7 @@ export default function ProductsPage() {
           </div>
         </section>
       </main>
+      <SiteFooter current="/products" />
     </div>
   )
 }

@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spatial Desktop Study</title>
+<meta name="description" content="Opus study, round 2: three whole-desktop directions for Lattices Ctrl+arrow navigation. Simulated preview.">
+<style>
+:root{
+  --bg:#0b0d0f; --panel:#121518; --line:rgba(255,255,255,.08); --text:#e9ecee; --dim:rgba(233,236,238,.58); --faint:rgba(233,236,238,.34);
+  --cyan:#5fd4e8; --ink:#f2f2f2; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+main{max-width:1240px;margin:0 auto;padding:20px 16px 64px}
+a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}
+.back{font-size:12px;color:var(--faint);margin:0 0 10px}
+h1{font-size:18px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--dim);margin:0 0 16px;max-width:820px}
+.sim{display:inline-block;font:600 10px var(--mono);letter-spacing:.08em;color:var(--cyan);border:1px solid rgba(95,212,232,.35);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.tabs button{font-size:13px;padding:8px 14px}
+.tabs button[aria-selected=true]{border-color:rgba(95,212,232,.6);color:#fff;background:#18252a}
+button,select{font:12px -apple-system,system-ui,sans-serif;color:var(--text);background:#1a1e22;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:rgba(255,255,255,.22)}
+button:focus-visible,select:focus-visible,input:focus-visible,#canvas:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.controls{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:12px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+label{color:var(--dim);font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.status{display:flex;justify-content:space-between;gap:12px;font:11px var(--mono);color:var(--faint);margin:6px 2px 0}
+
+/* ——— Simulated desktop ——— */
+#canvas{position:relative;width:100%;aspect-ratio:16/10;border-radius:10px;overflow:hidden;outline:none;cursor:pointer;
+  background:radial-gradient(120% 90% at 20% 10%,#2a3440 0%,#161c22 45%,#0d1013 100%);border:1px solid var(--line)}
+.menubar{position:absolute;left:0;right:0;top:0;height:22px;background:rgba(10,12,14,.55);display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:rgba(255,255,255,.7);z-index:1}
+.menubar b{font-weight:600}
+.menubar .r{margin-left:auto;font:10px var(--mono);color:rgba(255,255,255,.45)}
+.desk{position:absolute;inset:22px 0 0 0}
+.win{position:absolute;border-radius:9px;background:#1d2226;border:1px solid rgba(255,255,255,.09);box-shadow:0 14px 30px rgba(0,0,0,.45);overflow:hidden}
+.win.front{background:#21272c;box-shadow:0 18px 40px rgba(0,0,0,.55)}
+.win .bar{height:22px;display:flex;align-items:center;gap:6px;padding:0 9px;border-bottom:1px solid rgba(255,255,255,.06);font-size:10.5px;color:rgba(255,255,255,.55)}
+.win .bar i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.16)}
+.win.front .bar i:nth-child(1){background:#ec6a5e}.win.front .bar i:nth-child(2){background:#f4bf4f}.win.front .bar i:nth-child(3){background:#61c554}
+.win .bar span{margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.win .body{position:absolute;inset:22px 0 0 0;padding:10px 12px;
+  background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.045) 9px 13px,transparent 13px 18px)}
+.win.term .body{background:repeating-linear-gradient(180deg,transparent 0 8px,rgba(120,220,170,.07) 8px 11px,transparent 11px 16px)}
+.fx{position:absolute;inset:22px 0 0 0;pointer-events:none;z-index:3}
+
+/* ——— 1 · Flanks ——— */
+.flank{position:absolute;top:0;bottom:0;width:72px;display:flex;flex-direction:column;justify-content:center;gap:6px;opacity:0;transition:opacity .18s linear}
+.flank.l{left:0;align-items:flex-start;padding-left:7px}
+.flank.r{right:0;align-items:flex-end;padding-right:7px}
+.fx.on .flank{opacity:1;transition-duration:.12s}
+.flank i{display:block;height:2px;width:10px;border-radius:1px;background:rgba(255,255,255,.34);transition:width .16s ease,background .16s,opacity .16s}
+.flank i.adj{width:20px;background:var(--ink)}
+.flank i.gone{opacity:0}
+.wash{position:absolute;top:0;bottom:0;width:120px;opacity:0;display:flex;align-items:center}
+.wash.l{left:0;background:linear-gradient(90deg,rgba(95,212,232,.20),transparent);justify-content:flex-start;padding-left:30px}
+.wash.r{right:0;background:linear-gradient(270deg,rgba(95,212,232,.20),transparent);justify-content:flex-end;padding-right:30px}
+.wash b{font:700 14px var(--mono);color:var(--ink);letter-spacing:-.02em}
+.wash.go{animation:wash .62s ease-out}
+@keyframes wash{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
+.rm .wash.go{animation:washRM .9s linear}
+@keyframes washRM{0%,70%{opacity:1}100%{opacity:0}}
+
+/* ——— 2 · Landing ——— */
+.land{position:absolute;border:1.5px solid rgba(242,242,242,.9);border-radius:10px;opacity:0;
+  transition:left .24s cubic-bezier(.25,.8,.25,1),top .24s cubic-bezier(.25,.8,.25,1),width .24s cubic-bezier(.25,.8,.25,1),height .24s cubic-bezier(.25,.8,.25,1),opacity .18s linear}
+.fx.on .land{opacity:1;transition-property:left,top,width,height,opacity;transition-duration:.24s,.24s,.24s,.24s,.1s}
+.land .chip{position:absolute;left:-1.5px;top:-24px;display:flex;align-items:center;gap:6px;height:20px;padding:0 8px 0 3px;border-radius:6px;
+  background:rgba(20,23,26,.94);border:.75px solid rgba(255,255,255,.12);font:600 10.5px -apple-system,system-ui,sans-serif;color:var(--dim);white-space:nowrap}
+.land .chip b{display:inline-grid;place-items:center;min-width:22px;height:14px;padding:0 4px;border-radius:4px;background:var(--ink);color:#101518;font:700 10px var(--mono)}
+.land .chip em{font-style:normal;color:var(--cyan);font:600 10px var(--mono)}
+.land.snap{transition:none!important}
+
+/* ——— 3 · Ghost carry ——— */
+.ghost,.peek{position:absolute;inset:0}
+.ghost .g,.peek .g{position:absolute;border:1px solid rgba(242,242,242,.55);border-radius:9px}
+.ghost .g::before,.peek .g::before{content:"";position:absolute;left:0;right:0;top:21px;border-top:1px solid rgba(242,242,242,.25)}
+.peek{border:1px solid rgba(242,242,242,.32);border-radius:12px;background:rgba(255,255,255,.025);opacity:0;transition:opacity .18s linear}
+.peek .g{border-color:rgba(242,242,242,.38)}
+.fx.on .peek{opacity:1;transition-duration:.12s}
+.fx.on .peek.lead{opacity:1}
+.fx.on .peek:not(.lead){opacity:.55}
+.peek .n{position:absolute;top:50%;margin-top:-10px;font:700 14px var(--mono);color:var(--ink)}
+.peek.r .n{left:1.4%} .peek.l .n{right:1.4%}
+
+/* optional baseline rail */
+.rail{position:absolute;left:50%;top:28px;transform:translateX(-50%);height:30px;display:flex;align-items:center;gap:5px;padding:0 10px;
+  background:rgba(20,23,26,.92);border:.75px solid rgba(255,255,255,.1);border-radius:9px;opacity:0;transition:opacity .18s;z-index:4;pointer-events:none}
+.rail.on{opacity:1;transition-duration:.12s}
+.rail i{width:9px;height:9px;border-radius:2.4px;background:rgba(255,255,255,.18)}
+.rail i.on{background:var(--ink)}
+
+/* ——— Notes ——— */
+.cols{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin-top:18px}
+@media (max-width:820px){.cols{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:var(--dim)}
+.card h2{color:var(--text);font-size:14px;margin:0 0 6px;font-weight:600}
+.card h3{color:var(--text);font-size:12px;margin:12px 0 4px;font-weight:600}
+.card p{margin:0 0 8px}
+.card ul{margin:4px 0 0;padding-left:16px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line);vertical-align:top}
+th{color:var(--text);font-weight:600;white-space:nowrap}
+.pill{font:600 10px var(--mono);padding:1px 6px;border-radius:4px;border:1px solid var(--line);color:var(--text)}
+.pill.ok{border-color:rgba(95,212,232,.4);color:var(--cyan)}
+.concept-notes{display:none}.concept-notes.on{display:block}
+section.rec{margin-top:18px}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../">← Study index</a> · <a href="../opus/">Opus round 1 (top rail)</a> · <a href="../spatial/">Codex spatial</a></p>
+<h1>Ctrl+←/→ on the whole desktop — three directions <span class="sim">SIMULATED PREVIEW</span></h1>
+<p class="sub">Opus, round 2. The canvas is a fake desktop with an invented project. Each press switches it instantly; the overlay only acknowledges and never delays the switch. Pressing past the first or last desktop does nothing. Click the canvas (or Tab to it) and use ← / →.</p>
+
+<div class="tabs" role="tablist" aria-label="Direction">
+  <button role="tab" data-c="flanks" aria-selected="true">1 · Flanks</button>
+  <button role="tab" data-c="landing" aria-selected="false">2 · Landing</button>
+  <button role="tab" data-c="ghost" aria-selected="false">3 · Ghost carry</button>
+</div>
+
+<div class="controls" role="toolbar" aria-label="Scenarios">
+  <button data-s="prev">◀ Previous</button>
+  <button data-s="next">Next ▶</button>
+  <span class="sep"></span>
+  <button data-s="sweepR">Sweep 1→N</button>
+  <button data-s="sweepL">Sweep N→1</button>
+  <button data-s="round">Round trip 1→N→1</button>
+  <button data-s="reverse">Reversal 4→9→6</button>
+  <button data-s="nine">9 → 10</button>
+  <button data-s="first">First boundary</button>
+  <button data-s="last">Last boundary</button>
+  <span class="sep"></span>
+  <label>Rate <select id="rate"><option value="45">key repeat (45ms)</option><option value="110" selected>fast taps (110ms)</option><option value="320">deliberate (320ms)</option></select></label>
+  <label>Desktops <select id="total"><option>4</option><option>9</option><option>12</option><option selected>18</option></select></label>
+  <label><input type="checkbox" id="rm"> Reduce Motion</label>
+  <label><input type="checkbox" id="rail"> Baseline rail</label>
+</div>
+
+<div id="canvas" tabindex="0" aria-label="Simulated desktop. Use left and right arrows to switch desktops.">
+  <div class="menubar"><b>Terminal</b><span>Shell</span><span>Edit</span><span>View</span><span>Window</span><span class="r">Tue 13 Oct  9:41</span></div>
+  <div class="desk" id="desk"></div>
+  <div class="fx" id="fx"></div>
+  <div class="rail" id="railEl"></div>
+</div>
+<div class="status"><span id="where">Simulated desktop 1 of 18</span><span id="log" aria-live="polite">ready</span></div>
+
+<div class="cols">
+  <div>
+    <div class="card concept-notes on" data-c="flanks">
+      <h2>1 · Flanks — the screen edges hold the count</h2>
+      <p>The left and right edges each show one tick per desktop that lies in that direction. The tick nearest the content is the adjacent desktop, drawn longer and brighter. On a switch, a tick moves from one edge to the other, and a cyan wash with the new number pulses in from the edge you entered through.</p>
+      <ul>
+        <li><b>Boundary:</b> on the last desktop the right edge is empty. Absence says "nothing further" without reacting to the extra press.</li>
+        <li><b>Rapid / reversal:</b> counts are state, not animation. They are always correct at any rate; the wash just restarts.</li>
+        <li><b>Reduce Motion:</b> no pulse travel; the wash holds briefly and fades.</li>
+        <li><b>Why:</b> peripheral vision catches edge change without pulling your eyes to the top of the screen. Nothing covers the work area.</li>
+      </ul>
+    </div>
+    <div class="card concept-notes" data-c="landing">
+      <h2>2 · Landing — feedback where your attention lands</h2>
+      <p>The focused window on the new desktop gets a thin outline and a small tag: the desktop number, the app and an arrow for the direction of travel. When the tray is already up, the outline morphs from the previous desktop's focused window to the new one. The movement across the screen makes the jump feel spatial.</p>
+      <ul>
+        <li><b>Boundary:</b> silent. The outline stays on the current window until it fades.</li>
+        <li><b>Rapid / reversal:</b> the outline retargets mid-morph; one element, never a queue.</li>
+        <li><b>Reduce Motion:</b> no morph; the outline appears in place and fades.</li>
+        <li><b>Why:</b> after a switch the question is usually "where is my cursor or focus?", not "which number am I on?". This answers both in one place.</li>
+      </ul>
+    </div>
+    <div class="card concept-notes" data-c="ghost">
+      <h2>3 · Ghost carry — outlines give the switch direction</h2>
+      <p>The real switch is instant. Outlines of the windows you just left slide off toward where you came from and fade. Along both screen edges, the neighbouring desktops peek in as wireframe slabs: their screen edge, their windows and their number. The slab in the direction of travel is brighter and settles in.</p>
+      <ul>
+        <li><b>Boundary:</b> on the first or last desktop no slab peeks from that side, so the edge of the set is visible before you press.</li>
+        <li><b>Rapid / reversal:</b> only the newest departure keeps a ghost (older ghosts are cut). Reversal slides the ghost the other way.</li>
+        <li><b>Reduce Motion:</b> ghosts fade in place; slabs appear without sliding.</li>
+        <li><b>Why:</b> it is the closest thing to a camera move that needs no pixels. You see the shape of the next and previous desktops, not a number.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Native feasibility</h2>
+    <p>The browser cannot show whether full-desktop compositing is cheap. None of the three needs screenshots, blur or a backdrop read: each one draws shapes in a click-through, all-spaces <code>NSPanel</code>.</p>
+    <table>
+      <tr><th></th><th>Overlay</th><th>Data</th><th>Cost</th></tr>
+      <tr><th>Flanks</th><td>Two 72pt edge panels per screen</td><td>Index and total only (have it)</td><td><span class="pill ok">trivial</span> ≤36 layers</td></tr>
+      <tr><th>Landing</th><td>One small panel sized to the focused window</td><td>Focused-window frame after the switch (AX / on-screen CGWindowList)</td><td><span class="pill ok">low</span> one rect + tag</td></tr>
+      <tr><th>Ghost</th><td>One full-screen transparent panel, CAShapeLayers</td><td>Departing frames: on-screen list cached before the switch. Neighbour frames: need per-space window lists (private SkyLight/CGS or Lattices' own index)</td><td><span class="pill">moderate</span> ~30 stroked rects; full-screen panel but no pixels</td></tr>
+    </table>
+    <h3>Would need screenshots or private compositing</h3>
+    <ul>
+      <li>A real carousel or parallax of window contents (pixels of other desktops). Needs ScreenCaptureKit captures per space, which can be stale and memory-heavy. Rejected.</li>
+      <li>Frosted or blurred backdrops under the overlay. Rejected for cost and identity.</li>
+      <li>Delaying the system switch to run our own transition. Violates "never delay". Rejected.</li>
+    </ul>
+  </div>
+</div>
+
+<section class="rec card">
+  <h2>Preferred direction</h2>
+  <p><b>Ghost carry, built in two steps.</b> Step 1 ships only the departing ghost and needs nothing new: frames come from the on-screen list read just before the switch. That alone turns an instant cut into a felt lateral move. Step 2 adds the neighbour slabs once Lattices' window index exposes per-space frames (the Spaces strip already draws shapes from a WindowServer read). <b>Landing</b> is the best Reduce Motion fallback and the quickest win. <b>Flanks</b> is the quietest option and could replace the top rail completely for people who find any center-screen HUD noisy.</p>
+  <p><b>Limitations.</b> Browser simulation: CSS and WAAPI timing stand in for Core Animation. Window layouts are invented. Multi-display, full-screen apps and Stage Manager are not modelled. Panel cost on ProMotion displays and the latency of reading per-space frames are untested.</p>
+</section>
+</main>
+
+<script>
+(() => {
+  const DISMISS = 1100;
+  const $ = s => document.querySelector(s);
+  const canvas = $('#canvas'), desk = $('#desk'), fx = $('#fx'), railEl = $('#railEl');
+  const mq = matchMedia('(prefers-reduced-motion: reduce)');
+  let total = 18, active = 1, rate = 110, rmBox = false, concept = 'flanks', runId = 0, timer = null, showRail = false;
+  const reduce = () => rmBox || mq.matches;
+  const log = t => { $('#log').textContent = t; };
+
+  // —— invented project data, deterministic per desktop ——
+  function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const APPS = [
+    ['Terminal','~/dev/tideline — zsh','term'],['Editor','tideline/api/routes.ts',''],['Browser','Tide tables · staging',''],
+    ['Notes','Release 0.9 checklist',''],['Terminal','tideline — tests --watch','term'],['Editor','tideline/web/Chart.tsx',''],
+    ['Browser','tideline docs · Forecasts',''],['Mail','Re: harbour sensor feed',''],['Terminal','ssh buoy-07','term'],['Music','Focus','']];
+  const layouts = [];
+  function makeLayouts(){
+    layouts.length = 0;
+    for (let d=1; d<=18; d++){
+      const r = rng(d*7919), n = 1 + Math.floor(r()*3), wins = [];
+      for (let k=0;k<n;k++){
+        const w = 30 + r()*34, h = 34 + r()*40, x = 3 + r()*(94-w), y = 4 + r()*(92-h);
+        const a = APPS[Math.floor(r()*APPS.length)];
+        wins.push({x,y,w,h,app:a[0],title:a[1],kind:a[2]});
+      }
+      layouts[d] = wins; // last = frontmost
+    }
+  }
+  makeLayouts();
+  const front = d => layouts[d][layouts[d].length-1];
+
+  function paintDesk(){
+    desk.innerHTML = layouts[active].map((w,k,arr)=>`<div class="win ${w.kind} ${k===arr.length-1?'front':''}" style="left:${w.x}%;top:${w.y}%;width:${w.w}%;height:${w.h}%"><div class="bar"><i></i><i></i><i></i><span>${w.title}</span></div><div class="body"></div></div>`).join('');
+    $('.menubar b').textContent = front(active).app;
+    $('#where').textContent = `Simulated desktop ${active} of ${total}`;
+  }
+
+  // —— concepts ——
+  const C = {
+    flanks: {
+      mount(){
+        fx.innerHTML = `<div class="flank l"></div><div class="flank r"></div><div class="wash l"><b></b></div><div class="wash r"><b></b></div>`;
+        this.l = fx.querySelector('.flank.l'); this.r = fx.querySelector('.flank.r');
+        for (const f of [this.l,this.r]) for (let i=0;i<17;i++) f.appendChild(document.createElement('i'));
+        this.paint();
+      },
+      paint(){
+        const left = active-1, right = total-active;
+        // left column: ticks fill from the edge of the content outward (vertical centre = adjacent)
+        [...this.l.children].forEach((t,i)=>{ t.style.display = i < total-1 ? '' : 'none'; t.className = i < left ? (i===0?'adj':'') : 'gone'; });
+        [...this.r.children].forEach((t,i)=>{ t.style.display = i < total-1 ? '' : 'none'; t.className = i < right ? (i===0?'adj':'') : 'gone'; });
+      },
+      onSwitch(from, to, dir){
+        this.paint();
+        const w = fx.querySelector(dir>0 ? '.wash.l' : '.wash.r');
+        fx.querySelectorAll('.wash').forEach(x=>x.classList.remove('go'));
+        w.querySelector('b').textContent = to;
+        void w.offsetWidth; w.classList.add('go');
+      }
+    },
+    landing: {
+      mount(){
+        fx.innerHTML = `<div class="land"><div class="chip"><b></b><span></span><em></em></div></div>`;
+        this.el = fx.querySelector('.land');
+        this.place(front(active), true);
+      },
+      place(w, snap){
+        const el = this.el;
+        if (snap) el.classList.add('snap');
+        Object.assign(el.style,{left:`calc(${w.x}% - 4px)`,top:`calc(${w.y}% - 4px)`,width:`calc(${w.w}% + 8px)`,height:`calc(${w.h}% + 8px)`});
+        if (snap){ void el.offsetWidth; el.classList.remove('snap'); }
+      },
+      onSwitch(from, to, dir, opening){
+        const chip = this.el.querySelector('.chip');
+        chip.querySelector('b').textContent = to;
+        chip.querySelector('span').textContent = front(to).app;
+        chip.querySelector('em').textContent = dir>0 ? '→' : '←';
+        if (reduce()) return this.place(front(to), true);
+        if (opening) this.place(front(from), true);  // depart from where focus was
+        this.place(front(to), false);
+      }
+    },
+    ghost: {
+      mount(){
+        fx.innerHTML = `<div class="peek l"></div><div class="peek r"></div>`;
+        this.pl = fx.querySelector('.peek.l'); this.pr = fx.querySelector('.peek.r');
+        this.ghosts = [];
+        this.paintPeeks(0, true);
+      },
+      rects(d){ return layouts[d].map(w=>`<div class="g" style="left:${w.x}%;top:${w.y}%;width:${w.w}%;height:${w.h}%"></div>`).join(''); },
+      paintPeeks(dir, instant){
+        const set = (el, d, side) => {
+          if (d < 1 || d > total){ el.style.visibility='hidden'; return; }
+          el.style.visibility='';
+          el.innerHTML = this.rects(d) + `<span class="n">${d}</span>`;
+          el.classList.toggle('lead', side === dir);
+          const rest = side>0 ? 95 : -95, from = side>0 ? 99 : -99;
+          el.getAnimations().forEach(a=>a.cancel());
+          el.style.transform = `translateX(${rest}%)`;
+          if (!instant && !reduce() && side===dir)
+            el.animate([{transform:`translateX(${from}%)`},{transform:`translateX(${rest}%)`}],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
+        };
+        set(this.pl, active-1, -1); set(this.pr, active+1, 1);
+      },
+      onSwitch(from, to, dir){
+        // cap: only the newest departure keeps a ghost
+        this.ghosts.forEach(g=>g.remove()); this.ghosts = [];
+        const g = document.createElement('div'); g.className='ghost'; g.innerHTML = this.rects(from);
+        fx.appendChild(g); this.ghosts.push(g);
+        const anim = reduce()
+          ? g.animate([{opacity:.45},{opacity:0}],{duration:220,easing:'linear',fill:'forwards'})
+          : g.animate([{transform:'translateX(0)',opacity:.7},{transform:`translateX(${-dir*16}%)`,opacity:0}],{duration:420,easing:'cubic-bezier(.2,.7,.2,1)',fill:'forwards'});
+        anim.onfinish = () => { g.remove(); this.ghosts = this.ghosts.filter(x=>x!==g); };
+        this.paintPeeks(dir, false);
+      }
+    }
+  };
+
+  function buildRail(){ railEl.innerHTML = Array.from({length:total},()=>'<i></i>').join(''); paintRail(); }
+  function paintRail(){ [...railEl.children].forEach((c,i)=>c.classList.toggle('on', i+1===active)); }
+
+  function mount(){ clearTimeout(timer); fx.classList.remove('on'); railEl.classList.remove('on'); C[concept].mount(); }
+
+  function step(dir){
+    const to = active + dir;
+    if (to < 1 || to > total){ log(`${dir>0?'→':'←'} at ${active} — silent`); return; }
+    const from = active; active = to;
+    paintDesk();                                   // 1. switch first, unconditionally
+    const opening = !fx.classList.contains('on');  // 2. then acknowledge
+    fx.classList.add('on');
+    C[concept].onSwitch(from, to, dir, opening);
+    if (showRail){ paintRail(); railEl.classList.add('on'); }
+    clearTimeout(timer);
+    timer = setTimeout(()=>{ fx.classList.remove('on'); railEl.classList.remove('on'); }, DISMISS);
+  }
+  function jump(i){ clearTimeout(timer); active = i; paintDesk(); mount(); paintRail(); }
+
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  async function run(seq, label){
+    const id = ++runId; log(label);
+    for (const s of seq){
+      if (id!==runId) return;
+      if (typeof s === 'object'){ jump(s.jump); await wait(300); continue; }
+      step(s); await wait(rate);
+    }
+    if (id===runId) log(label + ' — done');
+  }
+  const rep = (d,n)=>Array(n).fill(d);
+  const scen = {
+    prev: ()=>{ runId++; step(-1); }, next: ()=>{ runId++; step(1); },
+    sweepR: ()=>run([{jump:1}, ...rep(1,total-1)], `sweep 1→${total}`),
+    sweepL: ()=>run([{jump:total}, ...rep(-1,total-1)], `sweep ${total}→1`),
+    round: ()=>run([{jump:1}, ...rep(1,total-1), ...rep(-1,total-1)], `round trip 1→${total}→1`),
+    reverse: ()=> total<9 ? log('needs ≥9 desktops') : run([{jump:4}, ...rep(1,5), ...rep(-1,3)], 'reversal 4→9→6'),
+    nine: ()=> total<10 ? log('needs ≥10 desktops') : run([{jump:8}, 1, 1], '8→9→10'),
+    first: ()=>run([{jump:2}, -1, -1, -1, -1], 'first boundary (2→1, then silent)'),
+    last: ()=>run([{jump:total-1}, 1, 1, 1, 1], `last boundary (${total-1}→${total}, then silent)`),
+  };
+  document.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>{ scen[b.dataset.s](); canvas.focus({preventScroll:true}); }));
+  canvas.addEventListener('click', ()=>canvas.focus());
+  canvas.addEventListener('keydown', e => { if (e.key==='ArrowRight'||e.key==='ArrowLeft'){ e.preventDefault(); runId++; step(e.key==='ArrowRight'?1:-1); } });
+  document.querySelectorAll('[role=tab]').forEach(t=>t.addEventListener('click',()=>{
+    concept = t.dataset.c; runId++;
+    document.querySelectorAll('[role=tab]').forEach(x=>x.setAttribute('aria-selected', String(x===t)));
+    document.querySelectorAll('.concept-notes').forEach(n=>n.classList.toggle('on', n.dataset.c===concept));
+    mount(); canvas.focus({preventScroll:true});
+  }));
+  $('#rate').addEventListener('change',e=>rate=+e.target.value);
+  $('#total').addEventListener('change',e=>{ total=+e.target.value; runId++; active=Math.min(active,total); paintDesk(); buildRail(); mount(); });
+  $('#rm').addEventListener('change',e=>{ rmBox=e.target.checked; document.body.classList.toggle('rm', reduce()); mount(); });
+  mq.addEventListener?.('change', ()=>{ document.body.classList.toggle('rm', reduce()); });
+  document.body.classList.toggle('rm', reduce());
+  $('#rail').addEventListener('change',e=>{ showRail=e.target.checked; if(!showRail) railEl.classList.remove('on'); });
+
+  paintDesk(); buildRail(); mount();
+})();
+</script>
+</body>
+</html>

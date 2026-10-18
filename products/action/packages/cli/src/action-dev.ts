@@ -166,51 +166,19 @@ async function ensureBuiltIfNeeded(): Promise<void> {
   }
 }
 
-async function killActionProcesses(): Promise<void> {
+async function politeQuitAction(): Promise<boolean> {
+  // The native command identifies launcher processes. A display owner keeps the
+  // same executable name alive deliberately; pgrep/pkill would destroy it.
   try {
-    await execFileAsync("pkill", ["-x", "Action"]);
-  } catch {}
-
-  try {
-    await execFileAsync("pkill", ["-x", "ActionAgent"]);
-  } catch {}
-}
-
-async function isProcessRunning(name: string): Promise<boolean> {
-  try {
-    await execFileAsync("pgrep", ["-x", name]);
+    await runScript("run-app-host.sh", ["quit-app"], "pipe");
     return true;
   } catch {
     return false;
   }
 }
 
-async function politeQuitAction(timeoutMs = 2500): Promise<boolean> {
-  try {
-    await runScript("run-app-host.sh", ["quit-app"], "pipe");
-  } catch {}
-
-  if (!(await isProcessRunning("Action"))) {
-    return true;
-  }
-
-  try {
-    await execFileAsync("osascript", ["-e", 'tell application id "dev.lattices.Action" to quit']);
-  } catch {}
-
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (!(await isProcessRunning("Action"))) {
-      return true;
-    }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 120));
-  }
-
-  return !(await isProcessRunning("Action"));
-}
-
 async function openLauncher(): Promise<void> {
-  await execFileAsync("open", ["-a", appDir, "--args", "launcher"]);
+  await execFileAsync("open", ["-n", "-a", appDir, "--args", "launcher"]);
 }
 
 async function streamLogs(): Promise<void> {
@@ -273,14 +241,14 @@ async function main(argv: string[]): Promise<void> {
         await ensureBuiltIfNeeded();
       }
       if (!(await politeQuitAction())) {
-        await killActionProcesses();
+        throw new Error("Action launcher could not be stopped; preserving independent displays and recordings.");
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 350));
       await openLauncher();
       return;
     case "quit":
       if (!(await politeQuitAction())) {
-        printError("Action did not quit gracefully within timeout. Run `bun run native:relaunch` for forceful recovery.");
+        printError("Action launcher did not quit. Independent displays and recordings were preserved.");
         runtime.process.exit(1);
       }
       return;

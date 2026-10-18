@@ -94,7 +94,7 @@ Full documentation lives in `docs/` — read these before changing behavior:
 
 Use exactly two ongoing Lattices workspaces on this machine:
 
-- Native app and its supporting CLI: `/Users/arach/dev/lattices`, branch `codex/native-workspace`.
+- Native app and its supporting CLI: `/Users/arach/dev/lattices`, branch `main` tracking `origin/main`.
 - Website, documentation, Studio studies, and other non-native work: `/Users/arach/dev/lattices-design`, branch `codex/web-workspace`.
 
 Accumulate changes in these destinations. Do not create a feature worktree or switch the everyday native app to another checkout unless the user explicitly requests it. Build and relaunch the everyday app only from the native workspace; the web workspace is not an app installation source. Preserve the independent Action, Blink, and Speech lifecycles.

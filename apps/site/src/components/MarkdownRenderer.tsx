@@ -21,6 +21,10 @@ const embeddedComponents = {
 }
 
 const components: Components = {
+  h1({ node, children, ...props }) {
+    void node
+    return <h2 {...props}>{children}</h2>
+  },
   a({ href, children, ...props }) {
     const external = href?.startsWith('http')
     return (

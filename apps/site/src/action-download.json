@@ -1,4 +1,4 @@
 {
-  "releasesUrl": "https://api.github.com/repos/arach/lattices/releases?per_page=100",
-  "fallbackUrl": "https://github.com/arach/lattices/releases/download/action-v0.3.0/Action.dmg"
+  "releasesUrl": "https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100",
+  "fallbackUrl": "https://github.com/lattices-dev/lattices/releases/download/action-v0.3.0/Action.dmg"
 }

@@ -1,0 +1,38 @@
+{
+  "macos-automation-permissions": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "frames": 1200,
+    "fps": "30/1",
+    "codec": "h264",
+    "bytes": 847959,
+    "sha256": "d14f536e23d08d7713f5f0b86cddab8c280ad7f10ae4035d0ee3befd45622f2d",
+    "decodedWithoutError": true,
+    "posterAtSeconds": 33
+  },
+  "observe-act-verify": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "frames": 1200,
+    "fps": "30/1",
+    "codec": "h264",
+    "bytes": 999281,
+    "sha256": "f97e8889e2cbed57c151d9899d61ec25788c53a24a7bfd9675c116eb46ad1db9",
+    "decodedWithoutError": true,
+    "posterAtSeconds": 25
+  },
+  "window-snapping-vs-tiling": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "frames": 1200,
+    "fps": "30/1",
+    "codec": "h264",
+    "bytes": 822021,
+    "sha256": "056292588fb7a2d682bb5527da7d1bee04255b104d9ff08417a10113883a86e5",
+    "decodedWithoutError": true,
+    "posterAtSeconds": 33
+  }
+}

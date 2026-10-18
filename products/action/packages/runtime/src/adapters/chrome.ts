@@ -100,11 +100,12 @@ async function companionHealth(): Promise<CompanionHealth> {
   }
 }
 
-async function companionRPC<T>(message: CompanionMessage): Promise<T> {
+async function companionRPC<T>(message: CompanionMessage, timeoutMs?: number): Promise<T> {
   const response = await fetch(`${companionBridgeURL()}/rpc`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(message),
+    ...(timeoutMs === undefined ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
   });
   const payload = await response.json() as CompanionActionResponse<T>;
   if (!response.ok || !payload.ok) {
@@ -506,3 +507,22 @@ export const chromeAdapter: SurfaceAdapter = {
     );
   },
 };
+
+/** Explicit tab routing is required for the experimental observation-bound loop. */
+export function chromeFastTransport(tabId: number, presentation: boolean | import("../../../chrome-companion/src/fast-presentation.js").FastPresentationPrefs = false): import("../fast-browser.js").FastTransport {
+  const surface = { tabId, activate: Boolean(presentation) };
+  return {
+    observe: async () => {
+      // Navigation destroys content-script contexts. Retry reads, never input.
+      const deadline = Date.now() + 3000;
+      while (true) {
+        try { return await companionRPC<import("../../../chrome-companion/src/fast-actions.js").FastSnapshot>({ method: "action.fast.observe", params: { surface } }, 10_000); }
+        catch (error) {
+          if (Date.now() >= deadline || !/Receiving end does not exist|message port closed|frame.*removed/i.test(String(error))) throw error;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    },
+    act: choice => companionRPC({ method: "action.fast.act", params: { ...choice, surface } }, 10_000),
+  };
+}

@@ -1,0 +1,1708 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-02",
+  "programStatus": "Local pilot built with five produced videos; no public deployment or schedule created",
+  "audience": "Mid-level aspiring Mac power user",
+  "priorityMeaning": {
+    "P0": "Initial pilot; selected for teaching value and fit, not estimated demand",
+    "P1": "Next commissions after reader evidence and distinct-intent review",
+    "P2": "Research candidate; additional evidence or differentiation required"
+  },
+  "sourcePolicy": "Sources are research inputs, not proof that page-specific claims or live product behavior have passed review. Repository-derived public documentation links must be checked before publication.",
+  "statusPolicy": "planned-pilot means implementation commissioned; candidate means no publishing commitment; production-in-progress means source-reviewed local content with final media checks pending. Local production does not imply public publication.",
+  "expansionPolicy": "No automatic publication. Complete all seven gates in strategy.md. Add at most two new lessons in week four and at most three pages in one proven cluster after the week-six review; these are proposed internal limits, not scheduled work.",
+  "measurementStatus": "Search volumes, ranks, conversion, live analytics receipt, and indexing are unmeasured.",
+  "records": [
+    {
+      "id": "lattices-content-001",
+      "priority": "P0",
+      "slug": "/learn/ax-tree",
+      "topic": "How Mac automations see buttons",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand how a visible interface becomes structured UI information.",
+      "format": "interactive-model",
+      "uniqueValue": "Select a control in a modeled Mac window; see its AX role, label, hierarchy, and supported action change together.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://developer.apple.com/documentation/accessibility/accessibility-inspector"
+      ],
+      "productBridge": "Read inspection docs, then explore Action for native computer use.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "An explicit model label; two controls with different attributes; keyboard access; no implied live Mac inspection.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/ax-tree",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-002",
+      "priority": "P0",
+      "slug": "/learn/macos-automation-permissions",
+      "topic": "Which permission does this Mac task need?",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand why a chosen observation or control task needs a permission.",
+      "format": "decision-tool",
+      "uniqueValue": "Choose a task and receive separate Accessibility, Screen Recording, and Automation explanations with relevant settings guidance.",
+      "primarySources": [
+        "https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac",
+        "https://support.apple.com/en-gb/guide/mac-help/mchld6aa7d23/mac",
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac"
+      ],
+      "productBridge": "Connect each permission to a documented Lattices task, without requesting unrelated access.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Every task branch reviewed against current Apple guidance; version label; no live permission detection claim.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/macos-automation-permissions",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-003",
+      "priority": "P0",
+      "slug": "/learn/ax-vs-screenshots",
+      "topic": "UI elements or screenshots: choosing how to automate",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose an observation method for a particular task.",
+      "format": "interactive-comparison",
+      "uniqueValue": "Inspect the same scenario as pixels and as structured elements; see a case where each lacks useful information.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://support.apple.com/en-gb/guide/mac-help/mchld6aa7d23/mac",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html"
+      ],
+      "productBridge": "Read inspection and verification docs before attempting a local action.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "At least one incomplete-tree case and one useful semantic-action case; avoid universal speed or reliability claims.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/ax-vs-screenshots",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-004",
+      "priority": "P0",
+      "slug": "/compare/rectangle",
+      "topic": "Rectangle and Lattices: snapping or workspace control?",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Decide whether window snapping satisfies the task.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Compare one-window placement with bringing up a multi-window workspace; explain when staying with Rectangle is sufficient.",
+      "primarySources": [
+        "https://rectangleapp.com/",
+        "https://lattices.dev/docs/concepts"
+      ],
+      "productBridge": "Explore workspace layers only when the reader needs repeatable workspace organization.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Edition-specific capabilities and limitations; official citations; no hands-on or absence claims without evidence.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/rectangle",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-005",
+      "priority": "P0",
+      "slug": "/compare/raycast",
+      "topic": "Raycast and Lattices: launcher and workspace workflows",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Decide whether to extend an existing launcher workflow.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Follow a launcher-driven task and a workspace-driven task; separate overlap from a useful complementary setup.",
+      "primarySources": [
+        "https://www.raycast.com/core-features/window-management",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Read how Lattices exposes workspace controls through its local API.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Current core-versus-extension distinctions; documented setup paths; no unsupported integration promise.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/raycast",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-006",
+      "priority": "P0",
+      "slug": "/compare/hammerspoon",
+      "topic": "Hammerspoon and Lattices: write a script or configure a workspace?",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose between custom Lua automation and predefined workspace operations.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Compare the authoring and maintenance choices for the same bounded window task.",
+      "primarySources": [
+        "https://www.hammerspoon.org/docs/hs.axuielement.html",
+        "https://lattices.dev/docs/config"
+      ],
+      "productBridge": "Try a documented workspace configuration when custom code is unnecessary.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Representative code labeled illustrative unless executed; source citations; maintainability conclusions labeled analysis.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/hammerspoon",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-007",
+      "priority": "P0",
+      "slug": "/compare/keyboard-maestro",
+      "topic": "Keyboard Maestro and Lattices: macros and workspace setup",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Decide whether the repeated task is a macro or a workspace arrangement.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Separate triggering a sequence of app actions from preparing the windows and tools around that sequence.",
+      "primarySources": [
+        "https://www.keyboardmaestro.com/main/",
+        "https://lattices.dev/docs/concepts"
+      ],
+      "productBridge": "Use Lattices workspace setup alongside a macro; identify Action as a separate computer-use product.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Current feature sources; acknowledge macro tool strengths; do not imply all capabilities are equivalent.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/keyboard-maestro",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-008",
+      "priority": "P0",
+      "slug": "/compare/yabai",
+      "topic": "yabai and Lattices: command-driven tiling and workspace control",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose the setup and control model worth maintaining.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Explain command/rule-driven tiling and map each advanced requirement to the specific feature that needs it.",
+      "primarySources": [
+        "https://github.com/asmvik/yabai",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Explore Lattices' documented placement and workspace operations.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Feature-specific system requirements; exact current official sources; no blanket claim that all yabai use requires system changes.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/yabai",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-009",
+      "priority": "P0",
+      "slug": "/compare/aerospace",
+      "topic": "AeroSpace and Lattices: two workspace models",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose a keyboard and workspace model that fits daily work.",
+      "format": "source-reviewed-fit-analysis",
+      "uniqueValue": "Compare how a user defines, activates, and navigates workspaces without treating different workspace concepts as identical.",
+      "primarySources": [
+        "https://nikitabobko.github.io/AeroSpace/guide",
+        "https://lattices.dev/docs/concepts"
+      ],
+      "productBridge": "Explore Lattices layers and project-related workspace control.",
+      "status": "planned-pilot",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Official definitions; edition/version context if relevant; source-reviewed label until firsthand scenarios are tested.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/aerospace",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-010",
+      "priority": "P0",
+      "slug": "/watch/ax-tree",
+      "topic": "The invisible tree behind a Mac window",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand accessibility structure through motion.",
+      "format": "animated-explainer",
+      "uniqueValue": "Transform a modeled window into a tree while retaining the link between each visible control and its semantic element.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://developer.apple.com/documentation/accessibility/accessibility-inspector"
+      ],
+      "productBridge": "Try /learn/ax-tree after watching.",
+      "status": "locally-produced",
+      "evidence": {
+        "state": "local-media-and-page-verified",
+        "required": "Rendered playable media, stable poster, transcript, synthetic-demo label, reviewed timing and exact media metadata.",
+        "claimsReviewedAt": "2026-10-02",
+        "reviewer": "Source review plus independent content review and root artifact verification",
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": "HyperFrames checks, measured MP4 metadata, full decode, encoded-frame review, static-page audit and browser playback.",
+        "testResult": "Passed locally. 36 seconds; 1280x720; H.264 at 30fps. No native app benchmark or public deployment claimed.",
+        "artifactPaths": [
+          "apps/site/public/learn/media/ax-tree.mp4",
+          "apps/site/public/learn/media/ax-tree.vtt",
+          "apps/site/public/learn/media/ax-tree-transcript.txt",
+          "studies/seo-explainers/evidence/media-verification.json",
+          "studies/seo-pilot-evidence/batch-02/verification.json"
+        ]
+      },
+      "review": {
+        "editorialReviewer": "Content agent and independent reviewer",
+        "technicalReviewer": "Root artifact and browser checks",
+        "reviewedAt": "2026-10-02",
+        "nextReviewAt": null,
+        "decision": "local-review-passed-publication-pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "local-static-indexable-publication-pending",
+        "canonicalPath": "/watch/ax-tree",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-011",
+      "priority": "P0",
+      "slug": "/watch/ax-vs-screenshots",
+      "topic": "One window, two ways to see it",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand the difference between appearance and semantic information.",
+      "format": "animated-explainer",
+      "uniqueValue": "Reveal the same target through pixels and structured elements, then show a post-action check.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://support.apple.com/en-gb/guide/mac-help/mchld6aa7d23/mac"
+      ],
+      "productBridge": "Try /learn/ax-vs-screenshots after watching.",
+      "status": "locally-produced",
+      "evidence": {
+        "state": "local-media-and-page-verified",
+        "required": "Rendered playable media, stable poster, transcript, source-grounded claims, no unmeasured benchmark.",
+        "claimsReviewedAt": "2026-10-02",
+        "reviewer": "Source review plus independent content review and root artifact verification",
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": "HyperFrames checks, measured MP4 metadata, full decode, encoded-frame review, static-page audit and browser playback.",
+        "testResult": "Passed locally. 36 seconds; 1280x720; H.264 at 30fps. No native app benchmark or public deployment claimed.",
+        "artifactPaths": [
+          "apps/site/public/learn/media/ax-vs-screenshots.mp4",
+          "apps/site/public/learn/media/ax-vs-screenshots.vtt",
+          "apps/site/public/learn/media/ax-vs-screenshots-transcript.txt",
+          "studies/seo-explainers/evidence/media-verification.json",
+          "studies/seo-pilot-evidence/batch-02/verification.json"
+        ]
+      },
+      "review": {
+        "editorialReviewer": "Content agent and independent reviewer",
+        "technicalReviewer": "Root artifact and browser checks",
+        "reviewedAt": "2026-10-02",
+        "nextReviewAt": null,
+        "decision": "local-review-passed-publication-pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "local-static-indexable-publication-pending",
+        "canonicalPath": "/watch/ax-vs-screenshots",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-012",
+      "priority": "P1",
+      "slug": "/learn/choose-mac-automation",
+      "topic": "Choose a way to automate your Mac",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Pick a first approach for a real repeated task.",
+      "format": "decision-tool",
+      "uniqueValue": "Route a task through existing shortcuts, app scripting, macros, workspace control, and UI automation based on what the reader needs.",
+      "primarySources": [
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac",
+        "https://www.keyboardmaestro.com/main/",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Recommend Lattices only for workspace tasks and Action only for the separate computer-use task.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Source and verify each branch; include a useful route that needs no new application.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/choose-mac-automation",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-013",
+      "priority": "P1",
+      "slug": "/learn/why-automated-clicks-stop-working",
+      "topic": "Why an automated click stops working",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Diagnose whether the target moved, changed, disappeared, or was never actionable.",
+      "format": "interactive-troubleshooter",
+      "uniqueValue": "Replay one modeled workflow while changing position, label, enabled state, and timing; show the failed assumption.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html"
+      ],
+      "productBridge": "Connect fresh observation and verification to documented computer-use controls.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Different failure states produce different recovery advice; no blind retries or claims to fix arbitrary apps.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/why-automated-clicks-stop-working",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-014",
+      "priority": "P1",
+      "slug": "/learn/window-snapping-vs-tiling",
+      "topic": "Window snapping, tiling, and saved layouts",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose a window-management approach without learning product jargon.",
+      "format": "interactive-layout-demo",
+      "uniqueValue": "Move the same three windows through manual snapping, automatic tiling, and a saved arrangement; describe the user's control in each.",
+      "primarySources": [
+        "https://rectangleapp.com/",
+        "https://nikitabobko.github.io/AeroSpace/guide",
+        "https://github.com/asmvik/yabai",
+        "https://lattices.dev/docs/concepts"
+      ],
+      "productBridge": "Explore Lattices' placement and workspace model if a saved task context is useful.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Mechanisms clearly distinguished; conceptual layouts labeled; avoid unsupported competitor behavior.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/window-snapping-vs-tiling",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-015",
+      "priority": "P1",
+      "slug": "/learn/spaces-and-workspaces",
+      "topic": "Mac Spaces and app workspaces are different things",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand where windows live before adopting a workspace utility.",
+      "format": "visual-explainer",
+      "uniqueValue": "Trace a window, macOS Space, app workspace, and Lattices layer across a single task switch.",
+      "primarySources": [
+        "https://nikitabobko.github.io/AeroSpace/guide",
+        "https://lattices.dev/docs/concepts",
+        "https://lattices.dev/docs/workspace-map"
+      ],
+      "productBridge": "Read the workspace map and layer documentation.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Current Apple Spaces source required in addition to product docs; definitions tested against current product versions.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/spaces-and-workspaces",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-016",
+      "priority": "P1",
+      "slug": "/learn/inspect-your-first-mac-app",
+      "topic": "Inspect a Mac app without changing it",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Try a bounded, read-only inspection after understanding AX.",
+      "format": "guided-lab",
+      "uniqueValue": "Inspect a harmless standard control with Apple's Accessibility Inspector and compare the result with a saved annotated fixture.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/accessibility/accessibility-inspector",
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h"
+      ],
+      "productBridge": "Optional deeper link to Lattices inspection docs after the native inspection lesson.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Firsthand procedure, exact macOS/Xcode versions, original redacted captures, and tested recovery for unavailable metadata.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/inspect-your-first-mac-app",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-017",
+      "priority": "P1",
+      "slug": "/learn/mac-permission-after-app-update",
+      "topic": "Why a Mac utility asks for permission again",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Investigate permission prompts after an app update or path change.",
+      "format": "diagnostic-guide",
+      "uniqueValue": "Help the reader identify the exact app and installed path before applying a documented permission repair.",
+      "primarySources": [
+        "https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac",
+        "https://support.apple.com/en-gb/guide/mac-help/mchld6aa7d23/mac",
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac"
+      ],
+      "productBridge": "Explain Lattices app identity and provenance only where verified.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Requires current Apple code-signing/identity sources and reproduced scenarios; no blanket TCC reset or unsupported diagnosis.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/mac-permission-after-app-update",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-018",
+      "priority": "P1",
+      "slug": "/learn/keyboard-shortcut-or-macro",
+      "topic": "When a keyboard shortcut should become a macro",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Find a manageable first personal automation.",
+      "format": "workflow-builder",
+      "uniqueValue": "Break a repeated task into trigger, steps, decisions, and stopping condition; produce a readable plan for a macro tool.",
+      "primarySources": [
+        "https://www.keyboardmaestro.com/main/",
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac"
+      ],
+      "productBridge": "Use Lattices to prepare the workspace around the task, only if needed.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Working planner with examples; no claim to execute exported plans; do not collect typed workflow content in analytics.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/keyboard-shortcut-or-macro",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-019",
+      "priority": "P1",
+      "slug": "/learn/verify-an-automation",
+      "topic": "How to tell whether an automation actually worked",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Distinguish an issued action from the intended result.",
+      "format": "interactive-receipt-demo",
+      "uniqueValue": "Compare a successful API response with unchanged UI, then choose a meaningful observed postcondition.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Read Lattices' documented verification and receipt semantics.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Modeled failure and success examples; technical review of what response and observation each prove.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/verify-an-automation",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-020",
+      "priority": "P2",
+      "slug": "/learn/mac-screen-coordinates",
+      "topic": "Why a Mac click can land in the wrong place",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand screen coordinates, window-relative positions, and scale.",
+      "format": "coordinate-playground",
+      "uniqueValue": "Move a modeled window between differently scaled displays and inspect the coordinate conversion at a target.",
+      "primarySources": [
+        "https://lattices.dev/docs/workspace-map"
+      ],
+      "productBridge": "Read Lattices workspace coordinate contracts after the visual lesson.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Add official Apple geometry sources; verify numeric fixtures against native captures; do not present a browser calculation as a live diagnostic.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/mac-screen-coordinates",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-021",
+      "priority": "P2",
+      "slug": "/learn/multi-monitor-layout",
+      "topic": "Plan a useful multi-monitor workspace",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Arrange windows around a concrete task before selecting a window utility.",
+      "format": "layout-planner",
+      "uniqueValue": "Choose display arrangement and task windows, then compare readable layouts and a text description.",
+      "primarySources": [
+        "https://lattices.dev/docs/workspace-map",
+        "https://lattices.dev/docs/config"
+      ],
+      "productBridge": "Translate a supported layout into reviewed Lattices configuration guidance.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Real geometry and minimum-size constraints; readable keyboard/mobile alternative; export format validated before claiming compatibility.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/multi-monitor-layout",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-022",
+      "priority": "P1",
+      "slug": "/learn/when-a-mac-app-has-no-ui-tree",
+      "topic": "Why an app exposes fewer controls than you can see",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Recognize incomplete accessibility information and choose the next observation method.",
+      "format": "interactive-fixture",
+      "uniqueValue": "Compare a complete tree, a custom-drawn control, and a partially exposed interface without guessing hidden semantics.",
+      "primarySources": [
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html"
+      ],
+      "productBridge": "Use the AX-versus-screenshots lesson before choosing a documented inspection mode.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Distinct deeper question from the introductory comparison; primary sources plus original labeled fixtures; no unsupported per-app blacklist.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/when-a-mac-app-has-no-ui-tree",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-023",
+      "priority": "P2",
+      "slug": "/learn/app-scripting-vs-ui-automation",
+      "topic": "App scripting or UI automation?",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose a documented app command before reconstructing a task as clicks.",
+      "format": "decision-guide",
+      "uniqueValue": "Compare a direct app operation, a keyboard sequence, and an AX action for one non-destructive task.",
+      "primarySources": [
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac",
+        "https://developer.apple.com/documentation/applicationservices/axuielement_h"
+      ],
+      "productBridge": "Keep Lattices focused on the workspace and Action on UI interaction where needed.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Add official Apple scripting documentation and one tested application dictionary; avoid promising general app coverage.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/app-scripting-vs-ui-automation",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-024",
+      "priority": "P2",
+      "slug": "/learn/local-api-for-mac-power-users",
+      "topic": "What a local API lets a Mac power user do",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand a local automation interface without starting with programming jargon.",
+      "format": "interactive-request-builder",
+      "uniqueValue": "Assemble a read-only sample request from familiar workspace nouns; explain request, response, and connection boundaries.",
+      "primarySources": [
+        "https://lattices.dev/docs/api",
+        "https://lattices.dev/docs/workspace-map"
+      ],
+      "productBridge": "Open the Lattices API quickstart after building a sample request.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Never connect the public browser to a local daemon automatically; all sample schemas verified; label simulated responses.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/local-api-for-mac-power-users",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-025",
+      "priority": "P1",
+      "slug": "/learn/repeatable-development-workspace",
+      "topic": "Make a development workspace repeatable",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Keep project tools and windows organized across task switches.",
+      "format": "guided-planner",
+      "uniqueValue": "Separate windows, processes, sessions, and restore behavior in a completed sample workspace plan.",
+      "primarySources": [
+        "https://lattices.dev/docs/concepts",
+        "https://lattices.dev/docs/config"
+      ],
+      "productBridge": "Optional Lattices configuration with tmux only where persistence is needed.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Explain process persistence versus window restoration; tested sample configuration before publishing executable instructions.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/learn/repeatable-development-workspace",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-026",
+      "priority": "P2",
+      "slug": "/compare/mac-automation-tools",
+      "topic": "Choose a Mac automation tool by the work it does",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Compare personal automation categories after a task is defined.",
+      "format": "decision-directory",
+      "uniqueValue": "Filter reviewed records by shortcuts, macros, scripting, workspace control, and native UI actions; show editorial reasoning.",
+      "primarySources": [
+        "https://www.keyboardmaestro.com/main/",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html",
+        "https://support.apple.com/en-hk/guide/mac-help/mchl108e1718/mac",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Present Lattices among workspace options and Action in its separate category.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Reuse reviewed facts; each category needs a distinct decision; do not create a second generic directory that duplicates /compare/.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/mac-automation-tools",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-027",
+      "priority": "P2",
+      "slug": "/compare/mac-window-managers",
+      "topic": "Choose a Mac window manager by how you work",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Select a window-control model and setup burden.",
+      "format": "decision-directory",
+      "uniqueValue": "Compare snapping, tiling, workspace organization, and scripting through concrete tasks with evidence links.",
+      "primarySources": [
+        "https://rectangleapp.com/",
+        "https://www.raycast.com/core-features/window-management",
+        "https://github.com/asmvik/yabai",
+        "https://nikitabobko.github.io/AeroSpace/guide",
+        "https://lattices.dev/docs/concepts"
+      ],
+      "productBridge": "Show whether Lattices' workspace model solves the specified task.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Commission only if /compare/ cannot answer the narrower intent; firsthand scenarios required for performance or reliability judgments.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/compare/mac-window-managers",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-028",
+      "priority": "P1",
+      "slug": "/watch/macos-automation-permissions",
+      "topic": "Three permissions, three different jobs",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Understand permission boundaries before changing settings.",
+      "format": "animated-explainer",
+      "uniqueValue": "Distinguish exposed-control access, screen capture, and Apple Events; show that one workflow can need several permissions without imitating a settings screen.",
+      "primarySources": [
+        "https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac",
+        "https://support.apple.com/guide/mac-help/control-access-to-screen-and-system-audio-recording-mchld6aa7d23/mac",
+        "https://support.apple.com/guide/mac-help/allow-apps-to-automate-and-control-other-apps-mchl108e1718/mac",
+        "https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.automation.apple-events"
+      ],
+      "productBridge": "Continue to the permission decision tool.",
+      "status": "locally-produced",
+      "evidence": {
+        "state": "local-media-and-page-verified",
+        "required": "Scoped mechanism claims; note macOS wording can vary; reviewed storyboard, playable media, transcript, and measured asset metadata.",
+        "claimsReviewedAt": "2026-10-02",
+        "reviewer": "Source review plus independent content review and root artifact verification",
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": "HyperFrames checks, measured MP4 metadata, full decode, encoded-frame review, static-page audit and browser playback.",
+        "testResult": "Passed locally. 40 seconds; 1280x720; H.264 at 30fps. No native app benchmark or public deployment claimed.",
+        "artifactPaths": [
+          "apps/site/public/learn/media/macos-automation-permissions.mp4",
+          "apps/site/public/learn/media/macos-automation-permissions.vtt",
+          "apps/site/public/learn/media/macos-automation-permissions-transcript.txt",
+          "studies/seo-explainers/batch-02/evidence/media-verification.json",
+          "studies/seo-pilot-evidence/batch-02/verification.json"
+        ]
+      },
+      "review": {
+        "editorialReviewer": "Content agent and independent reviewer",
+        "technicalReviewer": "Root artifact and browser checks",
+        "reviewedAt": "2026-10-02",
+        "nextReviewAt": null,
+        "decision": "local-review-passed-publication-pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "local-static-indexable-publication-pending",
+        "canonicalPath": "/watch/macos-automation-permissions",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-029",
+      "priority": "P2",
+      "slug": "/watch/mac-screen-coordinates",
+      "topic": "Why the same click misses on another display",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "See how coordinate spaces affect an automated click.",
+      "format": "animated-explainer",
+      "uniqueValue": "Follow one target as a window moves and a display scale changes; connect the numeric transformation to the visible point.",
+      "primarySources": [
+        "https://lattices.dev/docs/workspace-map"
+      ],
+      "productBridge": "Continue to the coordinate playground and workspace map docs.",
+      "status": "candidate",
+      "evidence": {
+        "state": "requirements-defined",
+        "required": "Only after the geometry fixtures pass native checks; synthetic label; readable numbers and captions; actual rendered media.",
+        "claimsReviewedAt": null,
+        "reviewer": null,
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": null,
+        "testProcedure": null,
+        "testResult": null,
+        "artifactPaths": []
+      },
+      "review": {
+        "editorialReviewer": null,
+        "technicalReviewer": null,
+        "reviewedAt": null,
+        "nextReviewAt": null,
+        "decision": "pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "hold-until-reviewed",
+        "canonicalPath": "/watch/mac-screen-coordinates",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-030",
+      "priority": "P1",
+      "slug": "/watch/observe-act-verify",
+      "topic": "Observe, act, verify: a useful automation loop",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Learn a repeatable way to reason about automation outcomes.",
+      "format": "animated-explainer",
+      "uniqueValue": "Show an apparently successful click with no result, then the observation that detects it and a bounded recovery.",
+      "primarySources": [
+        "https://developer.apple.com/library/archive/documentation/Accessibility/Conceptual/AccessibilityMacOSX/OSXAXmodel.html",
+        "https://www.hammerspoon.org/docs/hs.axuielement.html#performAction",
+        "https://lattices.dev/docs/api"
+      ],
+      "productBridge": "Continue to the existing AX-versus-screenshots lesson and documented post-action verification reference; Action remains a separate product.",
+      "status": "locally-produced",
+      "evidence": {
+        "state": "local-media-and-page-verified",
+        "required": "No implied performance measurement; reviewed success and failure states; rendered media, captions, and transcript.",
+        "claimsReviewedAt": "2026-10-02",
+        "reviewer": "Source review plus independent content review and root artifact verification",
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": "HyperFrames checks, measured MP4 metadata, full decode, encoded-frame review, static-page audit and browser playback.",
+        "testResult": "Passed locally. 40 seconds; 1280x720; H.264 at 30fps. No native app benchmark or public deployment claimed.",
+        "artifactPaths": [
+          "apps/site/public/learn/media/observe-act-verify.mp4",
+          "apps/site/public/learn/media/observe-act-verify.vtt",
+          "apps/site/public/learn/media/observe-act-verify-transcript.txt",
+          "studies/seo-explainers/batch-02/evidence/media-verification.json",
+          "studies/seo-pilot-evidence/batch-02/verification.json"
+        ]
+      },
+      "review": {
+        "editorialReviewer": "Content agent and independent reviewer",
+        "technicalReviewer": "Root artifact and browser checks",
+        "reviewedAt": "2026-10-02",
+        "nextReviewAt": null,
+        "decision": "local-review-passed-publication-pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "local-static-indexable-publication-pending",
+        "canonicalPath": "/watch/observe-act-verify",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      }
+    },
+    {
+      "id": "lattices-content-031",
+      "priority": "P1",
+      "slug": "/watch/window-snapping-vs-tiling",
+      "topic": "Window snapping, tiling, and workspaces",
+      "audience": "Mid-level aspiring Mac power user",
+      "intent": "Choose between placing a window, automatically arranging windows, and returning to a work context.",
+      "format": "animated-explainer",
+      "uniqueValue": "Move conceptual windows through snapping, automatic tiling, and a named context; explain the differences without treating product categories as exclusive.",
+      "primarySources": [
+        "https://rectangleapp.com/",
+        "https://nikitabobko.github.io/AeroSpace/guide",
+        "https://lattices.dev/docs/concepts",
+        "https://lattices.dev/docs/layers"
+      ],
+      "productBridge": "Compare window tools and read existing Lattices layer documentation.",
+      "status": "locally-produced",
+      "evidence": {
+        "state": "local-media-and-page-verified",
+        "required": "Conceptual diagrams labeled; no native Spaces equivalence or process restoration promise; complete captions and transcript; measured rendered assets.",
+        "claimsReviewedAt": "2026-10-02",
+        "reviewer": "Source review plus independent content review and root artifact verification",
+        "macosVersion": null,
+        "appVersions": [],
+        "fixtureType": "synthetic-model",
+        "testProcedure": "HyperFrames checks, measured MP4 metadata, full decode, encoded-frame review, static-page audit and browser playback.",
+        "testResult": "Passed locally. 40 seconds; 1280x720; H.264 at 30fps. No native app benchmark or public deployment claimed.",
+        "artifactPaths": [
+          "apps/site/public/learn/media/window-snapping-vs-tiling.mp4",
+          "apps/site/public/learn/media/window-snapping-vs-tiling.vtt",
+          "apps/site/public/learn/media/window-snapping-vs-tiling-transcript.txt",
+          "studies/seo-explainers/batch-02/evidence/media-verification.json",
+          "studies/seo-pilot-evidence/batch-02/verification.json"
+        ]
+      },
+      "review": {
+        "editorialReviewer": "Content agent and independent reviewer",
+        "technicalReviewer": "Root artifact and browser checks",
+        "reviewedAt": "2026-10-02",
+        "nextReviewAt": null,
+        "decision": "local-review-passed-publication-pending",
+        "expansionGates": [
+          "distinct-intent",
+          "useful-result",
+          "evidence",
+          "review",
+          "usability",
+          "delivery",
+          "measurement"
+        ]
+      },
+      "publication": {
+        "state": "not-verified-live",
+        "indexability": "local-static-indexable-publication-pending",
+        "canonicalPath": "/watch/window-snapping-vs-tiling",
+        "contentRevision": null,
+        "publishedAt": null,
+        "deploymentUrl": null,
+        "liveCheckedAt": null
+      },
+      "relatedCandidate": "/learn/window-snapping-vs-tiling"
+    }
+  ]
+}

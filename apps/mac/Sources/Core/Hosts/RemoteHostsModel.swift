@@ -155,13 +155,25 @@ final class RemoteHostsModel: ObservableObject {
         if viewers > 0 { connectAll() }
     }
 
-    private func connectAll() {
-        var configured = Self.configuredHosts()
-        for paired in VisitTrust.shared.list() {
-            guard let address = VisitTrust.bridgeURL(paired.address)?.host else { continue }
+    /// Only a remote bridge address can imply the daemon on port 9399.
+    /// A loopback bridge is a tunnel to a different service, so its host
+    /// must supply an explicit daemon endpoint in hosts.json instead.
+    nonisolated static func connectionHosts(
+        configured: [(name: String, address: String, port: UInt16)],
+        paired: [VisitTrust.Host]
+    ) -> [(name: String, address: String, port: UInt16)] {
+        var configured = configured
+        for paired in paired {
+            guard let address = VisitTrust.bridgeURL(paired.address)?.host,
+                  !MachineInventory.isLoopback(address) else { continue }
             guard !configured.contains(where: { MachineInventory.key($0.name) == MachineInventory.key(paired.name) || MachineInventory.addressKey($0.address) == MachineInventory.addressKey(address) }) else { continue }
             configured.append((name: paired.name, address: address, port: 9399))
         }
+        return configured
+    }
+
+    private func connectAll() {
+        let configured = Self.connectionHosts(configured: Self.configuredHosts(), paired: VisitTrust.shared.list())
         hosts = configured.map { entry in
             var host = hosts.first { $0.name == entry.name } ?? Host(name: entry.name, address: entry.address, port: entry.port)
             host.status = .connecting

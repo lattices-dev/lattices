@@ -1,0 +1,17 @@
+A click is not a completed task
+
+Silent educational animation. Illustrative example, not a live desktop inspection.
+
+Opening: Lattices / Field Guide. RELIABLE UI AUTOMATION. A click is not a completed task. Observe the app. Act once. Check what changed.
+
+[0–10 seconds] Observe. Goal: save Weekend plans. Find the right window and the Save control.
+
+[10–20 seconds] Act. Press Save once. An accepted action does not prove the file was saved.
+
+[20–30 seconds] Verify. The app reports “Could not save”. The error means the goal is still unmet.
+
+[30–40 seconds] Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help.
+
+On-screen diagram labels: Illustrated app; Weekend plans; Save; Could not save; Goal: save Weekend plans; Right window. Right control.; 01 / OBSERVE; 02 / ACT; 03 / VERIFY; Action accepted; Now inspect the result.; Expected: Saved; Observed: Could not save; Goal still unmet; Inspect cause; One safe retry; Verify again; Still unresolved? Stop and ask.
+
+Footer: Illustrative example · not a live desktop. lattices.dev/learn.

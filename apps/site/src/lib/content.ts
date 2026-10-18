@@ -1,4 +1,5 @@
 import navJson from '../data/nav.json'
+import { navBlurb, rewriteDocMarkdown } from '../seo/describe'
 import { splitFrontmatter } from './frontmatter'
 import { extractHeadings, prepareMarkdown, type Heading } from './markdown'
 
@@ -62,14 +63,17 @@ export const docs: DocPage[] = Object.entries(docModules)
     const slug = slugFromPath(path)
     const { data, content } = splitFrontmatter(raw)
     const prepared = prepareMarkdown(content)
+    const explicitTitle = stringValue(data.title)
+    const rewritten = rewriteDocMarkdown(prepared, explicitTitle)
+    const title = explicitTitle || rewritten.firstH1 || titleFromSlug(slug)
 
     return {
       slug,
-      title: stringValue(data.title) || titleFromSlug(slug),
-      description: stringValue(data.description),
+      title,
+      description: stringValue(data.description) || navBlurb(slug) || rewritten.summary || undefined,
       order: numberValue(data.order) ?? 999,
-      content: prepared,
-      headings: extractHeadings(prepared),
+      content: rewritten.markdown,
+      headings: extractHeadings(rewritten.markdown),
     }
   })
   .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title))

@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scout local — quiet ledger study</title>
+    <!--
+      DIRECTION CONTRACT
+      THESIS: A registration ledger, not a hero. The doorway is one quiet
+      instrument panel — the domain once, one live wavefront instrument, one
+      ledger line per machine, one trust line. It refuses the boxed-card
+      doorway and every restatement of "local".
+      OWN-WORLD: warm near-black / warm paper, ink plus stepped warm greys,
+      no accent hue anywhere. Mono carries machine facts (hostnames, the
+      domain, OPEN), sans carries the two human sentences. Separation is
+      hairlines, never boxes.
+      STORY: "I am on my mesh" (brand line, instrument alive) → "there is my
+      machine" (the ledger line) → click → leave.
+      FIRST VIEWPORT: a 720px column, optically centered. Brand mark +
+      `scout.local` mono; 44px title at -0.03em; two-line lede; the
+      instrument field right of the copy; one ledger row; one trust line.
+      FORM: evolves scout-local-sober-ascii — same wavefront engine family,
+      now pointer-aware (the epicenter eases toward the pointer, movement
+      sheds decaying ripples, idle wanders a slow lissajous). Around it:
+      typographic elevation, the ledger row replacing the boxed node card,
+      a full light theme, and one staggered settle on load.
+      Review pins: ?t=<s> freezes the instrument phase, ?px=0..1&py=0..1
+      places a synthetic pointer, ?light / ?dark pins the theme.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        /* Warm near-black field, warm off-white ink, muted warm greys. */
+        --bg: #0a0a09;
+        --ink: #f1ece1;
+        --ink-2: #a49d90;
+        --ink-3: #6f6960;
+        --edge: #23221f;
+        --edge-2: #3d3a34;
+        --hover: color-mix(in srgb, var(--ink) 3.5%, transparent);
+
+        /* Instrument tone ramp — the only stepped "color" on the page. */
+        --t0: #2e2b27;
+        --t1: #474339;
+        --t2: #6b6558;
+        --t3: #968e7f;
+        --t4: #d5cdbd;
+
+        --sans: "Inter Tight", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme="dark"]) {
+          color-scheme: light;
+          --bg: #f3f1ea;
+          --ink: #171914;
+          --ink-2: #5f5d52;
+          --ink-3: #6b685c;
+          --edge: #dcd9cb;
+          --edge-2: #b9b5a4;
+
+          --t0: #d2cec2;
+          --t1: #a6a08d;
+          --t2: #757061;
+          --t3: #49463d;
+          --t4: #1f211b;
+        }
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f3f1ea;
+        --ink: #171914;
+        --ink-2: #5f5d52;
+        --ink-3: #6b685c;
+        --edge: #dcd9cb;
+        --edge-2: #b9b5a4;
+
+        --t0: #d2cec2;
+        --t1: #a6a08d;
+        --t2: #757061;
+        --t3: #49463d;
+        --t4: #1f211b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        align-content: center;
+        justify-items: stretch;
+        padding: 40px 32px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+      main { width: 100%; max-width: 720px; min-width: 0; margin-inline: auto; }
+
+      /* One authored moment: the page settles in once, staggered, then never
+         moves again. Reduced motion skips it entirely. */
+      @keyframes settle {
+        from { opacity: 0; transform: translateY(10px); }
+      }
+      .rise { animation: settle 640ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .rise-2 { animation-delay: 90ms; }
+      .rise-3 { animation-delay: 170ms; }
+      @media (prefers-reduced-motion: reduce) {
+        .rise { animation: none; }
+      }
+
+      /* ---------- hero ---------- */
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 32px 48px;
+        align-items: center;
+        margin-bottom: 48px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 26px;
+      }
+      .mark { display: block; color: var(--ink-2); }
+      .host {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        color: var(--ink-2);
+      }
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(36px, 4.6vw, 46px);
+        font-weight: 560;
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+      }
+      .lede {
+        margin: 0;
+        max-width: 44ch;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--ink-2);
+      }
+
+      /* ---------- ascii instrument field ---------- */
+      .field {
+        position: relative;
+        user-select: none;
+        -webkit-mask-image: radial-gradient(ellipse 70% 72% at 50% 50%, #000 55%, transparent 100%);
+        mask-image: radial-gradient(ellipse 70% 72% at 50% 50%, #000 55%, transparent 100%);
+      }
+      .field__layer {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 10px;
+        line-height: 1.1;
+        white-space: pre;
+        letter-spacing: 0;
+      }
+      .field__layer + .field__layer { position: absolute; inset: 0; }
+      .field__layer[data-t="0"] { color: var(--t0); }
+      .field__layer[data-t="1"] { color: var(--t1); }
+      .field__layer[data-t="2"] { color: var(--t2); }
+      .field__layer[data-t="3"] { color: var(--t3); }
+      .field__layer[data-t="4"] { color: var(--t4); }
+
+      /* ---------- node ledger ---------- */
+      .node {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 18px 6px;
+        border-top: 1px solid var(--edge);
+        border-bottom: 1px solid var(--edge);
+        text-decoration: none;
+        color: inherit;
+        transition: background-color 140ms ease;
+      }
+      .node:hover { background: var(--hover); }
+      .node:focus-visible {
+        outline: 1px solid var(--ink-2);
+        outline-offset: 3px;
+      }
+      .node__id { display: grid; gap: 4px; min-width: 0; }
+      .node__host {
+        font-family: var(--mono);
+        font-size: 14px;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .node__sub { font-size: 12px; color: var(--ink-3); }
+      .node__open {
+        flex: none;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        transition: color 140ms ease;
+      }
+      .node:hover .node__open,
+      .node:focus-visible .node__open { color: var(--ink); }
+
+      /* ---------- trust ---------- */
+      .trust {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 14px;
+        margin-top: 20px;
+        padding-inline: 6px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.03em;
+        color: var(--ink-3);
+      }
+      .trust a {
+        color: var(--ink-2);
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+        transition: color 140ms ease, border-color 140ms ease;
+      }
+      .trust a:hover,
+      .trust a:focus-visible { color: var(--ink); border-bottom-color: var(--edge-2); }
+      .trust .sep { color: var(--edge-2); }
+      .trust .note { margin-left: auto; }
+
+      @media (max-width: 680px) {
+        .hero { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-bottom: 36px; }
+        .field { justify-self: start; }
+        h1 { font-size: 32px; }
+        .trust .note { margin-left: 0; flex-basis: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="hero rise">
+        <div>
+          <div class="brand">
+            <span class="mark" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+                <polygon points="16,4.8 26.2,10.7 26.2,21.9 16,27.8 5.8,21.9 5.8,10.7" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round" fill="currentColor" fill-opacity="0.06"/>
+                <path d="M16 4.8v23M5.8 10.7 16 16.6 26.2 10.7" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" opacity="0.42"/>
+                <polygon points="16,11 21.1,14 21.1,19.6 16,22.6 10.9,19.6 10.9,14" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" fill="currentColor" fill-opacity="0.14" opacity="0.9"/>
+              </svg>
+            </span>
+            <span class="host">scout.local</span>
+          </div>
+          <h1>Scout local</h1>
+          <p class="lede">
+            Registered machines on this local Scout mesh. Open a node to inspect
+            agents, sessions, activity, and settings.
+          </p>
+        </div>
+
+        <div class="field" aria-hidden="true">
+          <pre class="field__layer" data-t="0"></pre>
+          <pre class="field__layer" data-t="1"></pre>
+          <pre class="field__layer" data-t="2"></pre>
+          <pre class="field__layer" data-t="3"></pre>
+          <pre class="field__layer" data-t="4"></pre>
+        </div>
+      </div>
+
+      <a class="node rise rise-2" href="http://arts-mac-mini.scout.local/">
+        <span class="node__id">
+          <span class="node__host">arts-mac-mini.scout.local</span>
+          <span class="node__sub">Local web node</span>
+        </span>
+        <span class="node__open">Open</span>
+      </a>
+
+      <div class="trust rise rise-3">
+        <a href="https://openscout.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>
+        <span class="sep" aria-hidden="true">/</span>
+        <a href="https://github.com/arach/openscout" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span class="note">served by this machine’s Scout broker</span>
+      </div>
+    </main>
+
+    <script>
+      // ------------------------------------------------------------------
+      // Instrument field — pointer-aware wavefronts.
+      //
+      // Base engine from scout-local-sober-ascii: rings emanate on a 6.5s
+      // period, a two-fold angular phase wobble on a non-commensurate 17s
+      // keeps them from settling into symmetry, fixed per-cell grain keeps
+      // quantisation edges from looking plotted. One density value drives a
+      // coarse 2-step glyph dither (`· ░`) and a finer 5-step tone ramp.
+      //
+      // What this study adds: the field notices you. The wavefront
+      // epicenter eases toward the pointer (influence is capped, so it
+      // leans rather than jumps), pointer movement sheds ripples that decay
+      // over ~1.5s, and when the pointer is absent the epicenter follows a
+      // slow lissajous — it never rests as a fixed circle. Radius, angle,
+      // and the rim dissolve are therefore recomputed per frame against the
+      // live center; at 42×21 cells and 24fps that is cheap.
+      // ------------------------------------------------------------------
+      (function () {
+        var W = 42, H = 21;
+        var CX = (W - 1) / 2, CY = (H - 1) / 2;
+        var ASPECT = 0.545; // monospace advance-width / line-height
+        var GLYPH = ["·", "░"];
+        var GCUT = [0.12, 0.45]; // below GCUT[0] the cell is empty
+        var TCUT = [0.24, 0.42, 0.6, 0.8];
+        var TONES = 5;
+        var TAU = Math.PI * 2;
+        var STILL_T = 2.6; // phase used for the reduced-motion frame
+        var LEAN = 0.34; // max pointer pull on the epicenter (fraction)
+        var RIPPLE_LIFE = 1.6; // seconds
+
+        var field = document.querySelector(".field");
+        var layers = [].slice.call(document.querySelectorAll(".field__layer"));
+        if (!field || layers.length !== TONES) return;
+
+        var N = W * H;
+        var G = new Float32Array(N); // fixed grain, -1..1
+        for (var y = 0; y < H; y++) {
+          for (var x = 0; x < W; x++) {
+            var n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+            G[y * W + x] = (n - Math.floor(n)) * 2 - 1;
+          }
+        }
+
+        var STRIDE = W + 1; // trailing newline per row
+        var bufs = [];
+        for (var b = 0; b < TONES; b++) {
+          var buf = new Array(H * STRIDE);
+          for (var j = 0; j < buf.length; j++) buf[j] = " ";
+          for (var r = 0; r < H; r++) buf[r * STRIDE + W] = "\n";
+          bufs.push(buf);
+        }
+
+        // Pointer state, in cell units relative to the field centre.
+        var ox = 0, oy = 0; // eased epicenter offset
+        var tx = 0, ty = 0; // target offset
+        var pointerT = -1e9; // field-clock time the pointer was last seen
+        var ripples = []; // {x, y, t0, amp}
+        var lastRippleT = -1e9, lastRippleX = 0, lastRippleY = 0;
+        var start = -1;
+
+        function fieldClock() {
+          return STILL_T + (start < 0 ? 0 : (performance.now() - start) / 1000);
+        }
+
+        function onPointerMove(e) {
+          var rect = field.getBoundingClientRect();
+          if (rect.width < 1 || rect.height < 1) return;
+          var px = ((e.clientX - rect.left) / rect.width) * W - CX;
+          var py = ((e.clientY - rect.top) / rect.height) * H - CY;
+          // Lean, don't jump: influence is capped, so the epicenter drifts
+          // toward the pointer even from across the page.
+          tx = Math.max(-CX, Math.min(CX, px)) * LEAN;
+          ty = Math.max(-CY, Math.min(CY, py)) * LEAN;
+          pointerT = fieldClock();
+          // Shed a ripple when the pointer has moved far enough or enough
+          // time has passed — a trail while moving, a heartbeat while held.
+          var moved = Math.abs(px - lastRippleX) + Math.abs(py - lastRippleY);
+          if (pointerT - lastRippleT > 0.14 && (moved > 2.5 || pointerT - lastRippleT > 0.6)) {
+            ripples.push({
+              x: Math.max(-CX, Math.min(CX, px)),
+              y: Math.max(-CY, Math.min(CY, py)),
+              t0: pointerT,
+              amp: 0.5,
+            });
+            if (ripples.length > 4) ripples.shift();
+            lastRippleT = pointerT;
+            lastRippleX = px;
+            lastRippleY = py;
+          }
+        }
+
+        function render(t) {
+          // Without a recent pointer the epicenter wanders slowly — alive,
+          // but never a fixed circle.
+          if (t - pointerT > 2.5) {
+            tx = Math.sin(t * 0.19) * CX * 0.22;
+            ty = Math.cos(t * 0.14) * CY * 0.22;
+          }
+          ox += (tx - ox) * 0.07;
+          oy += (ty - oy) * 0.07;
+          var cx = CX + ox, cy = CY + oy;
+
+          var p1 = (t * TAU) / 6.5; // wavefront travel
+          var p2 = (t * TAU) / 17; // angular shimmer drift
+          for (var y = 0; y < H; y++) {
+            var o = y * STRIDE;
+            for (var x = 0; x < W; x++) {
+              var i = y * W + x;
+              var ax = ((x - cx) * ASPECT) / CY;
+              var ay = (y - cy) / CY;
+              var r = Math.sqrt(ax * ax + ay * ay);
+              var a = Math.atan2(ay, ax);
+              var e = Math.exp(-Math.pow(r / 0.9, 3.2));
+              // Phase wobble, not brightness wobble: the rings go gently
+              // out-of-round and drift, instead of being punched full of holes.
+              var u = r * 11 - p1 + 0.35 * Math.sin(a * 2 + p2);
+              var c = 0.5 + 0.5 * Math.cos(u);
+              var rings = c * c * c * Math.sqrt(c); // ≈ c^3.5 — thin crests
+              var d = e * (0.16 + 0.78 * rings) + G[i] * 0.03;
+              // Pointer ripples: expanding rings from the pointer point,
+              // envelope-decayed in space and time.
+              for (var k = 0; k < ripples.length; k++) {
+                var rp = ripples[k];
+                var age = t - rp.t0;
+                if (age < 0 || age > RIPPLE_LIFE) continue;
+                var rx = ((x - (CX + rp.x)) * ASPECT) / CY;
+                var ry = (y - (CY + rp.y)) / CY;
+                var rd = Math.sqrt(rx * rx + ry * ry);
+                var wave = Math.cos(rd * 9 - age * 8);
+                if (wave > 0) d += wave * Math.exp(-rd * 1.9) * Math.exp(-age * 2.2) * rp.amp;
+              }
+
+              var glyph = d >= GCUT[1] ? GLYPH[1] : d >= GCUT[0] ? GLYPH[0] : " ";
+              var tone =
+                d >= TCUT[3] ? 4 : d >= TCUT[2] ? 3 : d >= TCUT[1] ? 2 : d >= TCUT[0] ? 1 : 0;
+
+              for (var m = 0; m < TONES; m++) bufs[m][o + x] = m === tone ? glyph : " ";
+            }
+          }
+          for (var s = 0; s < TONES; s++) layers[s].textContent = bufs[s].join("");
+        }
+
+        var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+        var raf = 0, last = -1;
+        var STEP = 1000 / 24; // calm cadence; also keeps this cheap
+
+        function loop(ts) {
+          raf = requestAnimationFrame(loop);
+          if (start < 0) start = ts;
+          if (last >= 0 && ts - last < STEP) return;
+          last = ts;
+          // Resume from STILL_T so the first animated frame is the frame
+          // already on screen — no pop on load or on tab re-focus.
+          render(STILL_T + (ts - start) / 1000);
+        }
+        function stop() {
+          if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        }
+        function play() {
+          if (reduce.matches || document.hidden || raf) return;
+          last = -1;
+          raf = requestAnimationFrame(loop);
+        }
+
+        render(STILL_T); // paints before first frame; the still frame if motion is off
+
+        // Review aids: `?t=<seconds>` pins one frame; `?px=0..1&py=0..1`
+        // places a synthetic pointer (offset epicenter + one mid-life
+        // ripple) so the responsive states are screenshottable;
+        // `?light` / `?dark` pins the theme.
+        var search = window.location.search;
+        if (/[?&]light\b/.test(search)) document.documentElement.dataset.theme = "light";
+        if (/[?&]dark\b/.test(search)) document.documentElement.dataset.theme = "dark";
+        var pinned = /[?&]t=(-?[\d.]+)/.exec(search);
+        var pinP = /[?&]px=([\d.]+)/.exec(search);
+        var pinQ = /[?&]py=([\d.]+)/.exec(search);
+        if (pinned) {
+          var pt = parseFloat(pinned[1]);
+          if (pinP) {
+            var fx = parseFloat(pinP[1]) * W - CX;
+            var fy = (pinQ ? parseFloat(pinQ[1]) : 0.5) * H - CY;
+            ox = tx = Math.max(-CX, Math.min(CX, fx)) * LEAN;
+            oy = ty = Math.max(-CY, Math.min(CY, fy)) * LEAN;
+            ripples.push({ x: fx, y: fy, t0: pt - 0.4, amp: 0.5 });
+          }
+          render(pt);
+        } else {
+          window.addEventListener("pointermove", onPointerMove, { passive: true });
+          play();
+        }
+
+        document.addEventListener("visibilitychange", function () {
+          if (document.hidden) stop(); else play();
+        });
+        function onMotionPreferenceChange() {
+          stop();
+          if (reduce.matches) render(STILL_T);
+          else play();
+        }
+        if (reduce.addEventListener) reduce.addEventListener("change", onMotionPreferenceChange);
+        else if (reduce.addListener) reduce.addListener(onMotionPreferenceChange);
+      })();
+    </script>
+  </body>
+</html>

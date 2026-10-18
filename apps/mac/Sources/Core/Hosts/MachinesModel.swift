@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 /// Pure identity merging. Addresses compare without their service ports; names
@@ -20,6 +21,27 @@ enum MachineInventory {
     }
     static func key(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+    static func isLoopback(_ host: String) -> Bool {
+        var h = key(host).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if h.hasSuffix(".") { h.removeLast() }
+        if h == "localhost" { return true }
+
+        // Parse addresses instead of matching their spelling: IPv6 permits
+        // expanded forms and IPv4-mapped addresses, and IPv4 permits shorthand.
+        var ipv4 = in_addr()
+        if inet_aton(h, &ipv4) == 1 {
+            return UInt32(bigEndian: ipv4.s_addr) & 0xff00_0000 == 0x7f00_0000
+        }
+        var ipv6 = in6_addr()
+        let address = String(h.split(separator: "%", maxSplits: 1).first ?? "")
+        guard inet_pton(AF_INET6, address, &ipv6) == 1 else { return false }
+        return withUnsafeBytes(of: &ipv6) { bytes in
+            let native = bytes.prefix(15).allSatisfy { $0 == 0 } && bytes[15] == 1
+            let mapped = bytes.prefix(10).allSatisfy { $0 == 0 }
+                && bytes[10] == 0xff && bytes[11] == 0xff && bytes[12] == 127
+            return native || mapped
+        }
     }
     static func addressKey(_ value: String) -> String {
         let value = key(value)
@@ -78,7 +100,9 @@ final class MachinesModel: ObservableObject {
         screens = VisitController.screens()
         for host in visit.hosts {
             guard let base = VisitTrust.bridgeURL(host.address) else { reachable[host.name] = false; continue }
-            if let address = base.host {
+            // A loopback bridge is a tunnel: port 9399 there is this Mac's own
+            // daemon, not the host's. The host's hosts.json entry describes it.
+            if let address = base.host, !MachineInventory.isLoopback(address) {
                 let connection = RemoteHostConnection(address: address, port: 9399)
                 connection.onReady = { [weak self, weak connection] in
                     guard let self, let connection else { return }

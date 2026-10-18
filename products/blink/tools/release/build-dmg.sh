@@ -78,6 +78,8 @@ done
 cp "$EDITOR_HTML" "$BUNDLE/Contents/Resources/editor.html"
 ICON="$ROOT/assets/AppIcon.icns"
 [ -f "$ICON" ] && cp "$ICON" "$BUNDLE/Contents/Resources/AppIcon.icns"
+# The light and dark icons, which CFBundleIconName picks over the .icns.
+[ -f "$ROOT/assets/Assets.car" ] && cp "$ROOT/assets/Assets.car" "$BUNDLE/Contents/Resources/Assets.car"
 
 cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -97,6 +99,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key>
   <string>${APP_NAME}</string>
   <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIconName</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>

@@ -1,0 +1,142 @@
+{
+  "ax-tree": {
+    "durationSeconds": 36,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 8,
+        "text": "You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools."
+      },
+      {
+        "start": 8,
+        "end": 16,
+        "text": "That description is a tree. An app contains a window. The window contains controls, such as buttons."
+      },
+      {
+        "start": 16,
+        "end": 26,
+        "text": "An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it."
+      },
+      {
+        "start": 26,
+        "end": 36,
+        "text": "The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps."
+      }
+    ],
+    "fullTranscript": "How the macOS accessibility tree works\n\nSilent educational animation. All diagrams are illustrative; no live desktop was inspected.\n\nOpening: Lattices / Field Guide. THE ACCESSIBILITY TREE. Your apps have a second interface. AX is what an app tells tools about its buttons and windows.\n\n[0–8 seconds] You see a window and an Export button. Accessibility, often shortened to AX, describes those controls to other tools.\n\n[8–16 seconds] That description is a tree. An app contains a window. The window contains controls, such as buttons.\n\n[16–26 seconds] An element can expose its role: Button; its title: Export; and a supported action: Press. A tool can ask the app to press it.\n\n[26–36 seconds] The app decides what it exposes. Some controls may be missing or incomplete. Tools need Accessibility permission to access and control other apps.\n\nOn-screen diagram labels: Illustrated app; Export; What you see on screen; App; Window; Export button; The button tells a tool; What am I?; Role: Button; Title: Export; Action: Press; Only what this app exposes.\n\nFooter: Lattices / Field Guide. Illustrative diagram · not a live desktop inspection. lattices.dev/learn.\n"
+  },
+  "ax-vs-screenshots": {
+    "durationSeconds": 36,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 9,
+        "text": "A screenshot is an image: shapes, colors, and visible text. A tool must interpret the pixels to locate a button."
+      },
+      {
+        "start": 9,
+        "end": 18,
+        "text": "AX is structured information supplied by the app. A button may identify its role, title, and supported Press action."
+      },
+      {
+        "start": 18,
+        "end": 27,
+        "text": "Each view has limits. Pixels do not directly encode a button action. AX can omit a custom control or provide incomplete information."
+      },
+      {
+        "start": 27,
+        "end": 36,
+        "text": "Use the evidence the app provides, then verify what changed. Accessibility access and Screen Recording are separate macOS permissions."
+      }
+    ],
+    "fullTranscript": "AX vs screenshots: what UI automation can see\n\nSilent educational animation. All diagrams are illustrative; no live desktop was inspected.\n\nOpening: Lattices / Field Guide. PIXELS + STRUCTURE. Two ways to understand a screen. A screenshot shows appearance. AX describes exposed controls.\n\n[0–9 seconds] A screenshot is an image: shapes, colors, and visible text. A tool must interpret the pixels to locate a button.\n\n[9–18 seconds] AX is structured information supplied by the app. A button may identify its role, title, and supported Press action.\n\n[18–27 seconds] Each view has limits. Pixels do not directly encode a button action. AX can omit a custom control or provide incomplete information.\n\n[27–36 seconds] Use the evidence the app provides, then verify what changed. Accessibility access and Screen Recording are separate macOS permissions.\n\nOn-screen diagram labels: 01 / Image; 02 / Structure; Screenshot; Accessibility · AX; What it looks like: Visible text, shapes and colors; What the app says: Roles, labels and supported actions; Role: Button; Title: Export; Action: Press; A picture does not contain a Press action; Some controls may be missing or incomplete; Screen Recording: Permission to capture screen content; Seeing the screen does not grant AX control; Accessibility: Permission for access and control through AX; AX access does not grant screen capture.\n\nFooter: Lattices / Field Guide. Illustrative diagram · not a live desktop inspection. lattices.dev/learn.\n"
+  },
+  "macos-automation-permissions": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Operate a control. Accessibility lets a tool read or use the controls an app exposes."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Send app commands. Automation covers Apple Events that let one app command another."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version."
+      }
+    ],
+    "fullTranscript": "Three permissions, three different jobs\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. MACOS PERMISSIONS. Three permissions, three different jobs. Start with the task your tool needs to do.\n\n[0–10 seconds] Operate a control. Accessibility lets a tool read or use the controls an app exposes.\n\n[10–20 seconds] Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access.\n\n[20–30 seconds] Send app commands. Automation covers Apple Events that let one app command another.\n\n[30–40 seconds] Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version.\n\nOn-screen diagram labels: Your tool; Accessibility; Exposed controls; Save; Screen & System Audio Recording; Captured image; Automation; Apple Events; App A; App B; One task can cross several boundaries.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  },
+  "observe-act-verify": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Observe. Goal: save Weekend plans. Find the right window and the Save control."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Act. Press Save once. An accepted action does not prove the file was saved."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Verify. The app reports “Could not save”. The error means the goal is still unmet."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help."
+      }
+    ],
+    "fullTranscript": "A click is not a completed task\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. RELIABLE UI AUTOMATION. A click is not a completed task. Observe the app. Act once. Check what changed.\n\n[0–10 seconds] Observe. Goal: save Weekend plans. Find the right window and the Save control.\n\n[10–20 seconds] Act. Press Save once. An accepted action does not prove the file was saved.\n\n[20–30 seconds] Verify. The app reports “Could not save”. The error means the goal is still unmet.\n\n[30–40 seconds] Recover with a limit. Inspect the cause before retrying. If one safe correction fails, stop and ask for help.\n\nOn-screen diagram labels: Illustrated app; Weekend plans; Save; Could not save; Goal: save Weekend plans; Right window. Right control.; 01 / OBSERVE; 02 / ACT; 03 / VERIFY; Action accepted; Now inspect the result.; Expected: Saved; Observed: Could not save; Goal still unmet; Inspect cause; One safe retry; Verify again; Still unresolved? Stop and ask.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  },
+  "window-snapping-vs-tiling": {
+    "durationSeconds": 40,
+    "width": 1280,
+    "height": 720,
+    "transcript": [
+      {
+        "start": 0,
+        "end": 10,
+        "text": "Snap a window. You choose the position. Put the selected window on the left."
+      },
+      {
+        "start": 10,
+        "end": 20,
+        "text": "Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins."
+      },
+      {
+        "start": 20,
+        "end": 30,
+        "text": "Group a workspace. Keep related work together. Windows, projects, or sessions share a context."
+      },
+      {
+        "start": 30,
+        "end": 40,
+        "text": "Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app."
+      }
+    ],
+    "fullTranscript": "Snapping, tiling, and workspaces\n\nSilent educational animation. Illustrative example, not a live desktop inspection.\n\nOpening: Lattices / Field Guide. ORGANIZE YOUR MAC. Snapping, tiling, and workspaces. Three jobs that window tools can help with.\n\n[0–10 seconds] Snap a window. You choose the position. Put the selected window on the left.\n\n[10–20 seconds] Tile automatically. Rules arrange the windows. The layout adapts as a managed window joins.\n\n[20–30 seconds] Group a workspace. Keep related work together. Windows, projects, or sessions share a context.\n\n[30–40 seconds] Choose the job. Place one. Arrange several. Return to a context. Tools overlap; workspace behavior varies by app.\n\nOn-screen diagram labels: Snapping; Place one; Automatic tiling; Arrange several; Workspace; Return to a context; Planning; Browser; Notes; Terminal; Tools may combine these jobs.\n\nFooter: Illustrative example · not a live desktop. lattices.dev/learn.\n"
+  }
+}

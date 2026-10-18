@@ -163,6 +163,8 @@ enum WindowCapture {
     static func thumbnails(
         windowIDs: [CGWindowID],
         maximumPixelSize: CGFloat,
+        ignoreShadows: Bool = false,
+        nativeResolution: Bool = false,
         onBatch: (@Sendable ([CGWindowID: CGImage]) async -> Void)? = nil
     ) async -> [CGWindowID: CGImage] {
         guard hasScreenRecordingAccess(), !windowIDs.isEmpty else { return [:] }
@@ -183,15 +185,18 @@ enum WindowCapture {
                         group.addTask {
                             let filter = SCContentFilter(desktopIndependentWindow: window)
                             let configuration = SCStreamConfiguration()
-                            let scale = max(window.frame.width, window.frame.height) > 1
-                                ? min(1, maximumPixelSize / max(window.frame.width, window.frame.height))
-                                : 1
-                            configuration.width = max(1, Int((window.frame.width * scale).rounded(.up)))
-                            configuration.height = max(1, Int((window.frame.height * scale).rounded(.up)))
-                            configuration.captureResolution = .nominal
+                            let pixelScale = nativeResolution
+                                ? CGFloat(SCShareableContent.info(for: filter).pointPixelScale) : 1
+                            let pixelSize = thumbnailPixelSize(pointSize: window.frame.size,
+                                                               pointPixelScale: pixelScale,
+                                                               maximumPixelSize: maximumPixelSize)
+                            configuration.width = Int(pixelSize.width)
+                            configuration.height = Int(pixelSize.height)
+                            configuration.captureResolution = nativeResolution ? .best : .nominal
                             configuration.scalesToFit = true
                             configuration.preservesAspectRatio = true
                             configuration.showsCursor = false
+                            configuration.ignoreShadowsSingleWindow = ignoreShadows
                             configuration.ignoreGlobalClipSingleWindow = true
                             guard let image = try? await SCScreenshotManager.captureImage(
                                 contentFilter: filter,
@@ -214,6 +219,22 @@ enum WindowCapture {
             logCaptureFailure("thumbnails", error)
             return [:]
         }
+    }
+
+    /// Respect the window's native pixel density without manufacturing extra
+    /// detail. The limit is in pixels, including on Retina displays.
+    static func thumbnailPixelSize(pointSize: CGSize, pointPixelScale: CGFloat,
+                                   maximumPixelSize: CGFloat) -> CGSize {
+        guard pointSize.width.isFinite, pointSize.height.isFinite,
+              pointSize.width > 0, pointSize.height > 0 else {
+            return CGSize(width: 1, height: 1)
+        }
+        let density = pointPixelScale.isFinite ? max(1, pointPixelScale) : 1
+        let limit = maximumPixelSize.isFinite ? max(1, maximumPixelSize.rounded(.down)) : 1
+        let longest = max(pointSize.width, pointSize.height)
+        let scale = min(density, limit / longest)
+        return CGSize(width: min(limit, max(1, (pointSize.width * scale).rounded(.up))),
+                      height: min(limit, max(1, (pointSize.height * scale).rounded(.up))))
     }
 
     static func hasScreenRecordingAccess() -> Bool {

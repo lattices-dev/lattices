@@ -14,6 +14,11 @@ export interface RouteBrand {
 
 const productSections: readonly string[] = ['action', 'blink', 'speech']
 
+const ogImageOverrides: Readonly<Record<string, string>> = {
+  '/docs/api': '/og-api.png',
+  '/docs/config': '/og-cli.png',
+}
+
 export function routeBrand(path: string): RouteBrand {
   const section = path.split('/')[1] ?? ''
   const slug = (productSections.includes(section) ? section : 'lattices') as BrandSlug
@@ -33,4 +38,9 @@ export function routeBrand(path: string): RouteBrand {
     touchIcon: `/brand/${slug}/${slug}-touch-icon.png`,
     ogImage: `/og-${slug}.png`,
   }
+}
+
+/** Social card for a path. Product routes use their own card; a few docs have a dedicated one. */
+export function routeOgImage(path: string): string {
+  return ogImageOverrides[path] ?? routeBrand(path).ogImage
 }

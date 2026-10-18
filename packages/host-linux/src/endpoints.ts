@@ -1,13 +1,16 @@
 import { hostname as osHostname } from "node:os";
+import * as acted from "./acted.ts";
 import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
 import { registerVirtualSpaceEndpoints } from "./virtual-space.ts";
 import { registerLayerEndpoints } from "./layers.ts";
 import { registerSpaceFocus } from "./spaces.ts";
+import * as ownedDisplays from "./displays.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
 import * as live from "./live.ts";
+import * as moves from "./moves.ts";
 import { bringCursorHome, type CursorHomeDependencies } from "./cursor-home.ts";
 import * as ocr from "./ocr.ts";
 import * as record from "./record.ts";
@@ -28,6 +31,8 @@ export interface HostContext {
   tailnetName?: string;
   startedAt: number;
   clientCount: () => number;
+  /** Broadcast an event to subscribed connections (server.ts). */
+
   emit?: (event: string, data: unknown) => void;
 }
 
@@ -106,8 +111,25 @@ async function shoot(params: Params, region: Rect | undefined, output?: string) 
   return result;
 }
 
-export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies) {
+const defaultEndpointDeps = { resolveTarget: desktop.resolveTarget, plan: hypr.plan, apply: hypr.apply, place: desktop.place, snapshot: desktop.snapshot, cursorPos: hypr.cursorPos, scroll: input.scroll };
+export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?: CursorHomeDependencies, overrides: Partial<typeof defaultEndpointDeps> = {}) {
+  const actionDeps = { ...defaultEndpointDeps, ...overrides };
+  const moveDeps = actionDeps;
   registerLayerEndpoints(router, ctx.emit);
+
+  // computer.acted after every executed computer.* action; never fails the action.
+  const announce = async (sample: acted.Action | (() => Promise<acted.Action>)) => {
+    if (!ctx.emit) return;
+    try {
+      const action = typeof sample === "function" ? await sample() : sample;
+      const snap = await actionDeps.snapshot();
+      const target = action.wid != null ? snap.windows.find((w) => w.wid === action.wid) : snap.windows.find((w) => w.isFocused);
+      ctx.emit("computer.acted", acted.toEvent({ ...action, wid: action.wid ?? target?.wid ?? null }, snap.displays, target?.displayIndex));
+    } catch {
+      // An overlay hint is not worth an error on an action that already ran.
+    }
+  };
+
   router.register({
     method: "mouse.home",
     description: "Bring the cursor to the focused real monitor",
@@ -116,6 +138,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     returns: "Object with ok, monitor, x and y",
     handler: async () => asJson(await bringCursorHome(cursorDeps)),
   });
+
   // ── Host ────────────────────────────────────────────────────────────
   router.register({
     method: "daemon.status",
@@ -174,7 +197,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         version: VERSION,
         build: BUILD_IDENTITY,
         address: ctx.bindHost,
-        displays,
+        displays: displays.map((d) => ({ ...d, managed: ownedDisplays.readOwned().some((o) => o.name === d.displayId) })),
         capabilities: [...capabilities].sort(),
         capabilityHealth,
         eventStream: hypr.getEventStreamHealth(),
@@ -191,7 +214,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
   };
   router.register({
     method: "events.subscribe",
-    description: "Receive only these events on this connection (windows.changed, spaces.changed); `*` for all, the default",
+    description: "Receive only these events on this connection (windows.changed, spaces.changed, computer.acted); `*` for all, the default",
     access: "read",
     params: [{ name: "events", type: "[string]", description: "Event names, or [\"*\"]" }],
     returns: "Object with ok and the connection's events",
@@ -322,36 +345,62 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     capability: "windows.place",
     params: [
       ...targetParams,
-      { name: "display", type: "int", description: "Target display index" },
-      { name: "space", type: "int", description: "Target workspace id" },
+      { name: "display", type: "int", description: "Target display index (alias: displayIndex)" },
+      { name: "space", type: "int", description: "Target workspace id (alias: spaceId)" },
       { name: "placement", type: "string|object", description: "Optional placement on arrival" },
       { name: "dryRun", type: "bool", description: "Plan without moving" },
     ],
-    returns: "Receipt with target, destination and trace",
+    returns: "Receipt with target, destination, origin and trace; windows.moveBack undoes it",
     handler: async (params) => {
       const hasTarget = ["wid", "session", "app"].some((k) => params[k] != null);
       if (!hasTarget) throw new RouterError("windows.move requires a wid, session or app target");
-      const space = num(params, "space");
-      const displayIndex = num(params, "display");
+      const space = num(params, "space") ?? num(params, "spaceId");
+      const displayIndex = num(params, "display") ?? num(params, "displayIndex");
       if (space === undefined && displayIndex === undefined && params.placement == null) {
         throw new RouterError("windows.move needs a display, space or placement");
       }
-      const { window, snap } = await desktop.resolveTarget(params);
+      const { window, snap } = await moveDeps.resolveTarget(params);
       const display = displayIndex !== undefined ? snap.displays[displayIndex] : undefined;
       if (displayIndex !== undefined && !display) throw RouterError.notFound(`display ${displayIndex}`);
       const workspace = space ?? display?.currentSpaceId;
       const dryRun = bool(params, "dryRun") ?? false;
       const trace: string[] = [];
+      if (!dryRun) moves.record(window);
       if (workspace !== undefined && !window.spaceIds.includes(workspace)) {
         const ops: hypr.Op[] = [{ op: "toWorkspace", address: window.address, workspace }];
-        trace.push(...(dryRun ? await hypr.plan(ops) : await hypr.apply(ops)));
+        trace.push(...(dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops)));
       }
       if (params.placement != null) {
         const dest = display ?? snap.displays[window.displayIndex];
-        const plan = await desktop.place(window, parsePlacement(params.placement), dest, dryRun);
+        const plan = await moveDeps.place(window, parsePlacement(params.placement), dest, dryRun);
         trace.push(...plan.commands);
       }
-      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, trace });
+      const origin = moves.get(window.wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid: window.wid }, space: workspace ?? null, origin: origin ?? null, trace });
+    },
+  });
+
+  router.register({
+    method: "windows.moveBack",
+    description: "Return a window to where windows.move took it from: its workspace, and its floating frame or tiled state",
+    access: "mutate",
+    capability: "windows.place",
+    params: [
+      { name: "wid", type: "uint32", required: true, description: "Window id" },
+      { name: "dryRun", type: "bool", description: "Plan without moving" },
+    ],
+    returns: "Receipt with target, origin and trace",
+    handler: async (params) => {
+      const wid = num(params, "wid");
+      if (wid === undefined) throw RouterError.missingParam("wid");
+      const origin = moves.get(wid);
+      if (!origin) throw RouterError.notFound(`a windows.move origin for window ${wid}`);
+      const { window } = await moveDeps.resolveTarget({ wid });
+      const dryRun = bool(params, "dryRun") ?? false;
+      const ops = moves.returnOps(window, origin);
+      const trace = dryRun ? await moveDeps.plan(ops) : await moveDeps.apply(ops);
+      if (!dryRun) moves.forget(wid);
+      return asJson({ ok: true, status: dryRun ? "planned" : "ok", target: { wid }, origin, trace });
     },
   });
 
@@ -364,6 +413,46 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     handler: async () => asJson((await desktop.snapshot()).displays),
   });
   registerSpaceFocus(router, { snapshot: desktop.snapshot, apply: hypr.apply });
+
+  const displayById = async (name: string) => (await desktop.snapshot()).displays.find((d) => d.displayId === name) ?? null;
+
+  router.register({
+    method: "displays.create",
+    description: "Create a virtual (headless) display, or adopt an existing one so the host may remove it later",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [
+      { name: "name", type: "string", description: "Output name; defaults to the next free LATS-n" },
+      { name: "width", type: "int", required: true, description: "Width in physical pixels" },
+      { name: "height", type: "int", required: true, description: "Height in physical pixels" },
+      { name: "scale", type: "double", description: "Scale factor; defaults to 1" },
+      { name: "refresh", type: "int", description: "Refresh rate in Hz; defaults to 60" },
+      { name: "adopt", type: "bool", description: "Take ownership of an existing output with this name" },
+    ],
+    returns: "Object with ok, the Display, created, adopted and trace",
+    handler: async (params) => {
+      const width = num(params, "width");
+      const height = num(params, "height");
+      if (width === undefined) throw RouterError.missingParam("width");
+      if (height === undefined) throw RouterError.missingParam("height");
+      const scale = num(params, "scale") ?? 1;
+      const refresh = num(params, "refresh") ?? 60;
+      if (width < 320 || height < 200 || width > 7680 || height > 4320) throw new RouterError("width/height out of range (320x200 to 7680x4320)");
+      if (scale <= 0 || scale > 4) throw new RouterError("scale out of range (0, 4]");
+      const result = await ownedDisplays.create({ name: str(params, "name"), spec: { width, height, scale, refresh }, adopt: bool(params, "adopt") });
+      return asJson({ ok: true, ...result, display: await displayById(result.name) });
+    },
+  });
+
+  router.register({
+    method: "displays.remove",
+    description: "Remove a virtual display this host created or adopted; windows on it move to another display",
+    access: "mutate",
+    capability: "displays.virtual",
+    params: [{ name: "displayId", type: "string", required: true, description: "Output name, as in Display.displayId" }],
+    returns: "Object with ok, name and removed",
+    handler: async (params) => asJson({ ok: true, ...(await ownedDisplays.remove(requireStr(params, "displayId"))) }),
+  });
 
   router.register({
     method: "desktop.snapshot",
@@ -510,7 +599,13 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     ...targetParams,
   ];
 
-  const registerClick = (method: string, description: string, fixed: { button?: "left" | "right"; count?: number }) =>
+  const registerClick = (
+    method: string,
+    description: string,
+    kind: "click" | "doubleClick" | "rightClick",
+    label: string,
+    fixed: { button?: "left" | "right"; count?: number }
+  ) =>
     router.register({
       method,
       description: `${description}. Stages by default; acts with treatment: "execute"`,
@@ -530,12 +625,13 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         const plan = { point: { x: Math.round(point.x), y: Math.round(point.y) }, button, count, wid: point.window?.wid ?? null };
         if (!executes(params)) return staged(plan);
         await input.click(point.x, point.y, point.extent, button, count, num(params, "delayMs") ?? 80);
+        await announce({ kind, label: `${label}${point.window ? ` in ${point.window.app}` : ""}`, point: plan.point, wid: plan.wid });
         return asJson({ ok: true, status: "executed", executed: true, ...plan });
       },
     });
-  registerClick("computer.click", "Click a point", {});
-  registerClick("computer.doubleClick", "Double-click a point", { count: 2 });
-  registerClick("computer.rightClick", "Right-click a point", { button: "right" });
+  registerClick("computer.click", "Click a point", "click", "Click", {});
+  registerClick("computer.doubleClick", "Double-click a point", "doubleClick", "Double-click", { count: 2 });
+  registerClick("computer.rightClick", "Right-click a point", "rightClick", "Right-click", { button: "right" });
 
   router.register({
     method: "computer.drag",
@@ -560,6 +656,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (!executes(params)) return staged(plan);
       const extent = input.layoutExtent((await desktop.snapshot()).displays);
       await input.drag(plan.from, plan.to, extent);
+      await announce({ kind: "drag", label: "Drag", point: plan.from, to: plan.to });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -580,8 +677,9 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     handler: async (params) => {
       const plan = { x: num(params, "x") ?? null, y: num(params, "y") ?? null, dx: num(params, "dx") ?? 0, dy: num(params, "dy") ?? 0 };
       if (!executes(params)) return staged(plan);
-      const extent = input.layoutExtent((await desktop.snapshot()).displays);
-      await input.scroll(plan.x ?? undefined, plan.y ?? undefined, plan.dx * 15, plan.dy * 15, extent);
+      const extent = input.layoutExtent((await actionDeps.snapshot()).displays);
+      await actionDeps.scroll(plan.x ?? undefined, plan.y ?? undefined, plan.dx * 15, plan.dy * 15, extent);
+      await announce(async () => ({ kind: "scroll", label: `Scroll ${plan.dy ? (plan.dy > 0 ? "down" : "up") : plan.dx > 0 ? "right" : "left"}`, point: plan.x !== null && plan.y !== null ? { x: plan.x, y: plan.y } : await actionDeps.cursorPos() }));
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -598,6 +696,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       const plan = { point: { x: Math.round(point.x), y: Math.round(point.y) } };
       if (!executes(params)) return staged(plan);
       await input.moveCursor(point.x, point.y, point.extent);
+      await announce({ kind: "aim", label: "Aim", point: plan.point, wid: point.window?.wid ?? null });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -633,6 +732,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         }
         await input.typeText(text, enter);
       }
+      await announce({ kind: "typeText", label: acted.typeLabel(text.length, enter), wid: num(params, "wid") ?? null });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
     },
   });
@@ -655,11 +755,14 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     const args = input.wtypeKeyArgs(key, modifiers, count, num(params, "delayMs") ?? 80);
     const plan = { key, modifiers, count, wtype: args };
     if (!executes(params)) return staged(plan);
+    let targetWid: number | null = null;
     if (num(params, "wid") !== undefined || str(params, "app")) {
       const { window } = await desktop.resolveTarget(params);
       await hypr.apply([{ op: "focus", address: window.address }]);
+      targetWid = window.wid;
     }
     await run("wtype", args);
+    await announce({ kind: method === "computer.hotkey" ? "hotkey" : "pressKey", label: acted.keyLabel(key, modifiers, count), wid: targetWid });
     return asJson({ ok: true, status: "executed", executed: true, ...plan });
   };
   const keyParams = [

@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview D · Layer Room</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* Study D — the layer is the page. Tabs pick a layer; the left shows its
+     home Space with the live windows (and, optionally, where the layer last
+     saved them); the right is who belongs. Editing membership is a draft that
+     moves nothing. Arranging is a separate row under the map that moves
+     windows now. Different verbs live in different places. */
+  .d { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .tabs { flex: none; height: 48px; display: flex; align-items: center; gap: 2px; padding: 0 12px 0 10px; border-bottom: 0.5px solid var(--border); }
+  .tab { height: 32px; padding: 0 12px; border-radius: 7px; border: 0; background: transparent; color: var(--dim); display: inline-flex; align-items: center; gap: 7px; font: 500 13px/1 var(--ui); cursor: pointer; flex: none; }
+  .tab:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .tab[aria-selected="true"] { background: rgba(255,255,255,0.09); color: var(--text); font-weight: 600; }
+  .tab .n { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .tab .act { font: 600 9px/1 var(--mono); letter-spacing: .06em; padding: 3px 5px; border-radius: 4px; background: rgba(255,255,255,0.1); color: var(--text); }
+  .tabs .sep { width: 0.5px; height: 20px; background: var(--border-lit); margin: 0 8px; }
+  .tabs .right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .tabs select { height: 24px; border-radius: 6px; border: 0.5px solid var(--border); background: transparent; color: var(--dim); font: 500 12px var(--ui); padding: 0 6px; }
+  .tabs input[type=search] { width: 150px; height: 24px; border-radius: 6px; border: 0.5px solid var(--border-lit); background: rgba(255,255,255,0.04); color: var(--text); padding: 0 8px; font: 12px var(--sans); outline: none; }
+  .tok { height: 24px; display: inline-flex; align-items: center; gap: 5px; padding: 0 4px 0 8px; border-radius: 6px; box-shadow: inset 0 0 0 0.5px var(--border-lit); font: 11.5px/1 var(--ui); color: var(--text); flex: none; }
+  .tok button { border: 0; background: transparent; color: var(--muted); cursor: pointer; height: 18px; width: 18px; display: grid; place-items: center; border-radius: 4px; }
+  .tok button:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+  .body { flex: 1; min-height: 0; display: flex; }
+  .roomcol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .selbar { flex: none; height: 42px; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 16px; border-bottom: 0.5px solid var(--border); position: relative; z-index: 10; }
+  .selbar .who { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+  .selbar .ap { font: 600 12.5px/1 var(--ui); flex: none; }
+  .selbar .tt { font: 12px/1 var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .selbar .where { font: 10.5px/1 var(--mono); color: var(--muted); flex: none; white-space: nowrap; }
+  .selbar .why { font: 11px/1 var(--sans); color: var(--amber); white-space: nowrap; flex: none; }
+  .ib { height: 26px; min-width: 28px; padding: 0 7px; border-radius: 6px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; font: 500 12px/1 var(--ui); flex: none; }
+  .ib:hover { background: rgba(255,255,255,0.08); }
+  .ib[disabled] { opacity: .32; cursor: not-allowed; }
+  .ib.primary { background: var(--ink-sel); color: #121214; font-weight: 600; }
+  .menu { position: absolute; top: 38px; right: 12px; width: 220px; padding: 6px; border-radius: 10px; background: rgba(30,30,34,0.98); box-shadow: 0 0 0 0.5px var(--border-lit), 0 14px 36px rgba(0,0,0,.55); z-index: 30; }
+  .menu .mi { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font: 12.5px/1 var(--ui); cursor: pointer; }
+  .menu .mi:hover { background: rgba(255,255,255,0.07); }
+  .menu .mi .r { margin-left: auto; font: 10.5px/1 var(--mono); color: var(--muted); }
+
+  .room { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px 0; }
+  .room .rh { flex: none; display: flex; align-items: baseline; gap: 10px; height: 24px; }
+  .room .rh .t { font: 600 13px/1 var(--ui); }
+  .room .rh .s { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .room .rh .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .room .rh .chip { height: 22px; font-size: 11px; }
+  .stagebox { flex: 1; min-height: 0; display: grid; place-items: center; position: relative; }
+  .monwrap { position: relative; }
+  .home { position: absolute; border: 1px dashed rgba(236,237,240,0.55); border-radius: 5px; pointer-events: none; }
+  .home span { position: absolute; left: 5px; bottom: 4px; font: 600 9px/1 var(--mono); color: var(--text); background: rgba(0,0,0,0.55); padding: 2px 4px; border-radius: 3px; }
+  .badge { position: absolute; right: 4px; top: 4px; font: 600 9px/1 var(--mono); padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,0.45); color: var(--dim); }
+  .badge.add { color: var(--text); background: rgba(236,237,240,0.18); }
+  .emptycard { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .emptycard > div { pointer-events: auto; text-align: center; padding: 16px 20px; border-radius: 10px; background: rgba(20,20,23,0.92); box-shadow: 0 0 0 0.5px var(--border-lit); display: flex; flex-direction: column; gap: 10px; align-items: center; font: 12.5px/1.4 var(--sans); color: var(--dim); }
+  .emptycard .row { display: flex; gap: 6px; }
+  .stalebar { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: center; pointer-events: none; }
+  .stalebar span { margin-top: 8px; font: 11px/1 var(--sans); color: var(--dim); padding: 6px 10px; border-radius: 6px; background: rgba(20,20,23,0.9); box-shadow: 0 0 0 0.5px var(--border-lit); }
+
+  .arrange { flex: none; height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+  .arrange .label-caps { flex: none; }
+  .arrange .left { font: 11px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  .elsewhere { flex: none; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 16px; border-top: 0.5px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .elsewhere .label-caps { flex: none; margin-right: 4px; }
+  .pill { height: 26px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; border-radius: 6px; border: 1px dashed rgba(255,255,255,0.14); cursor: pointer; font: 500 11.5px/1 var(--ui); color: var(--dim); flex: none; }
+  .pill:hover { border-color: rgba(255,255,255,0.3); color: var(--text); }
+  .pill.sel { border-style: solid; border-color: var(--ink-sel); color: var(--text); background: var(--sel-fill); }
+  .pill .m { font: 9.5px/1 var(--mono); color: var(--muted); }
+
+  .panel { width: 380px; flex: none; display: flex; flex-direction: column; border-left: 0.5px solid var(--border); min-height: 0; }
+  .panel .ph { flex: none; height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 0.5px solid var(--border); }
+  .panel .ph .t { font: 600 13px/1 var(--ui); }
+  .panel .ph .s { font: 11px/1 var(--sans); color: var(--muted); }
+  .panel .ph .right { margin-left: auto; }
+  .panel .list { flex: 1; min-height: 0; overflow: auto; padding: 6px 8px 10px; }
+  .grp { padding: 10px 6px 4px; display: flex; align-items: center; gap: 6px; }
+  .grp .n { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .grp .hint { margin-left: auto; font: 10.5px/1 var(--sans); color: var(--muted); }
+  .mrow { height: 38px; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 0 6px; border-radius: 7px; cursor: pointer; }
+  .mrow:hover { background: rgba(255,255,255,0.04); }
+  .mrow.sel { background: var(--sel-fill); box-shadow: inset 0 0 0 1px var(--ink-sel); }
+  .mrow .nm { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .mrow .nm b { font: 600 12.5px/1 var(--ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mrow .nm i { font: normal 10.5px/1 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mrow .st { font: 10.5px/1 var(--mono); color: var(--muted); white-space: nowrap; }
+  .mrow .acts { display: flex; gap: 2px; }
+  .mrow .acts .ib { height: 24px; min-width: 24px; padding: 0 6px; font-size: 11.5px; color: var(--dim); }
+  .mrow .acts .ib:hover { color: var(--text); }
+  .mrow.nowin .nm b { color: var(--dim); }
+  .via { font: 600 9px/1 var(--mono); padding: 2px 4px; border-radius: 3px; background: rgba(255,255,255,0.07); color: var(--dim); margin-left: 4px; vertical-align: 1px; }
+  .via.add { background: rgba(236,237,240,0.18); color: var(--text); }
+  .draftbar { flex: none; padding: 10px 12px; border-top: 0.5px solid var(--border); display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,0.025); }
+  .draftbar .top { display: flex; align-items: center; gap: 6px; font: 12px/1.3 var(--sans); }
+  .draftbar .ch { color: var(--muted); font: 11px/1.35 var(--mono); }
+  .draftbar .btns { display: flex; gap: 6px; justify-content: flex-end; }
+  .savednote { flex: none; padding: 10px 14px; border-top: 0.5px solid var(--border); font: 11px/1.4 var(--sans); color: var(--muted); }
+  .pick { padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .pick .lcard { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; box-shadow: inset 0 0 0 0.5px var(--border-lit); cursor: pointer; }
+  .pick .lcard:hover { background: rgba(255,255,255,0.04); }
+  .pick .lcard b { font: 600 13px/1 var(--ui); }
+  .pick .lcard span { font: 10.5px/1 var(--mono); color: var(--muted); margin-left: auto; }
+
+  @media (max-width: 1500px) { .panel { width: 340px; } .selbar .tt { display: none; } }
+  @media (max-width: 1340px) { .panel { width: 310px; } .tabs input[type=search] { width: 110px; } .ib .lbl { display: none; } .selbar .where { display: none; } .room .rh .s { display: none; } .tab { padding: 0 9px; } }
+</style>
+</head>
+<body>
+<script src="shared/fixture.js"></script>
+<script src="shared/model.js"></script>
+<script src="shared/shell.js"></script>
+<script>
+(function () {
+  const { h } = LT;
+  const m = LT.createModel();
+  const ui = { menu: null, homes: true };
+  document.addEventListener("click", (e) => { if (ui.menu && !e.target.closest(".menu, [data-menu]")) { ui.menu = null; m.emit(); } });
+
+  // ---------- tabs = layer scope; other filters are removable tokens ----------
+  function tabs() {
+    const s = m.scope;
+    const count = (l) => m.windows.filter((w) => { const r = m.roleIn(w, l.id); return r && r.role !== "unclaimed"; }).length;
+    const bar = h("div.tabs", { role: "tablist", "aria-label": "Layers" },
+      ...m.layers.map((l) => h("button.tab", { role: "tab", "aria-selected": String(s.layerId === l.id), onClick: () => m.setScope({ layerId: l.id }) },
+        LT.icon("layer"), l.name, l.active ? h("span.act", "ACTIVE") : null, h("span.n", count(l)))),
+      h("span.sep"),
+      h("button.tab", { role: "tab", "aria-selected": String(!s.layerId), onClick: () => m.setScope({ layerId: null }) }, "No layer"));
+    const right = h("div.right");
+    if (s.display != null) right.append(h("span.tok", m.display(s.display).short + (s.spaceId != null ? ` · Desktop ${m.spaceNumber(s.spaceId)}` : ""), h("button", { "aria-label": "Clear monitor filter", onClick: () => m.setScope({ display: null }) }, LT.icon("x"))));
+    const sel = h("select", { "aria-label": "Kind", onChange: (e) => m.setScope({ kind: e.target.value }) }, ...m.kinds.map((k) => { const o = h("option", { value: k.id }, k.id === "all" ? "Any kind" : k.label); if (k.id === s.kind) o.selected = true; return o; }));
+    right.append(sel, LT.searchField(m, "Filter  /"));
+    bar.append(right);
+    return bar;
+  }
+
+  // ---------- selection bar: window verbs only ----------
+  function selbar() {
+    const w = m.primary();
+    const bar = h("div.selbar");
+    if (!w) { bar.append(h("span.muted", { style: { font: "12px var(--sans)" } }, "Nothing selected")); return bar; }
+    const placeWhy = m.blocker(w, "place"), focusWhy = m.blocker(w, "focus"), outWhy = m.scopeExclusion(w);
+    bar.append(h("div.who", LT.glyph(w.app), h("span.ap", m.selection.length > 1 ? `${m.selection.length} selected` : w.app), m.selection.length > 1 ? null : h("span.tt", w.title), h("span.where", m.whereLabel(w))));
+    if (placeWhy) bar.append(h("span.why", placeWhy));
+    if (outWhy) bar.append(h("button.ib", { "aria-label": "Show in scope", title: "Selected but " + m.exclusionLabel(outWhy, w), onClick: () => m.reveal(w.wid) }, LT.icon("reveal"), h("span.lbl", "Show in scope")));
+    bar.append(h("button.ib.primary", { "aria-label": "Focus", disabled: !!focusWhy, title: focusWhy || m.focusNote(w), onClick: () => m.focus(w.wid) }, LT.icon("focus"), h("span.lbl", "Focus")));
+    for (const k of ["left", "right", "max", "center"]) bar.append(h("button.ib", { "aria-label": LT.PLACE[k].label, disabled: !!placeWhy, title: placeWhy || LT.PLACE[k].label, onClick: () => m.place(w.wid, k) }, LT.icon(k)));
+    bar.append(h("button.ib", { "aria-label": "Move to Desktop", "aria-haspopup": "menu", "data-menu": "1", disabled: !!placeWhy, title: placeWhy || "Move to Desktop", onClick: () => { ui.menu = ui.menu ? null : "move"; m.emit(); } }, LT.icon("move"), h("span.lbl", "Move"), LT.icon("down")));
+    if (ui.menu === "move" && !placeWhy) {
+      const d = m.display(w.display);
+      bar.append(h("div.menu", { role: "menu" }, ...d.spaces.filter((sp) => !sp.fullScreen).map((sp) =>
+        h("div.mi", { role: "menuitem", onClick: () => { ui.menu = null; m.moveToSpace(w.wid, sp.id); } }, `Desktop ${sp.n}`, h("span.r", sp.id === w.space ? "here" : sp.id === d.current ? "current" : "")))));
+    }
+    return bar;
+  }
+
+  // ---------- the room: home Space map + saved homes ----------
+  function roomTarget() {
+    const s = m.scope, l = s.layerId && m.layer(s.layerId);
+    if (l) return { l, d: m.display(l.home.display), spaceId: l.home.space };
+    const d = m.display(s.display ?? 1);
+    return { l: null, d, spaceId: s.spaceId ?? d.current };
+  }
+
+  function room() {
+    const { l, d, spaceId } = roomTarget();
+    const sp = m.spaceOf(spaceId).space;
+    const live = spaceId === d.current;
+    const right = h("div.right");
+    if (l && Object.keys(l.homes).length) right.append(h("button.chip", { "aria-pressed": String(ui.homes), title: "Outline where the layer last saved each member", onClick: () => { ui.homes = !ui.homes; m.emit(); } }, "Saved homes", h("span.proposed", "proposed")));
+    const head = h("div.rh",
+      h("span.t", l ? `Home · ${d.short} · Desktop ${sp.n}` : `${d.short} · Desktop ${sp.n}`),
+      h("span.s", live ? "live" : "last known — not the current Desktop"),
+      right);
+    const box = h("div.stagebox", { "data-room": "1" });
+    // size the map to the box once it is laid out (runs before paint)
+    requestAnimationFrame(() => {
+      const r = box.getBoundingClientRect();
+      if (!r.width) return;
+      const width = Math.floor(Math.min(r.width, (r.height - 6) * d.aspect, 900));
+      const mon = LT.monitor(m, d, {
+        width, spaceId, isOut: (w) => !m.inScope(w),
+        onSelect: (w, ev) => m.select(w.wid, { toggle: ev.metaKey || ev.shiftKey }),
+        extra: (w, node) => {
+          if (!l) return;
+          const rr = m.roleIn(w, l.id);
+          if (rr && rr.role === "member") node.append(h("span.badge" + (rr.entry.id.startsWith("d") ? ".add" : ""), rr.entry.id.startsWith("d") ? "+ pin" : rr.entry.via));
+          else if (rr && rr.role === "tucked") node.append(h("span.badge", "tucked"));
+        },
+      });
+      mon.addEventListener("click", () => m.clearSelection());
+      const wrap = h("div.monwrap", mon);
+      if (l && ui.homes) {
+        const hh = width / d.aspect;
+        for (const [wid, f] of Object.entries(l.homes)) {
+          const w = m.win(+wid);
+          wrap.append(h("div.home", { style: { left: f[0] * width + 3 + "px", top: f[1] * hh + 3 + "px", width: f[2] * width - 6 + "px", height: f[3] * hh - 6 + "px" } }, h("span", w.app)));
+        }
+      }
+      const shown = m.windows.filter((w) => w.display === d.id && w.space === spaceId && m.inScope(w));
+      if (!shown.length) {
+        wrap.append(h("div.emptycard", h("div", "Nothing here matches this scope.",
+          h("div.row",
+            m.scope.kind !== "all" ? h("button.btn", { onClick: () => m.setScope({ kind: "all" }) }, "Any kind") : null,
+            m.scope.search ? h("button.btn", { onClick: () => m.setScope({ search: "" }) }, "Clear filter") : null,
+            m.scope.display != null ? h("button.btn", { onClick: () => m.setScope({ display: null }) }, "All monitors") : null))));
+      } else if (!live) {
+        wrap.append(h("div.stalebar", h("span", "Last known positions. Nothing here can be arranged until it's the current Desktop.")));
+      }
+      box.replaceChildren(wrap);
+    });
+    return h("div.room", head, box);
+  }
+
+  function arrangeRow() {
+    const t = m.plan("Tile");
+    const why = !t.enabled && t.count === 0 ? "Nothing live in scope" : "";
+    return h("div.arrange",
+      h("span.label-caps", "Arrange now"),
+      h("button.btn" + (t.enabled ? "" : ".is-disabled"), { title: why, onClick: () => m.runBulk("Tile") }, LT.icon("tile"), `Tile ${t.count}`, h("span.kbd", "T")),
+      h("button.btn" + (t.enabled ? "" : ".is-disabled"), { title: why, onClick: () => m.runBulk("Distribute") }, LT.icon("distribute"), `Distribute ${t.count}`, h("span.kbd", "D")),
+      h("span.left", t.excludedText ? `Left out: ${t.excludedText}` : why));
+  }
+
+  function elsewhere() {
+    const { l } = roomTarget();
+    const ws = m.windows.filter((w) => l ? !m.roleIn(w, l.id) : !m.inScope(w));
+    return h("div.elsewhere", { "data-keep": "elsewhere" }, h("span.label-caps", l ? "Not in " + l.name : "Out of scope"),
+      ...ws.map((w) => h("div.pill" + (m.isSelected(w.wid) ? ".sel" : ""), { title: `${w.title}\n${m.whereLabel(w)}`, onClick: (e) => m.select(w.wid, { toggle: e.metaKey || e.shiftKey }) },
+        LT.glyph(w.app), w.app, h("span.m", m.stateLabel(w) === "Showing" ? m.display(w.display).short : m.stateLabel(w)))));
+  }
+
+  // ---------- membership panel ----------
+  function panel() {
+    const { l } = roomTarget();
+    if (!l) {
+      return h("div.panel", h("div.ph", h("span.t", "Membership")),
+        h("div.pick", h("div.label-caps", { style: { marginBottom: "4px" } }, "Pick a layer"),
+          ...m.layers.map((x) => h("div.lcard", { role: "button", tabindex: "0", onClick: () => m.setScope({ layerId: x.id }) }, LT.icon("layer"), h("b", x.name), h("span", `${x.entries.length} entries${x.active ? " · active" : ""}`)))));
+    }
+    const editing = m.draft && m.draft.layerId === l.id;
+    const v = m.layerView(l.id);
+    const ensure = (fn) => (e) => { e.stopPropagation(); if (!editing) { if (m.draft) m.cancelEdit(); m.beginEdit(l.id); } fn(); };
+    const row = (w, entry, kind) => {
+      const isNew = entry && entry.id.startsWith("d");
+      const acts = h("div.acts");
+      if (kind === "member" || kind === "tucked") {
+        acts.append(h("button.ib", { title: kind === "tucked" ? "Arrange with the layer again" : "Keep in the layer, leave out of arranging", onClick: ensure(() => m.draftTuck(w.wid)) }, kind === "tucked" ? "Untuck" : "Tuck"));
+        acts.append(h("button.ib", { "aria-label": `Remove ${w.app} from ${l.name}`, title: "Remove from layer", onClick: ensure(() => m.draftRemove(w.wid)) }, LT.icon("x")));
+      } else if (kind === "candidate") {
+        acts.append(h("button.ib", { "aria-label": `Pin ${w.app} to ${l.name}`, onClick: ensure(() => m.draftPin(w.wid)) }, LT.icon("pin"), "Pin"));
+      }
+      return h("div.mrow" + (m.isSelected(w.wid) ? ".sel" : ""), { onClick: (e) => m.select(w.wid, { toggle: e.metaKey || e.shiftKey }), onDblclick: () => m.focus(w.wid) },
+        LT.glyph(w.app),
+        h("div.nm", h("b", w.app, entry ? h("span.via" + (isNew ? ".add" : ""), isNew ? "+ pin" : entry.via) : null), h("i", entry ? entry.match : w.title)),
+        h("span.st", m.isLive(w) ? (m.positionLabel(w) || "live") : m.stateLabel(w).toLowerCase()),
+        acts);
+    };
+    const members = [], tucked = [], nowin = [];
+    for (const e of v.entries) {
+      if (e.wid == null) nowin.push(e);
+      else if (v.tucked.includes(e.wid)) tucked.push(e);
+      else members.push(e);
+    }
+    const candidates = m.windows.filter((w) => { const r = m.roleIn(w, l.id); return r && r.role === "unclaimed"; });
+    const grp = (label, n, hint) => h("div.grp", h("span.label-caps", label), h("span.n", n), hint ? h("span.hint", hint) : null);
+    const list = h("div.list.scroll", { "data-keep": "members" },
+      grp("Members", members.length),
+      ...members.map((e) => row(m.win(e.wid), e, "member")),
+      tucked.length ? grp("Tucked", tucked.length, "kept, not arranged") : null,
+      ...tucked.map((e) => row(m.win(e.wid), e, "tucked")),
+      nowin.length ? grp("No window open", nowin.length) : null,
+      ...nowin.map((e) => h("div.mrow.nowin", { style: { cursor: "default" } }, LT.glyph(e.app), h("div.nm", h("b", e.app, h("span.via", e.via)), h("i", e.match)), h("span.st", "waiting"),
+        h("div.acts", h("button.ib", { "aria-label": `Remove ${e.app} rule`, title: "Remove rule", onClick: ensure(() => { m.draft.entries = m.draft.entries.filter((x) => x.id !== e.id); m.draft.changes.push(`Remove ${e.app} rule`); m.emit(); }) }, LT.icon("x"))))),
+      candidates.length ? grp("On its Desktop, not claimed", candidates.length) : null,
+      ...candidates.map((w) => row(w, null, "candidate")));
+
+    const foot = editing
+      ? h("div.draftbar",
+          h("div.top", LT.icon("layer"), h("span", "Unsaved changes to ", h("b", l.name))),
+          h("div.ch", m.draft.changes.length ? m.draft.changes.join(" · ") : "No changes yet"),
+          h("div.btns",
+            h("button.btn.ghost", { onClick: () => m.cancelEdit() }, "Discard"),
+            h("button.btn", { onClick: () => m.saveEdit(false) }, "Save"),
+            h("button.btn.primary" + (l.active ? "" : ".is-disabled"), { title: l.active ? "Save, then arrange its live members" : `${l.name} isn't the active layer — Save only`, onClick: () => m.saveEdit(true) }, "Save & arrange")))
+      : h("div.savednote", "Pin, Tuck or Remove starts a draft. Nothing moves until you Save & arrange.");
+    return h("div.panel",
+      h("div.ph", h("span.t", "Membership"), h("span.s", `${l.name}${l.active ? " · active" : " · inactive"}`)),
+      list, foot);
+  }
+
+  function render() {
+    return h("div.d", tabs(), h("div.body",
+      h("div.roomcol", selbar(), room(), arrangeRow(), elsewhere()),
+      panel()));
+  }
+
+  LT.mountShell({
+    letter: "D", name: "Layer Room", blurb: "One layer per tab. Membership saves; arranging moves.",
+    model: m, render,
+  });
+  addEventListener("resize", () => m.emit());
+})();
+</script>
+</body>
+</html>

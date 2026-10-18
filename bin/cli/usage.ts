@@ -56,6 +56,7 @@ Machines and displays:
   lats display gather <display> [--to <display>]  Move a display's windows onto another, laid out as they were
   lats display restore [display]  Put gathered windows back where they sat
   lats display lend <display>     Ask on the other screens where to gather a display's windows (for an input switch the Mac can't see)
+  lats display assignments  Apps macOS holds to one desktop (Dock › Assign To)
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
   lats --host <name> pair Pair with a lattices-host (approve on the host)
@@ -105,6 +106,7 @@ Usage:
                          List synthesized terminal instances
   lats capture window [wid]  Save a screenshot run artifact
   lats capture display [index]  Save a full-display screenshot run artifact
+  lats --host <name> capture display [index]  Screenshot another host, saved on this Mac
   lats capture record window [wid]  Record a window/visible region as a .mov artifact
   lats capture record-command --app Scout -- <cmd>
                          Record a target while running an action command

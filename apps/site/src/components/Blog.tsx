@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { blogPosts, getBlogPost, type BlogPost } from '../lib/content'
 import { formatBuildDate, getBuildMeta, type PostMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 
 export function BlogIndex() {
   return (
@@ -32,6 +32,7 @@ export function BlogIndex() {
           ))}
         </div>
       </main>
+      <SiteFooter current="/blog" />
     </div>
   )
 }
@@ -66,6 +67,7 @@ export function BlogPostPage({ slug }: { slug: string }) {
             </p>
           </div>
         </main>
+        <SiteFooter />
       </div>
     )
   }
@@ -122,6 +124,7 @@ export function BlogPostPage({ slug }: { slug: string }) {
           )}
         </nav>
       </article>
+      <SiteFooter />
     </div>
   )
 }

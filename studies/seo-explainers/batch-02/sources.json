@@ -1,0 +1,17 @@
+{
+  "reviewedAt":"2026-10-02",
+  "reviewMethod":"Official documentation and repository documentation; no native benchmark or live desktop test.",
+  "sources":[
+    {"url":"https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac","supports":"Accessibility access for other apps' exposed controls."},
+    {"url":"https://support.apple.com/guide/mac-help/control-access-to-screen-and-system-audio-recording-mchld6aa7d23/mac","supports":"Separate screen and system audio recording permission category."},
+    {"url":"https://support.apple.com/guide/mac-help/allow-apps-to-automate-and-control-other-apps-mchl108e1718/mac","supports":"Automation permission for app-to-app commands."},
+    {"url":"https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.automation.apple-events","supports":"Apple Events and Automation access."},
+    {"url":"https://www.hammerspoon.org/docs/hs.axuielement.html#performAction","supports":"Accepted AX action does not guarantee task outcome."},
+    {"url":"https://developer.apple.com/library/archive/documentation/Accessibility/Conceptual/AccessibilityMacOSX/OSXAXmodel.html","supports":"Accessibility element information and actions; archived conceptual reference."},
+    {"url":"https://rectangleapp.com/","supports":"Window placement using shortcuts and snap areas."},
+    {"url":"https://nikitabobko.github.io/AeroSpace/guide","supports":"Automatic tiling, layouts, and application-specific workspaces distinct from macOS Spaces."},
+    {"path":"docs/concepts.md","supports":"Lattices project and optional terminal-session context."},
+    {"path":"docs/layers.md","supports":"Lattices grouping windows and projects into contexts."}
+  ],
+  "boundaries":["All diagrams are invented examples.","The one-safe-retry limit is teaching guidance, not a universal retry policy.","Visible UI feedback is not proof of durable file storage.","Workspace grouping is not a process-restoration promise or equivalence to native macOS Spaces.","Tools can overlap across snapping, tiling, and workspaces."]
+}

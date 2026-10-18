@@ -7,6 +7,9 @@ name: Action Guards
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   guards:
     name: Action repository guards
@@ -18,7 +21,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       # Action composites on top of the screen and never mutates persistent user state
       # to get a visual effect. A wallpaper has no reliable restore: a staging script

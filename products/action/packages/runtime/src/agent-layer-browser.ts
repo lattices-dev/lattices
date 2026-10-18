@@ -1,7 +1,10 @@
 import { execFile } from "node:child_process";
 import { readdirSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Bounds } from "@action/protocol";
+import { agentWorkspaceSerial, parseAgentWorkspace } from "./agent-layer.js";
 
 /**
  * A Chromium browser on the agent layer, driven through its DevTools port instead of
@@ -425,18 +428,45 @@ function compareVersions(a: string, b: string): number {
  * Its own port and profile, apart from the browser_* tools' Chrome: that one is the
  * user's Chrome bundle, which a Spaces binding can pin to one Desktop, off the layer.
  */
-export function layerBrowserConfig(profile?: string): { profileDir: string; port: number; app: string; bundleId: string; profile: string } {
+export function layerBrowserConfig(profile?: string, options: { workspace?: string } = {}): { profileDir: string; port: number; app: string; bundleId: string; profile: string } {
+  const workspace = parseAgentWorkspace(options.workspace);
   const root = process.env.ACTION_BROWSER_PROFILE_ROOT
     ?? `${process.env.HOME}/Library/Application Support/Action/ChromeProfiles`;
-  const name = (profile ?? process.env.ACTION_LAYER_BROWSER_PROFILE ?? "agent-layer").replace(/[^A-Za-z0-9._-]/g, "-");
+  const name = profile ?? process.env.ACTION_LAYER_BROWSER_PROFILE ?? "agent-layer";
+  if (name.trim() !== name || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) throw new Error("Browser profile must be a simple name, not a path");
   const app = process.env.ACTION_LAYER_BROWSER_APP ?? chromeForTestingApp() ?? "Google Chrome";
+  const override = workspace === "default" ? process.env.ACTION_LAYER_BROWSER_PORT
+    : process.env[`ACTION_LAYER_BROWSER_PORT_${workspace.toUpperCase().replaceAll("-", "_")}`];
+  const port = Number(override ?? (workspace === "default" ? 9335 : 20000 + agentWorkspaceSerial(workspace) % 20000));
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Layer browser port must be an integer between 1024 and 65535");
   return {
     profile: name,
-    profileDir: `${root}/${name}`,
-    port: Number(process.env.ACTION_LAYER_BROWSER_PORT ?? "9335"),
+    profileDir: workspace === "default" ? resolve(root, name) : resolve(root, "workspaces", workspace, name),
+    port,
     app,
     bundleId: app.endsWith("Google Chrome for Testing.app") ? CHROME_FOR_TESTING : "com.google.Chrome",
   };
+}
+
+export function layerBrowserCommandMatches(command: string, config: ReturnType<typeof layerBrowserConfig>): boolean {
+  const parts = command.trim().split(/\s+(?=--)/);
+  const appName = basename(config.app).replace(/\.app$/, "");
+  const executable = `${appName}.app/Contents/MacOS/${appName}`;
+  const matchesExecutable = config.app.startsWith("/")
+    ? parts[0] === `${config.app}/Contents/MacOS/${appName}`
+    : parts[0]?.endsWith(`/${executable}`);
+  return Boolean(matchesExecutable)
+    && parts.filter(part => part.startsWith("--user-data-dir=")).length === 1
+    && parts.includes(`--user-data-dir=${config.profileDir}`)
+    && parts.filter(part => part.startsWith("--remote-debugging-port=")).length === 1
+    && parts.includes(`--remote-debugging-port=${config.port}`);
+}
+
+async function requireLayerBrowserIdentity(pid: number, config: ReturnType<typeof layerBrowserConfig>): Promise<void> {
+  const { stdout } = await run("/bin/ps", ["-ww", "-o", "command=", "-p", String(pid)]);
+  if (!layerBrowserCommandMatches(stdout, config)) {
+    throw new Error(`DevTools port ${config.port} belongs to another process or browser profile; refusing to adopt PID ${pid}`);
+  }
 }
 
 /** One app's Desktop in `defaults read com.apple.spaces app-bindings` output; keys are lowercased. */
@@ -478,13 +508,15 @@ async function listeningPid(port: number): Promise<number | undefined> {
  * instance launched hidden on the profile, so its first window never shows on the
  * user's screens. Returns the browser process id.
  */
-export async function ensureLayerBrowser(profile?: string): Promise<{ pid: number; port: number; profile: string; bundleId: string; launched: boolean }> {
-  const config = layerBrowserConfig(profile);
+export async function ensureLayerBrowser(profile?: string, options: { workspace?: string } = {}): Promise<{ pid: number; port: number; profile: string; bundleId: string; launched: boolean }> {
+  const config = layerBrowserConfig(profile, options);
   const running = await listeningPid(config.port);
   if (running) {
+    await requireLayerBrowserIdentity(running, config);
     await unhide(running);
     return { pid: running, port: config.port, profile: config.profile, bundleId: config.bundleId, launched: false };
   }
+  await mkdir(config.profileDir, { recursive: true });
   await run("/usr/bin/open", [
     "-n", "-j", "-g", "-a", config.app, "--args",
     `--user-data-dir=${config.profileDir}`,
@@ -502,6 +534,7 @@ export async function ensureLayerBrowser(profile?: string): Promise<{ pid: numbe
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const pid = await listeningPid(config.port);
     if (pid) {
+      await requireLayerBrowserIdentity(pid, config);
       await unhide(pid);
       return { pid, port: config.port, profile: config.profile, bundleId: config.bundleId, launched: true };
     }

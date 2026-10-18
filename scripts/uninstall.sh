@@ -31,8 +31,12 @@ fi
 # ── Remove CLI ────────────────────────────────────────────────────────
 
 if command -v lattices &>/dev/null; then
-  info "Removing @lattices/cli..."
-  bun remove -g @lattices/cli 2>/dev/null || npm uninstall -g @lattices/cli 2>/dev/null || true
+  info "Removing Lattices CLI packages..."
+  for package in @lattices/lattices @arach/lattices @lattices/cli; do
+    bun remove -g "$package" 2>/dev/null || true
+    npm uninstall -g "$package" 2>/dev/null || true
+    if command -v pnpm >/dev/null 2>&1; then pnpm remove -g "$package" 2>/dev/null || true; fi
+  done
   ok "CLI removed"
 else
   ok "CLI not installed"

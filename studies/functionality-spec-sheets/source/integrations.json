@@ -1,0 +1,798 @@
+[
+  {
+    "id": "A01",
+    "group": "Agent interface",
+    "capability": "Local daemon and discoverable schema",
+    "details": "JSON request/response over WebSocket at 127.0.0.1:9399; real-time events; api.schema publishes methods, models, parameters and access levels. Source registers 130 literal methods plus 10 Voice helper schema methods (140 unique names).",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "239-250"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3854-3864"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/VoiceHelperRouting.swift",
+        "lines": "123-227"
+      },
+      {
+        "path": "docs/api.md",
+        "lines": "7-12"
+      }
+    ],
+    "caveat": "140 is a count of current source registrations, not a live installed-app measurement; aliases are included. Older docs say 35+ or about 120."
+  },
+  {
+    "id": "A02",
+    "group": "Developer interface",
+    "capability": "TypeScript SDK and persistent project twin",
+    "details": "Package exports daemon client, assistant planner, CUA SDK and project-twin surface; ProjectTwin supports a persistent Pi process with invocation context, protocol, memory, events, model and effort options, plus optional OpenScout relay context.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "package.json",
+        "lines": "41-47"
+      },
+      {
+        "path": "bin/client.ts",
+        "lines": "1-17"
+      },
+      {
+        "path": "bin/project-twin.ts",
+        "lines": "5-66"
+      },
+      {
+        "path": "bin/project-twin.ts",
+        "lines": "92-101"
+      }
+    ],
+    "caveat": "Daemon client is implemented; ProjectTwin requires the external Pi runtime. Do not present a project twin as an always-running native app service."
+  },
+  {
+    "id": "A03",
+    "group": "Agent interface",
+    "capability": "Desktop and process discovery",
+    "details": "Read windows and desktop snapshot, search indexed/live sources, list tmux sessions and inventory, projects, Spaces, layers, processes and process trees; synthesize terminal identities and capture exact terminal text; read OCR snapshots, search, history and recent scans.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "534-650"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "898-1003"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1313-1530"
+      }
+    ],
+    "caveat": "AX/OCR and terminal capture are distinct sources. This audit did not run scans or inspect live client data."
+  },
+  {
+    "id": "A04",
+    "group": "Agent interface",
+    "capability": "Target resolution, action receipts and undo",
+    "details": "Resolve window targets, execute typed actions with dry-run planning, inspect action history and undo recorded placements or batches. Receipts explain targets, plans, verification and trace.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1532-1609"
+      },
+      {
+        "path": "docs/agents.md",
+        "lines": "88-111"
+      },
+      {
+        "path": "docs/agents.md",
+        "lines": "229-241"
+      }
+    ],
+    "caveat": "Undo is available for eligible recorded placement operations; it is not a general reversal of all computer-use input."
+  },
+  {
+    "id": "A05",
+    "group": "Capture",
+    "capability": "Run records and still captures",
+    "details": "Create/list/read runs and artifacts; save window, region or display screenshots; zoom an existing artifact.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1610-1776"
+      }
+    ],
+    "caveat": "Screen capture requires macOS permission. Artifacts are run evidence; generation is not visual review."
+  },
+  {
+    "id": "A06",
+    "group": "Capture",
+    "capability": "Native recording and command capture",
+    "details": "Record a window or region to a movie and stop recording; CLI can record a target while executing an action command.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1778-1841"
+      },
+      {
+        "path": "bin/cli/usage.ts",
+        "lines": "64-70"
+      }
+    ],
+    "caveat": "A start acknowledgement is not completed video verification. Lattices capture overlaps with the separate Action product."
+  },
+  {
+    "id": "A07",
+    "group": "Computer use",
+    "capability": "Accessibility inspection and semantic actions",
+    "details": "Snapshot a target window as AX, screenshot or both; expose element IDs and tree metadata; press, show menu, focus, type into an element, and set its value.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "503-514"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1901-1983"
+      }
+    ],
+    "caveat": "Element references are snapshot-local. Background-safe operations depend on the requested AX action and target app."
+  },
+  {
+    "id": "A08",
+    "group": "Computer use",
+    "capability": "Keyboard, pointer and drag operations",
+    "details": "Target a window, session or app; send keys/hotkeys, click/double-click/right-click, scroll or drag, then request verification. Operations expose stage, present and execute treatments.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1984-2054"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2196-2371"
+      }
+    ],
+    "caveat": "Availability depends on macOS permissions and target behavior; default staging is not proof that a mutation executed."
+  },
+  {
+    "id": "A09",
+    "group": "Computer use",
+    "capability": "Launch, focus and terminal demonstrations",
+    "details": "Prepare a terminal target, focus a verified window, launch a Mac app, type into ordinary app windows or safe terminal targets, and run terminal/Scout demonstration helpers.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1882-1900"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2035-2054"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2150-2195"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2424-2487"
+      }
+    ],
+    "caveat": "Demo helpers are specialist execution workflows, not general workspace navigation."
+  },
+  {
+    "id": "A10",
+    "group": "Presentation",
+    "capability": "Synthetic cursor and cursor treatments",
+    "details": "Show a recorded cursor or magic cursor with app-owned appearance, motion and captions; configure cursor appearance; find or summon the real mouse.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2055-2149"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3661-3687"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3713-3748"
+      }
+    ],
+    "caveat": "Synthetic presentation and real pointer input are separate operations."
+  },
+  {
+    "id": "A11",
+    "group": "Capture",
+    "capability": "Local image text analysis and native browser reads",
+    "details": "Analyze a captured window or saved image with local Vision OCR; extract text and evaluate contains/not-contains expectations. Native browser RPC exposes text, DOM query and JavaScript methods.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1843-1881"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "2372-2423"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "477-545"
+      }
+    ],
+    "caveat": "Native image analysis is local text recognition and explicit checks, not provider-backed semantic image understanding. Native browser RPC is distinct from browser MCP and depends on browser support."
+  },
+  {
+    "id": "A12",
+    "group": "Presentation",
+    "capability": "Transient desktop annotations",
+    "details": "Publish and clear screen-local toasts, labels, highlights and pet layers, with target display, lifetime, style, opacity and ordering.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1062-1117"
+      }
+    ],
+    "caveat": "These are overlay canvas layers, separate from persistent workspace layers."
+  },
+  {
+    "id": "A13",
+    "group": "Presentation",
+    "capability": "Persistent actors and project web HUDs",
+    "details": "Publish clickable app/sprite actors, animate them, attach URL/HTML hover HUDs and toggle the actor layer; CLI registers, discovers, publishes and synchronizes project HUD manifests.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1119-1207"
+      },
+      {
+        "path": "bin/lattices.ts",
+        "lines": "2035-2049"
+      }
+    ],
+    "caveat": "Actor renderer currently supports sprites. A hover web HUD is not a native app integration by itself."
+  },
+  {
+    "id": "A14",
+    "group": "Browser MCP",
+    "capability": "Browser-only MCP registry",
+    "details": "lats mcp serves stdio JSON-RPC with lazy toolset selection and harness config output. Current registry contains one toolset, browser, with 14 tools.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/registry.ts",
+        "lines": "3-29"
+      },
+      {
+        "path": "docs/mcp.md",
+        "lines": "76-140"
+      },
+      {
+        "path": "bin/cli/usage.ts",
+        "lines": "125-127"
+      }
+    ],
+    "caveat": "Do not label the whole native daemon API as available through MCP. Native workspace methods currently use CLI/daemon/SDK."
+  },
+  {
+    "id": "A15",
+    "group": "Browser MCP",
+    "capability": "Isolated Chrome identities",
+    "details": "List, select and inspect named Action-owned Chrome profiles; unknown identity names create a blank profile on first open; report optional companion extension health.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "310-389"
+      }
+    ],
+    "caveat": "These are separate browser identities, not the user's regular Chrome profiles."
+  },
+  {
+    "id": "A16",
+    "group": "Browser MCP",
+    "capability": "Scoped authenticated browser seeding",
+    "details": "Import selected cookies from a chosen regular Chrome profile into an isolated browser identity with a domain allowlist and dry-run default.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "341-380"
+      }
+    ],
+    "caveat": "Writing cookies requires explicit confirmation within the tool contract and appropriate authorization; no blanket signed-in assumption."
+  },
+  {
+    "id": "A17",
+    "group": "Browser MCP",
+    "capability": "Browser navigation and tab control",
+    "details": "Open URLs in the controlled isolated Chrome or hand a URL to regular Chrome; list/open tabs and enforce a navigation readiness deadline.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "389-422"
+      }
+    ],
+    "caveat": "Regular Chrome mode is an open-only handoff, not DOM-controlled access to everyday browser tabs."
+  },
+  {
+    "id": "A18",
+    "group": "Browser MCP",
+    "capability": "Page state and console inspection",
+    "details": "Read page metadata, visible text and selectors for interactive elements; inspect console calls, uncaught errors, promise rejections and Chrome resource/CSP logs.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "422-437"
+      },
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "577-598"
+      }
+    ],
+    "caveat": "Complete console coverage applies to tabs opened through browser_open; tool responses report coverage."
+  },
+  {
+    "id": "A19",
+    "group": "Browser MCP",
+    "capability": "DOM actions with postconditions",
+    "details": "Click by CSS selector or visible text, fill form/contenteditable controls and wait for paint, navigation, network idle, selector appearance or disappearance.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "438-484"
+      }
+    ],
+    "caveat": "These actions operate only on the active isolated browser identity."
+  },
+  {
+    "id": "A20",
+    "group": "Browser MCP",
+    "capability": "Responsive viewport testing",
+    "details": "Set exact per-tab emulated viewport or resize the hosting window; choose device pixel ratio, mobile emulation and media-query assertions; reset overrides.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "486-546"
+      }
+    ],
+    "caveat": "Per-tab overrides are reversible and session-local; physical window size can be clamped by the display."
+  },
+  {
+    "id": "A21",
+    "group": "Browser MCP",
+    "capability": "Page and component screenshots",
+    "details": "Capture PNGs of viewport, one selected element, an explicit document rectangle, or the full page; save locally and optionally return pixels.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "547-575"
+      }
+    ],
+    "caveat": "Full-page capture has a Chrome maximum-edge limit and reports truncation."
+  },
+  {
+    "id": "A22",
+    "group": "Browser MCP",
+    "capability": "Browser lifecycle and ownership",
+    "details": "Close an owned tab or release the session browser; browser quits only once no other live session claims it. MCP toolsets own initialization and idle bookkeeping.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/mcp/toolsets/browser/index.ts",
+        "lines": "600-615"
+      },
+      {
+        "path": "docs/mcp.md",
+        "lines": "142-162"
+      }
+    ],
+    "caveat": "No lifecycle call closes the user's regular Chrome."
+  },
+  {
+    "id": "A23",
+    "group": "Voice input",
+    "capability": "Embedded speech-to-command runtime",
+    "details": "The menu bar process hosts Hudson Voice/Vox live transcription at port 9398; command window uses push-to-talk; transcript routes to local intent matching and optional provider interpretation.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "docs/voice.md",
+        "lines": "7-34"
+      },
+      {
+        "path": "docs/voice.md",
+        "lines": "80-118"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3396-3450"
+      },
+      {
+        "path": "apps/mac/Package.swift",
+        "lines": "14-42"
+      }
+    ],
+    "caveat": "Requires a voice-enabled build (HUDSONKIT_WITH_VOICE), permissions and configured engines. Input is app-owned and stops with Lattices; synthesis uses the separate Voice helper."
+  },
+  {
+    "id": "A24",
+    "group": "Voice and planning",
+    "capability": "Intent catalog and hands-off planner",
+    "details": "List and execute intents, simulate spoken text, preview the TypeScript assistant plan, and invoke hands-off command interpretation. Voice targets the same window/layer/optimization executor as scripted actions.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3348-3394"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3449-3551"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3602-3659"
+      },
+      {
+        "path": "docs/agents.md",
+        "lines": "243-267"
+      }
+    ],
+    "caveat": "Provider-backed interpretations require a configured runtime or credentials; local command coverage is broader evidence than any specific natural-language example."
+  },
+  {
+    "id": "A25",
+    "group": "Workspace assistant",
+    "capability": "Runtime-first assistant with provider fallback",
+    "details": "Workspace chat first uses local agent-runtime/ACP harness, then a saved HudsonAI provider key, then a Scout project session. Picker supports Claude Code, Codex, Pi and OpenCode; model choices are supported for Claude/Codex/Pi and reasoning effort for Codex.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Assistant/WorkspaceAssistantSession.swift",
+        "lines": "500-569"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Assistant/AssistantRuntimeCatalog.swift",
+        "lines": "4-35"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "2396-2411"
+      }
+    ],
+    "caveat": "Current source contradicts older Scout-only assistant documentation. Each route requires its corresponding installed/authenticated service; OpenCode adapter currently ignores model selection."
+  },
+  {
+    "id": "A26",
+    "group": "Voice output",
+    "capability": "Independent speaking and playback helper",
+    "details": "Lattices forwards voice.say/stop/pause/resume/skip/seek/list/select/lease/release to separately installed Voice. The helper owns synthesis, queue, playback, HUD, preferences and authenticated RPC; leases prevent overlapping agents.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "products/voice/AGENTS.md",
+        "lines": "1-12"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/VoiceHelperRouting.swift",
+        "lines": "3-41"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/VoiceHelperRouting.swift",
+        "lines": "131-226"
+      }
+    ],
+    "caveat": "Requires installed and running Voice plus capability authorization. The reply to say means queued, not playback completed. Legacy internal identifiers remain speech.*."
+  },
+  {
+    "id": "A27",
+    "group": "Voice output",
+    "capability": "System, cloud and local synthesis providers",
+    "details": "Voice catalog includes macOS system voices, OpenAI, ElevenLabs and Kokoro; provider voice availability is queried rather than invented; Kokoro uses an in-process Neural Engine runtime.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "products/voice/Sources/Speech/SpeechVoiceCatalog.swift",
+        "lines": "23-57"
+      },
+      {
+        "path": "products/voice/Sources/Speech/SpeechVoiceCatalog.swift",
+        "lines": "85-130"
+      },
+      {
+        "path": "products/voice/AGENTS.md",
+        "lines": "14-27"
+      }
+    ],
+    "caveat": "Cloud providers need credentials; Kokoro needs compiled support and a ready model. Source support was inspected, no live synthesis was run."
+  },
+  {
+    "id": "A28",
+    "group": "Product family",
+    "capability": "Install and open independent companions",
+    "details": "Lattices Apps catalog presents Blink, Action and Voice as separate standalone products, with Install when missing and Open when installed. lats action provides status, install, launch and raw agent calls.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppCatalog.swift",
+        "lines": "74-117"
+      },
+      {
+        "path": "bin/cli/usage.ts",
+        "lines": "136-140"
+      }
+    ],
+    "caveat": "They have independent app lifecycles and releases. Catalog registration does not establish current downloaded artifact availability."
+  },
+  {
+    "id": "A29",
+    "group": "Companion deck",
+    "capability": "Shared deck actions and snapshots",
+    "details": "Mac host publishes manifest, snapshot and perform contract; deck controls voice, app/window switching, layer activation, optimize, frontmost placement/resize, focus, undo and optional Talkie actions.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "1023-1060"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Companion/LatticesDeckHost.swift",
+        "lines": "266-449"
+      }
+    ],
+    "caveat": "Talkie controls depend on Talkie. Deck is a thin control surface over Mac execution, not a second desktop engine."
+  },
+  {
+    "id": "A30",
+    "group": "Companion deck",
+    "capability": "Opt-in encrypted LAN pairing",
+    "details": "Bonjour discovery on port 5287, explicit Mac approval, per-device agreement, signed timestamp/nonce requests, encrypted payloads and per-route capability grants.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/companion-deck.md",
+        "lines": "127-163"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Companion/LatticesCompanionBridgeServer.swift",
+        "lines": "271-335"
+      }
+    ],
+    "caveat": "Bridge is disabled by default. Source presence does not prove App Store distribution or connectivity to any particular device."
+  },
+  {
+    "id": "A31",
+    "group": "Companion deck",
+    "capability": "iPhone/iPad host roster and fleet controls",
+    "details": "Lattices Deck has a Home roster, one-Mac host view and multi-host fleet destination; tracks reachable/trusted machines, attention and activity, with per-host voice selection.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/ios/Sources/Info.plist",
+        "lines": "7-8"
+      },
+      {
+        "path": "apps/ios/Sources/ContentView.swift",
+        "lines": "7-37"
+      },
+      {
+        "path": "apps/ios/Sources/ContentView.swift",
+        "lines": "138-173"
+      }
+    ],
+    "caveat": "Do not infer a cloud relay service from the Home cloud status UI; this is current iOS source, not a device validation."
+  },
+  {
+    "id": "A32",
+    "group": "Companion deck",
+    "capability": "Trackpad, key chords and clipboard transfer",
+    "details": "Send trackpad events, key chords and phone text to the paired Mac; switch Spaces and focus displays; find/summon mouse. Phone paste restores the Mac clipboard.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/ios/Sources/DeckStore.swift",
+        "lines": "336-401"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Companion/LatticesDeckHost.swift",
+        "lines": "451-531"
+      }
+    ],
+    "caveat": "Control is scoped by pairing capabilities; synthesized Space hotkeys route through Mac space switching."
+  },
+  {
+    "id": "A33",
+    "group": "Companion deck",
+    "capability": "Read-only desktop preview",
+    "details": "Display a paired Mac screenshot, select a display, manually refresh or auto-refresh one JPEG at a time, pausing/resuming updates.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/ios/Sources/DesktopPreviewScreen.swift",
+        "lines": "5-24"
+      },
+      {
+        "path": "apps/ios/Sources/DesktopPreviewScreen.swift",
+        "lines": "48-82"
+      }
+    ],
+    "caveat": "This is a read-only preview with a two-second refresh interval, not a high-frame-rate remote desktop stream."
+  },
+  {
+    "id": "A34",
+    "group": "Companion deck",
+    "capability": "Mac microphone relay controls",
+    "details": "Start, stop, cancel and prewarm voice on the selected Mac, with phase, transcript and error state reflected back in deck snapshots.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/ios/Sources/DeckStore.swift",
+        "lines": "300-334"
+      }
+    ],
+    "caveat": "The iPad does not capture microphone audio; voice commands use the selected Mac microphone."
+  },
+  {
+    "id": "A35",
+    "group": "Action companion",
+    "capability": "Native automation, capture and artifact review",
+    "details": "Separate signed Action.app with its own local agent, permissions, WebKit, screenshot and ScreenCaptureKit recording, guided capture, replay/review, session traces, AX/OCR observations, target resolution and deterministic act.execute.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "products/action/README.md",
+        "lines": "13-21"
+      },
+      {
+        "path": "products/action/README.md",
+        "lines": "40-67"
+      },
+      {
+        "path": "products/action/packages/mcp/src/index.ts",
+        "lines": "924-984"
+      },
+      {
+        "path": "products/action/packages/mcp/src/index.ts",
+        "lines": "1024-1099"
+      }
+    ],
+    "caveat": "Implemented action kinds are click, type, press-key, drag, scroll, focus-window and open-app. Recording completion requires finished marker/status. Full trace-to-scenario generation and production composition remain roadmap."
+  },
+  {
+    "id": "A36",
+    "group": "Action companion",
+    "capability": "Supervised drive leases and presentation stage",
+    "details": "Name the automation driver/task, begin/release/status a drive lease, publish short status notes, aim a synthetic cursor, play note/aim/wait/act beats, and set/clear/status a scene drape.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "products/action/packages/mcp/src/index.ts",
+        "lines": "824-922"
+      },
+      {
+        "path": "products/action/packages/mcp/src/index.ts",
+        "lines": "985-1023"
+      }
+    ],
+    "caveat": "Background drive is supported; attention approval is explicitly not available yet. This source includes ongoing dirty supervision/coordinate work and has not been live-verified in this audit."
+  },
+  {
+    "id": "A37",
+    "group": "Blink companion",
+    "capability": "Spatial Markdown notes with agent file interface",
+    "details": "One floating panel per note; capture, place, recall, edit/read, shade and restore geometry. Markdown with frontmatter is durable truth; CLI list/cat/new/present/type/write/search/log, named brandable workspaces, and desk open/move/focus/close/screens all converge through NoteStore.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "products/blink/AGENTS.md",
+        "lines": "9-26"
+      },
+      {
+        "path": "products/blink/AGENTS.md",
+        "lines": "39-67"
+      },
+      {
+        "path": "products/blink/docs/cli.md",
+        "lines": "28-105"
+      }
+    ],
+    "caveat": "Blink owns note/panel lifecycle independently. Proposed agent HTTP/API documents and proposed live-plane collision/scene behavior are not implemented claims."
+  },
+  {
+    "id": "A38",
+    "group": "Blink companion",
+    "capability": "Read-only offline mobile note companion",
+    "details": "iPhone/iPad receives complete note snapshots over encrypted LAN with explicit Mac approval, offline cache, identity binding and revocable device trust.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "products/blink/AGENTS.md",
+        "lines": "110-118"
+      },
+      {
+        "path": "products/blink/docs/ios-sync.md",
+        "lines": "3-8"
+      },
+      {
+        "path": "products/blink/docs/ios-sync.md",
+        "lines": "61-88"
+      },
+      {
+        "path": "products/blink/docs/ios-sync.md",
+        "lines": "107-123"
+      }
+    ],
+    "caveat": "Read-only; LAN is the implemented route. Tailscale/hosted-relay paths are future providers, not fallback capabilities."
+  },
+  {
+    "id": "A39",
+    "group": "Developer interface",
+    "capability": "Project build and application maintenance",
+    "details": "CLI detects project type, starts dev command, builds, restarts, reports logs and daemon health, updates CLI/app, launches/quits/rebuilds native app; root scripts expose type checks, app build, CLI/e2e tests and product-family checks.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "bin/cli/usage.ts",
+        "lines": "118-140"
+      },
+      {
+        "path": "package.json",
+        "lines": "49-76"
+      }
+    ],
+    "caveat": "Source toolchain capability, not confirmation that all builds/tests pass or releases are current."
+  },
+  {
+    "id": "A40",
+    "group": "Developer interface",
+    "capability": "Installable skills and agent documentation",
+    "details": "Repository contains product skills for lattices, action, voice and blink; agent docs provide method discovery, exact terminal capture, canonical action/placement contracts, dry runs, receipts and docs artifacts.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "skills/lattices/SKILL.md",
+        "lines": "1-4"
+      },
+      {
+        "path": "skills/lattices/SKILL.md",
+        "lines": "31-75"
+      },
+      {
+        "path": "skills/voice/SKILL.md",
+        "lines": "1-12"
+      },
+      {
+        "path": "skills/action/SKILL.md",
+        "lines": "1-10"
+      },
+      {
+        "path": "skills/blink/SKILL.md",
+        "lines": "1-10"
+      },
+      {
+        "path": "docs/agents.md",
+        "lines": "62-86"
+      }
+    ],
+    "caveat": "Some docs retain stale lats/speech skill labels, obsolete standalone Action Browser plugin wording, or describe the speaking helper as embedded. Current source, product AGENTS contracts and MCP registry are authoritative."
+  }
+]

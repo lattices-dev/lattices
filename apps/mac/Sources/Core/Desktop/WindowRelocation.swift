@@ -133,12 +133,23 @@ enum WindowRelocation {
                     return "Source desktop staging was not verified"
                 }
             }
-            trace.append("apply frame on display \(target.index), desktop \(target.currentSpaceId)")
+            trace.append("apply frame on display \(target.index); requested desktop \(destination.spaceId)")
             environment.moveFrame(destination.frame)
-            let activeDestination = Destination(displayId: target.id, spaceId: target.currentSpaceId, frame: destination.frame)
-            current = environment.wait { matches($0, destination: activeDestination, tolerance: tolerance) }
-            guard matches(current, destination: activeDestination, tolerance: tolerance) else {
-                return "Display transfer did not reach the target display, active desktop, and frame"
+            // AX transfers geometry, but macOS can assign the window to another
+            // ordinary desktop on the new display (for example Chrome's remembered
+            // desktop). Verify the physical transfer first, then carry from the
+            // observed desktop to the requested one below. Requiring the currently
+            // showing desktop here would roll back a valid intermediate transfer.
+            let transferred: (Snapshot) -> Bool = { snapshot in
+                snapshot.displayId == target.id &&
+                    snapshot.spaceIds.count == 1 &&
+                    snapshot.spaceIds.allSatisfy { target.spaceIds.contains($0) } &&
+                    snapshot.frame.map { framesClose($0, destination.frame, tolerance: tolerance) } == true
+            }
+            current = environment.wait(transferred)
+            trace.append("frame transfer observed display=\(current.displayId ?? "unknown") desktops=\(current.spaceIds) frame=\(current.frame.map { NSStringFromRect($0) } ?? "unknown")")
+            guard transferred(current) else {
+                return "Display transfer did not reach the target display, an ordinary desktop, and requested frame"
             }
         }
 

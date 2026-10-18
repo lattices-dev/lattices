@@ -1,6 +1,6 @@
 // Public API — re-exports from daemon-client for a cleaner import path.
-// Usage: import { daemonCall, isDaemonRunning } from '@arach/lattices'
-// Also published as @lattices/cli for back-compat.
+// Usage: import { daemonCall, isDaemonRunning } from '@lattices/lattices'
+// Also published as @arach/lattices and @lattices/cli for compatibility.
 
 export { daemonCall, isDaemonRunning } from "./daemon-client.ts";
 export {

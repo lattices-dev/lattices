@@ -1,8 +1,10 @@
 import { useId, type SVGProps } from 'react';
+import { actionCursor, latticesAccent, latticesPalette } from '../lib/marks';
 
 export interface ActionPalette {
   paper: string;
   ink: string;
+  /** Defaults to the family coral; `accent={false}` draws it in the ink. */
   cursor: string;
   guide: string;
   grid: string;
@@ -10,6 +12,8 @@ export interface ActionPalette {
 
 export interface ActionMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children' | 'name'> {
   theme?: 'light' | 'dark';
+  /** The cursor's colour, or `false` for one ink. Defaults to Action's coral. */
+  accent?: string | false;
   /** Show the architectural construction layer. Defaults to true. */
   guides?: boolean;
   /** These layers default to the guides setting, but can be controlled separately. */
@@ -29,23 +33,29 @@ export interface ActionMarkProps extends Omit<SVGProps<SVGSVGElement>, 'children
   revision?: string;
 }
 
-/** Action construction with equal perpendicular edge widths. Geometry is fixed; presentation is configurable. */
+/**
+ * Action construction with equal perpendicular edge widths. The A fills a
+ * square, and the cursor lies on the square's diagonal with its tip on the
+ * counter's edge and its tail touching the square, so the glyph is the square.
+ * Geometry is fixed; presentation is configurable.
+ */
 export function ActionMark({
-  theme = 'light', guides = true, grid = guides, annotations = guides,
+  theme = 'light', accent, guides = true, grid = guides, annotations = guides,
   titleBlock = guides, background = true, padding = 0, palette,
   label = 'Action logo', decorative = false,
   figure = 'FIG. A', name = 'ACTION', organization = 'LATTICES',
-  year = 2026, revision = 'STUDY 02', style, ...svgProps
+  year = 2026, revision = 'STUDY 03', style, ...svgProps
 }: ActionMarkProps) {
   const id = useId();
   const gridId = `${id}-grid`;
   const gapId = `${id}-gap`;
   const titleId = `${id}-title`;
   const inset = Number.isFinite(padding) ? Math.max(0, padding) : 0;
+  const ink = palette?.ink ?? latticesPalette[theme].ink;
   const colors: ActionPalette = {
     paper: theme === 'dark' ? '#19282a' : '#f4efe6',
-    ink: theme === 'dark' ? '#f4efe6' : '#19282a',
-    cursor: '#c58a70', guide: theme === 'dark' ? '#819d96' : '#71908d',
+    ink, cursor: accent === false ? ink : accent ?? latticesAccent[theme],
+    guide: theme === 'dark' ? '#819d96' : '#71908d',
     grid: '#367b7c', ...palette,
   };
   return (
@@ -65,35 +75,37 @@ export function ActionMark({
         </pattern>
         <mask id={gapId} maskUnits="userSpaceOnUse" x="0" y="0" width="720" height="640">
           <path d="M0 0H720V640H0Z" fill="white" />
-          <path d="M -23.662015831524982 0 L 500 -244.18760826712423 L 500 244.18760826712423 Z" transform="translate(378.02667529115377 404.9783920951129) rotate(35)" fill="black" />
+          <path d="M -23.662015831524982 0 L 500 -244.18760826712423 L 500 244.18760826712423 Z" transform="translate(348.61256823541 348.61256823541) rotate(45)" fill="black" />
         </mask>
       </defs>
       {grid && (
       <path fill={`url(#${gridId})`} d="M0 0H720V640H0Z" />
       )}
-      <path d="M265 100H335L530.0930354263446 500H69.90696457365542Z M300 245L221.97332470884623 404.9783920951129H378.02667529115377Z" fill={colors.ink} fillRule="evenodd" mask={`url(#${gapId})`} />
-      <path d="M 0 0 C 0 -2 3 -3 8 -3.730461265239989 L 170 -79.27230188634977 Q 180 -83.93537846789975 175 -73.93537846789975 L 140 -26 Q 124 0 140 26 L 175 73.93537846789975 Q 180 83.93537846789975 170 79.27230188634977 L 8 3.730461265239989 C 3 3 0 2 0 0 Z" transform="translate(378.02667529115377 404.9783920951129) rotate(35)" fill={colors.cursor} />
+      <path d="M265 70H335L530 530H70Z M300 233.93676624418646L215.2785567844705 433.7924784449227H384.72144321552946Z" fill={colors.ink} fillRule="evenodd" mask={`url(#${gapId})`} />
+      <path d={actionCursor.d} transform="translate(348.61256823541 348.61256823541) rotate(45)" fill={colors.cursor} />
       {guides && (
       <g fill="none" stroke={colors.guide} strokeWidth=".55" strokeOpacity=".6" strokeDasharray="3 4">
-        <path d="M18 500H670 M300 18V515 M304.0186070852689 20L47.958998088191635 545 M295.9813929147311 20L552.0410019118084 545 M317.07064059980513 210L209.76947111531564 430 M282.92935940019487 210L390.23052888468436 430 M190 404.9783920951129H650 M220 100H385" />
-        <path d="M-80 0H260 M-35 -16.32076803542495L235 109.58229966642467 M-35 16.32076803542495L235 -109.58229966642467" transform="translate(378.02667529115377 404.9783920951129) rotate(35)" />
-        <circle cx="378.02667529115377" cy="404.9783920951129" r="7" />
-        <path d="M365.02667529115377 404.9783920951129H391.02667529115377 M378.02667529115377 391.9783920951129V417.9783920951129" />
+        <path d="M18 530H670 M18 70H470 M70 18V550 M530 160V550 M300 18V555 M286.19565217391306 20L61.52173913043484 550 M313.80434782608694 20L538.4782608695651 550 M318.625368299166 190L208.4079769948182 450 M281.374631700834 190L391.5920230051818 450 M190 433.7924784449227H410 M50 50L550 550" />
+        <path d="M-35 -16.32076803542495L235 109.58229966642467 M-35 16.32076803542495L235 -109.58229966642467" transform="translate(348.61256823541 348.61256823541) rotate(45)" />
+        <circle cx="348.61256823541" cy="348.61256823541" r="7" />
+        <path d="M335.61256823541 348.61256823541H361.61256823541 M348.61256823541 335.61256823541V361.61256823541" />
+        <circle cx="530" cy="416.43943484058093" r="5" />
+        <circle cx="416.43943484058093" cy="530" r="5" />
       </g>
       )}
       {annotations && (
       <g fill="none" stroke={colors.guide} strokeWidth=".55" strokeOpacity=".7">
-        <path d="M72 270H98L135 286 M555 240H515L448 270 M300 553V523" strokeDasharray="3 4" />
-        <circle cx="60" cy="270" r="12" />
+        <path d="M50 270H98L135 286 M555 240H515L448 270 M300 555V540" strokeDasharray="3 4" />
+        <circle cx="38" cy="270" r="12" />
         <circle cx="567" cy="240" r="12" />
-        <circle cx="300" cy="565" r="12" />
+        <circle cx="300" cy="567" r="12" />
       </g>
       )}
       {annotations && (
       <g fill={colors.ink} fontFamily="monospace" fontSize="11" textAnchor="middle">
-        <text x="60" y="274">A</text>
+        <text x="38" y="274">A</text>
         <text x="567" y="244">B</text>
-        <text x="300" y="569">C</text>
+        <text x="300" y="571">C</text>
       </g>
       )}
       {annotations && (
@@ -101,7 +113,7 @@ export function ActionMark({
         <text x="40" y="612">A / LEFT SLOPE</text>
         <text x="210" y="612">B / RIGHT SLOPE</text>
         <text x="390" y="612">C / BASE</text>
-        <text x="40" y="630">A = B = C : 95.02 UNITS, MEASURED PERPENDICULAR TO EACH EDGE</text>
+        <text x="40" y="630">A = B = C : 96.21 UNITS, MEASURED PERPENDICULAR TO EACH EDGE</text>
       </g>
       )}
       {titleBlock && (
@@ -111,15 +123,16 @@ export function ActionMark({
         <g fontSize="8" opacity=".7">
           <text x="485" y="86">{organization} / LOGO CONSTRUCTION</text>
           <text x="485" y="101">DESIGNED {year} · {revision}</text>
-          <text x="485" y="116">SLOPES 64° / GAP 10 U</text>
-          <text x="485" y="131">EDGE WIDTH 95.02 U / SVG</text>
+          <text x="485" y="116">SQUARE 460 U / SLOPES 67°</text>
+          <text x="485" y="131">EDGE WIDTH 96.21 U / GAP 10 U</text>
         </g>
       </g>
       )}
       {annotations && (
       <g fill={colors.ink} fontFamily="monospace" fontSize="9">
-        <text x="36" y="585">EQUAL EDGE WIDTH / 64° SLOPES / 10 UNIT GAP</text>
-        <text x="440" y="575">TIP = INTERSECTION</text>
+        <text x="36" y="585">EQUAL EDGE WIDTH / 67° SLOPES / 10 UNIT GAP</text>
+        <text x="420" y="572">TIP ON DIAGONAL AND COUNTER EDGE</text>
+        <text x="420" y="585">TAIL TOUCHES THE SQUARE</text>
       </g>
       )}
     </svg>

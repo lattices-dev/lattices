@@ -16,6 +16,7 @@ final class WindowRelocationTests: XCTestCase {
         var ignoreSpace = false
         var ignoreFrame = false
         var preserveWrongMembership = false
+        var transferredSpaceIds: [Int]?
         var transientStagingFrame = false
         var stagingSettled = false
 
@@ -50,7 +51,8 @@ final class WindowRelocationTests: XCTestCase {
                           self.state.spaceIds == [source.currentSpaceId] else { return }
                     let target = self.displays.first(where: { $0.id == (frame.minX >= 3440 ? "virtual" : "physical") })!
                     self.state = .init(frame: frame, displayId: target.id,
-                                       spaceIds: self.preserveWrongMembership ? self.state.spaceIds : [target.currentSpaceId])
+                                       spaceIds: self.preserveWrongMembership ? self.state.spaceIds :
+                                        (target.id == "physical" ? self.transferredSpaceIds : nil) ?? [target.currentSpaceId])
                 },
                 wait: { predicate in
                     // Model Mission Control having committed membership while
@@ -85,6 +87,50 @@ final class WindowRelocationTests: XCTestCase {
         let result = desktop.move(to: destination)
         XCTAssertTrue(result.verified)
         XCTAssertEqual(desktop.operations, ["space:2377", "frame:0", "space:4"])
+    }
+
+    func testTransferLandingOnAnotherDestinationDesktopCompletesRequestedMove() {
+        let desktop = Desktop(sourceSpace: 2377)
+        // macOS can retain the app's remembered desktop on the new monitor.
+        desktop.transferredSpaceIds = [4]
+        let result = desktop.move()
+        XCTAssertTrue(result.verified)
+        XCTAssertFalse(result.rollbackAttempted)
+        XCTAssertEqual(desktop.operations, ["frame:0", "space:3"])
+        XCTAssertEqual(result.after.spaceIds, [3])
+        XCTAssertEqual(result.after.frame, desktop.physicalFrame)
+    }
+
+    func testTransferLandingOnRequestedInactiveDesktopNeedsNoExtraCarry() {
+        let desktop = Desktop(sourceSpace: 2377)
+        desktop.transferredSpaceIds = [4]
+        let result = desktop.move(to: .init(displayId: "physical", spaceId: 4, frame: desktop.physicalFrame))
+        XCTAssertTrue(result.verified)
+        XCTAssertEqual(desktop.operations, ["frame:0"])
+    }
+
+    func testRefusedCarryAfterUnexpectedLandingReportsFailedRollback() {
+        let desktop = Desktop(sourceSpace: 2377)
+        desktop.transferredSpaceIds = [4]
+        desktop.refusedSpaces = [3]
+        let result = desktop.move(to: .init(displayId: "physical", spaceId: 3, frame: desktop.physicalFrame))
+        XCTAssertFalse(result.verified)
+        XCTAssertTrue(result.rollbackAttempted)
+        // Restoring geometry also needs desktop 3 staging, which was refused.
+        XCTAssertFalse(result.rollbackVerified)
+        XCTAssertEqual(result.after.spaceIds, [4])
+        XCTAssertTrue(result.failure?.contains("Destination desktop move failed") == true)
+    }
+
+    func testUnknownOrMultipleMembershipAfterTransferIsNeverAccepted() {
+        for spaces in [[9999], [3, 4], []] {
+            let desktop = Desktop(sourceSpace: 2377)
+            desktop.transferredSpaceIds = spaces
+            let result = desktop.move()
+            XCTAssertFalse(result.verified)
+            XCTAssertFalse(result.rollbackVerified)
+            XCTAssertEqual(desktop.operations, ["frame:0"])
+        }
     }
 
     func testSourceStagingWaitsForWindowGeometryAfterMissionControl() {

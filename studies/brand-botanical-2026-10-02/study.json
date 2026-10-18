@@ -1,0 +1,40 @@
+{
+  "title": "Workspace Fern — Scout-informed Lattices study",
+  "created": "2026-10-02",
+  "status": "Exploratory illustration; not an adopted identity or production change",
+  "source": {
+    "host": "arts-mini",
+    "path": "/Users/art/dev/openscout/design/scout-backgrounds",
+    "chat": "Design Scout page backgrounds",
+    "threadId": "01a0fd7b-bebd-7230-81a1-495e6085ae60",
+    "evidence": "Read source documents and visually inspected four copied assets over SSH. Remote chat reading timed out. The Scout source folder was untracked at inspection."
+  },
+  "references": [
+    "references/scout/signal-grove.png",
+    "references/scout/fiddlehead-array.png",
+    "references/scout/prism-orchard.png",
+    "references/scout/suspended-archive.png"
+  ],
+  "adoptedForThisStudy": [
+    "Fine copperplate engraving and stippled geological detail",
+    "Warm silver and ivory over graphite black with sparse moss green",
+    "Quiet composition with open space for text"
+  ],
+  "latticesSubject": "A fern whose fronds enclose open rectangular spaces, with layered stems and a shared root crown.",
+  "generation": {
+    "tool": "Built-in image_gen",
+    "promptFile": "PROMPT.txt",
+    "inputReferences": [
+      "references/scout/fiddlehead-array.png",
+      "references/scout/suspended-archive.png"
+    ],
+    "output": "workspace-fern-v1.png",
+    "original": "/Users/arach/.codex/generated_images/01a0fdb8-c0fb-79d3-96f2-0f167289c777/exec-aec2835e-aa79-4811-af59-7b2a4643f0e3.png"
+  },
+  "interactivePreview": {
+    "entry": "index.html",
+    "notes": "NOTES.md",
+    "features": ["Illustration, ASCII, ordered dither, engraved lines", "Graphite and paper surfaces", "Artwork and page composition", "Keyboard rendering picker", "Presence and motion controls", "PNG export", "Illustrative workspace ledger"]
+  },
+  "possibleNextStudy": "Simplify a curled seedling into a Lats avatar. This has not been implemented."
+}

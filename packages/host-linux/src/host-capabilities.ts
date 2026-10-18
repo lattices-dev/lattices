@@ -26,7 +26,7 @@ export async function probeCapabilities(probes: CapabilityProbes): Promise<Recor
   const set = (name: string, reason: string | null) => { health[name] = { available: reason === null, reason }; };
   const tool = (name: string) => probes.command(name) ? null : "Missing command: " + name;
   const protocol = (name: string) => waylandError ?? (globals.includes(name) ? null : "Missing Wayland protocol: " + name);
-  for (const name of ["windows.read", "windows.place", "spaces.read", "apps.open"]) set(name, desktopError);
+  for (const name of ["windows.read", "windows.place", "spaces.read", "apps.open", "displays.virtual"]) set(name, desktopError);
   set("capture.still", tool("grim") ?? desktopError ?? protocol("zwlr_screencopy_manager_v1"));
   set("capture.live", tool("wayvnc") ?? health["capture.still"].reason ?? protocol("zwp_virtual_keyboard_manager_v1") ?? protocol("zwlr_virtual_pointer_manager_v1"));
   set("input.keys", tool("wtype") ?? protocol("wl_seat") ?? protocol("zwp_virtual_keyboard_manager_v1"));

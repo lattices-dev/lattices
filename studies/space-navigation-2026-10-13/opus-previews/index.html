@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Filmstrip Study</title>
+<meta name="description" content="Opus design pass on the Lattices desktop filmstrip: every desktop in one cropped strip, three focus behaviours. Simulated preview.">
+<style>
+:root{
+  --bg:#0b0d0f; --panel:#121518; --line:rgba(255,255,255,.08); --text:#e9ecee; --dim:rgba(233,236,238,.6); --faint:rgba(233,236,238,.36);
+  --cyan:#5fd4e8; --ink:#f2f2f2; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --cw:168px; --gap:10px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+main{max-width:1320px;margin:0 auto;padding:20px 16px 64px}
+a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}
+.back{font-size:12px;color:var(--faint);margin:0 0 10px}
+h1{font-size:18px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--dim);margin:0 0 14px;max-width:860px}
+.sim{display:inline-block;font:600 10px var(--mono);letter-spacing:.08em;color:var(--cyan);border:1px solid rgba(95,212,232,.35);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
+button,select{font:12px -apple-system,system-ui,sans-serif;color:var(--text);background:#1a1e22;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:rgba(255,255,255,.22)}
+button[aria-pressed=true]{border-color:rgba(95,212,232,.6);background:#18252a;color:#fff}
+button:focus-visible,select:focus-visible,input:focus-visible,#stage:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:8px}
+.row .lab{color:var(--faint);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+label{color:var(--dim);font-size:12px;display:inline-flex;gap:6px;align-items:center}
+.status{display:flex;justify-content:space-between;gap:12px;font:11px var(--mono);color:var(--faint);margin:6px 2px 0}
+
+/* ——— still desktop ——— */
+#stage{position:relative;width:100%;aspect-ratio:16/10;min-height:460px;border-radius:10px;overflow:hidden;outline:none;border:1px solid var(--line);
+  background:radial-gradient(120% 90% at 20% 10%,#2a3440 0%,#161c22 45%,#0d1013 100%)}
+.menubar{position:absolute;left:0;right:0;top:0;height:22px;background:rgba(10,12,14,.55);display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:rgba(255,255,255,.7);z-index:1}
+.menubar .r{margin-left:auto;font:10px var(--mono);color:rgba(255,255,255,.45)}
+.desk{position:absolute;inset:22px 0 0 0}
+.win{position:absolute;border-radius:9px;background:#1d2226;border:1px solid rgba(255,255,255,.09);box-shadow:0 14px 30px rgba(0,0,0,.45);overflow:hidden}
+.win .bar{height:22px;display:flex;align-items:center;gap:6px;padding:0 9px;border-bottom:1px solid rgba(255,255,255,.06);font-size:10.5px;color:rgba(255,255,255,.55)}
+.win .bar i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.16)}
+.win .body{position:absolute;inset:22px 0 0 0;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.045) 9px 13px,transparent 13px 18px)}
+
+/* optional zones: appear / resize only — the desktop itself never moves */
+.zones{position:absolute;inset:22px 0 0 0;pointer-events:none;z-index:2}
+.zone{position:absolute;border:1px solid rgba(95,212,232,.45);background:rgba(95,212,232,.05);border-radius:9px;opacity:0;
+  transition:left .22s cubic-bezier(.25,.8,.25,1),top .22s cubic-bezier(.25,.8,.25,1),width .22s cubic-bezier(.25,.8,.25,1),height .22s cubic-bezier(.25,.8,.25,1),opacity .14s linear}
+.zone.on{opacity:1}
+
+/* A quiet attention layer appears immediately; previews remain above it. */
+.focus-filter{position:absolute;inset:0;z-index:3;pointer-events:none;background:rgba(4,8,12,.23);opacity:0;visibility:hidden;transition:opacity .16s linear,visibility 0s .16s}
+.preview-open .focus-filter{opacity:1;visibility:visible;backdrop-filter:blur(2px) saturate(.8);-webkit-backdrop-filter:blur(2px) saturate(.8);transition:none}
+#stage[data-filter="off"] .focus-filter{display:none}
+.rm .focus-filter{transition:none}
+/* ——— the filmstrip ——— */
+.film{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(78%,1000px);z-index:4;opacity:0;transition:opacity .18s linear;pointer-events:none}
+.film.on{opacity:1;transition-duration:.12s;pointer-events:auto}
+.tray{position:relative;padding:6px 0 8px;border-radius:12px;background:rgba(16,19,22,.94);border:.75px solid rgba(255,255,255,.10);box-shadow:0 12px 28px rgba(0,0,0,.5)}
+.viewport{position:relative;overflow:hidden;height:calc(var(--cw) * .625 + 36px);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 22px,#000 calc(100% - 22px),transparent 100%)}
+.track{position:absolute;left:0;top:5px;display:flex;gap:var(--gap);will-change:transform;transition:transform .22s cubic-bezier(.25,.8,.25,1)}
+.card{position:relative;width:var(--cw);flex:none;padding:0;border:0;background:none;border-radius:6px;text-align:left;cursor:pointer;color:inherit}
+.card .shot{position:relative;width:100%;aspect-ratio:16/10;border-radius:6px;overflow:hidden;background:#1a2127;border:.75px solid rgba(255,255,255,.08)}
+.card svg{display:block;width:100%;height:100%}
+.card .cap{display:flex;align-items:center;gap:6px;height:22px;padding:0 2px;font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden}
+.card .cap b{font:700 11px var(--mono);color:var(--dim);min-width:16px}
+.card .cap span{overflow:hidden;text-overflow:ellipsis}
+.card .dots{margin-left:auto;display:flex;gap:3px}
+.card .dots i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.55}
+.card{opacity:var(--o,.5);transition:opacity .16s linear}
+.card.sel .cap{color:var(--text)} .card.sel .cap b{color:var(--ink)}
+.card:hover{--o:1}
+.card.here .shot::after{content:"";position:absolute;right:5px;top:5px;width:5px;height:5px;border-radius:50%;background:var(--cyan)}
+/* focus frame: one element, never a per-card border */
+.frame{position:absolute;top:1px;left:0;width:calc(var(--cw) + 8px);height:calc(var(--cw) * .625 + 8px);border:1.5px solid var(--ink);border-radius:9px;pointer-events:none;
+  will-change:transform;transition:transform .22s cubic-bezier(.25,.8,.25,1)}
+.frame::before,.frame::after{content:"";position:absolute;top:50%;width:3px;height:14px;margin-top:-7px;border-radius:2px;background:var(--cyan);opacity:0;transition:opacity .2s}
+.frame::before{left:-6px} .frame::after{right:-6px}
+.frame.go-l::before,.frame.go-r::after{opacity:1;transition-duration:.04s}
+/* end caps: the strip visibly ends — no reaction on extra presses */
+.cap-end{position:absolute;top:0;width:2px;height:calc(var(--cw) * .625);border-radius:1px;background:rgba(255,255,255,.14)}
+/* map: the original rail, reborn as the strip's scrollbar */
+.map{display:flex;justify-content:center;margin-top:6px}
+.map .cells{position:relative;display:flex;gap:4px;padding:3px 4px}
+.map .cells i{width:7px;height:7px;border-radius:2px;background:rgba(255,255,255,.18)}
+.map .cells i.sel{background:var(--ink)}
+.map .brk{position:absolute;top:0;bottom:0;border:1px solid rgba(255,255,255,.28);border-radius:4px;background:none;box-shadow:none;transition:left .22s cubic-bezier(.25,.8,.25,1),width .22s}
+.rm .track,.rm .frame,.rm .zone,.rm .map .brk,.rm .card{transition:none!important}
+.rm .zone{transition:opacity .14s linear!important}
+
+/* ——— notes ——— */
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin-top:18px}
+@media (max-width:860px){.cols{grid-template-columns:1fr} :root{--cw:128px}}
+.card-n{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:var(--dim)}
+.card-n h2{color:var(--text);font-size:14px;margin:0 0 6px;font-weight:600}
+.card-n h3{color:var(--text);font-size:12px;margin:12px 0 4px;font-weight:600}
+.card-n p{margin:0 0 8px} .card-n ul{margin:4px 0 0;padding-left:16px}
+.card-n b{color:var(--text);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../">← Study index</a> · <a href="../previews/">Codex previews</a> · <a href="../opus-spatial/">Opus spatial</a> · <a href="../opus/">Opus rail</a></p>
+<h1>Desktop filmstrip: Opus design pass <span class="sim">SIMULATED PREVIEW</span></h1>
+<p class="sub">Every desktop has a slot in one continuous strip, cropped at the tray's edges. The fixed focus sits at the vertical center. A light dim and soft blur appear immediately behind the preview. The desktop never moves; optional translucent zones appear or resize. Click the stage (or Tab to it) and use ← / →, or use the buttons.</p>
+
+<div class="row" role="toolbar" aria-label="Focus behaviour">
+  <span class="lab">Focus</span>
+  <button data-anchor="fixed" aria-pressed="true">Fixed centre</button>
+  <button data-anchor="edge" aria-pressed="false">Travel · pan at edge</button>
+  <button data-anchor="ahead" aria-pressed="false">Travel · keep one ahead</button>
+  <span class="sep"></span>
+  <span class="lab">Preview</span>
+  <button data-look="shot" aria-pressed="true">Snapshot</button>
+  <button data-look="plan" aria-pressed="false">Plan</button>
+</div>
+<div class="row" role="toolbar" aria-label="Scenarios">
+  <button data-s="prev">◀ Previous</button>
+  <button data-s="next">Next ▶</button>
+  <span class="sep"></span>
+  <button data-s="sweepR">Sweep 1→N</button>
+  <button data-s="round">Round trip 1→N→1</button>
+  <button data-s="reverse">Reversal 4→9→6</button>
+  <button data-s="nine">9 → 10</button>
+  <button data-s="first">First boundary</button>
+  <button data-s="last">Last boundary</button>
+  <span class="sep"></span>
+  <label>Rate <select id="rate"><option value="45">key repeat (45ms)</option><option value="110" selected>fast taps (110ms)</option><option value="320">deliberate (320ms)</option></select></label>
+  <label>Desktops <select id="total"><option>4</option><option>7</option><option>12</option><option selected>18</option></select></label>
+  <label><input type="checkbox" id="keep"> Keep open</label>
+  <label><input type="checkbox" id="zonesOn" checked> Layout zones</label>
+  <label><input type="checkbox" id="filterOn" checked> Focus backdrop</label>
+  <label><input type="checkbox" id="rm"> Reduce Motion</label>
+</div>
+
+<div id="stage" tabindex="0" aria-label="Simulated desktop with filmstrip. Use left and right arrows.">
+  <div class="menubar"><b>Terminal</b><span>Shell</span><span>Edit</span><span>View</span><span>Window</span><span class="r">Tue 13 Oct  9:41</span></div>
+  <div class="desk" id="desk"></div>
+  <div class="zones" id="zones"></div>
+  <div class="focus-filter" aria-hidden="true"></div>
+  <div class="film" id="film">
+    <div class="tray">
+      <div class="viewport" id="vp"><div class="track" id="track"></div><div class="frame" id="frame"></div></div>
+      <div class="map"><div class="cells" id="map"></div></div>
+    </div>
+  </div>
+</div>
+<div class="status"><span id="where"></span><span id="log" aria-live="polite">ready</span></div>
+
+<div class="cols">
+  <div class="card-n">
+    <h2>Filmstrip details</h2>
+    <ul>
+      <li><b>Centered focus.</b> The fixed frame sits halfway down the desktop. The focus backdrop appears immediately when the preview opens and clears when it closes; the strip stays crisp above it.</li>
+      <li><b>Keep one ahead.</b> A third behaviour: the frame travels, but the strip pans one slot <i>before</i> the edge, so the next desktop is always visible in the direction you're moving (except at the true ends). With "pan at edge", the selected desktop sits against the crop, and you press into a desktop you can't see yet.</li>
+      <li><b>The rail is now the scrollbar.</b> The original top rail lives under the strip: one cell per desktop, the selected cell bright, and a bracket showing which part of the strip is visible. Position in the whole set stays readable when the strip is cropped.</li>
+      <li><b>One focus frame, not per-card borders.</b> A single element moves (or stays put in fixed centre). Cards never change size, so nothing reflows on 9→10 or at speed. Cyan ticks on the frame's leading side show direction, then fade.</li>
+      <li><b>Legibility by distance.</b> Card opacity drops with distance from the selection (1 → .72 → .5 → .36). Each caption carries a large monospaced number, a name and one dot per window. The number and dots stay readable when the thumbnail doesn't.</li>
+      <li><b>Ends are shapes, not reactions.</b> In fixed centre, the strip shows empty space and a thin end cap past desktop 1 or N. Extra presses do nothing.</li>
+      <li><b>"You are here."</b> A small cyan dot marks the desktop that is actually showing behind the strip. This keeps browsing and location separate.</li>
+      <li><b>Plan view.</b> A toggle draws previews as window plans (outline + app label) instead of snapshots, as the image-free option.</li>
+    </ul>
+  </div>
+  <div class="card-n">
+    <h2>Recommendation</h2>
+    <p><b>Fixed centre, halfway down the desktop.</b> The selected preview stays anchored while neighboring desktops pass through the strip. A restrained backdrop helps the previews hold attention without moving the work underneath. Travel variants remain available for comparison.</p>
+    <h3>Browser illustration vs native evidence</h3>
+    <p>This page shows behaviour, not cost. Nothing here measures native performance. For a native build:</p>
+    <ul>
+      <li>Strip and frame: one panel, a CALayer per card, transform-only animation and a gradient mask for the crop. The optional focus backdrop adds a full-stage blur and dim in this browser study. Native compositor cost must be measured; a dim-only layer is a cheaper alternative to compare.</li>
+      <li>Snapshots are the open question: capturing inactive spaces needs ScreenCaptureKit and permission, can be stale and costs texture memory. Decode only the visible cards plus one margin card on each side (at most 8 of 18). Five to eight 336×210 thumbnails are about 1.4–2.3 MB of RGBA. Show the plan, never a blank, while a snapshot is missing or stale.</li>
+      <li>Plans need only per-space window frames and owners (the same data as the Spaces strip). No images are kept.</li>
+      <li>Zones: up to 3 stroked rects on the existing overlay; native cost remains unmeasured.</li>
+    </ul>
+    <h3>Limitations</h3>
+    <p>Layouts and thumbnails are invented SVG. Timing is CSS, not Core Animation. Multi-display, full-screen spaces and HiDPI thumbnail cost are not modelled. The desktop is held still by design, so the study does not show a real switch happening underneath.</p>
+  </div>
+</div>
+</main>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), track = $('#track'), frame = $('#frame'), vp = $('#vp'), film = $('#film'), mapEl = $('#map'), zonesEl = $('#zones');
+  const mq = matchMedia('(prefers-reduced-motion: reduce)');
+  const HERE = 6, DISMISS = 1300;
+  let total = 18, sel = HERE, anchor = 'fixed', look = 'shot', rate = 110, rm = false, runId = 0, timer = null, offset = 0;
+  const reduce = () => rm || mq.matches;
+  const log = t => { $('#log').textContent = t; };
+
+  const NAMES = ['Inbox','tideline','Reading','Studio','Build','Workbench','Notes','Research','Review','Writing','Terminal','Library','Layout','Planning','Tools','Reference','Sketches','Archive'];
+  const APPS = { Editor:'#2b4a5c', Terminal:'#264a3f', Browser:'#3f4a63', Notes:'#4a4558', Mail:'#4d4434', Design:'#5a4842' };
+  const KINDS = Object.keys(APPS);
+  function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const layouts = [];
+  for (let d=1; d<=18; d++){
+    const r = rng(d*7919+3), n = 1 + Math.floor(r()*3), w = [];
+    for (let k=0;k<n;k++){ const ww = 34+r()*36, hh = 38+r()*40; w.push({x:3+r()*(94-ww), y:4+r()*(92-hh), w:ww, h:hh, app:KINDS[Math.floor(r()*KINDS.length)]}); }
+    layouts[d] = w;
+  }
+
+  function thumb(d){
+    const W = 160, H = 100, ws = layouts[d];
+    const rect = (w,i) => {
+      const x = w.x/100*W, y = w.y/100*H, ww = w.w/100*W, hh = w.h/100*H, front = i===ws.length-1;
+      if (look === 'plan')
+        return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" rx="3" fill="${APPS[w.app]}" fill-opacity=".35" stroke="#cfe3ea" stroke-opacity="${front?.85:.45}" stroke-width=".8"/>`+
+               `<text x="${x+4}" y="${y+10}" font-size="7.5" font-family="-apple-system,system-ui,sans-serif" fill="#e9eef0" fill-opacity="${front?.95:.6}">${w.app}</text>`;
+      let lines = ''; for (let j=0;j<Math.floor((hh-10)/6);j++) lines += `<rect x="${x+4}" y="${y+10+j*6}" width="${(ww-8)*(.45+((j*37+d)%5)/10)}" height="1.6" rx=".8" fill="#fff" fill-opacity=".16"/>`;
+      return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" rx="3" fill="${APPS[w.app]}" stroke="#000" stroke-opacity=".35" stroke-width=".6"/><rect x="${x}" y="${y}" width="${ww}" height="5.5" rx="3" fill="#fff" fill-opacity=".08"/>${lines}`;
+    };
+    const bg = look === 'plan' ? '#141a1f' : '#1f2a33';
+    return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><rect width="${W}" height="${H}" fill="${bg}"/>${ws.map(rect).join('')}</svg>`;
+  }
+
+  // the desktop behind is painted once and never touched again
+  $('#desk').innerHTML = layouts[HERE].map(w=>`<div class="win" style="left:${w.x}%;top:${w.y}%;width:${w.w}%;height:${w.h}%"><div class="bar"><i></i><i></i><i></i><span style="margin-left:6px">${w.app} — ${NAMES[HERE-1]}</span></div><div class="body"></div></div>`).join('');
+  const zoneNodes = [0,1,2].map(()=>{ const z=document.createElement('div'); z.className='zone'; zonesEl.appendChild(z); return z; });
+
+  function build(){
+    track.innerHTML = '';
+    for (let d=1; d<=total; d++){
+      const b = document.createElement('button'); b.className='card'; b.dataset.d=d;
+      b.setAttribute('aria-label', `Desktop ${d}: ${NAMES[d-1]}`);
+      b.innerHTML = `<div class="shot">${thumb(d)}</div><div class="cap"><b>${d}</b><span>${NAMES[d-1]}</span><span class="dots">${layouts[d].map(()=>'<i></i>').join('')}</span></div>`;
+      b.addEventListener('click', ()=>{ runId++; go(d - sel, true); });
+      track.appendChild(b);
+    }
+    track.insertAdjacentHTML('afterbegin','<div class="cap-end" style="position:absolute;left:-8px"></div>');
+    track.insertAdjacentHTML('beforeend',`<div class="cap-end" style="position:absolute;right:-8px"></div>`);
+    mapEl.innerHTML = Array.from({length:total},()=>'<i></i>').join('') + '<div class="brk"></div>';
+    offset = null; layoutStrip(0, true);
+  }
+
+  const px = () => { const cw = track.querySelector('.card').offsetWidth, gap = parseFloat(getComputedStyle(track).columnGap)||10; return {cw, P: cw+gap, V: vp.clientWidth}; };
+
+  function layoutStrip(dir, instant){
+    const {cw, P, V} = px(), pad = 26, x = (sel-1)*P, full = total*P - (P-cw);
+    const minOff = Math.min(pad, V - pad - full), maxOff = pad;
+    const fits = full <= V - 2*pad;
+    if (fits) offset = (V - full)/2;
+    else if (anchor === 'fixed') offset = (V - cw)/2 - x;
+    else {
+      if (offset == null) offset = (V - cw)/2 - x;
+      const ahead = anchor === 'ahead' ? P : 0;
+      const lo = pad + (sel>1 ? ahead : 0), hi = V - pad - cw - (sel<total ? ahead : 0);
+      if (x + offset < lo) offset = lo - x;
+      if (x + offset > hi) offset = hi - x;
+      offset = Math.max(minOff, Math.min(maxOff, offset));
+    }
+    const fx = x + offset - 4;
+    if (instant || reduce()){ track.style.transition = frame.style.transition = 'none'; }
+    track.style.transform = `translateX(${offset}px)`;
+    frame.style.transform = `translateX(${fx}px)`;
+    if (instant || reduce()){ void track.offsetWidth; track.style.transition = frame.style.transition = ''; }
+    // distance-based legibility
+    [...track.querySelectorAll('.card')].forEach((c,i)=>{
+      const dist = Math.abs(i+1-sel);
+      c.style.setProperty('--o', [1,.72,.5,.36][Math.min(dist,3)]);
+      c.classList.toggle('sel', i+1===sel); c.classList.toggle('here', i+1===HERE);
+      if (i+1===sel) c.setAttribute('aria-current','true'); else c.removeAttribute('aria-current');
+    });
+    frame.classList.remove('go-l','go-r');
+    if (dir && !reduce()){ void frame.offsetWidth; frame.classList.add(dir>0?'go-r':'go-l'); }
+    // map bracket = visible range of the strip
+    const cells = [...mapEl.querySelectorAll('i')]; cells.forEach((c,i)=>c.classList.toggle('sel', i+1===sel));
+    const first = Math.max(0, Math.floor((-offset + 22) / P)), last = Math.min(total-1, Math.floor((V - 22 - offset - cw*.35) / P));
+    const a = cells[first], b = cells[Math.max(first,last)], br = mapEl.querySelector('.brk');
+    if (a && b){ br.style.left = (a.offsetLeft-2)+'px'; br.style.width = (b.offsetLeft + b.offsetWidth - a.offsetLeft + 4)+'px'; }
+    $('#where').textContent = `Desktop behind: ${HERE} (${NAMES[HERE-1]}) · held still · selected in strip: ${sel} of ${total}`;
+    paintZones();
+  }
+
+  function paintZones(){
+    const on = $('#zonesOn').checked && film.classList.contains('on');
+    zoneNodes.forEach((z,i)=>{
+      const w = layouts[sel][i];
+      if (!on || !w){ z.classList.remove('on'); return; }
+      Object.assign(z.style,{left:w.x+'%',top:w.y+'%',width:w.w+'%',height:w.h+'%'});
+      z.classList.add('on');
+    });
+  }
+
+  function show(){
+    film.classList.add('on');
+    stage.classList.add('preview-open');
+    paintZones();
+    clearTimeout(timer);
+    if (!$('#keep').checked) timer = setTimeout(()=>{ film.classList.remove('on'); stage.classList.remove('preview-open'); paintZones(); }, DISMISS);
+  }
+
+  function go(delta, fromClick){
+    const to = sel + delta;
+    if (to < 1 || to > total || delta === 0){ if (delta) log(`${delta>0?'→':'←'} at ${sel} — silent`); return; }
+    const opening = !film.classList.contains('on');
+    sel = to;
+    film.classList.add('on');
+    layoutStrip(Math.sign(delta), opening && !fromClick);
+    show();
+  }
+
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  async function run(seq, label){
+    const id = ++runId; log(label);
+    for (const s of seq){
+      if (id!==runId) return;
+      if (typeof s === 'object'){ sel = s.jump; offset = null; film.classList.add('on'); layoutStrip(0, true); show(); await wait(350); continue; }
+      go(s); await wait(rate);
+    }
+    if (id===runId) log(label + ' — done');
+  }
+  const rep = (d,n)=>Array(n).fill(d);
+  const scen = {
+    prev: ()=>{ runId++; go(-1); }, next: ()=>{ runId++; go(1); },
+    sweepR: ()=>run([{jump:1}, ...rep(1,total-1)], `sweep 1→${total}`),
+    round: ()=>run([{jump:1}, ...rep(1,total-1), ...rep(-1,total-1)], `round trip 1→${total}→1`),
+    reverse: ()=> total<9 ? log('needs ≥9 desktops') : run([{jump:4}, ...rep(1,5), ...rep(-1,3)], 'reversal 4→9→6'),
+    nine: ()=> total<10 ? log('needs ≥10 desktops') : run([{jump:8}, 1, 1], '8→9→10'),
+    first: ()=>run([{jump:2}, -1, -1, -1, -1], 'first boundary (2→1, then silent)'),
+    last: ()=>run([{jump:total-1}, 1, 1, 1, 1], `last boundary (${total-1}→${total}, then silent)`),
+  };
+  document.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>{ scen[b.dataset.s](); stage.focus({preventScroll:true}); }));
+  stage.addEventListener('keydown', e => { if (e.key==='ArrowRight'||e.key==='ArrowLeft'){ e.preventDefault(); runId++; go(e.key==='ArrowRight'?1:-1); } });
+  stage.addEventListener('mousedown', e => { if (!e.target.closest('.card')) stage.focus(); });
+  const group = (attr, set) => document.querySelectorAll(`[data-${attr}]`).forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll(`[data-${attr}]`).forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+    set(b.dataset[attr]); stage.focus({preventScroll:true});
+  }));
+  group('anchor', v => { anchor = v; offset = null; film.classList.add('on'); layoutStrip(0, true); show(); log(`focus: ${v}`); });
+  group('look', v => { look = v; build(); film.classList.add('on'); show(); });
+  $('#rate').addEventListener('change', e => rate = +e.target.value);
+  $('#total').addEventListener('change', e => { total = +e.target.value; runId++; sel = Math.min(sel, total); build(); film.classList.add('on'); show(); });
+  $('#keep').addEventListener('change', show);
+  $('#zonesOn').addEventListener('change', paintZones);
+  $('#filterOn').addEventListener('change', e => { stage.dataset.filter = e.target.checked ? 'on' : 'off'; show(); });
+  const syncRM = () => document.body.classList.toggle('rm', reduce());
+  $('#rm').addEventListener('change', e => { rm = e.target.checked; syncRM(); });
+  mq.addEventListener?.('change', syncRM); syncRM();
+  addEventListener('resize', () => { offset = null; layoutStrip(0, true); });
+
+  build(); film.classList.add('on'); show();
+})();
+</script>
+</body>
+</html>

@@ -96,7 +96,7 @@ if [[ -z "$installer_source" ]]; then
   command -v git >/dev/null || { echo 'Install git before running the bootstrap.' >&2; exit 1; }
   installer_tmp=$(mktemp -d)
   # Use one checkout for all installer and app files. No mixed revisions during installation.
-  git clone --filter=blob:none --no-checkout --depth 1 --branch "${LATTICES_INSTALL_REF:-main}" https://github.com/arach/lattices.git "$installer_tmp/source"
+  git clone --filter=blob:none --no-checkout --depth 1 --branch "${LATTICES_INSTALL_REF:-main}" https://github.com/lattices-dev/lattices.git "$installer_tmp/source"
   git -C "$installer_tmp/source" sparse-checkout set --no-cone '/bin/' '/apps/linux/' '/packages/host-linux/' '/packages/npm/sdk/' '/assets/logo-mark.svg' '/package.json' '/docs/'
   git -C "$installer_tmp/source" checkout
   installer_source="$installer_tmp/source"

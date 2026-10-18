@@ -5,7 +5,18 @@ final class AppActivationCoordinator {
 
     private var surfaceVisibilityProviders: [(id: String, isVisible: () -> Bool)] = []
 
-    private init() {}
+    private var closeObserver: NSObjectProtocol?
+
+    private init() {
+        // Windows closed from the title bar never call back into their
+        // controller. Re-check once the close has landed, so Lattices leaves
+        // ⌘Tab with its last window.
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.refresh() }
+        }
+    }
 
     func registerSurface(id: String, isVisible: @escaping () -> Bool) {
         guard !surfaceVisibilityProviders.contains(where: { $0.id == id }) else { return }

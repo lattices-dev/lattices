@@ -1,13 +1,27 @@
-# Blink
+<p><a href="../../README.md">← Lattices</a> &nbsp; / &nbsp; Blink</p>
 
-Spatial notes for macOS, with floating native panels and a CLI over local Markdown.
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/hero-mobile-dark.svg">
+  <source media="(max-width: 600px) and (prefers-color-scheme: light)" srcset="assets/readme/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.svg">
+  <img src="assets/readme/hero-light.svg" width="1200" alt="Blink. Spatial Markdown notes for macOS.">
+</picture>
 
-Keep notes beside the work they describe, with each panel remembering its position
-and size. Create or recall a note from the menu bar, command palette, or global
-hotkey. Scripts and agents edit the same files, and the running app picks up their
-changes.
+<p align="center">
+  <a href="https://lattices.dev/blink">Product page ↗</a> &nbsp; · &nbsp;
+  <a href="#install-and-run">Get started</a> &nbsp; · &nbsp;
+  <a href="docs/cli.md">Documentation</a> &nbsp; · &nbsp;
+  <a href="../../skills/blink/SKILL.md">Agent skill</a>
+</p>
 
-[Product page](https://lattices.dev/blink) · [CLI reference](docs/cli.md)
+Blink is a native macOS app for floating Markdown notes. Each note remembers its position and size. The app and CLI read and edit the same local files.
+
+<table><tr>
+<td width="33%" valign="top"><strong>Quick capture</strong><br>Open a note from the menu bar, command palette, or a global hotkey.</td>
+<td width="33%" valign="top"><strong>Floating panels</strong><br>Arrange floating panels beside your work. Return to the same position and size.</td>
+<td width="33%" valign="top"><strong>Local Markdown</strong><br>You and your agents read and edit the same local Markdown files.</td>
+</tr></table>
 
 ## Install and run
 
@@ -28,47 +42,6 @@ You can also get the app from the [download page](https://lattices.dev/blink/dow
 Blink runs from the menu bar without a Dock icon. Press Hyper+N to create a note;
 Hyper means Control+Option+Shift+Command. The default Hyper+B shortcut shows or
 hides the note panels. Hotkeys are configurable in [config.json](docs/config.md).
-
-## Build from source
-
-Use macOS 14+, a Swift 6 toolchain, Bun, and Node.js 18+. The editor build script
-runs with Node. SwiftPM resolves a pinned revision of the Hudson repository
-over SSH, so the build needs Git access to that repository.
-
-From the Lattices repository root:
-
-```sh
-cd products/blink
-(cd web/editor && bun install && bun run build)
-./scripts/run-app.sh --debug --restart
-```
-
-The launch script builds `BlinkApp`, bundles the editor into `dist/Blink.app`, and
-launches that bundle. `--restart` stops an existing process from the same bundle
-path. Build the editor first: the native script does not build it for you.
-
-To build and inspect the notes CLI from the product directory:
-
-```sh
-swift build --product blink
-.build/debug/blink ls --json
-```
-
-Use `.build/debug/blink` in place of `blink` in the note examples below. The
-`blink app` installer belongs to the packaged command wrapper, not the Swift
-executable.
-
-The repository root also provides build and test scripts:
-
-```sh
-bun run blink:build
-bun run blink:check
-```
-
-These run the product's Swift build and tests. For local Hudson development,
-set `BLINK_HUDSON_SOURCE=path` and optionally `BLINK_HUDSON_PATH`; its default
-is `../../../hudson`, relative to this product. See [Package.swift](Package.swift)
-for dependency selection and [release documentation](docs/release.md) for packaging.
 
 ## Notes and panels
 
@@ -144,6 +117,50 @@ tools/release/      CLI and DMG packaging, signing, and release tooling
 docs/               CLI, configuration, workspaces, sync, and release docs
 ```
 
+<details>
+<summary><strong>Build from source</strong></summary>
+
+Use macOS 14+, a Swift 6 toolchain, Bun, and Node.js 18+. The editor build script
+runs with Node. SwiftPM resolves a pinned revision of the Hudson repository
+over SSH, so the build needs Git access to that repository.
+
+From the Lattices repository root:
+
+```sh
+cd products/blink
+(cd web/editor && bun install && bun run build)
+./scripts/run-app.sh --debug --restart
+```
+
+The launch script builds `BlinkApp`, bundles the editor into `dist/Blink.app`, and
+launches that bundle. `--restart` stops an existing process from the same bundle
+path. Build the editor first: the native script does not build it for you.
+
+To build and inspect the notes CLI from the product directory:
+
+```sh
+swift build --product blink
+.build/debug/blink ls --json
+```
+
+Use `.build/debug/blink` in place of `blink` in the note examples below. The
+`blink app` installer belongs to the packaged command wrapper, not the Swift
+executable.
+
+The repository root also provides build and test scripts:
+
+```sh
+bun run blink:build
+bun run blink:check
+```
+
+These run the product's Swift build and tests. For local Hudson development,
+set `BLINK_HUDSON_SOURCE=path` and optionally `BLINK_HUDSON_PATH`; its default
+is `../../../hudson`, relative to this product. See [Package.swift](Package.swift)
+for dependency selection and [release documentation](docs/release.md) for packaging.
+
+</details>
+
 ## Documentation
 
 - [CLI](docs/cli.md): note operations, live panels, and structured output.
@@ -152,3 +169,8 @@ docs/               CLI, configuration, workspaces, sync, and release docs
 - [iOS companion](docs/ios-sync.md): pairing, offline snapshots, and build instructions.
 - [Releases](docs/release.md): build artifacts, signing, and distribution.
 - [Product page](https://lattices.dev/blink): overview and downloads.
+
+---
+
+<p align="center">
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>

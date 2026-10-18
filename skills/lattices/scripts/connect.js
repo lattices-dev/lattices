@@ -5,7 +5,7 @@
 //
 // Verifies the daemon is reachable and prints workspace status.
 
-import { daemonCall, isDaemonRunning } from "@arach/lattices";
+import { daemonCall, isDaemonRunning } from "@lattices/lattices";
 
 async function main() {
   if (!(await isDaemonRunning())) {

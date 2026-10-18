@@ -11,6 +11,7 @@ import { DriverIdentityContext } from "./driver-identity.js";
 import { canRollbackLayerOpen, completeLayerOpen } from "./layer-open-transaction.js";
 import { DriveCursorPresenter, parseDriveCursorStyle } from "./drive-cursor-presenter.js";
 import { type LayerView } from "./layer-primitives.js";
+import { LayerWorkspaces } from "./layer-workspaces.js";
 import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
 
@@ -24,6 +25,7 @@ import {
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type {
   AxActionTier,
+  AgentLayerStatus,
   Bounds,
   DriveLease,
   DriveMode,
@@ -52,6 +54,8 @@ import {
   ocrScreenshot,
   StageDirector,
   AgentLayerDirector,
+  agentLayerStateDir,
+  parseAgentWorkspace,
   agentLayerRouting,
   StageSceneError,
   agentCursorIsLive,
@@ -130,11 +134,24 @@ const nativeHostPath = resolve(
 );
 const driveClient = new DriveAgentClient({ launcherPath: nativeHostPath, clientName: "Action MCP" });
 const stageDirector = new StageDirector(nativeHostPath);
-const agentLayerDirector = new AgentLayerDirector(nativeHostPath);
-/** What the last layer snapshot showed, so primitives can read points in its pixels. */
-let layerView: LayerView | undefined;
-/** The drive the layer runs as: every act on it is a step of this one lease. */
-let layerLease: { leaseId: string; owned: boolean } | undefined;
+interface LayerContext {
+  workspace: string;
+  director: AgentLayerDirector;
+  driver: LayerDriver;
+  view?: LayerView;
+  lease?: { leaseId: string; owned: boolean };
+  ownedLayer?: AgentLayerStatus;
+}
+
+const layerWorkspaces = new LayerWorkspaces<LayerContext>((workspace) => ({
+  workspace,
+  director: new AgentLayerDirector(nativeHostPath, { workspace }),
+  driver: createLayerDriver(),
+}));
+
+function layerContext(): LayerContext {
+  return layerWorkspaces.current();
+}
 const driverIdentity = new DriverIdentityContext();
 const cursorPresenter = new DriveCursorPresenter({
   start: async ({ lease, label, point }) => startAgentCursor({ nativeHostPath, lease, label, point }),
@@ -172,6 +189,15 @@ function tool(
   inputSchema: JsonSchemaObject = objectSchema(),
   annotations: Tool["annotations"] = {},
 ): Tool {
+  if (name.startsWith("action.layer.")) {
+    inputSchema = {
+      ...inputSchema,
+      properties: {
+        ...inputSchema.properties,
+        workspace: { type: "string", description: "Named virtual workspace. Defaults to default; every layer operation targets only this workspace." },
+      },
+    };
+  }
   return {
     name,
     title,
@@ -476,19 +502,21 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function publishDriveNote(line: string, leaseId?: string): Promise<JsonObject> {
+async function publishDriveNote(line: string, leaseId?: string, workspace?: string): Promise<JsonObject> {
   const note = {
     at: now(),
     leaseId,
     line: line.slice(0, 120),
   };
-  const supervisionDir = resolve(
+  const supervisionDir = workspace !== undefined ? agentLayerStateDir(workspace) : resolve(
     homedir(),
     "Library/Application Support/Action/runtime/supervision",
   );
   const notesPath = resolve(supervisionDir, "notes.jsonl");
   await mkdir(supervisionDir, { recursive: true });
   await appendFile(notesPath, `${JSON.stringify(note)}\n`);
+
+  if (workspace !== undefined) return { note, notesPath, workspace };
 
   const registrationsDir = resolve(supervisionDir, "registrations");
   if (await pathExists(registrationsDir)) {
@@ -1010,7 +1038,7 @@ const tools: Tool[] = [
     "action.layer.open",
     "Open Agent Layer",
     "Check capabilities and layer_status before opening. Requires a persistent monitor explicitly prepared with CLI layer prepare; this tool never creates or reconfigures a display. A compiled feature or missing quarantine is not host desktop-isolation acceptance. Do not bypass a setup quarantine or substitute ordinary background browser opening. "
-      + "Move an app's windows onto the prepared virtual display with a PiP viewer. For browser tasks, prefer {browser:true,url,task}: Action-owned Chrome uses CDP for page input and navigation. Native input can temporarily borrow focus/pointer; restoring them afterward is not continuous isolation. One task session at a time; opening again closes the previous task, not its monitor. "
+      + "Move an app's windows onto the prepared virtual display with a PiP viewer. For browser tasks, prefer {browser:true,url,task}: Action-owned Chrome uses CDP for page input and navigation. Native input can temporarily borrow focus/pointer; restoring them afterward is not continuous isolation. One task session per workspace; close your existing task explicitly before opening another. Native keyboard and pointer remain shared across workspaces. "
       + "The app need not be running or have a window: a bundleId that isn't running is launched in the background, an app with no windows gets a new one, "
       + "and windows the app opens later (cmd+n, pop-ups) move onto the layer by themselves. For native-app URL opening, pass bundleId or pid with url; this path is distinct from the CDP browser workflow. "
       + "The layer is one drive: it begins a lease named for the task (or the app and page), every act on the layer runs under it, and action.layer.close releases it. The reply carries its leaseId and bound session identity. Browser sessions refuse native fallback; replacement layers require a new explicit open.",
@@ -1021,10 +1049,12 @@ const tools: Tool[] = [
       width: numberProperty("Expected prepared display width in points. Pass with height; mismatches refuse rather than resize."),
       height: numberProperty("Expected prepared display height in points. Pass with width; mismatches refuse rather than resize."),
       pip: booleanProperty("Show the picture-in-picture viewer. Defaults to on."),
+      previewWorkspace: textProperty("Show this workspace's preview on another prepared workspace instead of a physical display. Must differ from workspace."),
+      previewFull: booleanProperty("Show the entire virtual display in the preview instead of cropping to app windows. Use true for a stage containing another workspace's preview."),
       windowId: numberProperty("Move only this window (kCGWindowNumber). Use to borrow one window of an app the user is also using, such as a browser."),
       windowTitle: textProperty("Move only windows whose title contains this text."),
       browser: booleanProperty("Open Action-owned Chrome on the prepared display. Page interaction uses DevTools; the task workflow still requires host desktop-preservation acceptance. Uses a separate layer browser debugging port from browser_* tools."),
-      profile: textProperty("Action Chrome profile for the layer browser. Supplying it selects the browser workflow. Defaults to agent-layer, or ACTION_LAYER_BROWSER_PROFILE."),
+      profile: textProperty("Action Chrome profile base for this workspace's private browser identity. Supplying it selects the browser workflow. Named workspaces use separate profiles and ports."),
       task: textProperty("What the agent is doing on the layer: the drive's name in runs and the supervision HUD. Defaults to the app and page."),
       leaseId: textProperty("Run the layer under this existing drive lease instead of beginning one."),
     }),
@@ -1044,7 +1074,10 @@ const tools: Tool[] = [
     "action.layer.pip",
     "Show Agent Layer Viewer",
     "Bring the picture-in-picture viewer back after the user hid it with its close button. The layer keeps running while the viewer is hidden.",
-    objectSchema(),
+    objectSchema({
+      previewWorkspace: textProperty("Prepared workspace to contain this live preview. Must differ from workspace. Omit to retain its current preview destination."),
+      previewFull: booleanProperty("Show the entire virtual display, including embedded workspace previews. False crops to app windows; omitted retains current framing."),
+    }),
     { readOnlyHint: false, idempotentHint: true },
   ),
   tool(
@@ -1289,7 +1322,7 @@ async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, dir
 
 function rememberLayerView(snapshot: { ok: boolean; crop?: LayerView["crop"]; width?: number; height?: number }): void {
   if (snapshot.ok && snapshot.crop && snapshot.width && snapshot.height) {
-    layerView = { crop: snapshot.crop, width: snapshot.width, height: snapshot.height };
+    layerContext().view = { crop: snapshot.crop, width: snapshot.width, height: snapshot.height };
   }
 }
 
@@ -1317,14 +1350,14 @@ export function layerTaskName(input: { bundleId?: string; url?: string; title?: 
  * session reads as one drive rather than a row per scroll.
  */
 async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
-  const previous = layerLease;
-  layerLease = undefined;
+  const previous = layerContext().lease;
+  layerContext().lease = undefined;
   if (previous?.owned) {
     await handlers["action.drive.release"]({ leaseId: previous.leaseId, outcome: "done" }).catch(() => undefined);
   }
   const given = optionalString(args.leaseId);
   if (given) {
-    layerLease = { leaseId: given, owned: false };
+    layerContext().lease = { leaseId: given, owned: false };
     return given;
   }
   const identity = driverIdentity.get();
@@ -1343,39 +1376,42 @@ async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
     return undefined;
   }
   await cursorPresenter.suspend(begun.lease.leaseId);
-  layerLease = { leaseId: begun.lease.leaseId, owned: true };
+  layerContext().lease = { leaseId: begun.lease.leaseId, owned: true };
   return begun.lease.leaseId;
 }
 
-const layerDriver = new LayerDriver({
-  status: () => agentLayerDirector.status(),
-  view: () => layerView,
-  async guard() {
-    const refusal = await agentLayerDirector.actRefusal();
-    if (refusal) {
-      throw new Error(refusal);
-    }
-  },
-  async blink(action) {
-    const executed = await handlers["action.act.execute"]({
-      action: action as unknown as JsonObject,
-      ...(layerLease ? { leaseId: layerLease.leaseId } : {}),
-    }) as { result?: { host?: string }; drive?: { leaseId?: string } };
-    return { host: executed.result?.host, leaseId: executed.drive?.leaseId };
-  },
-  async touch(kind) {
-    await heartbeatDrive({ leaseId: layerLease?.leaseId, axTier: "semantic", actionKind: `layer.${kind}` }).catch(() => undefined);
-  },
-  mark: (act) => agentLayerDirector.mark(act).catch(() => undefined),
-  async look() {
-    const snapshot = await agentLayerDirector.snapshot({});
-    rememberLayerView(snapshot);
-    return snapshot;
-  },
-  async note(text) {
-    await publishDriveNote(text, layerLease?.leaseId).catch(() => undefined);
-  },
-});
+function createLayerDriver(): LayerDriver {
+  return new LayerDriver({
+    status: () => layerContext().director.status(),
+    view: () => layerContext().view,
+    async guard() {
+      const refusal = await layerContext().director.actRefusal();
+      if (refusal) {
+        throw new Error(refusal);
+      }
+    },
+    async blink(action) {
+      const lease = layerContext().lease;
+      const executed = await handlers["action.act.execute"]({
+        action: action as unknown as JsonObject,
+        ...(lease ? { leaseId: lease.leaseId } : {}),
+      }) as { result?: { host?: string }; drive?: { leaseId?: string } };
+      return { host: executed.result?.host, leaseId: executed.drive?.leaseId };
+    },
+    async touch(kind) {
+      await heartbeatDrive({ leaseId: layerContext().lease?.leaseId, axTier: "semantic", actionKind: `layer.${kind}` }).catch(() => undefined);
+    },
+    mark: (act) => layerContext().director.mark(act).catch(() => undefined),
+    async look() {
+      const snapshot = await layerContext().director.snapshot({});
+      rememberLayerView(snapshot);
+      return snapshot;
+    },
+    async note(text) {
+      await publishDriveNote(text, layerContext().lease?.leaseId, layerContext().workspace).catch(() => undefined);
+    },
+  });
+}
 
 /**
  * One act on the layer through the driver, then a look so the reply shows the result.
@@ -1383,17 +1419,17 @@ const layerDriver = new LayerDriver({
  */
 async function layerAct(verb: LayerVerb, args: JsonObject): Promise<JsonObject> {
   const { look, leaseId, ...rest } = args;
-  const lease = layerLease;
+  const lease = layerContext().lease;
   const given = optionalString(leaseId);
   if (given) {
-    layerLease = { leaseId: given, owned: false };
+    layerContext().lease = { leaseId: given, owned: false };
   }
   let result: Record<string, unknown>;
   try {
-    result = await layerDriver.step({ verb, args: rest });
+    result = await layerContext().driver.step({ verb, args: rest });
   } finally {
     if (given) {
-      layerLease = lease;
+      layerContext().lease = lease;
     }
   }
   const reply: Record<string, unknown> = { ok: true, [verb]: result, leaseId: given ?? lease?.leaseId };
@@ -1401,9 +1437,30 @@ async function layerAct(verb: LayerVerb, args: JsonObject): Promise<JsonObject> 
     // Long enough for a click's redraw or a page to start loading; the snapshot says
     // how long the layer has been still, so a caller can tell a settled frame.
     await new Promise((done) => setTimeout(done, 350));
-    reply.snapshot = await layerDriver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+    reply.snapshot = await layerContext().driver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
   }
   return reply as JsonObject;
+}
+
+async function previewDisplay(args: JsonObject): Promise<number | undefined> {
+  if (args.previewWorkspace === undefined) return undefined;
+  const workspace = parseAgentWorkspace(args.previewWorkspace);
+  if (workspace === layerContext().workspace) {
+    throw new Error("The preview workspace must differ from the captured workspace");
+  }
+  const status = await layerWorkspaces.get(workspace).director.displayStatus();
+  if (status.state !== "ready" || !status.display) {
+    throw new Error(`Preview workspace ${workspace} must have a prepared display`);
+  }
+  return status.display.displayId;
+}
+
+async function assertLayerOwnership(): Promise<void> {
+  const context = layerContext();
+  const status = await context.director.status();
+  if (status.active && (!context.ownedLayer || !canRollbackLayerOpen(context.ownedLayer, status))) {
+    throw new Error(`Workspace ${context.workspace} has a layer owned by another caller; refusing to modify it`);
+  }
 }
 
 const handlers: Record<string, ToolHandler> = {
@@ -1842,8 +1899,8 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.act.execute"(args) {
-    const initialLayer = await agentLayerDirector.status();
-    const refusal = await agentLayerDirector.actRefusal();
+    const initialLayer = await layerContext().director.status();
+    const refusal = await layerContext().director.actRefusal();
     if (refusal) {
       throw new Error(refusal);
     }
@@ -1937,9 +1994,9 @@ const handlers: Record<string, ToolHandler> = {
     let hostDetail: string | undefined;
     try {
       await guardLayerDispatch(initialLayer, {
-        status: () => agentLayerDirector.status(),
+        status: () => layerContext().director.status(),
         guard: async () => {
-          const refusal = await agentLayerDirector.actRefusal();
+          const refusal = await layerContext().director.actRefusal();
           if (refusal) throw new Error(refusal);
         },
       });
@@ -2215,7 +2272,7 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.layer.snapshot"(args) {
-    const snapshot = await agentLayerDirector.snapshot({
+    const snapshot = await layerContext().director.snapshot({
       windowId: optionalNumber(args.windowId),
       full: optionalBoolean(args.full),
       out: optionalString(args.out),
@@ -2235,38 +2292,47 @@ const handlers: Record<string, ToolHandler> = {
   async "action.layer.run"(args) {
     const file = optionalString(args.file);
     const result = file
-      ? await layerDriver.runFile(file)
-      : await layerDriver.run(parseLayerSteps(args.steps));
-    const reply: Record<string, unknown> = { ...result, leaseId: layerLease?.leaseId };
-    if (args.look !== false && (await agentLayerDirector.status()).active) {
-      reply.snapshot = await layerDriver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
+      ? await layerContext().driver.runFile(file)
+      : await layerContext().driver.run(parseLayerSteps(args.steps));
+    const reply: Record<string, unknown> = { ...result, leaseId: layerContext().lease?.leaseId };
+    if (args.look !== false && (await layerContext().director.status()).active) {
+      reply.snapshot = await layerContext().driver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
     }
     return reply as JsonObject;
   },
 
   async "action.layer.record"(args) {
+    await assertLayerOwnership();
     const action = optionalString(args.action);
     if (action === "start") {
-      return { ok: true, recording: await agentLayerDirector.startRecording({ out: optionalString(args.out) }) };
+      return { ok: true, recording: await layerContext().director.startRecording({ out: optionalString(args.out) }) };
     }
     if (action === "stop") {
-      return { ok: true, recording: await agentLayerDirector.stopRecording() };
+      return { ok: true, recording: await layerContext().director.stopRecording() };
     }
     throw new Error("action.layer.record needs action: start or stop");
   },
 
-  async "action.layer.pip"() {
-    return { ok: true, layer: await agentLayerDirector.showViewer() };
+  async "action.layer.pip"(args) {
+    await assertLayerOwnership();
+    return { ok: true, layer: await layerContext().director.showViewer({
+      previewDisplayId: await previewDisplay(args),
+      previewFull: optionalBoolean(args.previewFull),
+    }) };
   },
   async "action.layer.open"(args) {
-    const prepared = await agentLayerDirector.displayStatus();
+    if ((await layerContext().director.status()).active) {
+      throw new Error(`Workspace ${layerContext().workspace} already has an active task. Close it from its owning caller before opening another`);
+    }
+    const previewDisplayId = await previewDisplay(args);
+    const prepared = await layerContext().director.displayStatus();
     if (prepared.state !== "ready") {
       throw new Error(`Prepare the persistent monitor with CLI layer prepare before opening a task: ${prepared.detail ?? prepared.state}`);
     }
     const browser = args.browser === true || optionalString(args.profile)
-      ? await ensureLayerBrowser(optionalString(args.profile))
+      ? await ensureLayerBrowser(optionalString(args.profile), { workspace: layerContext().workspace })
       : undefined;
-    const status = await agentLayerDirector.open({
+    const status = await layerContext().director.open({
       bundleId: browser ? undefined : optionalString(args.bundleId),
       pid: browser?.pid ?? optionalNumber(args.pid),
       // A browser navigates through DevTools once it is on the layer, never through
@@ -2276,22 +2342,25 @@ const handlers: Record<string, ToolHandler> = {
       width: optionalNumber(args.width),
       height: optionalNumber(args.height),
       pip: optionalBoolean(args.pip),
+      previewDisplayId,
+      previewFull: optionalBoolean(args.previewFull),
       windowId: optionalNumber(args.windowId),
       windowTitle: optionalString(args.windowTitle),
       // This server outlives the call, so the layer watches it and puts the windows
       // back if the server dies before action.layer.close runs.
       owner: "caller",
     });
+    layerContext().ownedLayer = status;
     return completeLayerOpen(async () => {
-      const session = layerDriver.bind(status, browser ? "browser" : "native", browser?.pid);
-      layerView = undefined;
+      const session = layerContext().driver.bind(status, browser ? "browser" : "native", browser?.pid);
+      layerContext().view = undefined;
       for (const leaseId of cursorPresenter.presentingLeaseIDs()) {
         await cursorPresenter.suspend(leaseId);
       }
       if (browser && status.layer && status.layer.windows.length === 0) {
         await openBrowserWindow(browser.port, status.layer.bounds);
         for (let attempt = 0; attempt < 40; attempt += 1) {
-          const next = await layerDriver.assertSession(session);
+          const next = await layerContext().driver.assertSession(session);
           if ((next.layer?.windows.length ?? 0) > 0) break;
           await new Promise((done) => setTimeout(done, 100));
         }
@@ -2299,7 +2368,7 @@ const handlers: Record<string, ToolHandler> = {
       const leaseId = await beginLayerLease(browser
         ? { ...args, bundleId: browser.bundleId }
         : args);
-      await layerDriver.assertSession(session);
+      await layerContext().driver.assertSession(session);
       // An app assigned to one Desktop keeps its windows there, so the layer shows nothing.
       const subject = browser?.bundleId ?? optionalString(args.bundleId);
       const pinned = subject ? await spacesBinding(subject) : undefined;
@@ -2307,12 +2376,12 @@ const handlers: Record<string, ToolHandler> = {
         ? `${subject} is assigned to one Desktop (Dock > Options > Assign To), so macOS keeps its windows there and the layer shows none of them. Set Assign To: None${browser ? ", or install Chrome for Testing: bunx @puppeteer/browsers install chrome@stable --path ~/Library/Application\\ Support/Action/browsers" : ""}.`
         : undefined;
       if (browser && optionalString(args.url)) {
-        await layerDriver.assertSession(session);
-        const went = await layerDriver.step({ verb: "go", args: { url: optionalString(args.url) } });
-        return { ok: true, leaseId, session, browser, go: went, ...(warning ? { warning } : {}), layer: await layerDriver.assertSession(session) };
+        await layerContext().driver.assertSession(session);
+        const went = await layerContext().driver.step({ verb: "go", args: { url: optionalString(args.url) } });
+        return { ok: true, leaseId, session, browser, go: went, ...(warning ? { warning } : {}), layer: await layerContext().driver.assertSession(session) };
       }
       if (browser) {
-        return { ok: true, leaseId, session, browser, ...(warning ? { warning } : {}), layer: await layerDriver.assertSession(session) };
+        return { ok: true, leaseId, session, browser, ...(warning ? { warning } : {}), layer: await layerContext().driver.assertSession(session) };
       }
       if (warning) {
         return { ok: true, leaseId, session, warning, layer: status };
@@ -2328,7 +2397,7 @@ const handlers: Record<string, ToolHandler> = {
       }
       return { ok: true, leaseId, session, layer: status };
     }, async () => {
-      const current = await agentLayerDirector.status();
+      const current = await layerContext().director.status();
       // Another owner may have replaced the layer while navigation was pending.
       // Never turn this open's rollback into teardown of somebody else's display.
       if (!canRollbackLayerOpen(status, current)) return false;
@@ -2340,15 +2409,20 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.layer.close"(args) {
-    if (layerDriver.identity() && (await agentLayerDirector.status()).active) await layerDriver.assertSession();
-    const status = await agentLayerDirector.close();
+    await assertLayerOwnership();
+    if (layerContext().driver.identity() && (await layerContext().director.status()).active) await layerContext().driver.assertSession();
+    const ownedLayer = layerContext().ownedLayer?.layer;
+    const status = ownedLayer
+      ? await layerContext().director.close(ownedLayer)
+      : await layerContext().director.status();
     if (!status.active) {
-      layerDriver.release();
-      layerView = undefined;
+      layerContext().driver.release();
+      layerContext().view = undefined;
+      layerContext().ownedLayer = undefined;
     }
-    const lease = layerLease;
-    layerLease = undefined;
-    if (lease?.owned) {
+    const lease = layerContext().lease;
+    if (!status.active) layerContext().lease = undefined;
+    if (!status.active && lease?.owned) {
       await handlers["action.drive.release"]({
         leaseId: lease.leaseId,
         outcome: optionalString(args.outcome) ?? "done",
@@ -2359,8 +2433,8 @@ const handlers: Record<string, ToolHandler> = {
   },
 
   async "action.layer.status"() {
-    const status = await agentLayerDirector.status();
-    return { ok: true, session: layerDriver.identity(), layer: status, display: await agentLayerDirector.displayStatus() };
+    const status = await layerContext().director.status();
+    return { ok: true, session: layerContext().driver.identity(), layer: status, display: await layerContext().director.displayStatus() };
   },
 
   async "action.artifacts.list"(args) {
@@ -2402,7 +2476,7 @@ for (const existing of legacyTools) {
   specTools.push({ ...existing, name: alias });
 }
 
-function advertisedTools(): Tool[] {
+export function advertisedTools(): Tool[] {
   const mode = (process.env.ACTION_MCP_TOOL_NAMES ?? "spec").trim().toLowerCase();
   if (mode === "legacy") {
     return legacyTools;
@@ -2429,7 +2503,8 @@ function createServer(): Server {
       instructions: [
         "Use the active tools/list names. By default these are underscore names (capabilities, layer_open, drive_begin); dotted action.* names below denote optional compatibility aliases.",
         "Call capabilities before private-layer work. Check source/native fingerprints, this server's advertised tools and safety.privateLayer. An unverified native build/override must be resolved before use. Reconnect MCP after updates and repeat discovery; semver alone is not capability proof.",
-        "Monitor provisioning is explicit: CLI layer prepare connects a stable persistent display and can change desktop topology. Task layer_open requires it; layer_close leaves it connected. CLI layer release disconnects it after closing the task. Do not clear or bypass a provisioning quarantine; missing quarantine is not host acceptance.",
+        "Monitor provisioning is explicit: CLI layer prepare connects a stable persistent display and can change desktop topology. Task layer_open requires it; layer_close leaves it connected. Close the task explicitly before CLI layer release disconnects its monitor. Release refuses active tasks and incoming previews. Do not clear or bypass a provisioning quarantine; missing quarantine is not host acceptance.",
+        "Every layer tool accepts workspace (default: default). Prepare each named workspace explicitly with CLI layer prepare --workspace NAME. Each workspace has its own task, browser, controls and recording. Pass previewWorkspace to layer_open or layer_pip to show its preview on another prepared virtual display. Set previewFull:true on the outer stage to include its entire desktop and embedded previews. Never replace another caller's task. Native focus and pointer remain shared; multiple displays are not independent macOS input seats.",
         "Private browser workflow on an accepted host/build/display configuration: layer_open {browser:true,url,task}, layer_snapshot, layer_click/type/js/go, layer_close. Open begins a drive lease unless an existing leaseId is supplied; close releases it. Do not begin a second drive or use desktop observe/aim for this path. Coordinates come from the last layer_snapshot.",
         "CLI layer supports lifecycle, snapshot, PiP and recording only. Browser flags, URL navigation, input and JavaScript require MCP. Raw Action WebSocket and the Lattices daemon do not orchestrate private layers; Lattices workspace layers are a separate feature.",
         "Physical modes, scale, arrangement and unrelated window frames must remain unchanged throughout open, interaction and close. Native input can temporarily borrow focus/pointer. Restoration after a disruption does not establish continuous isolation. Verify acceptance on an authorized test host; use a matched signed app and orchestration runtime with rollback on installation targets.",
@@ -2479,7 +2554,12 @@ function createServer(): Server {
 
     try {
       args = asObject(request.params.arguments ?? {}, "arguments");
-      const result = mcpResult(await handler(args));
+      const isLayer = canonical.startsWith("action.layer.");
+      const value = await layerWorkspaces.run(isLayer ? parseAgentWorkspace(args.workspace) : "default", async () => {
+        const result = await handler(args);
+        return isLayer ? { ...result, workspace: layerContext().workspace } : result;
+      });
+      const result = mcpResult(value);
       settle(true);
       return result;
     } catch (error) {

@@ -152,7 +152,7 @@ Edit:
 
 Blink watches the file and hot-applies valid changes to behavior, hotkeys, panels, appearance, motion, editor styling, named styles, and workspaces. Prefer this file to driving the Settings UI.
 
-Full reference: https://github.com/arach/lattices/blob/main/products/blink/docs/config.md
+Full reference: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/config.md
 
 ## Safety rules
 
@@ -175,9 +175,9 @@ If Blink is closed, CLI writes still succeed. The note is available when the app
 
 - Website: https://lattices.dev/blink
 - LLM overview: https://lattices.dev/blink/llms.txt
-- Repository: https://github.com/arach/lattices/tree/main/products/blink
-- CLI: https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md
-- Config: https://github.com/arach/lattices/blob/main/products/blink/docs/config.md
-- Workspaces: https://github.com/arach/lattices/blob/main/products/blink/docs/workspaces.md
+- Repository: https://github.com/lattices-dev/lattices/tree/main/products/blink
+- CLI: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md
+- Config: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/config.md
+- Workspaces: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/workspaces.md
 - Releases: https://github.com/arach/blink/releases/latest
-- Development instructions: https://github.com/arach/lattices/blob/main/products/blink/AGENTS.md
+- Development instructions: https://github.com/lattices-dev/lattices/blob/main/products/blink/AGENTS.md

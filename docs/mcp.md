@@ -26,7 +26,7 @@ was a location instead of a name.**
 
 A subcommand fixes it because resolution follows the installed binary. If
 `lattices` is on `PATH`, `lattices mcp` is correct — whether that is a global
-`bun install -g @arach/lattices`, a `bun link` from a checkout, or a future
+`bun install -g @lattices/lattices`, a `bun link` from a checkout, or a future
 Homebrew formula. Moving the repo, bumping the version, and reinstalling all
 become no-ops for agent config.
 
@@ -63,7 +63,7 @@ replaced.
 
 ### Alternatives considered
 
-- **Point the marketplace at `github: arach/lattices` instead of a local
+- **Point the marketplace at `github: lattices-dev/lattices` instead of a local
   directory.** Fixes today's specific breakage, and is genuinely path-free from
   the user's side. Rejected as the primary mechanism because it is Claude
   Code–only: Codex and Kimi would still hold literal paths, and each plugin
@@ -195,7 +195,7 @@ claude plugin uninstall action-browser@action
 claude plugin marketplace remove action
 claude mcp add lattices -s user -- lattices mcp
 # optional, for the skill only:
-claude plugin marketplace add arach/lattices
+claude plugin marketplace add lattices-dev/lattices
 claude plugin install action-browser@lattices --scope user
 ```
 

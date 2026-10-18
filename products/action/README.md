@@ -1,15 +1,27 @@
-# Action
+<p><a href="../../README.md">← Lattices</a> &nbsp; / &nbsp; Action</p>
 
-> **Action has moved into Lattices.** All ongoing development lives in [`arach/lattices`](https://github.com/arach/lattices), under [`products/action/`](https://github.com/arach/lattices/tree/main/products/action). The original Action `main` history was merged on August 27, 2026 ([import commit](https://github.com/arach/lattices/commit/b1ad511adf509c0c60d7f3edce7cd15257601db2)). The old `arach/action` repository is historical.
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/hero-mobile-dark.svg">
+  <source media="(max-width: 600px) and (prefers-color-scheme: light)" srcset="assets/readme/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/readme/hero-light.svg">
+  <img src="assets/readme/hero-light.svg" width="1200" alt="Action. Native computer use for agents. An app window and its accessibility target inspector.">
+</picture>
 
-Native macOS computer use: observe a surface, resolve a target, act, and record the result.
+<p align="center">
+  <a href="https://lattices.dev/action">Product page ↗</a> &nbsp; · &nbsp;
+  <a href="#install-and-run">Get started</a> &nbsp; · &nbsp;
+  <a href="docs/getting-started.md">Documentation</a> &nbsp; · &nbsp;
+  <a href="../../skills/action/SKILL.md">Agent skill</a>
+</p>
 
-Action gives agents and scripts a local runtime for working with apps through
-screenshots, accessibility, and input actions. Runs can keep video, observations,
-and traces together so you can inspect what happened. Use Action on its own or
-alongside Lattices for window placement, sessions, and workspace navigation.
+Action lets agents inspect and control native Mac apps and browser surfaces through a local runtime.
 
-[Product page](https://lattices.dev/action) · [Getting started](docs/getting-started.md) · [Agent API](docs/api.md)
+<table><tr>
+<td width="33%" valign="top"><strong>Inspect</strong><br>Screenshots, accessibility trees, and OCR.</td>
+<td width="33%" valign="top"><strong>Control</strong><br>Target resolution, clicks, typing, scrolling, and focus.</td>
+<td width="33%" valign="top"><strong>Record</strong><br>Video, observations, and session traces.</td>
+</tr></table>
 
 ## Install and run
 
@@ -17,7 +29,7 @@ Action is a separate macOS app. With Bun installed, install the Lattices CLI and
 use its Action entry point:
 
 ```sh
-bun add --global @arach/lattices
+bun add --global @lattices/lattices
 lattices action install
 lattices action launch
 lattices action status --json
@@ -33,51 +45,6 @@ To query the running Action agent:
 ```sh
 lattices action call status
 ```
-
-## Build from source
-
-Requirements: macOS 14 or newer, Bun, and a Swift 6.2 toolchain. The build script
-uses an available Apple Development or Developer ID Application signing identity;
-without one, it uses ad hoc signing. Stable permission checks and
-`native:verify` require a developer signing identity in Keychain.
-
-From the Lattices repository root:
-
-```sh
-cd products/action
-bun install
-bun run native:app:build
-bun run native:launch
-```
-
-The build produces `native/dist/Action.app`, including the Action agent helper.
-The launch command builds again only if its source checks find a missing or
-outdated app. Continue in `products/action` for the commands below.
-
-After a native change:
-
-```sh
-bun run native:relaunch
-```
-
-Check the bundle, permission state, and TypeScript sources:
-
-```sh
-bun run native:verify
-bun run native:permissions:status
-bun run typecheck
-```
-
-With permissions granted, run the capture smoke checks:
-
-```sh
-bun run native:test:screenshot
-bun run native:test:record
-```
-
-The recording check waits for completion and reports the video, finished marker,
-and debug log. From the monorepo root, `bun run action:launch` and
-`bun run action:dev` wrap the product's launch and relaunch commands.
 
 ## CLI and MCP
 
@@ -116,7 +83,7 @@ The product-level `bun run mcp` script starts the same server through the local
 OCR do not require that provider. Older docs use dotted tool names such as
 `action.observe.snapshot`; the server advertises underscore names by default.
 
-## Relationship to Lattices
+## At home in Lattices
 
 Lattices core owns workspace organization and its daemon at
 `ws://127.0.0.1:9399`. Action keeps its own app lifecycle and agent at
@@ -161,6 +128,54 @@ Installer/                 DMG packaging
 docs/                      Runtime guides, API, architecture, design plans
 ```
 
+<details>
+<summary><strong>Build from source</strong></summary>
+
+Requirements: macOS 14 or newer, Bun, and a Swift 6.2 toolchain. The build script
+uses an available Apple Development or Developer ID Application signing identity;
+without one, it uses ad hoc signing. Stable permission checks and
+`native:verify` require a developer signing identity in Keychain.
+
+From the Lattices repository root:
+
+```sh
+cd products/action
+bun install
+bun run native:app:build
+bun run native:launch
+```
+
+The build produces `native/dist/Action.app`, including the Action agent helper.
+The launch command builds again only if its source checks find a missing or
+outdated app. Continue in `products/action` for the commands below.
+
+After a native change:
+
+```sh
+bun run native:relaunch
+```
+
+Check the bundle, permission state, and TypeScript sources:
+
+```sh
+bun run native:verify
+bun run native:permissions:status
+bun run typecheck
+```
+
+With permissions granted, run the capture smoke checks:
+
+```sh
+bun run native:test:screenshot
+bun run native:test:record
+```
+
+The recording check waits for completion and reports the video, finished marker,
+and debug log. From the monorepo root, `bun run action:launch` and
+`bun run action:dev` wrap the product's launch and relaunch commands.
+
+</details>
+
 ## Further reading
 
 - [Getting started](docs/getting-started.md): native development loop.
@@ -170,3 +185,8 @@ docs/                      Runtime guides, API, architecture, design plans
 - [Browser profiles](docs/browser-profiles.md): Chrome identities and companion setup.
 - [Architecture](docs/ARCHITECTURE.md): system design and longer-term direction.
 - [Action on lattices.dev](https://lattices.dev/action): product overview and download.
+
+---
+
+<p align="center">
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>

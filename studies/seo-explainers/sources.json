@@ -1,0 +1,25 @@
+{
+  "checked": "2026-10-02",
+  "sources": [
+    {
+      "title": "Apple: The macOS accessibility model",
+      "url": "https://developer.apple.com/library/archive/documentation/Accessibility/Conceptual/AccessibilityMacOSX/OSXAXmodel.html",
+      "supports": "Parent-child hierarchy, properties, supported actions, custom control exposure."
+    },
+    {
+      "title": "Apple: AXUIElement API",
+      "url": "https://developer.apple.com/documentation/applicationservices/axuielement_h",
+      "supports": "Queries for attributes and supported actions; performing actions."
+    },
+    {
+      "title": "Apple: Allow accessibility apps to access your Mac",
+      "url": "https://support.apple.com/guide/mac-help/allow-accessibility-apps-to-access-your-mac-mh43185/mac",
+      "supports": "Accessibility permission for third-party app access/control."
+    },
+    {
+      "title": "Apple: Control access to screen and system audio recording",
+      "url": "https://support.apple.com/en-gb/guide/mac-help/mchld6aa7d23/mac",
+      "supports": "Separate permission for recording the screen."
+    }
+  ]
+}

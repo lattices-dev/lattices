@@ -11,6 +11,8 @@ const port = Number(process.env.LATTICES_LINUX_PORT ?? 9399);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local host port");
 const endpoint = { host: "127.0.0.1", port };
 process.env.LATTICES_CLIENT = "linux-app";
+// daemonCallTo propagates this budget to the worker; timeout cancellation is
+// acknowledged before reporting safe failure, otherwise outcome is uncertain.
 const call = <T>(method: string, params?: Record<string, unknown>, timeout?: number) => daemonCallTo(endpoint, method, params, timeout ?? (method.startsWith("computer.virtual.") ? 20000 : 5000)) as Promise<T>;
 const emit = (value: unknown) => process.stdout.write(JSON.stringify(value) + "\n");
 const emitHints = () => emit({ type: "hints", pack: loadLinuxHintPack() });

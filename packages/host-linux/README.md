@@ -241,7 +241,11 @@ on its methods; missing tools just hide them.
 
 | Capability | Backend | Methods |
 | --- | --- | --- |
-| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move`, `spaces.list`, `desktop.snapshot`, `layers.list/members/create/assign/unassign/rename/delete/layout/activate/switch/reveal` |
+| `windows.read`, `windows.place`, `spaces.read` | `hyprctl` (Lua dispatchers on 0.55+, legacy strings before) | `windows.list/get/search/resolve/focus/place/move/moveBack`, `spaces.list`, `desktop.snapshot`, `layers.list/members/create/assign/unassign/rename/delete/layout/activate/switch/reveal` |
+
+
+| `displays.virtual` | `hyprctl output create headless` plus a monitor rule (`eval hl.monitor` on 0.55+) | `displays.create`, `displays.remove` |
+
 | `capture.still` | `grim` | `capture.screenshotDisplay/Window/Region`, `capture.still` (inline JPEG) |
 | `capture.live` | `wayvnc`, started on demand on the host's address | `capture.live` returns a `vnc://` URL for Screen Sharing |
 | `input.keys` | `wtype` | `computer.typeText`, `computer.pressKey`, `computer.hotkey` |
@@ -251,9 +255,22 @@ on its methods; missing tools just hide them.
 | `capture.record` | grim frames at 1-15 fps, encoded by `ffmpeg` on stop | `capture.record` (`start`, `pause`, `resume`, `stop`, `status`) |
 | `apps.open` | the compositor's exec dispatcher | `apps.open` waits for the new window |
 
+Virtual displays are headless outputs (`virtual: true` in every Display). The
+host records the ones it creates in `~/.lattices/host-displays.json` and only
+removes those (`managed: true` in `host.describe`). An output made by hand stays
+yours unless you hand it over with `displays.create {name, adopt: true}`.
+
 `files.read` returns files under `~/.lattices/captures` in base64 chunks, so a
 remote client can fetch the recordings and captures it asked for. Action's
 `RemoteEngine` (LAT-013 phase 3) drives this host through these methods.
+
+Every executed `computer.*` action emits a `computer.acted` event:
+`{kind, label, point, to, wid, element, displayIndex, ratio, toRatio, at}`.
+`point` is in global logical pixels, and `ratio` is that point within display
+`displayIndex` (0-1), so a viewer can draw it on that display's
+`capture.still`. Keyboard actions have no point; they carry the target or
+focused window's display. Labels never include typed text. Subscribe with
+`events.subscribe {events: ["computer.acted"]}`.
 
 `computer.*` input methods stage by default and act only with
 `treatment: "execute"`, as on the Mac. Mac modifier names are mapped:
@@ -400,3 +417,26 @@ lats call computer.virtual.stop
 at two frames per second only while the virtual view is visible. The virtual
 desktop belongs to the host; closing the app leaves it running. Stopping the host
 also stops the virtual session. Existing physical windows are not moved into it.
+
+### Virtual action caller deadlines
+
+Virtual input uses an end-to-end deadline, not just a worker timeout. RPC callers
+must include an absolute Unix-millisecond deadline in the request envelope for
+executed virtual input and virtual app launch:
+
+    {"id":"click-1","method":"computer.click","deadline":1792123000000,"params":{"space":"virtual","x":100,"y":100,"treatment":"execute"}}
+
+Use Date.now() + budgetMs, not the example timestamp. CLI daemonCallTo, the
+published CUA SDK transport, and the Linux app backend supply this automatically.
+A transport mutation without a deadline is rejected before it can be queued.
+The host clamps the caller's deadline to its shorter internal limit, carries it
+to the worker, and cancels queued requests when their connection closes.
+
+The app's 5-second input budget therefore expires in the worker too, even when
+OCR is still running. The worker acknowledges cancellation of unstarted input.
+Already-started work or unconfirmed cancellation reports **outcome uncertain;
+do not retry blindly**. Known mutation clients wait a bounded 1.5-second receipt
+grace after the action deadline; this is cancellation/receipt time, not extra
+permission to start input. On a network failure without an authoritative receipt,
+other clients must also treat the outcome as uncertain. Caller/server clocks must
+be synchronized for absolute deadlines.

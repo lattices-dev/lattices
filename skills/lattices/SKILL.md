@@ -31,7 +31,7 @@ window IDs, session names, or layer names. Read them from the CLI first.
 ## Choose a surface
 
 Prefer the CLI. Use `lats call` only when no dedicated command exists.
-Use `daemonCall` from `@arach/lattices` only in scripts.
+Use `daemonCall` from `@lattices/lattices` only in scripts.
 
 | Need | Command |
 | --- | --- |
@@ -129,7 +129,7 @@ lats layer web
 From Node:
 
 ```js
-import { daemonCall, isDaemonRunning } from '@arach/lattices'
+import { daemonCall, isDaemonRunning } from '@lattices/lattices'
 
 if (!(await isDaemonRunning())) {
   throw new Error('Lattices daemon is not running. Start it with: lats app')

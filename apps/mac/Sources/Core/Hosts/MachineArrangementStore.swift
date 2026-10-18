@@ -32,9 +32,28 @@ enum MachineArrangementStore {
         var name: String
         var frame: MachineGeometry.Placement
     }
-    static func monitors(_ name: String) -> [Monitor] {
-        guard let data = UserDefaults.standard.data(forKey: "machines.monitors.\(name)") else { return [] }
+    private struct MonitorCache: Codable {
+        var version = 1
+        var monitors: [Monitor]
+    }
+    static func monitors(_ name: String, defaults: UserDefaults = .standard) -> [Monitor] {
+        guard let data = defaults.data(forKey: "machines.monitors.\(name)") else { return [] }
+        if let cache = try? JSONDecoder().decode(MonitorCache.self, from: data), cache.version == 1 {
+            return cache.monitors
+        }
         return (try? JSONDecoder().decode([Monitor].self, from: data)) ?? []
+    }
+    /// Before loopback probes were excluded, these derived entries could be
+    /// this Mac's displays. Discard only the old format for tunnel pairings;
+    /// fresh explicit-daemon replies and persisted placements remain intact.
+    static func invalidateLegacyTunnelMonitors(for hosts: [VisitTrust.Host], defaults: UserDefaults = .standard) {
+        for host in hosts {
+            guard let address = VisitTrust.bridgeURL(host.address)?.host,
+                  MachineInventory.isLoopback(address),
+                  let data = defaults.data(forKey: "machines.monitors.\(host.name)"),
+                  (try? JSONDecoder().decode([Monitor].self, from: data)) != nil else { continue }
+            defaults.removeObject(forKey: "machines.monitors.\(host.name)")
+        }
     }
     static func parseMonitors(_ value: Any?) -> [Monitor] {
         (value as? [[String: Any]] ?? []).compactMap { item in
@@ -45,9 +64,9 @@ enum MachineArrangementStore {
             return Monitor(name: item["displayId"] as? String ?? item["name"] as? String ?? "Display", frame: frame)
         }
     }
-    static func cache(_ monitors: [Monitor], for name: String) {
-        guard !monitors.isEmpty, let data = try? JSONEncoder().encode(monitors) else { return }
-        UserDefaults.standard.set(data, forKey: "machines.monitors.\(name)")
+    static func cache(_ monitors: [Monitor], for name: String, defaults: UserDefaults = .standard) {
+        guard !monitors.isEmpty, let data = try? JSONEncoder().encode(MonitorCache(monitors: monitors)) else { return }
+        defaults.set(data, forKey: "machines.monitors.\(name)")
     }
     static func addHost(name: String, address: String, port: UInt16 = 9399, file: URL = RemoteHostsModel.hostsFile) throws {
         guard !name.isEmpty, name != "local", !address.isEmpty, port > 0 else { throw VisitTrust.Failure.bad("Name and address are required") }

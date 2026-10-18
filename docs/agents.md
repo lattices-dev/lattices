@@ -16,8 +16,8 @@ first, then choose the transport that fits the environment.
 
 ## Install the skills
 
-`arach/lattices` is the [skills.sh](https://skills.sh) catalog for the product
-family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/main/skills).
+`lattices-dev/lattices` is the [skills.sh](https://skills.sh) catalog for the product
+family. Skills live under [`skills/`](https://github.com/lattices-dev/lattices/tree/main/skills).
 
 | Skill | Product |
 | --- | --- |
@@ -27,16 +27,44 @@ family. Skills live under [`skills/`](https://github.com/arach/lattices/tree/mai
 | `blink` | Spatial notes through the `blink` CLI |
 
 ```bash
-npx skills add arach/lattices --list
-npx skills add arach/lattices --all --global --yes
-npx skills add arach/lattices --skill lattices --global --yes
-npx skills add arach/lattices --skill action --global --yes
-npx skills add arach/lattices --skill speech --global --yes
-npx skills add arach/lattices --skill blink --global --yes
+npx skills add lattices-dev/lattices --list
+npx skills add lattices-dev/lattices --all --global --yes
+npx skills add lattices-dev/lattices --skill lattices --global --yes
+npx skills add lattices-dev/lattices --skill action --global --yes
+npx skills add lattices-dev/lattices --skill speech --global --yes
+npx skills add lattices-dev/lattices --skill blink --global --yes
 ```
 
 Action Browser also remains a standalone plugin. Install it with
 `action-browser@action` from the Action marketplace.
+
+To install the Action product itself, run `lattices action install` — it
+downloads the latest signed `Action.app` release to `/Applications`.
+`lattices action status` reports install, runtime, and agent state;
+`lattices action call <method>` talks to the Action agent on
+ws://127.0.0.1:4319 without a monorepo checkout.
+
+## Action private layers
+
+Action private layers create virtual displays. Lattices workspace layers group
+windows and use `layer.activate`; they do not create Action's private surface.
+For private browser work, use Action MCP `layer_open { browser: true }`,
+`layer_snapshot`, `layer_click/type/js`, and `layer_close`.
+
+First run `lats action capabilities` and query `capabilities` plus `tools/list`
+on the active Action MCP connection. Compare source/native fingerprints, check
+`safety.privateLayer`, and require host acceptance for desktop preservation.
+Stop on quarantine; do not rebuild an installation target or fall back to a
+regular browser. A missing block is not proof of isolation. Reconnect MCP after
+updates and repeat discovery. Matching a published version does not verify
+MCP or native feature parity.
+
+The CLI offers layer lifecycle, snapshot, PiP, and recording. Browser flags,
+input, navigation, and JavaScript require MCP. Raw Action WebSocket and the
+Lattices daemon do not provide that orchestration. Follow the
+[Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md)
+and [layer reference](https://github.com/lattices-dev/lattices/blob/main/products/action/docs/agent-layer.md)
+for leases, operator takeover, cleanup, and acceptance requirements.
 
 ## Canonical mutations
 
@@ -199,7 +227,7 @@ Use **docs URLs** when an agent needs:
 Node.js:
 
 ```js
-import { daemonCall } from '@lattices/cli'
+import { daemonCall } from '@lattices/lattices'
 
 await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
 await daemonCall('windows.resolve', {

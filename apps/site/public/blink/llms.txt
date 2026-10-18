@@ -3,13 +3,13 @@
 > Native spatial notes for macOS. Each note is a floating panel on the desktop and a local Markdown file that humans and agents can safely share.
 
 Homepage: https://lattices.dev/blink
-Source: https://github.com/arach/lattices/tree/main/products/blink
-Repository: https://github.com/arach/lattices/tree/main/products/blink
+Source: https://github.com/lattices-dev/lattices/tree/main/products/blink
+Repository: https://github.com/lattices-dev/lattices/tree/main/products/blink
 Releases: https://github.com/arach/blink/releases/latest
 Agent instructions: https://lattices.dev/blink/agents.md
-CLI reference: https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md
-Configuration reference: https://github.com/arach/lattices/blob/main/products/blink/docs/config.md
-Workspace reference: https://github.com/arach/lattices/blob/main/products/blink/docs/workspaces.md
+CLI reference: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md
+Configuration reference: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/config.md
+Workspace reference: https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/workspaces.md
 
 ## Product model
 

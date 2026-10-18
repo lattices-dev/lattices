@@ -86,7 +86,7 @@ final class SpatialLensController {
 
     private func begin(generation: UInt64) {
         cancelSession(reason: "new hold")
-        guard Preferences.shared.spatialLensEnabled,
+        guard !SpaceZoomInput.engaged, Preferences.shared.spatialLensEnabled,
               PermissionChecker.shared.accessibility,
               !WindowQuickMenu.shared.isActive else {
             return
@@ -143,7 +143,7 @@ final class SpatialLensController {
 
     private func tick() {
         guard let current = session else { return }
-        guard Preferences.shared.spatialLensEnabled,
+        guard !SpaceZoomInput.engaged, Preferences.shared.spatialLensEnabled,
               PermissionChecker.shared.accessibility else {
             cancelSession(reason: "unavailable")
             return

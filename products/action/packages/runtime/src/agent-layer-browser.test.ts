@@ -1,6 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { clickAt, devToolsKey, dragBetween, insertText, parseSpacesBinding, pressKey, type DevToolsPage } from "./agent-layer-browser.js";
+import { clickAt, devToolsKey, dragBetween, insertText, layerBrowserCommandMatches, layerBrowserConfig, parseSpacesBinding, pressKey, type DevToolsPage } from "./agent-layer-browser.js";
+
+test("named workspaces use distinct browser profiles and ports", () => {
+  const stage = layerBrowserConfig("demo", { workspace: "stage" });
+  const agent = layerBrowserConfig("demo", { workspace: "agent" });
+  assert.notEqual(stage.profileDir, agent.profileDir);
+  assert.notEqual(stage.port, agent.port);
+  assert.match(stage.profileDir, /\/workspaces\/stage\/demo$/);
+  for (const profile of ["..", ".", "../operator", "/tmp/profile", "two words"]) {
+    assert.throws(() => layerBrowserConfig(profile), /simple name/);
+  }
+});
+
+test("browser adoption requires the exact executable, profile, and port", () => {
+  const config = { profileDir: "/Users/operator/Library/Application Support/Action/ChromeProfiles/demo", port: 9335,
+    app: "/Applications/Google Chrome.app", profile: "demo", bundleId: "com.google.Chrome" };
+  const command = `${config.app}/Contents/MacOS/Google Chrome --user-data-dir=${config.profileDir} --remote-debugging-port=9335 --no-startup-window`;
+  assert.equal(layerBrowserCommandMatches(command, config), true);
+  assert.equal(layerBrowserCommandMatches(command.replace("demo", "other"), config), false);
+  assert.equal(layerBrowserCommandMatches(command.replace("9335", "9336"), config), false);
+  assert.equal(layerBrowserCommandMatches(command.replace("/Applications/Google Chrome.app", "/Applications/Other.app"), config), false);
+  assert.equal(layerBrowserCommandMatches(`${command} --user-data-dir=/tmp/other`, config), false);
+  assert.equal(layerBrowserCommandMatches(`${command} --remote-debugging-port=9336`, config), false);
+});
 
 const bindings = `{
     ":no-bundle:????" = AllSpaces;

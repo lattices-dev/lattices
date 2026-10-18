@@ -338,6 +338,7 @@ final class LatticesApi {
             Field(name: "name", type: "string", required: true, description: "Lattices display name for the space"),
             Field(name: "display", type: "int", required: true, description: "Display index"),
             Field(name: "isCurrent", type: "bool", required: true, description: "Whether this is the active space"),
+            Field(name: "assignedApps", type: "[string]", required: true, description: "Bundle ids macOS assigns to this desktop (Dock › Options › Assign To)"),
         ]))
 
         api.model(ApiModel(name: "Layer", fields: [
@@ -987,6 +988,20 @@ final class LatticesApi {
             returns: .array(model: "Display"),
             handler: { _ in
                 Encoders.displays()
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "spaces.assignments",
+            description: "Apps assigned to a desktop or to all desktops in macOS (Dock › Options › Assign To). macOS returns an assigned app's windows to its desktop, so moves elsewhere on that display don't stick",
+            access: .read,
+            params: [],
+            returns: .custom("Object with 'assignments': each {bundleId, app, running, assignedTo: desktop|all|missing, spaceId, display, desktop}"),
+            handler: { _ in
+                let displays = WindowTiler.getDisplaySpaces()
+                return .object([
+                    "assignments": .array(SpaceAssignments.current().map { SpaceAssignments.json($0, displays: displays) })
+                ])
             }
         ))
 
@@ -5135,6 +5150,7 @@ enum Encoders {
             screens = DispatchQueue.main.sync { NSScreen.screens }
         }
         let primaryHeight = screens.first?.frame.height ?? 0
+        let assignments = SpaceAssignments.current()
         return .array(displays.map { display in
             let screen = DisplayGeometryMapper.screen(for: display, in: screens)
             func topLeftFrame(_ frame: CGRect?) -> JSON {
@@ -5162,7 +5178,10 @@ enum Encoders {
                         "index": .int(space.index),
                         "name": .string(LatticesApi.defaultSpaceName(for: space.index)),
                         "display": .int(space.display),
-                        "isCurrent": .bool(space.isCurrent)
+                        "isCurrent": .bool(space.isCurrent),
+                        "assignedApps": .array(assignments.compactMap {
+                            $0.binding == .desktop(spaceId: space.id) ? .string($0.bundleId) : nil
+                        })
                     ])
                 })
             ])

@@ -39,20 +39,20 @@ brew install tmux
 ## Step 2: Install from npm
 
 ```bash
-npm install -g @lattices/cli
+npm install -g @lattices/lattices
 ```
 
 Or with your preferred package manager:
 
 ```bash
-pnpm add -g @lattices/cli
-bun add -g @lattices/cli
+pnpm add -g @lattices/lattices
+bun add -g @lattices/lattices
 ```
 
 ### Alternative: Install from source
 
 ```bash
-git clone https://github.com/arach/lattices && cd lattices
+git clone https://github.com/lattices-dev/lattices && cd lattices
 bun link
 ```
 

@@ -1,0 +1,2 @@
+# Lattices educational pilot
+Cream paper #f2eee5; ink #202b27; restrained green #35644e. Montserrat 700 headline and 400 explanatory copy; IBM Plex Mono 400/700 labels, both shipped as local font files for deterministic rendering. A large continuous diagram is the focal element, top field-guide label and footer anchor the edges. Information appears in sequence, then holds still for reading. No camera movement, ambient bounce, synthetic desktop claims, gradients or decorative cards. 1280 × 720.

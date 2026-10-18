@@ -80,21 +80,32 @@ struct AppWindowShell {
 
     /// Center the window on screen, nudged 8% above vertical center.
     /// Clamps to 92% screen width / 85% screen height.
-    static func positionCentered(_ window: NSWindow) {
-        guard let screen = NSScreen.main else { return }
-        let frame = screen.visibleFrame
-        let size = window.frame.size
-        let w = min(size.width, frame.width * 0.92)
-        let h = min(size.height, frame.height * 0.85)
-        let x = frame.midX - w / 2
-        let y = frame.midY - h / 2 + (frame.height * 0.08)
-        window.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
+    static func positionCentered(_ window: NSWindow, on screen: NSScreen? = NSScreen.main) {
+        guard let screen else { return }
+        window.setFrame(centeredFrame(size: window.frame.size, in: screen.visibleFrame), display: true)
     }
 
-    /// Bring the window to front and update activation policy.
+    static func centeredFrame(size: NSSize, in frame: NSRect) -> NSRect {
+        let w = min(size.width, frame.width * 0.92)
+        let h = min(size.height, frame.height * 0.85)
+        return NSRect(x: frame.midX - w / 2, y: frame.midY - h / 2 + frame.height * 0.08, width: w, height: h)
+    }
+
+    /// Bring the window to front where the person is: the screen under the
+    /// pointer and the desktop showing there. Fronting it in place can raise
+    /// it on another display or switch to another desktop, out of sight.
     static func present(_ window: NSWindow) {
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        if let screen = pointerScreen(), window.screen != screen {
+            positionCentered(window, on: screen)
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         AppDelegate.updateActivationPolicy()
+    }
+
+    static func pointerScreen() -> NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
     }
 }

@@ -57,7 +57,7 @@ Returns an array of window objects:
   {
     "wid": 5678,
     "app": "Google Chrome",
-    "title": "GitHub - arach/lattices",
+    "title": "GitHub - lattices-dev/lattices",
     "frame": { "x": 960, "y": 25, "w": 960, "h": 1050 },
     "spaceIds": [1]
   }

@@ -29,6 +29,8 @@ export interface Display {
   frame: Rect;
   visibleFrame: Rect;
   scale: number;
+  /** A headless output: no panel behind it, only captures and remote views see it. */
+  virtual: boolean;
   currentSpaceId: number;
   spaces: { id: number; index: number; name: string; display: number; isCurrent: boolean; windowCount: number }[];
 }
@@ -77,6 +79,11 @@ export function toWindow(
   };
 }
 
+/** Headless outputs report no make, model or serial; real panels report EDID. */
+export function isVirtual(m: Pick<hypr.HyprMonitor, "make" | "model" | "serial">): boolean {
+  return !m.make && !m.model && !m.serial;
+}
+
 export function toDisplays(monitors: hypr.HyprMonitor[], workspaces: hypr.HyprWorkspace[]): Display[] {
   const index = displayIndexById(monitors);
   return [...monitors]
@@ -105,6 +112,7 @@ export function toDisplays(monitors: hypr.HyprMonitor[], workspaces: hypr.HyprWo
         frame: { x: m.x, y: m.y, w, h },
         visibleFrame: { x: m.x + left, y: m.y + top, w: w - left - right, h: h - top - bottom },
         scale: m.scale,
+        virtual: isVirtual(m),
         currentSpaceId: m.activeWorkspace.id,
         spaces,
       };

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { admit, isLoopback } from "../src/auth.ts";
 import { grimArgs, imageSize } from "../src/capture.ts";
-import { toDisplays, toWindow, widFor } from "../src/desktop.ts";
+import { isVirtual, toDisplays, toWindow, widFor, type Display, type Window } from "../src/desktop.ts";
+import { clear as clearOrigins, get as getOrigin, record as recordOrigin, returnOps } from "../src/moves.ts";
+import { monitorRule, nextName, validName } from "../src/displays.ts";
+
+import { keyLabel, toEvent, typeLabel } from "../src/acted.ts";
+
 import { spell, type HyprClient, type HyprMonitor, type HyprWorkspace } from "../src/hyprland.ts";
 import { keysym, parseShortcut, wtypeKeyArgs } from "../src/input.ts";
 import { parsePlacement, rectFor } from "../src/placement.ts";
@@ -260,8 +265,97 @@ describe("event subscriptions", () => {
 
   test("unsubscribe removes from all, or stops everything without a list", () => {
     const conn = { identity: { user: "u", node: "n" }, events: null as Set<string> | null };
-    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["host.healthChanged", "layers.changed", "virtual.changed", "windows.changed"]);
+    expect(handleSubscription(conn, "events.unsubscribe", { events: ["spaces.changed"] })?.events).toEqual(["computer.acted", "host.healthChanged", "layers.changed", "virtual.changed", "windows.changed"]);
+
     expect(handleSubscription(conn, "events.unsubscribe", {})?.events).toEqual([]);
     expect(handleSubscription(conn, "windows.list", {})).toBeNull();
+  });
+});
+
+describe("windows.moveBack", () => {
+  const win = (over: Partial<Window>): Window => ({
+    wid: 1, address: "0xabc", app: "foot", pid: 1, title: "", frame: { x: 0, y: 0, w: 800, h: 600 }, spaceIds: [2], displayIndex: 0,
+    isOnScreen: true, isFloating: false, isFullscreen: false, isFocused: false, ...over,
+  });
+
+  test("a tiled window goes back to its workspace and is re-tiled if it was floated", () => {
+    const origin = { workspace: 2, floating: false, frame: { x: 0, y: 0, w: 800, h: 600 }, movedAt: 0 };
+    expect(returnOps(win({ spaceIds: [4], isFloating: true }), origin)).toEqual([
+      { op: "toWorkspace", address: "0xabc", workspace: 2 },
+      { op: "tile", address: "0xabc" },
+    ]);
+    expect(returnOps(win({}), origin)).toEqual([]);
+  });
+
+  test("a floating window gets its exact frame back", () => {
+    const origin = { workspace: 2, floating: true, frame: { x: 100, y: 50, w: 640, h: 480 }, movedAt: 0 };
+    expect(returnOps(win({ spaceIds: [4], isFloating: true, frame: { x: 3000, y: 0, w: 1000, h: 700 } }), origin)).toEqual([
+      { op: "toWorkspace", address: "0xabc", workspace: 2 },
+      { op: "resize", address: "0xabc", w: 640, h: 480 },
+      { op: "move", address: "0xabc", x: 100, y: 50 },
+    ]);
+  });
+
+  test("the first move is the origin until the window is moved back", () => {
+    clearOrigins();
+    recordOrigin(win({ spaceIds: [2] }));
+    recordOrigin(win({ spaceIds: [4] }));
+    expect(getOrigin(1)?.workspace).toBe(2);
+  });
+
+  test("tile spells for both dialects", () => {
+    expect(spell({ op: "tile", address: "0xabc" }, true)).toBe('hl.dsp.window.float({ action = "disable", window = "address:0xabc" })');
+    expect(spell({ op: "tile", address: "0xabc" }, false)).toBe("settiled address:0xabc");
+  });
+});
+
+describe("virtual displays", () => {
+  test("names default to the next free LATS-n and must be safe to quote", () => {
+    expect(nextName(["HDMI-A-1"])).toBe("LATS-1");
+    expect(nextName(["LATS-1", "LATS-3"])).toBe("LATS-2");
+    expect(validName("LATS-1")).toBe(true);
+    expect(validName('x"; os.exit()')).toBe(false);
+    expect(validName("")).toBe(false);
+  });
+
+  test("the monitor rule is Lua on 0.55+ and a keyword before", () => {
+    const spec = { width: 2880, height: 1800, scale: 2, refresh: 60 };
+    expect(monitorRule("LATS-1", spec, true)).toEqual([
+      "eval",
+      'hl.monitor({ output = "LATS-1", mode = "2880x1800@60", position = "auto", scale = 2 })',
+    ]);
+    expect(monitorRule("LATS-1", spec, false)).toEqual(["keyword", "monitor", "LATS-1,2880x1800@60,auto,2"]);
+  });
+
+  test("headless outputs have no EDID identity", () => {
+    expect(isVirtual({ make: "", model: "", serial: "" })).toBe(true);
+    expect(isVirtual({ make: "Dell Inc.", model: "AW3425DWM", serial: "JWLC444" })).toBe(false);
+
+  });
+});
+
+describe("computer.acted", () => {
+  const display = (displayIndex: number, x: number, w: number, h: number) =>
+    ({ displayIndex, displayId: `D${displayIndex}`, name: "", virtual: false, frame: { x, y: 0, w, h }, visibleFrame: { x, y: 0, w, h }, scale: 1, currentSpaceId: 1, spaces: [] }) as Display;
+  const displays = [display(0, 0, 1440, 900), display(1, 1440, 3440, 1440)];
+
+  test("a pointer action lands on the display under its point, with a ratio for the overlay", () => {
+    expect(toEvent({ kind: "click", label: "Click", point: { x: 3160.4, y: 720 }, wid: 7 }, displays, undefined, 1)).toEqual({
+      kind: "click", label: "Click", point: { x: 3160, y: 720 }, to: null, wid: 7, element: null,
+      displayIndex: 1, ratio: { x: 0.5, y: 0.5 }, toRatio: null, at: 1,
+    });
+  });
+
+  test("a keyboard action uses the target window's display and has no point", () => {
+    const e = toEvent({ kind: "hotkey", label: keyLabel("p", ["ctrl", "shift"], 1) }, displays, 0, 1);
+    expect(e.label).toBe("ctrl+shift+p");
+    expect(e.displayIndex).toBe(0);
+    expect(e.point).toBeNull();
+  });
+
+  test("typed text never reaches the label", () => {
+    expect(typeLabel(12, true)).toBe("Type 12 chars + Enter");
+    expect(typeLabel(1, false)).toBe("Type 1 char");
+
   });
 });

@@ -1,0 +1,99 @@
+<article class="editor">
+  <header class="toolbar">
+    <svg class="document-icon" viewBox="0 0 24 28" fill="none" aria-hidden="true">
+      <path d="M3.5 1.5h10l7 7v18h-17z" stroke="currentColor"/>
+      <path d="M13.5 1.5v7h7" stroke="currentColor"/>
+    </svg>
+    <div class="title-block">
+      <input class="name-input" aria-label="Action name" />
+      <span class="status-chip"></span>
+    </div>
+    <div class="toolbar-actions">
+      <button class="button describe" type="button" aria-expanded="false">Describe</button>
+      <button class="button test" type="button">Test</button>
+      <button class="button primary save" type="button">Save</button>
+    </div>
+  </header>
+
+  <div class="composer-wrap" hidden>
+    <div class="composer">
+      <button class="mic" type="button" aria-label="Define with voice">
+        <svg width="14" height="18" viewBox="0 0 14 18" fill="none" aria-hidden="true">
+          <rect x="4" y="1" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M1.5 8.5a5.5 5.5 0 0011 0M7 14v3M4.5 17h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <textarea class="instruction" rows="1" aria-label="Describe the action"></textarea>
+      <button class="button interpret" type="button">Interpret</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <main class="stage">
+      <div class="stage-head">
+        <span class="stage-label">Workspace</span>
+        <span class="stage-hint">Drag a window to place it</span>
+      </div>
+
+      <div class="screen-frame">
+        <div class="screen-menubar" aria-hidden="true">
+          <span class="menubar-rule"></span>
+          <span class="menubar-dot"></span>
+        </div>
+        <div class="screen">
+          <div class="zones" aria-hidden="true"></div>
+          <div class="windows"></div>
+          <p class="screen-empty">No windows yet — add one to start the arrangement.</p>
+        </div>
+      </div>
+
+      <div class="stage-foot">
+        <div class="trigger-field">
+          <span class="trigger-prefix">I say</span>
+          <input class="inline-input trigger" aria-label="Trigger phrase" placeholder="Add a spoken phrase" />
+        </div>
+        <div class="behavior-chips">
+          <label class="chip">
+            <input class="switch reuse" type="checkbox" />
+            <span>Reuse open windows</span>
+          </label>
+          <label class="chip">
+            <input class="switch preserve" type="checkbox" />
+            <span>Preserve unsaved work</span>
+          </label>
+        </div>
+      </div>
+    </main>
+
+    <aside class="inspector">
+      <div class="inspector-head">
+        <span class="stage-label">Windows</span>
+        <button class="link-button add-outcome" type="button">Add</button>
+      </div>
+
+      <div class="outcomes"></div>
+
+      <div class="inspector-foot">
+        <div class="stage-label">When this runs</div>
+        <ul class="summary-list"></ul>
+        <details class="advanced">
+          <summary>Advanced definition</summary>
+          <div class="advanced-field">
+            <label for="ambiguity">When more than one window matches</label>
+            <select id="ambiguity" class="ambiguity">
+              <option value="ask">Ask me</option>
+              <option value="best-match">Use the best match</option>
+              <option value="skip">Skip that step</option>
+            </select>
+          </div>
+        </details>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="footer" data-tone="idle" aria-live="polite">
+    <span class="status-dot"></span>
+    <span class="status-message">Ready to test on this Mac</span>
+    <span class="capability-note">ACTION SCHEMA v1</span>
+  </footer>
+</article>

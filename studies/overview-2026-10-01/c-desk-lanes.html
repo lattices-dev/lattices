@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview C · Desk Lanes</title>
+<link rel="stylesheet" href="shared/shell.css">
+<style>
+  /* Study C — the page is the hierarchy. Each monitor is a lane; each lane
+     is a row of its Spaces. The current Space is the only one drawn as a live
+     map, the rest are read-only lists, so "can I move this?" is answered by
+     where the window sits on the page. Drag works only from the live map. */
+  .c { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .selbar { flex: none; height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 14px; border-bottom: 0.5px solid var(--border); position: relative; z-index: 10; }
+  .selbar .scopebits { display: flex; align-items: center; gap: 6px; flex: none; }
+  .selbar input[type=search] { width: 150px; height: 24px; border-radius: 6px; border: 0.5px solid var(--border-lit); background: rgba(255,255,255,0.04); color: var(--text); padding: 0 8px; font: 12px var(--sans); outline: none; }
+  .selbar select { height: 24px; border-radius: 6px; border: 0.5px solid var(--border); background: transparent; color: var(--dim); font: 500 12px var(--ui); padding: 0 6px; }
+  .selbar .vr { width: 0.5px; height: 22px; background: var(--border-lit); margin: 0 8px; flex: none; }
+  .selbar .who { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; }
+  .selbar .who .ap { font: 600 12.5px/1 var(--ui); flex: none; }
+  .selbar .who .tt { font: 12px/1 var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .selbar .who .where { font: 10.5px/1 var(--mono); color: var(--muted); flex: none; white-space: nowrap; }
+  .selbar .who .none { font: 12px/1 var(--sans); color: var(--muted); }
+  .ib { height: 26px; min-width: 28px; padding: 0 7px; border-radius: 6px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; font: 500 12px/1 var(--ui); flex: none; }
+  .ib:hover { background: rgba(255,255,255,0.08); }
+  .ib[disabled] { opacity: .32; cursor: not-allowed; }
+  .ib.primary { background: var(--ink-sel); color: #121214; font-weight: 600; }
+  .menu { position: absolute; top: 44px; right: 12px; width: 280px; padding: 6px; border-radius: 10px; background: rgba(30,30,34,0.98); box-shadow: 0 0 0 0.5px var(--border-lit), 0 14px 36px rgba(0,0,0,.55); z-index: 30; }
+  .menu .mi { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; font: 12.5px/1 var(--ui); cursor: pointer; }
+  .menu .mi:hover { background: rgba(255,255,255,0.07); }
+  .menu .mi .r { margin-left: auto; font: 10.5px/1 var(--mono); color: var(--muted); }
+  .menu .hd { padding: 6px 8px 4px; }
+
+  .lanes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .lane { flex: 1; min-height: 0; display: flex; border-bottom: 0.5px solid var(--border); }
+  .lane.scoped-out { opacity: .5; }
+  .lhead { width: 150px; flex: none; padding: 14px 14px; display: flex; flex-direction: column; gap: 6px; border-right: 0.5px solid var(--border); }
+  .lhead .nm { font: 600 13px/1.15 var(--ui); }
+  .lhead .sz { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .lhead .stack { margin-top: auto; display: flex; flex-direction: column; gap: 5px; }
+  .lhead .stack .btn { justify-content: flex-start; height: 26px; }
+  .lhead .elig { font: 10.5px/1.3 var(--mono); color: var(--muted); }
+  .lhead .chip { align-self: flex-start; height: 22px; font-size: 11px; }
+
+  .cols { flex: 1; min-width: 0; display: flex; gap: 0; overflow-x: auto; }
+  .col { flex: none; display: flex; flex-direction: column; min-height: 0; padding: 10px 12px 10px; border-right: 0.5px solid var(--border); }
+  .col:last-child { border-right: 0; }
+  .col .ch { display: flex; align-items: center; gap: 7px; height: 22px; margin-bottom: 8px; cursor: pointer; border-radius: 5px; padding: 0 4px; margin-left: -4px; }
+  .col .ch:hover { background: rgba(255,255,255,0.04); }
+  .col .ch .t { font: 600 12px/1 var(--ui); }
+  .col .ch .s { font: 10.5px/1 var(--mono); color: var(--muted); }
+  .col .ch .live { font: 600 9px/1 var(--mono); letter-spacing: .06em; padding: 3px 5px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+  .col .ch .scoped { margin-left: auto; font: 9.5px/1 var(--mono); color: var(--text); padding: 2px 5px; border-radius: 4px; box-shadow: inset 0 0 0 0.5px var(--border-lit); }
+  .col.current { flex: none; }
+  .col.side { width: 214px; }
+  .col.side.drop { background: rgba(236,237,240,0.06); box-shadow: inset 0 0 0 1px rgba(236,237,240,0.5); }
+  .col.side.dropok { box-shadow: inset 0 0 0 1px rgba(236,237,240,0.22); }
+  .col.side.nodrop { opacity: .45; }
+  .col .note { font: 11px/1.35 var(--sans); color: var(--muted); margin-top: auto; }
+  .col .list { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow: auto; }
+  .card { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 7px; border-radius: 6px; border: 1px dashed rgba(255,255,255,0.16); cursor: pointer; min-width: 0; }
+  .card:hover { border-color: rgba(255,255,255,0.3); }
+  .card.sel { border-style: solid; border-color: var(--ink-sel); background: var(--sel-fill); }
+  .card.out { opacity: .38; }
+  .card .ap { font: 600 12px/1 var(--ui); flex: none; }
+  .card { overflow: hidden; } .card .tt { flex: 1 1 0; min-width: 0; font: 11.5px/1 var(--sans); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .b { margin-left: auto; font: 9.5px/1 var(--mono); color: var(--muted); flex: none; }
+  .fs { flex: 1; border-radius: 6px; display: flex; flex-direction: column; justify-content: center; padding: 8px; min-width: 0; background: #0f0f11; box-shadow: inset 0 0 0 0.5px var(--border-lit); }
+  .lonely { flex: 1; display: grid; place-items: center; font: 11.5px/1.4 var(--sans); color: var(--muted); padding: 0 24px; text-align: center; }
+  .mon .w[draggable="true"] { cursor: grab; }
+  .badge { position: absolute; right: 4px; top: 4px; font: 600 9px/1 var(--mono); padding: 2px 4px; border-radius: 3px; background: rgba(0,0,0,0.45); color: var(--dim); }
+  .badge.add { color: var(--text); background: rgba(236,237,240,0.18); }
+
+  .nospace { flex: none; height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+  .nospace .label-caps { width: 136px; flex: none; }
+  .nospace .card { width: 240px; }
+  .draft { margin-left: auto; display: flex; align-items: center; gap: 8px; font: 12px/1 var(--sans); white-space: nowrap; padding: 4px 4px 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); box-shadow: inset 0 0 0 0.5px var(--border-lit); }
+
+  @media (max-width: 1500px) { .col.side { width: 180px; } .lhead { width: 132px; } .selbar .who .tt { display: none; } }
+  @media (max-width: 1340px) { .col.side { width: 150px; } .lhead { width: 124px; padding: 14px 10px; } .col { padding: 10px 9px; } .selbar input[type=search] { width: 110px; } .selbar .who .where { display: none; } .ib .lbl { display: none; } .nospace .card { width: 190px; } }
+</style>
+</head>
+<body>
+<script src="shared/fixture.js"></script>
+<script src="shared/model.js"></script>
+<script src="shared/shell.js"></script>
+<script>
+(function () {
+  const { h } = LT;
+  const m = LT.createModel();
+  const ui = { menu: null, drag: null };
+
+  const clearMenu = () => { if (ui.menu) { ui.menu = null; m.emit(); } };
+  document.addEventListener("click", (e) => { if (!e.target.closest(".menu, [data-menu]")) clearMenu(); });
+
+  // ---------- top bar: scope on the left, the selection on the right ----------
+  function selbar() {
+    const s = m.scope, w = m.primary();
+    const bar = h("div.selbar",
+      h("div.scopebits",
+        ...m.layers.map((l) => h("button.chip", { "aria-pressed": String(s.layerId === l.id), onClick: () => m.setScope({ layerId: s.layerId === l.id ? null : l.id }) }, LT.icon("layer"), l.name)),
+        (() => { const sel = h("select", { onChange: (e) => m.setScope({ kind: e.target.value }) }, ...m.kinds.map((k) => { const o = h("option", { value: k.id }, k.id === "all" ? "Any kind" : k.label); if (k.id === s.kind) o.selected = true; return o; })); return sel; })(),
+        LT.searchField(m, "Filter  /")),
+      h("span.vr"));
+    if (!w) {
+      bar.append(h("div.who", h("span.none", "Select a window — on the live map, or in any Space")));
+    } else {
+      const placeWhy = m.blocker(w, "place"), focusWhy = m.blocker(w, "focus"), outWhy = m.scopeExclusion(w);
+      bar.append(h("div.who", LT.glyph(w.app), h("span.ap", m.selection.length > 1 ? `${m.selection.length} selected` : w.app), m.selection.length > 1 ? null : h("span.tt", w.title), h("span.where", m.whereLabel(w) + (m.positionLabel(w) ? " · " + m.positionLabel(w).toLowerCase() : ""))));
+      bar.append(h("button.ib.primary", { "aria-label": "Focus", disabled: !!focusWhy, title: focusWhy || m.focusNote(w), onClick: () => m.focus(w.wid) }, LT.icon("focus"), h("span.lbl", "Focus")));
+      if (outWhy) bar.append(h("button.ib", { "aria-label": "Show in scope", title: "Selected but " + m.exclusionLabel(outWhy, w), onClick: () => m.reveal(w.wid) }, LT.icon("reveal"), h("span.lbl", "Show in scope")));
+      for (const k of ["left", "right", "max", "center"]) bar.append(h("button.ib", { "aria-label": LT.PLACE[k].label, disabled: !!placeWhy, title: placeWhy || LT.PLACE[k].label, onClick: () => m.place(w.wid, k) }, LT.icon(k)));
+      bar.append(h("button.ib", { "aria-label": "Move to Desktop", "aria-haspopup": "menu", "data-menu": "1", disabled: !!placeWhy, title: placeWhy || "Move to Desktop — or drag it onto a Space", onClick: () => { ui.menu = ui.menu === "move" ? null : "move"; m.emit(); } }, LT.icon("move"), h("span.lbl", "Move"), LT.icon("down")));
+      bar.append(h("button.ib", { "aria-label": "Layer membership", "aria-haspopup": "menu", "data-menu": "1", onClick: () => { ui.menu = ui.menu === "layer" ? null : "layer"; m.emit(); } }, LT.icon("layer"), h("span.lbl", "Layers"), LT.icon("down")));
+      if (ui.menu === "move" && !placeWhy) {
+        const d = m.display(w.display);
+        bar.append(h("div.menu", h("div.hd.label-caps", `Move to · ${d.short}`),
+          ...d.spaces.filter((sp) => !sp.fullScreen).map((sp) => h("div.mi", { onClick: () => { ui.menu = null; m.moveToSpace(w.wid, sp.id); } }, `Desktop ${sp.n}`, h("span.r", sp.id === w.space ? "here" : sp.id === d.current ? "current" : "")))));
+      }
+      if (ui.menu === "layer") {
+        const rows = m.layers.map((l) => {
+          const r = m.roleIn(w, l.id), editing = m.draft && m.draft.layerId === l.id;
+          const state = !r ? "—" : r.role === "unclaimed" ? "unclaimed" : r.role === "tucked" ? "tucked" : r.entry.id.startsWith("d") ? "+ pin" : r.entry.via;
+          const acts = [];
+          if (editing) {
+            if (!r || r.role === "unclaimed") acts.push(h("button.ib", { onClick: () => m.draftPin(w.wid) }, LT.icon("pin"), "Pin"));
+            else { acts.push(h("button.ib", { onClick: () => m.draftTuck(w.wid) }, r.role === "tucked" ? "Untuck" : "Tuck")); acts.push(h("button.ib", { "aria-label": `Remove from ${l.name}`, title: "Remove from layer", onClick: () => m.draftRemove(w.wid) }, LT.icon("x"))); }
+          } else if (!m.draft) acts.push(h("button.ib", { onClick: () => m.beginEdit(l.id) }, "Edit…"));
+          return h("div.mi", { style: { cursor: "default" } }, LT.icon("layer"), l.name, h("span.r", state), ...acts);
+        });
+        bar.append(h("div.menu", h("div.hd.label-caps", "Layer membership"), ...rows));
+      }
+    }
+    return bar;
+  }
+
+  // ---------- lanes ----------
+  function sideCard(w) {
+    const out = !m.inScope(w);
+    let badge = w.state === "fullScreen" ? "full screen" : m.positionLabel(w) ? "last known" : "";
+    if (m.draft) { const r = m.roleIn(w, m.draft.layerId); if (r && r.role !== "unclaimed") badge = r.role === "tucked" ? "tucked" : r.entry.id.startsWith("d") ? "+ pin" : r.entry.via; }
+    return h("div.card" + (m.isSelected(w.wid) ? ".sel" : "") + (out ? ".out" : ""),
+      { "data-wid": w.wid, title: `${w.app} — ${w.title}\n${m.focusNote(w)}`,
+        onClick: (e) => { e.stopPropagation(); m.select(w.wid, { toggle: e.metaKey || e.shiftKey }); }, onDblclick: () => m.focus(w.wid) },
+      LT.glyph(w.app), h("span.ap", w.app), h("span.tt", w.title), h("span.b", badge));
+  }
+
+  function lane(d, mapH) {
+    const s = m.scope;
+    const curWins = m.windows.filter((w) => w.display === d.id && w.space === d.current);
+    const elig = curWins.filter((w) => m.eligible(w)).length;
+    const scopedOut = s.display != null && s.display !== d.id;
+    const only = s.display === d.id;
+    const head = h("div.lhead",
+      h("div.nm", d.name), h("div.sz", d.size),
+      h("button.chip", { "aria-pressed": String(only), onClick: () => m.setScope({ display: only ? null : d.id }) }, only ? "Only this monitor ✓" : "Only this monitor"),
+      h("div.stack",
+        h("div.elig", `${elig} live in scope`),
+        h("button.btn" + (elig ? "" : ".is-disabled"), { onClick: () => laneRun(d.id, "Tile") }, LT.icon("tile"), "Tile lane"),
+        h("button.btn" + (elig ? "" : ".is-disabled"), { onClick: () => laneRun(d.id, "Distribute") }, LT.icon("distribute"), "Distribute")));
+
+    const cols = h("div.cols.scroll");
+    const colHead = (sp, n, extra) => {
+      const on = s.spaceId === sp.id;
+      return h("div.ch", { title: on ? "Clear Space scope" : "Scope to this Space", onClick: () => m.setScope(on ? { spaceId: null } : { display: d.id, spaceId: sp.id }) },
+        h("span.t", sp.fullScreen ? "Full screen" : `Desktop ${sp.n}`), extra, h("span.s", `${n}`), on ? h("span.scoped", "scoped") : null);
+    };
+    // current Space: the only live map
+    const cur = m.spaceOf(d.current).space;
+    const mapW = Math.round(mapH * d.aspect);
+    const mon = LT.monitor(m, d, {
+      width: mapW, spaceId: d.current, isOut: (w) => !m.inScope(w),
+      onSelect: (w, ev) => m.select(w.wid, { toggle: ev.metaKey || ev.shiftKey }),
+      extra: (w, node) => {
+        if (m.isLive(w)) {
+          node.draggable = true;
+          node.addEventListener("dragstart", (e) => { ui.drag = w.wid; e.dataTransfer.setData("text/plain", String(w.wid)); document.querySelectorAll(".col.side").forEach((c) => c.classList.add(c.dataset.display === String(w.display) && !c.dataset.fs ? "dropok" : "nodrop")); });
+          node.addEventListener("dragend", () => { ui.drag = null; document.querySelectorAll(".col.side").forEach((c) => c.classList.remove("dropok", "nodrop", "drop")); });
+        }
+        if (m.draft) {
+          const r = m.roleIn(w, m.draft.layerId);
+          if (r && r.role === "member") node.append(h("span.badge" + (r.entry.id.startsWith("d") ? ".add" : ""), r.entry.id.startsWith("d") ? "+ pin" : r.entry.via));
+          else if (r && r.role === "tucked") node.append(h("span.badge", "tucked"));
+        }
+      },
+    });
+    mon.addEventListener("click", () => m.clearSelection());
+    cols.append(h("div.col.current", colHead(cur, curWins.length, h("span.live", "LIVE")), mon));
+
+    for (const sp of d.spaces.filter((x) => x.id !== d.current)) {
+      const ws = m.windows.filter((w) => w.space === sp.id);
+      const col = h("div.col.side", { "data-display": d.id, "data-fs": sp.fullScreen ? "1" : null },
+        colHead(sp, ws.length),
+        sp.fullScreen ? h("div.fs", ws.map(sideCard)) : h("div.list", ...ws.map(sideCard)),
+        h("div.note", sp.fullScreen ? "Own Space. Exit full screen to place it." : "Last known. Focus switches here."));
+      if (!sp.fullScreen) {
+        col.addEventListener("dragover", (e) => { if (ui.drag && m.win(ui.drag).display === d.id) { e.preventDefault(); col.classList.add("drop"); } });
+        col.addEventListener("dragleave", () => col.classList.remove("drop"));
+        col.addEventListener("drop", (e) => { e.preventDefault(); const wid = ui.drag; ui.drag = null; m.moveToSpace(wid, sp.id); });
+      }
+      cols.append(col);
+    }
+    if (d.spaces.length === 1) cols.append(h("div.lonely", "One Desktop on this monitor — nothing to move between here."));
+    return h("div.lane" + (scopedOut ? ".scoped-out" : ""), head, cols);
+  }
+
+  function laneRun(displayId, verb) {
+    const prev = { display: m.scope.display, spaceId: m.scope.spaceId };
+    m.scope.display = displayId;
+    m.runBulk(verb);
+    Object.assign(m.scope, prev);
+    m.emit();
+  }
+
+  function noSpace() {
+    const ws = m.windows.filter((w) => w.space == null);
+    const strip = h("div.nospace", h("span.label-caps", "Not on any Space"), ...ws.map((w) => { const c = sideCard(w); c.querySelector(".b").textContent = m.stateLabel(w).toLowerCase(); return c; }));
+    if (m.draft) {
+      const l = m.layer(m.draft.layerId), n = m.draft.changes.length;
+      strip.append(h("div.draft", LT.icon("layer"), h("span", "Editing ", h("b", l.name)), h("span.muted", n ? m.draft.changes.join(", ") : "no changes"),
+        h("button.btn.ghost", { onClick: () => m.cancelEdit() }, "Discard"),
+        h("button.btn", { onClick: () => m.saveEdit(false) }, "Save"),
+        h("button.btn.primary" + (l.active ? "" : ".is-disabled"), { title: l.active ? "Save, then arrange its live members" : "Only the active layer can be arranged", onClick: () => m.saveEdit(true) }, "Save & arrange")));
+    } else {
+      const plan = m.plan("Tile");
+      strip.append(h("span", { style: { marginLeft: "auto", font: "11px var(--mono)", color: "var(--muted)" } }, `${plan.count} live in scope`, plan.excludedText ? ` · left out: ${plan.excludedText}` : ""),
+        h("button.btn" + (plan.enabled ? "" : ".is-disabled"), { onClick: () => m.runBulk("Tile") }, LT.icon("tile"), "Tile all", h("span.kbd", "T")),
+        h("button.btn" + (plan.enabled ? "" : ".is-disabled"), { onClick: () => m.runBulk("Distribute") }, LT.icon("distribute"), "Distribute all", h("span.kbd", "D")));
+    }
+    return strip;
+  }
+
+  function render() {
+    // 654 content − 48 bar − 46 strip = 560 for two lanes; each map gets what's left after its header.
+    const mapH = 228;
+    return h("div.c", selbar(), h("div.lanes", ...m.displays.map((d) => lane(d, mapH))), noSpace());
+  }
+
+  LT.mountShell({
+    letter: "C", name: "Desk Lanes", blurb: "Monitor ▸ Space ▸ window, laid out as rows. Only the live map is draggable.",
+    model: m, render,
+  });
+})();
+</script>
+</body>
+</html>

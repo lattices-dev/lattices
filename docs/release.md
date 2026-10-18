@@ -52,14 +52,14 @@ Setup shape:
 ```sh
 # Export the Developer ID Application certificate as a .p12, then:
 base64 < DeveloperIDApplication.p12 | tr -d '\n' \
-  | gh secret set DEVELOPER_ID_APPLICATION_CERT_BASE64 --repo arach/lattices --env release
+  | gh secret set DEVELOPER_ID_APPLICATION_CERT_BASE64 --repo lattices-dev/lattices --env release
 
-gh secret set DEVELOPER_ID_APPLICATION_CERT_PASSWORD --repo arach/lattices --env release
-gh secret set KEYCHAIN_PASSWORD --repo arach/lattices --env release
-gh secret set APP_STORE_CONNECT_API_KEY_P8 --repo arach/lattices --env release < AuthKey_KEYID.p8
+gh secret set DEVELOPER_ID_APPLICATION_CERT_PASSWORD --repo lattices-dev/lattices --env release
+gh secret set KEYCHAIN_PASSWORD --repo lattices-dev/lattices --env release
+gh secret set APP_STORE_CONNECT_API_KEY_P8 --repo lattices-dev/lattices --env release < AuthKey_KEYID.p8
 
-gh variable set APP_STORE_CONNECT_KEY_ID --repo arach/lattices --env release --body KEYID
-gh variable set APP_STORE_CONNECT_ISSUER_ID --repo arach/lattices --env release --body ISSUER_UUID
+gh variable set APP_STORE_CONNECT_KEY_ID --repo lattices-dev/lattices --env release --body KEYID
+gh variable set APP_STORE_CONNECT_ISSUER_ID --repo lattices-dev/lattices --env release --body ISSUER_UUID
 ```
 
 Release:
@@ -124,49 +124,30 @@ GitHub release step.
 
 ## npm releases
 
-The CLI package is published as `@arach/lattices` (npm page) and also as
-`@lattices/cli` for back-compat — same tarball, dual publish in CI.
+Publish `@lattices/lattices` as the canonical package. Continue publishing
+`@arach/lattices` and `@lattices/cli` with identical payloads for existing
+installations and imports. The package names differ; commands and exports do not.
 
-There are two valid npm paths:
+The **Release Package npm** workflow is manually dispatched. It reads
+`NPM_TOKEN` from the GitHub `release` environment. The token must be able to
+publish all three package names and should authenticate as `arach`; set
+`NPM_EXPECTED_USER` if another maintainer publishes.
 
-1. CI release: push an `npm-v<version>` tag or run the
-   **Release Package npm** workflow with `publish=true`.
-2. Smoke check: run **Release Package npm** manually with `publish=false`.
-
-The npm workflow reads credentials from the GitHub `release` environment.
-
-Required environment secret:
-
-```text
-NPM_TOKEN
-```
-
-`NPM_TOKEN` must be an npm automation or granular access token that can
-publish `@arach/lattices` and `@lattices/cli`. It currently should authenticate as the npm user
-`arach`; if a different maintainer publishes, set environment variable
-`NPM_EXPECTED_USER` to that npm username.
-
-Setup shape:
+After publishing the signed, notarized app release matching `package.json`,
+reuse its verified app bundle for npm:
 
 ```sh
-gh secret set NPM_TOKEN --repo arach/lattices --env release
-gh variable set NPM_EXPECTED_USER --repo arach/lattices --env release --body arach
+gh workflow run release-package-npm.yml --repo lattices-dev/lattices --ref main \
+  -f publish=true -f build_app=false
 ```
 
-Release:
+The workflow verifies the DMG hash, notarization status, signing identity,
+app version, and source revision before packaging. It then publishes the
+canonical package and both compatibility names. Verify all three registry
+records before announcing completion.
 
-```sh
-git tag -a npm-v0.6.1 -m "@arach/lattices 0.6.1"
-git push origin npm-v0.5.0
-```
+Use `publish=false` for a dry run. Use `build_app=true` only when intentionally
+rebuilding the app instead of reusing the signed release.
 
-To publish the current `main` without moving a stale tag, run:
-
-```sh
-gh workflow run release-package-npm.yml --repo arach/lattices --ref main -f publish=true
-```
-
-Before publishing, CI now runs `npm whoami` and fails immediately if the token
-is missing, revoked, or belongs to the wrong npm user. This catches the common
-bad-token case before the macOS app prepack build and before npm's less useful
-package-scoped `E404` publish failure.
+See [Repository and package migration](/docs/namespace-migration) for existing
+installs, startup paths, and repository redirects.

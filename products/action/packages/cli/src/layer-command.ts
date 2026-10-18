@@ -1,10 +1,13 @@
-const usage = "Usage: layer prepare|display-status|open|status|snapshot|pip|record start|record stop|close|release. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
+import { parseAgentWorkspace } from "@action/runtime";
+
+const usage = "Usage: layer list|prepare|display-status|open|status|snapshot|pip|record start|record stop|close|release [--workspace <name>]. Open/pip accept --preview-workspace <name>. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
 
 const allowed: Record<string, readonly string[]> = {
   prepare: ["width", "height"],
+  list: [],
   "display-status": [], release: [],
-  open: ["bundle-id", "pid", "width", "height", "window-id", "window-title", "pip"],
-  status: [], close: [], pip: [],
+  open: ["bundle-id", "pid", "width", "height", "window-id", "window-title", "pip", "preview-workspace", "preview-full"],
+  status: [], close: [], pip: ["preview-workspace", "preview-full"],
   snapshot: ["window-id", "full", "out"],
   "record start": ["out"], "record stop": [],
 };
@@ -21,21 +24,23 @@ export function parseLayerCommand(args: string[]): { positionals: string[]; flag
     const token = args[index];
     if (!token.startsWith("--")) throw new Error(`Unexpected layer argument: ${token}. ${usage}`);
     const [name, ...inlineParts] = token.slice(2).split("=");
-    if (!allowed[command].includes(name)) throw new Error(`Unsupported layer ${command} flag: --${name}. ${usage}`);
+    if (!allowed[command].includes(name) && !(name === "workspace" && command !== "list")) throw new Error(`Unsupported layer ${command} flag: --${name}. ${usage}`);
     if (name in flags) throw new Error(`Duplicate layer flag: --${name}`);
     let value = inlineParts.length ? inlineParts.join("=") : undefined;
     if (value === undefined && args[index + 1] && !args[index + 1].startsWith("--")) value = args[++index];
-    if (value === undefined && name === "full") value = "true";
+    if (value === undefined && ["full", "preview-full"].includes(name)) value = "true";
     if (value === undefined || value === "") throw new Error(`Missing value for --${name}`);
     if (["pid", "width", "height", "window-id"].includes(name) && (!/^\d+$/.test(value) || Number(value) <= 0 || !Number.isSafeInteger(Number(value)))) {
       throw new Error(`Invalid --${name}: expected a positive integer`);
     }
-    if (name === "full" && !["true", "false"].includes(value)) throw new Error("Invalid --full: expected true or false");
+    if (["full", "preview-full"].includes(name) && !["true", "false"].includes(value)) throw new Error(`Invalid --${name}: expected true or false`);
     if (name === "pip" && !["on", "off", "true", "false", "1", "0", "yes", "no"].includes(value)) throw new Error("Invalid --pip: expected on or off");
+    if (name === "workspace" || name === "preview-workspace") parseAgentWorkspace(value);
     flags[name] = value;
   }
   if (flags["bundle-id"] && flags.pid) throw new Error("Use --bundle-id or --pid, not both");
   if (flags["window-id"] && flags["window-title"]) throw new Error("Use --window-id or --window-title, not both");
   if (flags["window-id"] && flags.full === "true") throw new Error("Use --window-id or --full, not both");
+  if (flags["preview-workspace"] === (flags.workspace ?? "default")) throw new Error("A workspace cannot preview itself");
   return { positionals, flags };
 }

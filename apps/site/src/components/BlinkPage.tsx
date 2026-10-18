@@ -9,7 +9,8 @@ import FilesystemAPI from "./blink/FilesystemAPI"
 import AgentGuide from "./blink/AgentGuide"
 import AgentCaseStudy, { AgentFilm } from "./blink/AgentCaseStudy"
 import Keys from "./blink/Keys"
-import { Install, Footer } from "./blink/Install"
+import { Install } from "./blink/Install"
+import { SiteFooter } from "./SiteChrome"
 
 export default function BlinkPage() {
   return (
@@ -26,7 +27,7 @@ export default function BlinkPage() {
         <Keys />
         <Install />
       </main>
-      <Footer />
+      <SiteFooter current="/blink" />
     </div>
   )
 }

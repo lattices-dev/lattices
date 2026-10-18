@@ -54,15 +54,16 @@ Before opening a private layer:
 2. Call MCP `capabilities` and inspect the active `tools/list`. Require
    `layer_open`, `layer_snapshot`, `layer_click`, `layer_type`, `layer_js`,
    and `layer_close` for the private-browser workflow.
-3. Read the [agent-layer deployment and acceptance reference](https://github.com/arach/lattices/blob/main/products/action/docs/agent-layer.md)
+3. Read the [agent-layer deployment and acceptance reference](https://github.com/lattices-dev/lattices/blob/main/products/action/docs/agent-layer.md)
    (source: `products/action/docs/agent-layer.md`). Verify the matched runtime
    and `acceptance.privateLayer.state: accepted` for this host and display
    configuration. Missing, stale, invalid, or unverified evidence means stop.
 4. Check `safety.privateLayer`. If blocked, stop. Do not clear the quarantine,
    retry through another transport, rebuild on an installation target, or
    substitute a regular/background browser for requested isolation.
-5. Check `layer_status` before opening. An existing layer may belong to another
-   caller; opening would replace it. Do not replace it without user authority.
+5. Check `layer_status` for the selected workspace before opening. An existing
+   task may belong to another caller; opening refuses to replace it. Do not
+   close it without user authority.
 6. Check `lats action layer display-status`. Tasks require an already prepared
    persistent monitor. Missing or stale monitor state means stop; explicit
    `lats action layer prepare` is a setup operation that can change the desktop,
@@ -130,7 +131,13 @@ continuous focus isolation. Do not promise "nothing on your screen moves"
 for a path that uses them. Ordinary `background: true` also does not provide
 private-display isolation.
 
-One layer runs at a time. Opening another closes the current layer first.
+Each named workspace has one task. Opening never replaces an active task.
+Pass `workspace` on each MCP layer call or `--workspace` on each CLI layer command;
+omission selects `default`. Prepare each workspace explicitly. Use separate
+browser processes for different workspaces. `previewWorkspace` on open or PiP
+embeds a preview on another prepared workspace. Use `previewFull:true` on an
+outer preview to include its entire display and embedded previews. Recursive
+previews are refused. Multiple displays still share native macOS input focus.
 `layer_record` records the layer; `layer_pip` shows its viewer again.
 The operator owns Pause / Resume, Stop, and Take over. If paused, wait for
 resume. Stop and Take over gate further layer input during teardown and after
@@ -145,7 +152,7 @@ Borrowed windows return to recorded frames. Windows created on the layer are
 closed; an unsaved-changes prompt can leave one open. MCP exit tears down its
 owned layer. CLI layers are detached and require `layer close`.
 Task closure leaves the persistent monitor connected. Only explicit
-`lats action layer release` closes the task and disconnects the monitor;
+`lats action layer release` disconnects the monitor after explicit task closure;
 provisioning, release, and recovery after a monitor-owner restart can change
 the desktop topology and are separate from ordinary task interaction.
 

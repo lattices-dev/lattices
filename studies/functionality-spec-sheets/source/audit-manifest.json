@@ -1,0 +1,394 @@
+{
+  "date": "2026-10-02",
+  "basis": "Current native working tree including pre-existing local changes; no runtime or release validation",
+  "source_root": "/Users/arach/dev/lattices",
+  "source_branch": "codex/native-workspace",
+  "source_head": "91e2e3ab619059fd1661c624cc6a86dd77bb43a1",
+  "source_fingerprints": [
+    {
+      "path": "apps/ios/Sources/ContentView.swift",
+      "sha256": "df6b9f8ae60d13ae1c54c5807f7c0aa798421c1119d38fc17431ec7c0d7d76b9"
+    },
+    {
+      "path": "apps/ios/Sources/DeckStore.swift",
+      "sha256": "c0f77307bec4db6641c19463f9f17c6368ba20f6f14a6060a8125387fba35f74"
+    },
+    {
+      "path": "apps/ios/Sources/DesktopPreviewScreen.swift",
+      "sha256": "b2e3b83d8a49bf818dd3d1e0246ec8eab4f4e8efb75e4c8c42a9716eefe22565"
+    },
+    {
+      "path": "apps/ios/Sources/Info.plist",
+      "sha256": "bee2afa4c83be172f8bba3e2650c7c1a27f1f61c1f8bcb72adb94784357aadfb"
+    },
+    {
+      "path": "apps/mac/Package.swift",
+      "sha256": "c611e01e67ff5a1c83aad1ef2cb7daf71bf5f560819f610554d9ef9aee63fa7c"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+      "sha256": "73df0675796b1af72458bb01ddb165a3d6c4d13ec0edf46cfb97ed16ffbbe719"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/MenuBarController.swift",
+      "sha256": "c17d8a65de07c3ea4ab0819b6e400519f0882a1ec5691f815ce59ddc27ba7521"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/Preferences.swift",
+      "sha256": "7aaf0f4a695d7e83354fd42ec9a43a625bb2c4ef82fccb6a8b533cc5b5a2f2f5"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/RunsReviewView.swift",
+      "sha256": "c87857923b4e0715ce289ae69e2a683eee8b3f1944704a307ba85dc23712abbb"
+    },
+    {
+      "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+      "sha256": "fff2e12bfa87102087f145feadb26e9de0feed0b39e1cc1c4690d8d70d187bad"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Actions/Execution/ActionRuntime.swift",
+      "sha256": "e52f159ae5f19c4cd00456275593809f1551a7ac12fa14cd1679a3b29586eadd"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Actions/HotkeyStore.swift",
+      "sha256": "6d695e702a317a48866e2e541dd9d347160035c7380834458e3b8459b92f9645"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Actions/IntentEngine.swift",
+      "sha256": "76874cd43dc9acb1e39e948abc28aa939f91d6be2008e243af7d2344118981ca"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Assistant/AssistantRuntimeCatalog.swift",
+      "sha256": "024f7169b6a28f87ca889efe18ea4f6d8c916da0c77a860ac8bb3337d7128144"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Assistant/WorkspaceAssistantSession.swift",
+      "sha256": "7bd050028d682ba8d374096ffb391ff3f1b7fca904073347f173384dd99c9963"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+      "sha256": "76acb655143187a09ef30194efe8f28d368c530cfc7a6638378b4abddd9b1bf2"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Capture/RecordingCapture.swift",
+      "sha256": "fb03da3622d560bee46d139e93e0bb424cecb0a8f816d4f0e23938ab9559ca5b"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Companion/LatticesCompanionBridgeServer.swift",
+      "sha256": "ed981e7d28ce8d2d7685e13a93180840e99e2d2024179033af80dc6cda90f855"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Companion/LatticesDeckHost.swift",
+      "sha256": "d15f95a712cc645f7a54f5e32039eb8d97e68179cab2c7fd8faddb63ed4c64b8"
+    },
+    {
+      "path": "apps/mac/Sources/Core/CompanionApps/CompanionAppCatalog.swift",
+      "sha256": "11ebe19b6cd94b9791df47549747f9677d74075e5e29b0ffd09845298076049e"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+      "sha256": "d9db60cbbf47df96fc539169494d0efef9a5ea175ecc37f89c2a55579057d5ab"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Daemon/VoiceHelperRouting.swift",
+      "sha256": "94a34756c27cc31b48683de157ff13eca6128e4f52026d538112ed50b75157ac"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/OcrModel.swift",
+      "sha256": "7b5a2ffa2af65b3d086d177c4afadc45ae6c7988add6107d199176d93a2962aa"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/OcrStore.swift",
+      "sha256": "cbabc4d6c1999731de4ee329f8b7b8e6a16f767ce230b101ab750a642512ff4f"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/PlacementSpec.swift",
+      "sha256": "0e94525f81351585b26fed42a968c4590919cccb65d080a30657d076010a4320"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/TilePointerController.swift",
+      "sha256": "e625d6270fdc11c1c31bd9865d05913fbadae1d57b41b497c3d33f1acd430531"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/WindowDragSnapController.swift",
+      "sha256": "adca9294db72da7339ccc01ea920b460fcde72965b523386b882a1b1795921bf"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/WindowMovementService.swift",
+      "sha256": "76e5775af99e8ec304130c1420e694eedb205a05cad5597e0d16776c63e88b06"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+      "sha256": "f4060081188651d3a1305eb2be163e7935dfb8495996c6a0eeb883107f559d8c"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Input/KeyboardRemapController.swift",
+      "sha256": "442fcdc4f10b077746ee807bff483e335a2f6207622b88844070956403f9876c"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Input/MouseGestureConfig.swift",
+      "sha256": "3ff9c4a238eaba75b00f7c70efb5cd8d31d61fc213ab5b7a801511361dc19604"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Input/MouseGestureController.swift",
+      "sha256": "188bd194dcb282be7d42fcdd9d5d631b5fef362ba05b6b7af3ad54ec22ba53b0"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Input/MouseInputEventViewer.swift",
+      "sha256": "8c128fd537aa1612b1cbda202bfae0ddaff7bba5586a52da1fc7e7e1433b674e"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Input/SpaceSwitchInterceptor.swift",
+      "sha256": "55094cdf30d5cd88c61bcf2c2f074fb8e0667d830ad9c779624bc920f0328b27"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/CommandBar/CommandCatalog.swift",
+      "sha256": "378e73397409dbdf55452c605c263d3fba7b51d9903843d4fbd12711426b17b4"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/FocusModeController.swift",
+      "sha256": "f6566c86328d12fdc34e14290208fc6321f5e727fd624881c1f22caca103abc7"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/HUD/HUDState.swift",
+      "sha256": "65907247b58e483111bf5584d604cf01e8d229d8ce9b229648226329d0d73e23"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/Motion/InPlaceChordHints.swift",
+      "sha256": "875cb0603730f592df4ff887bd28e21567821fe8625174e238e6defc728532a1"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+      "sha256": "174a4fbdcc87c560e8762d7502066314f62b336cb30b5f47ee80178ee52a1988"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/OmniSearch/OmniSearchState.swift",
+      "sha256": "b1a04394a62c0abbe544086b472a9cd48276722b8e4112b674d4517674e2a7ec"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewModel.swift",
+      "sha256": "93088a89cc3f67cb2f62d19810eaabd4c2678e19a4415f161215e410360f0539"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewProjection.swift",
+      "sha256": "8ddf6c10b5fe3ff3b537cc2808e88d3c80ae49e36232e3ae03a7a54692dbab59"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/Overview/OverviewView.swift",
+      "sha256": "aeaaa3d575dd031cfb6a2bf0fdc26f40ee6879d81b09a49ca668693fb2e4f637"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/ScreenMap/ScreenMapState.swift",
+      "sha256": "ae089020a5274ae19922cba71d53ffa9976f9d69f529801c63cb1bcfb12559cd"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/ScreenOverlayActorHUDController.swift",
+      "sha256": "ce461430e07c0e3d4d72a386b296b237e58feb5a9f501d4a59b2e77bc943d8ac"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/SpatialLens/SpatialLensController.swift",
+      "sha256": "c85f9367597f60d52bd0ed273feef8275a93728884b92688face133ce16bc4b2"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/BrowseMenu.swift",
+      "sha256": "9ce3b3cc9824bb1d90171905f14e29b5b6bd3144e362208d4479e38dc185249c"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarState.swift",
+      "sha256": "d21d10636f2be7d981d95cd5430bbd83888fbb135caac3026959c1476f1148de"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarWindow.swift",
+      "sha256": "a636f838528f1005989daad39add38924a5d45f544ef789ecfcf0273b69104a3"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Runs/RunStore.swift",
+      "sha256": "2aee3c8b7ede705d5c2009f9cc59ea80b4370e9b9c0118beca1734a43a37b39d"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Voice/HandsOffSession.swift",
+      "sha256": "efaa199b2df7febf444ab780f374b897bc2ae220ff936025949731c65c3ad893"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LayerArrange.swift",
+      "sha256": "5bb4956c22360f07943aec74edb0c3881c4439b76ffccd0b42691b3756e6c850"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LayerEditing.swift",
+      "sha256": "1f84727c689202049821011a93f74dd2d2f2035568bf0099749f9d6aaa8cf2bb"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LayerMembership.swift",
+      "sha256": "aa4227d9d0e45d3dc7f9f3141b7a966a25bdb2e08b7e7db309443d8aed30f5a3"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LayerSlots.swift",
+      "sha256": "6d88781044cd4bc3cca86732af1a736cf00856609857c0b2701734eddc164d89"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LayerStage.swift",
+      "sha256": "4b6f67c4e5f033e1b53ba39bef6123c7939c317286d8ad58b86223fa723288f7"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/LiveTabGroupStore.swift",
+      "sha256": "871969ddbdb12c9cf5ca4018899a1db3fe3e916fa20ec8cd9db343433316a0b8"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/Project.swift",
+      "sha256": "65bd46e0ae40657cc5764301612ef414a7efbd3a2f22dff5e435237aa02872d6"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/ProjectScanner.swift",
+      "sha256": "5f670861887496f0ae48b47a70b574f444be194703789b3c80c79cc3bb9331c1"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/SessionManager.swift",
+      "sha256": "320ef087ba55e1001752aa748190181660a53121d10a38eb10bdb797b63f2e9d"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/StudioLayer.swift",
+      "sha256": "d2bf04bb93f5b7699d9e98b9f109bc0bc37f1a074cc8dc408fe81f9eb14d59fa"
+    },
+    {
+      "path": "apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift",
+      "sha256": "36e912deed7f9efbcdb4e3a41a23efda41aa58cd7da70190abf94dab8a2cad2f"
+    },
+    {
+      "path": "bin/cli/map.ts",
+      "sha256": "8714340a48c07e6a1f693dcfa2fd014c796a9b2e4cdc23aae3780095d13528bb"
+    },
+    {
+      "path": "bin/cli/search.ts",
+      "sha256": "6ac2fb0f34466009bdd32c3dc8d3b5b22516ffd005cab735d82b34124baa2c1d"
+    },
+    {
+      "path": "bin/cli/usage.ts",
+      "sha256": "0d6e898399d125de66257b333b46401ba0d0735b768ff0c17ecdaa7a3af360c9"
+    },
+    {
+      "path": "bin/client.ts",
+      "sha256": "a924f69f361cdbbc1ef60756477a9c4a204507706670c255011a5b33ee038682"
+    },
+    {
+      "path": "bin/lattices.ts",
+      "sha256": "c499f0cb845c286da1cf5ebea5c9857c204a74d8b29e0ec4e879d577be18d3c3"
+    },
+    {
+      "path": "bin/mcp/registry.ts",
+      "sha256": "8e7306beabd5245943ebcafe87e99f7e9f857c782f3b9aa55d1e1c03276e71ce"
+    },
+    {
+      "path": "bin/mcp/toolsets/browser/index.ts",
+      "sha256": "8bc5aebe4fc1641c9bd60b4dab55bc6d6b4e202a02664c25c4395ccd543756bf"
+    },
+    {
+      "path": "bin/project-twin.ts",
+      "sha256": "e7fae5bfbe494b6ceec549b6776a2730be6c975c6a550c26aa69376b984cae1e"
+    },
+    {
+      "path": "docs/agents.md",
+      "sha256": "1f369a2441cf971d8d01954f9b3bd8c0d26b26ab8fd56bda675a3600ceff0bec"
+    },
+    {
+      "path": "docs/api.md",
+      "sha256": "2b62cb8d9d40693528002e6a4ba85cb0c91a0479f6abbc658d4508bafec8078a"
+    },
+    {
+      "path": "docs/app.md",
+      "sha256": "55ec58eaaf9c77c4df3b6740acb65b3785d88ffc44496276f1dbaae757e99907"
+    },
+    {
+      "path": "docs/companion-deck.md",
+      "sha256": "ca727aa257eb5c81dde4c021be36c56d8c0e82e3913d88e5c1bdff4d138bf2ae"
+    },
+    {
+      "path": "docs/concepts.md",
+      "sha256": "cfff2b1d74a965396e99ca736194938863e7d4fb8167f530b27835e82f128ad8"
+    },
+    {
+      "path": "docs/config.md",
+      "sha256": "5fbd9f86e75d6598e1b9ebcecb731ea2cfd0ddb617ab2862875aaee82f7d5eda"
+    },
+    {
+      "path": "docs/layers.md",
+      "sha256": "ba6d8eb5ced5f321062b8499c97f3ad552d2fca0e330216f2b1a5aaef7f21574"
+    },
+    {
+      "path": "docs/mcp.md",
+      "sha256": "cdb6f73ad1cb3d4e9aafaa8b7db6ab8044737788494057ee18b68ac2a3ccecac"
+    },
+    {
+      "path": "docs/mouse-gestures.md",
+      "sha256": "0273d320af17f158ef67135e5cb8b1f48a55de998fb7151c3a2157ba1990b2b5"
+    },
+    {
+      "path": "docs/tiling-reference.md",
+      "sha256": "fbca89d17952d26778f560d07763277f4844911690dd0aad477ffb7c47cb8e4b"
+    },
+    {
+      "path": "docs/voice.md",
+      "sha256": "2e485f1076f7c5bd998e9f59404f509580023241aadc384c90c9362b014df98c"
+    },
+    {
+      "path": "docs/workspace-map.md",
+      "sha256": "c0daab5f689f3e06e16edeb6fd9ad305457d7526efc9e956fd63a50311af500e"
+    },
+    {
+      "path": "package.json",
+      "sha256": "ea65da046238bf69b645f3977707e9e02f3f45377c17e973f0888626cf009df2"
+    },
+    {
+      "path": "products/action/README.md",
+      "sha256": "a049e1999345e25cefddf2ce03d395df475ab102771221df177dc3cb1cfaf68c"
+    },
+    {
+      "path": "products/action/packages/mcp/src/index.ts",
+      "sha256": "0964db942eabfe7c154be43b03230173aeb9d0a114fe64e4f34e6bd1f39f1c1d"
+    },
+    {
+      "path": "products/blink/AGENTS.md",
+      "sha256": "c5e819ef134ecd3100e04be428b25cde191a7f21578f86b4d9f530c7207893c2"
+    },
+    {
+      "path": "products/blink/docs/cli.md",
+      "sha256": "cb478c228dfb1f09c6a32cd0009a49010993b47e9b94407b154311b79d8a1d2d"
+    },
+    {
+      "path": "products/blink/docs/ios-sync.md",
+      "sha256": "c27fcb1c88a95063f7c2fa3eeb6a7ceeb73720865ba82af52563ba0bdc9c0d3d"
+    },
+    {
+      "path": "products/voice/AGENTS.md",
+      "sha256": "724b7de1f32573f8df1909589bc71053e6e73605f93e50cb06949a915cbdc82e"
+    },
+    {
+      "path": "products/voice/Sources/Speech/SpeechVoiceCatalog.swift",
+      "sha256": "83f5e02581a1f9d577d0ddf195e06ea9fdc92c0add7dab3c1549d3b1a4beca94"
+    },
+    {
+      "path": "skills/action/SKILL.md",
+      "sha256": "adf5f4fae6b958fc3604999ee056dc54cc8580cddce5b192af26a445bdb961c8"
+    },
+    {
+      "path": "skills/blink/SKILL.md",
+      "sha256": "818bd25d571cc3cd2a4a7ebdfc05fead781428d89e83e64d6dbc2264695803d5"
+    },
+    {
+      "path": "skills/lattices/SKILL.md",
+      "sha256": "38058028ed0474413cc0f29958a7e7af883afc03e74c607298b32aef97b3068c"
+    },
+    {
+      "path": "skills/voice/SKILL.md",
+      "sha256": "f7ee5243de341da2a611740af1dbd79f1e19c3491a2475e76b405ecee91dd8c4"
+    }
+  ],
+  "inventory_rows": 115,
+  "browser_tool_names": 14,
+  "native_endpoint_names": 140,
+  "notes": [
+    "Read current source ahead of docs when they disagree.",
+    "Inventories group related operations; native-api-index.csv preserves endpoint-level names.",
+    "Figures are conceptual schematics, not screenshots or engineering dimensions.",
+    "Draft/proposal features are excluded from the one-pagers."
+  ]
+}

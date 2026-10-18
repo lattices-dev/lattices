@@ -98,7 +98,7 @@ final class AppUpdater: ObservableObject {
     func viewCurrentRelease() {
         if let update = availableUpdate {
             NSWorkspace.shared.open(update.htmlURL)
-        } else if let url = URL(string: "https://github.com/arach/lattices/releases/latest") {
+        } else if let url = URL(string: "https://github.com/lattices-dev/lattices/releases/latest") {
             NSWorkspace.shared.open(url)
         }
     }
@@ -210,7 +210,7 @@ final class AppUpdater: ObservableObject {
     }
 
     private func fetchLatestRelease() async throws -> GitHubRelease {
-        let url = URL(string: "https://api.github.com/repos/arach/lattices/releases/latest")!
+        let url = URL(string: "https://api.github.com/repositories/1171006654/releases/latest")!
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Lattices/\(currentVersion)", forHTTPHeaderField: "User-Agent")

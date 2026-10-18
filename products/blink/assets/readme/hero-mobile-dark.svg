@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="560" viewBox="0 0 480 560" role="img" aria-labelledby="title desc">
+<title id="title">Blink — spatial Markdown notes for macOS</title>
+<desc id="desc">Two floating note panels with a release checklist and Markdown file example, drawn with fine lines.</desc>
+<rect width="480" height="560" rx="12" fill="#111214"/>
+<text x="32" y="77" fill="#ececf0" font-family="'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif" font-size="58" font-weight="400" letter-spacing="-1.8">Blink</text>
+<text x="34" y="111" fill="#a5a6af" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="400" >Spatial Markdown notes for macOS.</text>
+<path d="M34 137H79" fill="none" stroke="#a7b2e5" stroke-width="0.8"/>
+<rect x="32" y="175" width="306" height="236" rx="9" fill="#1a1b1f" stroke="#3a3b45" stroke-width=".8"/>
+<text x="52" y="200" fill="#a5a6af" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="400" >release.md</text>
+<circle cx="317" cy="196" r="3" fill="none" stroke="#a7b2e5" stroke-width=".8"/>
+<path d="M32 215H338" fill="none" stroke="#3a3b45" stroke-width="0.8"/>
+<text x="54" y="254" fill="#ececf0" font-family="'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif" font-size="25" font-weight="400" letter-spacing="-.4">Release checklist</text>
+<rect x="55" y="278" width="12" height="12" rx="2" fill="none" stroke="#a7b2e5" stroke-width=".9"/>
+<path d="M58 284l2.5 2.5 4-5" fill="none" stroke="#a7b2e5" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="78" y="290" fill="#a5a6af" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="400" >Review the changes</text>
+<rect x="55" y="308" width="12" height="12" rx="2" fill="none" stroke="#747681" stroke-width=".9"/>
+<text x="78" y="320" fill="#a5a6af" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="400" >Update the docs</text>
+<rect x="55" y="338" width="12" height="12" rx="2" fill="none" stroke="#747681" stroke-width=".9"/>
+<text x="78" y="350" fill="#a5a6af" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="400" >Publish the release</text>
+<rect x="164" y="376" width="284" height="137" rx="9" fill="#202126" stroke="#3a3b45" stroke-width=".8"/>
+<text x="184" y="401" fill="#a5a6af" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="400" >scratch.md</text>
+<circle cx="427" cy="397" r="3" fill="none" stroke="#a7b2e5" stroke-width=".8"/>
+<path d="M164 416H448" fill="none" stroke="#3a3b45" stroke-width="0.8"/>
+<text x="185" y="445" fill="#ececf0" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="17" font-weight="400" ># Next</text>
+<text x="185" y="475" fill="#a5a6af" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="400" >Keep the example small.</text>
+<text x="34" y="540" fill="#747681" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="10" font-weight="400" letter-spacing="1.5">LATTICES / BLINK</text>
+</svg>

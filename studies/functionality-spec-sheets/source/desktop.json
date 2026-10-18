@@ -1,0 +1,778 @@
+[
+  {
+    "id": "D01",
+    "group": "Command surfaces",
+    "capability": "Menu bar and workspace entry points",
+    "details": "Native menu opens Home, project initialization and launch, Settings, companion apps, and workspace surfaces.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/AppShell/MenuBarController.swift",
+        "lines": "155-236"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "4-47"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D02",
+    "group": "Command surfaces",
+    "capability": "Unified command bar",
+    "details": "Empty query offers window placement, project launch/attach/kill, layers, groups, assistant, Studio, activity, Focus Mode, Settings and project refresh.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/BrowseMenu.swift",
+        "lines": "8-202"
+      }
+    ],
+    "caveat": "This is the current merged surface; older documentation calls it a separate command palette and lists commands absent from the current browse menu."
+  },
+  {
+    "id": "D03",
+    "group": "Command surfaces",
+    "capability": "Slash commands and natural-language commands",
+    "details": "Typed slash commands expose engine intents; recognized natural-language commands preview the action and placement before Enter executes. Questions can hand off to the workspace assistant.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/CommandBar/CommandCatalog.swift",
+        "lines": "53-90"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarState.swift",
+        "lines": "48-108"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarWindow.swift",
+        "lines": "306-359"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D04",
+    "group": "Command surfaces",
+    "capability": "Unified search and focus",
+    "details": "Search merges windows, terminal/session metadata, screen text, projects and applications; selecting a window result focuses that window.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/OmniSearch/OmniSearchState.swift",
+        "lines": "154-272"
+      }
+    ],
+    "caveat": "Screen text depends on enabled indexing and permissions; terminal metadata support varies by terminal."
+  },
+  {
+    "id": "D05",
+    "group": "Placement and displays",
+    "capability": "Named window placements",
+    "details": "Maximize, centered floating, halves, quadrants, vertical and horizontal thirds, sixths, fourth columns, eighths and edge quarters share one placement model.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "301-348"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/PlacementSpec.swift",
+        "lines": "133-136"
+      }
+    ],
+    "caveat": "Keyboard, HUD and local voice phrase coverage expose subsets of the full executor vocabulary."
+  },
+  {
+    "id": "D06",
+    "group": "Placement and displays",
+    "capability": "Custom grids and cell spans",
+    "details": "Place into arbitrary column/row grids, inclusive rectangular cell spans, and numbered square-grid shorthand.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/PlacementSpec.swift",
+        "lines": "4-103"
+      }
+    ],
+    "caveat": "Compact human form uses one-based cells; explicit grid wire form uses zero-based cells."
+  },
+  {
+    "id": "D07",
+    "group": "Placement and displays",
+    "capability": "Fractional placement",
+    "details": "Resolve normalized rectangles through the same executor as named positions and grid cells; respect the display visible frame.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/PlacementSpec.swift",
+        "lines": "133-136"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "678-723"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D08",
+    "group": "Placement and displays",
+    "capability": "Automatic distribution",
+    "details": "Distribute visible windows, windows of the frontmost app type, or a selected/app-filtered group inside a region.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "1982-2051"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Actions/IntentEngine.swift",
+        "lines": "501-556"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D09",
+    "group": "Placement and displays",
+    "capability": "Fill open space",
+    "details": "Place the frontmost window in a least-occupied grid cell, or grow a selected window to available space from the in-place tools.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "138-141"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+        "lines": "1315-1389"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D10",
+    "group": "Placement and displays",
+    "capability": "Move across displays",
+    "details": "Move one window or a selection to a named/next monitor while retaining each normalized frame; a single window may move and take a canonical placement.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowMovementService.swift",
+        "lines": "115-237"
+      }
+    ],
+    "caveat": "Accessibility permission is needed; movement outcomes distinguish successful, partial, blocked and unverified operations."
+  },
+  {
+    "id": "D11",
+    "group": "Placement and displays",
+    "capability": "Focus and find a window across Spaces",
+    "details": "Resolve tagged tmux terminal windows or explicit window IDs, switch Space when needed, raise and focus, and flash a visual border.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "1487-1641"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "1890-1924"
+      }
+    ],
+    "caveat": "Resolution falls back through CG/AX/AppleScript and differs by permissions and terminal support."
+  },
+  {
+    "id": "D12",
+    "group": "Placement and displays",
+    "capability": "Instant Space switching",
+    "details": "Ctrl+Left/Right and mapped gestures switch adjacent Spaces with a landing bezel and edge feedback. The keyboard path uses a Dock swipe under a screen-update freeze.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Input/SpaceSwitchInterceptor.swift",
+        "lines": "5-21"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowTiler.swift",
+        "lines": "934-1010"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Input/MouseGestureController.swift",
+        "lines": "1048-1065"
+      }
+    ],
+    "caveat": "Requires Accessibility; uses private macOS facilities with fallback. Source coverage is not a guarantee on every macOS release."
+  },
+  {
+    "id": "D13",
+    "group": "Placement and displays",
+    "capability": "Space landscape",
+    "details": "Ctrl+Shift+Left/Right exposes the Space landscape for the current display.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Input/SpaceSwitchInterceptor.swift",
+        "lines": "18-21"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "730-733"
+      }
+    ],
+    "caveat": "Source entry point confirmed; visual interaction not exercised in this audit."
+  },
+  {
+    "id": "D14",
+    "group": "Placement and displays",
+    "capability": "Drag-to-snap zones",
+    "details": "Hold a configured modifier while dragging to reveal targets and a live preview; release over a zone to place. JSON rules set trigger rectangles, placements, priority and opacity.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowDragSnapController.swift",
+        "lines": "98-173"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/WindowDragSnapController.swift",
+        "lines": "242-312"
+      },
+      {
+        "path": "docs/tiling-reference.md",
+        "lines": "103-151"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D15",
+    "group": "Placement and displays",
+    "capability": "Pointer tiling HUD",
+    "details": "Control+Option hold opens a radial ring or matrix around the cursor; aim at a target and release to place, or release at center to cancel.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/TilePointerController.swift",
+        "lines": "176-243"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/TilePointerController.swift",
+        "lines": "357-429"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/TilePointerController.swift",
+        "lines": "445-493"
+      }
+    ],
+    "caveat": "Shares the Control+Option hold with Spatial Lens through an exclusive preference mode."
+  },
+  {
+    "id": "D16",
+    "group": "Placement and displays",
+    "capability": "Spatial Lens",
+    "details": "Preview and place the window under the pointer using eight surrounding targets; side placements cycle half/third/two-thirds, with deliberate adjacent-display flicks.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/SpatialLens/SpatialLensController.swift",
+        "lines": "87-133"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/SpatialLens/SpatialLensController.swift",
+        "lines": "170-288"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "788-821"
+      }
+    ],
+    "caveat": "Preference-selected alternative for the Control+Option hold; no live gesture test performed."
+  },
+  {
+    "id": "D17",
+    "group": "Window workspaces",
+    "capability": "Hyperspace survey",
+    "details": "Separate per-display window survey with selection, zoom, grouping, grid gather, staged placements and saving selected windows as layers.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+        "lines": "1160-1203"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+        "lines": "2075-2135"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "2038-2059"
+      }
+    ],
+    "caveat": "Staged Space reassignment is explicitly Phase 3 in source and must not be advertised as implemented."
+  },
+  {
+    "id": "D18",
+    "group": "Window workspaces",
+    "capability": "In-place window tools",
+    "details": "Select real desktop windows; Fill, Grid and Swap act immediately; Place stages an exact position. Keep accepts changes; Restore reverses the session frames and stacking.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+        "lines": "1315-1389"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/WindowMotionMode.swift",
+        "lines": "2014-2135"
+      },
+      {
+        "path": "docs/app.md",
+        "lines": "360-386"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D19",
+    "group": "Window workspaces",
+    "capability": "Reversible Focus Mode",
+    "details": "Spotlight the frontmost interactive window against a dark backdrop, center/resize it, and restore its original frame on exit.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/FocusModeController.swift",
+        "lines": "5-125"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "41-41"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D20",
+    "group": "Window workspaces",
+    "capability": "Letter navigation hints and mouse finder",
+    "details": "Overlay letter hints on windows for keyboard focus jumps; find or summon the pointer through engine commands.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/Motion/InPlaceChordHints.swift",
+        "lines": "73-147"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Actions/IntentEngine.swift",
+        "lines": "859-894"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D21",
+    "group": "Window workspaces",
+    "capability": "Live cross-app tabs",
+    "details": "Turn selected live windows into a tab stack; select, add, detach, expand to a grid, collapse, activate, show a guide or dissolve the group.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LiveTabGroupStore.swift",
+        "lines": "28-42"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/LiveTabGroupStore.swift",
+        "lines": "77-328"
+      }
+    ],
+    "caveat": "These are runtime-only window stacks, distinct from persisted tmux project tab groups."
+  },
+  {
+    "id": "D22",
+    "group": "Window workspaces",
+    "capability": "Screen Map editor",
+    "details": "Survey displays/layers; select and search windows; drag/resize, tile, spread, expose, distribute, grow, consolidate or flatten; preview, apply or discard edits.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/ScreenMap/ScreenMapState.swift",
+        "lines": "877-1256"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/ScreenMap/ScreenMapState.swift",
+        "lines": "2202-2495"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/ScreenMap/ScreenMapState.swift",
+        "lines": "2504-2640"
+      }
+    ],
+    "caveat": "Some Screen Map implementation labels predate unified layer semantics. Current Overview dirty changes are being inventoried separately; do not equate screen-map local arrangements with saved layer rules."
+  },
+  {
+    "id": "D23",
+    "group": "Window workspaces",
+    "capability": "HUD and workspace minimap",
+    "details": "Search and inspect projects/windows, multi-select for tiling, display window previews and a docked/expanded minimap, and expose voice feedback.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/HUD/HUDState.swift",
+        "lines": "7-96"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "18-30"
+      }
+    ],
+    "caveat": "Pinning here pins the HUD inspector selection; it does not implement always-on-top for arbitrary application windows."
+  },
+  {
+    "id": "D24",
+    "group": "Window workspaces",
+    "capability": "App-owned overlay actors and hover HUDs",
+    "details": "Apps can publish local HUD manifests and HTML; Lattices hosts a persistent actor with a transparent WebKit hover dashboard and global visibility toggle.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/ScreenOverlayActorHUDController.swift",
+        "lines": "13-109"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "30-30"
+      },
+      {
+        "path": "docs/app.md",
+        "lines": "101-120"
+      }
+    ],
+    "caveat": "Host capability requires an app-published manifest/content; the dashboard renderer and data remain app-owned."
+  },
+  {
+    "id": "D25",
+    "group": "Input controls",
+    "capability": "Mouse shortcuts and shapes",
+    "details": "Map configured mouse buttons, clicks, directional drags and shapes to Space navigation, Screen Map, voice hotkey, arbitrary keyboard shortcuts or app activation; supports action sequences.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Input/MouseGestureConfig.swift",
+        "lines": "4-32"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Input/MouseGestureController.swift",
+        "lines": "987-1044"
+      },
+      {
+        "path": "docs/mouse-gestures.md",
+        "lines": "84-108"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D26",
+    "group": "Input controls",
+    "capability": "Gesture editing and history",
+    "details": "Load user-level gesture JSON, upsert/reload through the daemon, restore defaults and undo using local history snapshots.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "docs/mouse-gestures.md",
+        "lines": "27-62"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Daemon/LatticesApi.swift",
+        "lines": "3740-3852"
+      }
+    ],
+    "caveat": "Machine-local rules are separate from project configuration; source docs specify newest 40 snapshots."
+  },
+  {
+    "id": "D27",
+    "group": "Input controls",
+    "capability": "Caps Lock Hyper/Escape remap",
+    "details": "Hold Caps Lock for Hyper and tap alone for Escape; preserve/restore the original HID mapping and provide stuck-input recovery.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Input/KeyboardRemapController.swift",
+        "lines": "286-426"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Input/KeyboardRemapController.swift",
+        "lines": "549-686"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "622-625"
+      }
+    ],
+    "caveat": "Optional and permission-dependent; uses private F18 transport to avoid latching Caps Lock."
+  },
+  {
+    "id": "D28",
+    "group": "Input controls",
+    "capability": "Configurable keyboard shortcuts",
+    "details": "Record, change, disable and reset action bindings; detect conflicts; bind window, workspace, voice, HUD, layer and arrangement actions.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Actions/HotkeyStore.swift",
+        "lines": "446-542"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/HotkeyBootstrap.swift",
+        "lines": "4-155"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D29",
+    "group": "Input controls",
+    "capability": "Input diagnostics and recovery",
+    "details": "Event Viewer shows mouse/device observations; event-tap circuit breakers expose paused/disabled state and a re-enable control.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Input/MouseInputEventViewer.swift",
+        "lines": "4-104"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "3083-3115"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D30",
+    "group": "Screen understanding",
+    "capability": "Accessibility text and Vision OCR",
+    "details": "Quick scans extract Accessibility text without screenshots; deep scans capture/hash windows and run budgeted Vision recognition, caching unchanged results.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/OcrModel.swift",
+        "lines": "107-196"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/OcrModel.swift",
+        "lines": "204-333"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/Preferences.swift",
+        "lines": "388-414"
+      }
+    ],
+    "caveat": "Opt-in. Default quick scan is 5 windows/60 seconds; deep scan 15 windows/2 hours with an OCR budget of 3. Screenshot OCR needs Screen Recording."
+  },
+  {
+    "id": "D31",
+    "group": "Screen understanding",
+    "capability": "Searchable screen-text history",
+    "details": "Persist screen text in local SQLite/FTS5, search by text/app, inspect window history and recent results, and prune old records.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Desktop/OcrStore.swift",
+        "lines": "42-104"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Desktop/OcrStore.swift",
+        "lines": "151-232"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/Preferences.swift",
+        "lines": "412-414"
+      }
+    ],
+    "caveat": "Retention is configurable, with a current 7-day default; docs/ocr.md still says 3 days."
+  },
+  {
+    "id": "D32",
+    "group": "Capture and evidence",
+    "capability": "Screenshots",
+    "details": "Capture a window, rectangular region or full display; save PNGs as run artifacts and optionally copy to clipboard. Display capture supports delayed snapshot flows.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "28-132"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "133-369"
+      },
+      {
+        "path": "docs/app.md",
+        "lines": "382-386"
+      }
+    ],
+    "caveat": "Requires Screen Recording. Capture implementation exists, but no new media was captured during this inventory."
+  },
+  {
+    "id": "D33",
+    "group": "Capture and evidence",
+    "capability": "Artifact crop, zoom and local visual checks",
+    "details": "Crop/scale saved images, extract text blocks, verify contains/not-contains expectations, or compare artifact changes.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "370-434"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "477-576"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Capture/CaptureController.swift",
+        "lines": "1038-1097"
+      }
+    ],
+    "caveat": "The native vision analysis here is local OCR and image-change checking, not general semantic image reasoning by a vision language model."
+  },
+  {
+    "id": "D34",
+    "group": "Capture and evidence",
+    "capability": "Window and region recording",
+    "details": "Record a screen region or application window to MOV through a signed app-host ScreenCaptureKit probe; choose region FPS/scale and stop the recording by run.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Capture/RecordingCapture.swift",
+        "lines": "213-312"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Capture/RecordingCapture.swift",
+        "lines": "696-935"
+      }
+    ],
+    "caveat": "Requires supported macOS, Screen Recording and an app bundle. Default window recording is a fixed region; explicit app-window mode follows the app-window path."
+  },
+  {
+    "id": "D35",
+    "group": "Capture and evidence",
+    "capability": "Runs and artifacts",
+    "details": "Keep run status, target surfaces, trace events and media artifacts; inspect completed or failed activity through the app and API.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Runs/RunStore.swift",
+        "lines": "7-116"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/RunsReviewView.swift",
+        "lines": "1-90"
+      }
+    ],
+    "caveat": "Source-inspected; no live acceptance test in this audit."
+  },
+  {
+    "id": "D36",
+    "group": "Capture and evidence",
+    "capability": "Verified placement receipts and undo",
+    "details": "The action runtime supports dry-run placement/movement, target and before/after frame evidence, verification, receipt history and restoration of undoable actions.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Actions/Execution/ActionRuntime.swift",
+        "lines": "27-40"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Actions/Execution/ActionRuntime.swift",
+        "lines": "136-297"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Actions/Execution/ActionRuntime.swift",
+        "lines": "365-524"
+      }
+    ],
+    "caveat": "Undo and frame verification apply to the action-runtime path; do not assume every legacy/direct UI action has a durable receipt."
+  },
+  {
+    "id": "D37",
+    "group": "Voice and assistance",
+    "capability": "Voice command bar",
+    "details": "Open directly into listening, hold Option for push-to-talk, stop/cancel capture, show transcript/intent/results, execute supported workspace intents and hand conversational questions to the assistant.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarWindow.swift",
+        "lines": "128-143"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarWindow.swift",
+        "lines": "258-290"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Overlays/UnifiedCommandBar/UnifiedCommandBarWindow.swift",
+        "lines": "431-479"
+      }
+    ],
+    "caveat": "Voice runtime is build-gated; SettingsView.swift:2235-2251 explicitly reports Not in this build when HUDSONKIT_WITH_VOICE is absent. Permissions and configured engines also apply."
+  },
+  {
+    "id": "D38",
+    "group": "Voice and assistance",
+    "capability": "Hands-off workspace actions",
+    "details": "Voice turns use desktop snapshots, local/inference-backed interpretation and native action execution; preserve frame history, cap action batches and distribute repeated placement requests.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Voice/HandsOffSession.swift",
+        "lines": "80-99"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Voice/HandsOffSession.swift",
+        "lines": "715-775"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Voice/HandsOffSession.swift",
+        "lines": "790-950"
+      }
+    ],
+    "caveat": "Requires voice/worker readiness and any selected provider credentials. No latency or live provider-acceptance claim is established by this source audit."
+  },
+  {
+    "id": "D39",
+    "group": "Voice and assistance",
+    "capability": "Speech output companion routing",
+    "details": "The Lattices voice API forwards say/stop/pause/resume/seek/skip, voice selection and speaker leases to the separately installed Voice helper.",
+    "status": "conditional",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/Core/Daemon/VoiceHelperRouting.swift",
+        "lines": "3-45"
+      }
+    ],
+    "caveat": "Speech has an independent lifecycle and capability token. A queued speech job is not proof of playback completion; voice.stop means output stop, not stopListening."
+  },
+  {
+    "id": "D40",
+    "group": "App configuration",
+    "capability": "Settings, permissions and supported external terminals",
+    "details": "Settings cover app/project preferences, permissions, keyboard/mouse input, shortcuts, Hyperspace, voice/AI, screen search, companion pairing and Command Deck; launch tmux sessions in Terminal, iTerm2, Warp, Ghostty, Kitty or Alacritty.",
+    "status": "implemented",
+    "evidence": [
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "12-41"
+      },
+      {
+        "path": "apps/mac/Sources/Core/Workspace/Terminal/Terminal.swift",
+        "lines": "3-20"
+      },
+      {
+        "path": "apps/mac/Sources/AppShell/SettingsView.swift",
+        "lines": "466-531"
+      }
+    ],
+    "caveat": "No native embedded-terminal UI was found. LatticesTerminalKit is a reusable terminal-inventory package, not an embedded terminal emulator. Companion and assistant details are audited separately."
+  }
+]

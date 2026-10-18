@@ -1,0 +1,17 @@
+Three permissions, three different jobs
+
+Silent educational animation. Illustrative example, not a live desktop inspection.
+
+Opening: Lattices / Field Guide. MACOS PERMISSIONS. Three permissions, three different jobs. Start with the task your tool needs to do.
+
+[0–10 seconds] Operate a control. Accessibility lets a tool read or use the controls an app exposes.
+
+[10–20 seconds] Capture the screen. Screen & System Audio Recording covers capture access. It is separate from control access.
+
+[20–30 seconds] Send app commands. Automation covers Apple Events that let one app command another.
+
+[30–40 seconds] Start with the task. One workflow may need more than one permission. Check the requesting app; names vary by macOS version.
+
+On-screen diagram labels: Your tool; Accessibility; Exposed controls; Save; Screen & System Audio Recording; Captured image; Automation; Apple Events; App A; App B; One task can cross several boundaries.
+
+Footer: Illustrative example · not a live desktop. lattices.dev/learn.

@@ -1,3 +1,4 @@
+import { assertRequestActive } from "./request-context.ts";
 // The Linux host speaks the Mac daemon's protocol (docs/api.md, "Wire
 // protocol"): {id, method, params} in, {id, result, error} out, {event, data}
 // pushed. Endpoints use the LAT-012 domain names; old names are accepted as
@@ -29,6 +30,8 @@ export interface Endpoint {
 export interface Request {
   id: string;
   method: string;
+  /** Absolute caller deadline; old clients may omit it. */
+  deadline?: number;
   params?: Params | null;
 }
 
@@ -104,6 +107,7 @@ export class Router {
   }
 
   async dispatch(method: string, params: Params | null | undefined): Promise<Json> {
+    assertRequestActive();
     const resolved = resolveAlias(method, params ?? {});
     const endpoint = this.endpoints.get(resolved.method);
     if (!endpoint) throw RouterError.unknownMethod(method);

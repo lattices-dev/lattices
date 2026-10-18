@@ -29,6 +29,7 @@ declare const chrome: {
       ) => void;
     };
   };
+  windows: { update: (windowId: number, properties: { focused: boolean }, callback: () => void) => void };
   scripting: {
     executeScript: (
       details:
@@ -157,6 +158,10 @@ async function ensureBridgePage(): Promise<void> {
 
 async function sendToContentScript(message: ActionMessage): Promise<ActionResponse> {
   const target = surfaceTargetFor(message);
+  if ((message.method === "action.fast.observe" || message.method === "action.fast.act") &&
+      (!Number.isSafeInteger(target?.tabId) || (target?.tabId ?? -1) < 0)) {
+    return { ok: false, error: "Fast actions require an explicit tabId." };
+  }
   const tab = await ensureTab(target);
 
   if (tab.id === undefined) {
@@ -245,7 +250,11 @@ function maybeActivateTab(tab: ChromeTab, activate: boolean | undefined): Promis
         reject(new Error(error.message ?? "Failed to activate Chrome tab."));
         return;
       }
-      resolve(updated);
+      chrome.windows.update(updated.windowId, { focused: true }, () => {
+        const focusError = chrome.runtime.lastError;
+        if (focusError) reject(new Error(focusError.message ?? "Failed to focus Chrome window."));
+        else resolve(updated);
+      });
     });
   });
 }
@@ -328,6 +337,8 @@ function isActionMessage(message: unknown): message is ActionMessage {
   return (
     method === "action.tabs.query" ||
     method === "action.tabs.ensure" ||
+    method === "action.fast.observe" ||
+    method === "action.fast.act" ||
     method === "action.observe" ||
     method === "action.resolve" ||
     method === "action.setValue" ||

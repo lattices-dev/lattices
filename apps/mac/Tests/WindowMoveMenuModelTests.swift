@@ -159,6 +159,20 @@ final class WindowMoveMenuModelTests: XCTestCase {
         XCTAssertFalse(multi.isDisabled(other))
     }
 
+    func testAssignedAppCannotChooseRefusedDesktopOrBringHere() {
+        var refused = desktop(displayIndex: 0, displayName: "DELL", spaceId: 1, number: 1, showing: true)
+        refused.isRefused = true
+        let assigned = desktop(displayIndex: 0, displayName: "DELL", spaceId: 6, number: 3)
+        let otherDisplay = desktop(displayIndex: 1, displayName: "U32", spaceId: 46, number: 1)
+        let model = WindowMoveMenuModel(displays: [
+            display(0, desktops: [refused, assigned]), display(1, desktops: [otherDisplay])
+        ], targets: [target(1)], here: refused)
+        XCTAssertTrue(model.isDisabled(refused))
+        XCTAssertTrue(model.isDisabled(model.here!))
+        XCTAssertFalse(model.isDisabled(assigned))
+        XCTAssertFalse(model.isDisabled(otherDisplay))
+    }
+
     func testBringHereUsesTheInterfaceDisplayInsteadOfTheWindowDisplay() {
         let destination = desktop(displayIndex: 0, displayName: "DELL", spaceId: 3, number: 2, showing: true)
         let source = desktop(
@@ -365,6 +379,14 @@ final class WindowMoveMenuModelTests: XCTestCase {
         XCTAssertEqual(WindowMovementService.failureMessage(for: .object([
             "status": .string("blocked"), "blockedReason": .string("Accessibility is disabled"),
         ])), "Accessibility is disabled")
+    }
+
+    func testAssignedDesktopBlockShowsActionableMessage() {
+        let message = "Chrome is assigned to Desktop 3 on DELL in macOS"
+        XCTAssertEqual(WindowMovementService.failureMessage(for: .object([
+            "status": .string("blocked"), "blockedReason": .string("app-assigned-desktop"),
+            "message": .string(message), "assignedSpaceId": .int(6), "verified": .bool(false),
+        ])), message)
     }
 
     // MARK: - Truthful receipts

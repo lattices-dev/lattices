@@ -58,4 +58,20 @@ final class MachinesTests: XCTestCase {
         XCTAssertEqual(AppPage.named("machines"), .machines)
         XCTAssertTrue(AppPage.navigationGroups[0].pages.contains(.machines))
     }
+
+    /// A tunnelled bridge (127.0.0.1:5288) must not be described on port
+    /// 9399 there: that is this Mac's own daemon, and its displays would be
+    /// cached as the host's.
+    func testLoopbackBridgesAreNotDescribed() {
+        for host in ["127.0.0.1", "127.0.1.1", "127.255.255.255", "127.1", "2130706433",
+                     "localhost", "LOCALHOST", "localhost.", "::1", "[::1]",
+                     "[0:0:0:0:0:0:0:1]", "::1%lo0", "[::ffff:127.0.0.1]",
+                     "::ffff:127.12.34.56", "0:0:0:0:0:ffff:7f01:0203"] {
+            XCTAssertTrue(MachineInventory.isLoopback(host), host)
+        }
+        for host in ["archie", "100.119.71.19", "fd7a::1", "studio.local", "127.example.com",
+                     "localhost.example.com", "::", "::ffff:128.0.0.1", "126.255.255.255", ""] {
+            XCTAssertFalse(MachineInventory.isLoopback(host), host)
+        }
+    }
 }

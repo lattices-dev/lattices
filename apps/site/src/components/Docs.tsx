@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { defaultDoc, getDoc, navGroups, type DocPage } from '../lib/content'
 import { formatBuildDate, getBuildMeta, type DocMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { SiteHeader } from './SiteChrome'
+import { SiteFooter, SiteHeader } from './SiteChrome'
 
 interface DocsPageProps {
   slug?: string
@@ -38,6 +38,7 @@ export function DocsPage({ slug }: DocsPageProps) {
             </p>
           </div>
         </main>
+        <SiteFooter />
       </div>
     )
   }
@@ -77,6 +78,7 @@ export function DocsPage({ slug }: DocsPageProps) {
           <TableOfContents doc={doc} />
         </aside>
       </main>
+      <SiteFooter current={`/docs/${doc.slug}`} />
     </div>
   )
 }

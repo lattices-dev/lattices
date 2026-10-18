@@ -26,6 +26,9 @@ struct WindowMoveMenuModel: Equatable {
         var isCurrent = false
         /// Whether this Desktop is currently showing on its display.
         var isShowing = false
+        /// macOS assigns the window's app to another desktop on this display
+        /// (Dock › Assign To) and would pull the window back there.
+        var isRefused = false
 
         var title: String { "\(displayName) · Desktop \(number)" }
     }
@@ -97,7 +100,7 @@ struct WindowMoveMenuModel: Equatable {
     }
 
     func isDisabled(_ desktop: Desktop) -> Bool {
-        desktop.isCurrent && targetCount == 1
+        (desktop.isCurrent || desktop.isRefused) && targetCount == 1
     }
 
     func moveAccessibilityLabel(to desktop: Desktop) -> String {
@@ -165,6 +168,7 @@ enum WindowMovementService {
     ) -> WindowMoveMenuModel {
         let spaces = WindowTiler.getDisplaySpaces()
         let memberships = anchorWid.map { WindowTiler.getSpacesForWindow($0) } ?? []
+        let binding = targets.count == 1 ? targets.first.flatMap { SpaceAssignments.binding(forPid: $0.pid) } : nil
         let hostId = hostScreen.map(ScreenOverlayCanvasController.screenID(for:))
         let hostIndex = DisplayTopology.live().displays.first { $0.id == hostId }?.apiIndex
         var displayModels = displays(anchorScreen: WindowTiler.screenForWindowFrame(windowFrame))
@@ -176,7 +180,8 @@ enum WindowMovementService {
                     displayIndex: display.index, displayName: display.name,
                     spaceId: space.id, number: space.index,
                     isCurrent: memberships.contains(space.id),
-                    isShowing: owned?.currentSpaceId == space.id
+                    isShowing: owned?.currentSpaceId == space.id,
+                    isRefused: SpaceAssignments.conflict(binding, destinationSpaceId: space.id, displays: spaces) != nil
                 )
             }
         }
@@ -191,7 +196,7 @@ enum WindowMovementService {
     static func failureMessage(for receipt: JSON) -> String? {
         if receipt["status"]?.stringValue == "ok", receipt["verified"]?.boolValue == true { return nil }
         if receipt["status"]?.stringValue == "blocked" {
-            return receipt["blockedReason"]?.stringValue ?? "Grant Accessibility to move windows"
+            return receipt["message"]?.stringValue ?? receipt["blockedReason"]?.stringValue ?? "Grant Accessibility to move windows"
         }
         return receipt["failureReason"]?.stringValue
             ?? receipt["message"]?.stringValue
@@ -478,6 +483,7 @@ enum WindowMovementMenuBuilder {
                         }
                     }
                     if desktop.isCurrent { item.state = .on }
+                    if desktop.isRefused { item.toolTip = "Assigned to another desktop in macOS" }
                     desktopsMenu.addItem(item)
                 }
             }

@@ -33,7 +33,7 @@ extension ActionBrandMark {
 
     /// Clearance between the letter and the cursor in the menu bar. In one
     /// colour the gap is all that separates the cursor from the leg, and at
-    /// this size the standard ten units come to about a quarter of a point, so
+    /// this size the standard ten units come to about a third of a point, so
     /// the two fuse into one blot. Thirty-six units open it to about a point.
     private static let statusItemGap = 36.0
 }

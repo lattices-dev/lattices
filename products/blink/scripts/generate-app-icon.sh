@@ -1,11 +1,13 @@
 #!/bin/zsh
 #
-# Regenerates assets/AppIcon.icns and assets/AppIcon.svg with the site's brand
-# exporter. The mark's source of truth is BlinkMark in
+# Regenerates the app icon in assets with the site's brand exporter:
+# AppIcon.icon, the Icon Composer document with the light and dark icons; the
+# Assets.car actool compiles from it; AppIcon.icns and AppIcon.svg, the dark
+# icon, as the fallback. The mark's source of truth is BlinkMark in
 # apps/site/src/components/blink/BlinkMark.tsx, and the exporter renders the
 # whole Blink kit from it. Run this after changing the mark, then commit the
-# result — run-app.sh and the release build copy the .icns, they do not build
-# it.
+# result — run-app.sh and the release build copy the icons, they do not build
+# them. Compiling Assets.car needs Xcode.
 
 set -euo pipefail
 
