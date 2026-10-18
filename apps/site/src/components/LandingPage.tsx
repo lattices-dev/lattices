@@ -10,8 +10,11 @@ import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
 import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
 
-const latticesCliVersion = "0.15.0";
+const latticesCliVersion = "0.14.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
+// Public entry point documented in docs/install-linux.md.
+const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";
+const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`;
 
 declare global {
   interface Window {
@@ -876,7 +879,7 @@ function HandsOnSection() {
     <section className="home-sec fade-in" id="hands">
       <SectionHead title="Shortcuts and mouse gestures, not just the palette.">
         <p className="sec-lede">
-          Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
+          On macOS, Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
           draw a direction or a shape, release. The app replays that path in
           a 3×3 <em>matrix</em> — the same completer as the logo.
         </p>
@@ -943,6 +946,14 @@ const tickerMethods = [
 ];
 
 export default function App() {
+  const [linuxCopy, setLinuxCopy] = useState("Copy");
+  async function copyLinuxInstall() {
+    try {
+      await navigator.clipboard.writeText(linuxInstallCommand);
+      setLinuxCopy("Copied");
+      window.setTimeout(() => setLinuxCopy("Copy"), 2000);
+    } catch { setLinuxCopy("Select to copy"); }
+  }
   const brewCommand = "brew tap arach/tap\nbrew trust arach/tap\nbrew install --cask arach/tap/lattices";
   const [brewCopy, setBrewCopy] = useState("Copy");
   async function copyBrew() {
@@ -1017,8 +1028,8 @@ export default function App() {
 
             <h1>Workspaces for agents (and you)</h1>
             <p className="hero-sub">
-              Organize windows, run your tools, and automate your workflow.
-              Control your Mac by shortcut, mouse gesture, or code.
+              Organize windows, run your tools, and automate your workflow
+              on your computers.
             </p>
             <div className="hero-actions">
               <a
@@ -1026,7 +1037,7 @@ export default function App() {
                 className="hero-primary-cta"
                 onClick={() => trackCta('download_dmg_hero', latticesDownloadURL)}
               >
-                <DownloadIcon />
+                <span aria-hidden="true"><AppleIcon /></span>
                 Download for macOS
               </a>
               <a href="/docs/overview" className="hero-secondary-cta">
@@ -1037,8 +1048,17 @@ export default function App() {
               <li>5,500+ installs</li>
               <li>Local first</li>
               <li>API driven</li>
-              <li>Built for macOS</li>
+              <li>Open source</li>
             </ul>
+            <a href="#omarchy" className="hero-announcement">
+              <span className="omarchy-mark" aria-hidden="true">
+                <img src="/brand/omarchy/logo.svg" alt="" width="20" height="20" />
+              </span>
+              <span><strong>New:</strong> Lattices on Omarchy</span>
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 12h16m-6-6 6 6-6 6" />
+              </svg>
+            </a>
           </div>
 
           <div className="hero-stage">
@@ -1066,7 +1086,7 @@ export default function App() {
           <div className="shared-state-copy fade-in">
             <h2>Same desktop, whether you drive or your agent does.</h2>
             <p>
-              Agents can write code and run tests, but arranging the Mac around
+              Agents can write code and run tests, but arranging the desktop around
               that work is still brittle. Lattices gives you and your agents
               the same workspace controls, from one-window moves to
               multi-window layouts. Every change lands visibly on the desktop
@@ -1094,6 +1114,40 @@ export default function App() {
         </section>
 
         <div className="shell">
+        <section className="home-sec omarchy-section" id="omarchy" aria-labelledby="omarchy-title">
+          <div className="omarchy-heading">
+            <span className="omarchy-mark omarchy-mark-large" aria-hidden="true">
+              <img src="/brand/omarchy/logo.svg" alt="" width="64" height="64" />
+            </span>
+            <h2 id="omarchy-title">Your workspace,<br />on Omarchy.</h2>
+          </div>
+          <div className="omarchy-copy">
+            <p>
+              Omarchy is a Linux desktop built on Arch and Hyprland,
+              with a tiling workflow at its heart.
+            </p>
+            <p>
+              Lattices brings your windows into named layers, helps you find
+              what’s open, and gives your tools and agents an API to work with.
+              Keep each project together, then switch focus when you’re ready.
+            </p>
+            <div className="omarchy-install">
+              <h3>Install from your terminal</h3>
+              <p>Run in your Omarchy desktop. Installs the app, CLI, host, and tray.</p>
+              <div className="install-command install-copy-command">
+                <code>{linuxInstallCommand}</code>
+                <button type="button" onClick={copyLinuxInstall} aria-label="Copy Linux install command">{linuxCopy}</button>
+              </div>
+              <span className="sr-only" role="status">{linuxCopy === "Copied" ? "Linux install command copied" : ""}</span>
+              <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
+            </div>
+            <div className="omarchy-links">
+              <a href="/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
+              <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
+            </div>
+          </div>
+        </section>
+
         <HandsOnSection />
 
         {/* Computer use (CUA) */}
@@ -1213,7 +1267,7 @@ export default function App() {
                 </a>
               </div>
               <p className="app-desc">
-                Keep the windows for coding, research, or deep work together.
+                The Mac app keeps the windows for coding, research, or deep work together.
                 Switch workspace layers when it’s time to change focus.
               </p>
               <ul className="app-features">
@@ -1385,7 +1439,7 @@ export default function App() {
             </div>
             <p>
               Arrange windows, switch projects, and see what your agents do.
-              Workspace control and action history stay on your Mac.
+              Workspace control and action history stay on your computer.
               Optional vision-model features may send screen context to the
               provider you choose. Lattices is open source, so you can inspect
               how it works.
@@ -1396,7 +1450,7 @@ export default function App() {
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
             <h2>Make yourself at home.</h2>
-            <p>Get Lattices for your Mac. Everything else is optional.</p>
+            <p>Download the Mac app, or <a href="#omarchy">explore Lattices on Omarchy</a>.</p>
           </div>
           <div className="install-main">
             <div className="install-download">
@@ -1443,7 +1497,7 @@ export default function App() {
         {/* CTA */}
         <section className="cta">
           <h2>Put your whole desktop to work.</h2>
-          <p>Free and open source. Running on your Mac in seconds.</p>
+          <p>Free and open source. A workspace for you and your agents.</p>
           <div className="cta-download-row">
             <a
               href={latticesDownloadURL}
@@ -1463,6 +1517,7 @@ export default function App() {
             </a>
           </div>
           <div className="cta-actions">
+            <a href="#omarchy" className="btn btn-secondary">Explore Omarchy</a>
             <a
               href="https://github.com/lattices-dev/lattices"
               target="_blank"

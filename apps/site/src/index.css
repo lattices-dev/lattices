@@ -4749,6 +4749,71 @@ button.nav-link {
   color: var(--hero-ink);
 }
 
+.omarchy-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  background: #0a0f0e;
+  border-radius: 4px;
+}
+
+.omarchy-mark img { display: block; }
+.hero-primary-cta > span { display: inline-flex; }
+.hero-announcement {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-top: 24px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--hero-rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--hero-ink) 4%, var(--hero-ground));
+  color: var(--hero-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.hero-announcement strong { font-weight: 650; }
+.hero-announcement:hover { border-color: var(--hero-ink-dim); }
+.hero-announcement:focus-visible { outline: 2px solid var(--hero-accent); outline-offset: 5px; }
+
+.home-sec.omarchy-section {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  align-items: center;
+  gap: 64px;
+  padding-block: 64px;
+  margin-bottom: 40px;
+  border-block: 1px solid var(--border-lit);
+  scroll-margin-top: 96px;
+}
+
+.omarchy-heading { display: flex; align-items: center; gap: 24px; }
+.omarchy-mark-large { width: 88px; height: 88px; border-radius: 12px; }
+.omarchy-heading h2 { margin: 0; font-size: clamp(1.8rem, 3vw, 2.5rem); line-height: 1.12; letter-spacing: -.03em; }
+.omarchy-copy p { color: var(--text-dim); font-size: 16px; line-height: 1.7; max-width: 62ch; }
+.omarchy-copy p + p { margin-top: 14px; }
+.omarchy-copy { min-width: 0; }
+.omarchy-install { margin-top: 28px; }
+.omarchy-install h3 { margin: 0 0 8px; font-size: 15px; }
+.omarchy-install .install-command { margin-top: 12px; }
+.omarchy-install code { min-width: 0; line-height: 1.7; user-select: all; }
+.omarchy-install button { flex-shrink: 0; min-height: 44px; }
+.omarchy-install .omarchy-requirements { margin-top: 10px; font-size: 12px; }
+.omarchy-links { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-top: 20px; }
+.omarchy-links a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--text); font-size: 14px; text-decoration: underline; text-underline-offset: 5px; text-decoration-color: var(--border-lit); }
+.omarchy-links a:hover { text-decoration-color: currentColor; }
+.omarchy-links a:focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+.install-chooser-head p a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+
+@media (max-width: 800px) {
+  .home-sec.omarchy-section { grid-template-columns: 1fr; gap: 28px; padding-block: 40px; }
+  .omarchy-heading { gap: 20px; }
+  .omarchy-copy p { font-size: 15px; }
+}
+
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
