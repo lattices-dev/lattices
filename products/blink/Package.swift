@@ -24,12 +24,15 @@ default:
 }
 
 let package = Package(
-    name: "Blink",
+    name: "Canvas",
     platforms: [
         .macOS(.v14),
         .iOS(.v17),
     ],
     products: [
+        .executable(name: "CanvasApp", targets: ["BlinkApp"]),
+        .executable(name: "canvas", targets: ["BlinkCLI"]),
+        // Build aliases for existing scripts; modules and storage keep their identity.
         .executable(name: "BlinkApp", targets: ["BlinkApp"]),
         .executable(name: "blink", targets: ["BlinkCLI"]),
         .library(name: "BlinkCore", targets: ["BlinkCore"]),

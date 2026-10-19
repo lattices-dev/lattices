@@ -1,4 +1,4 @@
-name: Release Blink macOS
+name: Release Canvas macOS
 
 # Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       publish_release:
-        description: 'Create/update the blink-vX.Y.Z tag and public GitHub Release after the assets verify'
+        description: 'Publish Canvas and Blink compatibility releases at the same commit after both images verify'
         required: true
         default: false
         type: boolean
@@ -21,7 +21,7 @@ jobs:
   release:
     permissions:
       contents: write
-    name: Build, notarize, and publish Blink
+    name: Build, notarize, and publish Canvas
     runs-on: macos-26
     environment: release
     timeout-minutes: 60
@@ -80,11 +80,11 @@ jobs:
           package_version="$(node -p "require('./packages/npm/package.json').version")"
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             tag="${GITHUB_REF_NAME}"
-            if [[ "$tag" != blink-v* ]]; then
-              echo "Unexpected Blink release tag: $tag" >&2
+            if [[ "$tag" != canvas-v* && "$tag" != blink-v* ]]; then
+              echo "Unexpected Canvas release tag: $tag" >&2
               exit 1
             fi
-            version="${tag#blink-v}"
+            version="${tag#*-v}"
             publish_release="${{ inputs.publish_release }}"
           else
             version="${{ inputs.version }}"
@@ -104,7 +104,7 @@ jobs:
             exit 1
           fi
 
-          release_tag="blink-v$version"
+          release_tag="canvas-v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "publish_release=$publish_release" >> "$GITHUB_OUTPUT"
@@ -120,14 +120,16 @@ jobs:
           set -euo pipefail
 
           target_sha="$(git rev-parse HEAD)"
-          existing_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG^{}" | awk '{print $1; exit}')"
-          if [[ -z "$existing_sha" ]]; then
-            existing_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1; exit}')"
-          fi
-          if [[ -n "$existing_sha" && "$existing_sha" != "$target_sha" ]]; then
-            echo "Release tag $RELEASE_TAG already exists at $existing_sha, not $target_sha." >&2
-            exit 1
-          fi
+          for tag in "canvas-v$VERSION" "blink-v$VERSION"; do
+            existing_sha="$(git ls-remote --tags origin "refs/tags/$tag^{}" | awk '{print $1; exit}')"
+            if [[ -z "$existing_sha" ]]; then
+              existing_sha="$(git ls-remote --tags origin "refs/tags/$tag" | awk '{print $1; exit}')"
+            fi
+            if [[ -n "$existing_sha" && "$existing_sha" != "$target_sha" ]]; then
+              echo "Release tag $tag already exists at $existing_sha, not $target_sha." >&2
+              exit 1
+            fi
+          done
 
       - name: Build editor bundle
         shell: bash
@@ -201,11 +203,11 @@ jobs:
           xcrun notarytool store-credentials blink-notarytool "${notary_args[@]}"
           echo "BLINK_NOTARY_PROFILE=blink-notarytool" >> "$GITHUB_ENV"
 
-      - name: Build signed Blink CLI
+      - name: Build signed Canvas CLI
         shell: bash
         run: bash tools/release/build-cli.sh
 
-      - name: Build signed and notarized Blink DMG
+      - name: Build signed and notarized Canvas DMG
         shell: bash
         run: bash tools/release/build-dmg.sh "$VERSION"
 
@@ -214,95 +216,55 @@ jobs:
         run: |
           set -euo pipefail
 
-          cli_path="packages/npm/dist/blink"
-          dmg_path="dist/Blink.dmg"
-          mount_dir="$(mktemp -d "$RUNNER_TEMP/blink-dmg.XXXXXX")"
+          cli_path="packages/npm/dist/canvas"
+          test "$("$cli_path" --version)" = "$VERSION"
+          cmp "$cli_path" packages/npm/dist/blink
+          codesign --verify --strict --verbose=2 "$cli_path"
+          mount_dir="$(mktemp -d "$RUNNER_TEMP/canvas-dmg.XXXXXX")"
           cleanup() {
             hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
             rmdir "$mount_dir" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
 
-          test "$("$cli_path" --version)" = "$VERSION"
-          codesign --verify --strict --verbose=2 "$cli_path"
-          hdiutil verify "$dmg_path"
-          xcrun stapler validate "$dmg_path"
-          codesign --verify --verbose "$dmg_path"
-          spctl --assess --type open --context context:primary-signature --verbose "$dmg_path"
-
-          hdiutil attach "$dmg_path" -readonly -nobrowse -mountpoint "$mount_dir"
-          app_path="$mount_dir/Blink.app"
-          test "$(plutil -extract CFBundleIdentifier raw "$app_path/Contents/Info.plist")" = "dev.arach.blink"
-          test "$(plutil -extract CFBundleShortVersionString raw "$app_path/Contents/Info.plist")" = "${VERSION%%-*}"
-          codesign --verify --deep --strict --verbose=2 "$app_path"
-          spctl --assess --type execute --verbose "$app_path"
+          for filename in Canvas Blink; do
+            dmg_path="dist/$filename.dmg"
+            hdiutil verify "$dmg_path"
+            xcrun stapler validate "$dmg_path"
+            codesign --verify --verbose "$dmg_path"
+            spctl --assess --type open --context context:primary-signature --verbose "$dmg_path"
+            hdiutil attach "$dmg_path" -readonly -nobrowse -mountpoint "$mount_dir"
+            app_path="$mount_dir/$filename.app"
+            test -d "$app_path"
+            test ! -L "$app_path"
+            test "$(find "$mount_dir" -maxdepth 1 -name '*.app' | wc -l | tr -d ' ')" = 1
+            test "$(plutil -extract CFBundleIdentifier raw "$app_path/Contents/Info.plist")" = "dev.arach.blink"
+            test "$(plutil -extract CFBundleDisplayName raw "$app_path/Contents/Info.plist")" = "Canvas"
+            test "$(plutil -extract CFBundleExecutable raw "$app_path/Contents/Info.plist")" = "Canvas"
+            test "$(plutil -extract CFBundleShortVersionString raw "$app_path/Contents/Info.plist")" = "${VERSION%%-*}"
+            bash ../../tools/release/verify-companion-signature.sh "$app_path"
+            spctl --assess --type execute --verbose "$app_path"
+            hdiutil detach "$mount_dir"
+          done
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Blink-${{ steps.version.outputs.version }}-release-assets
+          name: Canvas-${{ steps.version.outputs.version }}-release-assets
           path: |
+            products/blink/dist/Canvas.dmg
             products/blink/dist/Blink.dmg
+            products/blink/packages/npm/dist/canvas
             products/blink/packages/npm/dist/blink
           if-no-files-found: error
 
-      - name: Create release tag
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.version.outputs.publish_release == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          target_sha="$(git rev-parse HEAD)"
-          existing_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG^{}" | awk '{print $1; exit}')"
-          if [[ -z "$existing_sha" ]]; then
-            existing_sha="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1; exit}')"
-          fi
-          if [[ -n "$existing_sha" ]]; then
-            echo "Release tag already exists at $existing_sha"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$RELEASE_TAG" -m "Blink $VERSION" "$target_sha"
-          git push origin "refs/tags/$RELEASE_TAG"
-
-      - name: Publish GitHub release
+      - name: Publish Canvas and Blink compatibility releases
         if: ${{ steps.version.outputs.publish_release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-
-          dmg_path="$RUNNER_TEMP/Blink.dmg"
-          versioned_dmg_path="$RUNNER_TEMP/Blink-$VERSION.dmg"
-          cli_path="$RUNNER_TEMP/blink-macos-arm64"
-          notes_path="$RUNNER_TEMP/blink-release-notes.md"
-          cp dist/Blink.dmg "$dmg_path"
-          cp dist/Blink.dmg "$versioned_dmg_path"
-          cp packages/npm/dist/blink "$cli_path"
-
-          cat > "$notes_path" <<EOF
-          Blink $VERSION
-
-          Download **Blink.dmg** for Mac (Apple Silicon), or install the CLI:
-
-              npm install -g @arach/blink
-
-          See the [Blink CLI reference](https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md).
-          EOF
-
-          release_args=(--latest=false --title "Blink $VERSION" --notes-file "$notes_path")
-          if [[ "$VERSION" == *-* ]]; then
-            release_args+=(--prerelease)
-          fi
-
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$dmg_path" "$versioned_dmg_path" "$cli_path" --clobber
-            gh release edit "$RELEASE_TAG" "${release_args[@]}"
-          else
-            gh release create "$RELEASE_TAG" "$dmg_path" "$versioned_dmg_path" "$cli_path" \
-              --verify-tag \
-              "${release_args[@]}"
-          fi
+          cp packages/npm/dist/canvas dist/canvas-macos-arm64
+          cp packages/npm/dist/blink dist/blink-macos-arm64
+          bash tools/release/publish-assets.sh "$VERSION" "$GITHUB_REPOSITORY" "$(git rev-parse HEAD)" "$PWD/dist"

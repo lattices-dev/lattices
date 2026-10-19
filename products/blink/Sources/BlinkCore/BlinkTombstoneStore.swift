@@ -10,11 +10,11 @@ public enum BlinkTombstoneStoreError: Error, LocalizedError, Equatable, Sendable
     public var errorDescription: String? {
         switch self {
         case .decodingFailed(let detail):
-            return "Blink tombstones could not be decoded: \(detail)"
+            return "Canvas tombstones could not be decoded: \(detail)"
         case .encodingFailed(let detail):
-            return "Blink tombstones could not be encoded: \(detail)"
+            return "Canvas tombstones could not be encoded: \(detail)"
         case .lockingFailed(let detail):
-            return "Blink tombstones could not be locked: \(detail)"
+            return "Canvas tombstones could not be locked: \(detail)"
         }
     }
 }

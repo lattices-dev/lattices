@@ -1,17 +1,26 @@
-# Blink iOS: local-first snapshot contract
+# Canvas iOS snapshot contract
 
 ## Scope
 
 The first iOS surface is a read-only, offline-capable view of the same note files
-the Mac app and `blink` CLI use. It starts with LAN as its only enabled route,
+the Mac app and `canvas` CLI use (`blink` remains compatible). It starts with
+LAN as its only enabled route,
 but its transport boundary can later use Hudson's Tailscale or managed-relay
-providers without changing Blink's replication model.
+providers without changing Canvas's replication model.
+
+This describes the current source companion, whose display and product names
+are Canvas. The rename is not evidence of a published iOS release. The Xcode
+project and target remain `BlinkMobile`, and the bundle ID stays
+`dev.arach.blink.mobile`. The Mac keeps `dev.arach.blink`. Existing Keychain
+services, cache and preference keys, Bonjour service `blink-notes`
+(`_blink-notes._tcp`), and the `BlinkPeer` wire format are unchanged, so the
+rename alone does not invalidate paired devices or cached notes.
 
 ## Ownership
 
 - Hudson owns generic peer identity/trust models, route providers, route
   settings, cascade, and diagnostics.
-- Blink owns snapshots, note revisions, tombstones, quarantine, workspace/style
+- Canvas owns snapshots, note revisions, tombstones, quarantine, workspace/style
   projection, attachment policy, offline cache, iOS UI, and the first proven LAN
   peer channel in `BlinkPeer`.
 - OpenScout donates generic route and connection behavior to Hudson while OSN
@@ -60,8 +69,15 @@ reading current live files by id is not an acceptable incremental design.
 
 ## Encrypted LAN transport
 
+On a new Mac install, enable **Mobile Access** in Canvas's right-click menu to
+start pairing. The 2.3.0 upgrade preserves explicit `behavior.mobileAccess`
+choices. If an older config has no such key, valid existing Keychain approvals
+keep access enabled without rewriting the config. Missing or malformed trust
+data and Keychain failures leave it off. This preserves already approved
+devices without enabling sharing for a new installation.
+
 The snapshot replication and cache layer depends only on `BlinkPeerTransport`.
-The shipped mobile model selects its concrete LAN discovery client directly; a
+The current mobile model selects its concrete LAN discovery client directly; a
 future route cascade requires a separate discovery/connection orchestrator but
 does not require a new snapshot format. The first implementation uses Bonjour
 discovery through Multipeer Connectivity with
@@ -89,12 +105,13 @@ the Mac re-checks it against the trust list per request.
 
 The Mac keeps the approved-device list and its own agreement private key in the
 Keychain, matching what the companion does with its seed. Both are bearer
-secrets, and Blink ships unsandboxed, so a preferences plist would be readable
+secrets, and the Mac app is unsandboxed, so a preferences plist would be readable
 by any process running as the user. The pre-Keychain `UserDefaults` values are
 deleted rather than migrated, for the same reason the companion refuses to
 migrate its own: a plist travels in backups and can clone an approved identity.
-Devices approved before this build pair once more. If the Keychain refuses a
-trusted-list write, pairing still works for that launch and **Mobile Access**
+Devices still using pre-Keychain credentials must be approved again; the
+product rename does not reset Keychain-backed approvals. If the Keychain
+refuses a trusted-list write, pairing still works for that launch and **Mobile Access**
 says approvals will not persist. If either platform cannot read or create its
 stable agreement/credential key, it does not advertise or discover with an
 ephemeral replacement identity; the UI surfaces the Keychain failure instead.
@@ -104,7 +121,7 @@ two peers cannot stack nested modals, and a denial silences new prompts for a
 minute — an unapproved device that loops connect → request cannot drive
 repeated focus-stealing alerts.
 
-Approved devices are listed under **Mobile Access** in Blink's right-click menu.
+Approved devices are listed under **Mobile Access** in Canvas's right-click menu.
 Revoking a device deletes its stored credential and disconnects its live session;
 the device must be explicitly approved again before it can fetch another
 snapshot. The offline snapshot already on the device remains available because it
@@ -115,16 +132,20 @@ the same value, so a Mac and a companion from different protocol generations
 never pair.
 
 `BlinkPeer` is kept separate from the app UI so the encrypted peer channel can be
-proven here and later donated to Hudson without moving Blink's snapshot model.
+proven here and later donated to Hudson without moving Canvas's snapshot model.
 Ordinary LAN HTTP with only a bearer token or request MAC remains prohibited
 because it can expose note contents to passive network observers.
 
-LAN is the only shipped route. Tailscale and hosted relays remain future
+LAN is the only implemented route. Tailscale and hosted relays remain future
 providers for a route orchestrator, not implemented fallback paths today.
 
-The Mac peer host does not start when `BLINK_HOME` is set. Agent and test
-sandboxes therefore cannot advertise their notes under the production Mac's
-persistent identity or approved-device trust list.
+The Mac peer host does not start with a nonempty `CANVAS_HOME` or `BLINK_HOME`.
+The first nonempty `CANVAS_HOME`, then `BLINK_HOME`, selects the file-backed
+root; empty values are ignored. Agent and test sandboxes therefore cannot
+advertise their notes under the production Mac's persistent identity or
+approved-device trust list. The default Mac store remains
+`~/Library/Application Support/Blink`; older releases recognize `BLINK_HOME`
+only.
 
 ## Building the companion
 

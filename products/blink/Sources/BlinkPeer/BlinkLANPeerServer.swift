@@ -149,7 +149,7 @@ public final class BlinkLANPeerServer: NSObject, @unchecked Sendable {
             let key = peerKey(peer)
             guard BlinkPeerCrypto.isWellFormedCredential(requestedIdentity.credential) else {
                 send(
-                    .failure(BlinkPeerFailure(code: "invalid-identity", message: "Blink on this device needs to be reinstalled.")),
+                    .failure(BlinkPeerFailure(code: "invalid-identity", message: "Canvas on this device needs to be reinstalled.")),
                     id: envelope.id,
                     to: peer,
                     using: responseKey

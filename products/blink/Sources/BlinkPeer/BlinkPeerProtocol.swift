@@ -67,13 +67,13 @@ public enum BlinkPeerError: Error, LocalizedError, Equatable, Sendable {
         case .peerUnavailable:
             return "That Mac is no longer available nearby."
         case .connectionFailed(let detail):
-            return "Blink could not connect to the Mac: \(detail)"
+            return "Canvas could not connect to the Mac: \(detail)"
         case .accessDenied:
             return "Access wasn’t allowed on your Mac. You can try again."
         case .unauthorized:
             return "This device no longer has access to the Mac. Request access again."
         case .invalidResponse:
-            return "The Mac returned an invalid Blink response."
+            return "The Mac returned an invalid Canvas response."
         case .requestTimedOut:
             return "The Mac did not respond in time."
         case .remoteFailure(_, let message):

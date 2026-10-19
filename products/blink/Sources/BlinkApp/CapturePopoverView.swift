@@ -426,7 +426,7 @@ struct CapturePopoverView: View {
     private var footer: some View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
-                Text("BLINK")
+                Text("CANVAS")
                     .font(mono(10, .semibold))
                     .tracking(1.4)
                     .foregroundStyle(pal.ink)
@@ -469,7 +469,7 @@ struct CapturePopoverView: View {
 
             FooterActionButton(
                 icon: "eye",
-                label: "Blink",
+                label: "Show/Hide",
                 shortcut: blinkShortcut,
                 help: "Show or hide all notes (\(blinkShortcut))",
                 action: toggleBlink
@@ -502,7 +502,7 @@ struct CapturePopoverView: View {
                 icon: "power",
                 label: "Quit",
                 shortcut: "⌘Q",
-                help: "Quit Blink (⌘Q)",
+                help: "Quit Canvas (⌘Q)",
                 action: quit
             )
         }
@@ -822,7 +822,7 @@ private struct FooterUtilitiesMenu: View {
             withAnimation(.easeOut(duration: 0.1)) { hovered = isHovered }
         }
         .help("Help, shortcuts, and settings")
-        .accessibilityLabel("More Blink options")
+        .accessibilityLabel("More Canvas options")
     }
 }
 

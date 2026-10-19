@@ -123,7 +123,7 @@ struct ContentView: View {
             BlinkMobileSettingsView(model: model)
         }
         .alert(
-            "Blink couldn't finish that",
+            "Canvas couldn't finish that",
             isPresented: Binding(
                 get: { model.presentedError != nil },
                 set: { if !$0 { model.presentedError = nil } }
@@ -1089,7 +1089,7 @@ struct ConnectionView: View {
             case .searching:
                 HStack(spacing: 12) {
                     ProgressView()
-                    Text("Looking for Blink on your network…")
+                    Text("Looking for Canvas on your network…")
                         .foregroundStyle(BlinkMobileTheme.secondaryInk)
                 }
             case .found:
@@ -1137,7 +1137,7 @@ struct ConnectionView: View {
         } header: {
             Text("Nearby Macs")
         } footer: {
-            Text("Open Blink on your Mac. Both devices must be on the same network.")
+            Text("Open Canvas on your Mac. Both devices must be on the same network.")
         }
         .listRowBackground(BlinkMobileTheme.surface)
     }

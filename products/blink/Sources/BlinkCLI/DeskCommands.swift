@@ -9,7 +9,7 @@ import Foundation
 struct DeskCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "desk",
-        abstract: "Open and arrange note panels in the running Blink app.",
+        abstract: "Open and arrange note panels in the running Canvas app.",
         subcommands: [
             DeskOpen.self, DeskMove.self, DeskFocus.self, DeskClose.self, DeskScreens.self,
             DeskSave.self, DeskRestore.self, DeskList.self, DeskShow.self, DeskRemove.self,
@@ -282,11 +282,11 @@ private func postDeskCommand(_ baseUserInfo: [AnyHashable: Any]) throws {
     )
     guard let response = waiter.wait(timeout: 2) else {
         throw ValidationError(
-            "Blink did not acknowledge the desk command; make sure the app is running with the same BLINK_HOME"
+            "Canvas did not acknowledge the desk command; make sure the app is running with the same CANVAS_HOME or BLINK_HOME"
         )
     }
     guard response.success else {
-        throw ValidationError(response.error ?? "Blink could not apply the desk command")
+        throw ValidationError(response.error ?? "Canvas could not apply the desk command")
     }
 }
 

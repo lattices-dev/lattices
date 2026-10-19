@@ -25,12 +25,12 @@ targets:
     info:
       path: BlinkMobile/Info.plist
       properties:
-        CFBundleDisplayName: Blink
+        CFBundleDisplayName: Canvas
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
-        NSLocalNetworkUsageDescription: Blink uses your local network to securely sync notes from your Mac.
+        NSLocalNetworkUsageDescription: Canvas uses your local network to securely sync notes from your Mac.
         NSBonjourServices:
           - _blink-notes._tcp
         UISupportedInterfaceOrientations:
@@ -41,7 +41,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.arach.blink.mobile
-        PRODUCT_NAME: Blink
+        PRODUCT_NAME: Canvas
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 6.0

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build a signed + notarized Blink.dmg. Mirrors scripts/run-app.sh's bundle
-# assembly (BlinkApp -> Blink.app/Contents/MacOS/Blink + editor.html), then
+# Build a signed + notarized Canvas.dmg. Mirrors scripts/run-app.sh's bundle
+# assembly (CanvasApp -> Canvas.app/Contents/MacOS/Canvas + editor.html), then
 # signs with the hardened runtime, wraps in a DMG, notarizes, and staples.
 #
 #   ./tools/release/build-dmg.sh [version]
@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${BLINK_ARTIFACT_DIR:-$ROOT/dist}"
-APP_NAME="Blink"
+APP_NAME="Canvas"
 BUNDLE="$BUILD_DIR/$APP_NAME.app"
 DMG_PATH="$BUILD_DIR/$APP_NAME.dmg"
 ENTITLEMENTS="$SCRIPT_DIR/Blink.entitlements"
@@ -49,7 +49,7 @@ if [ "$SKIP_SIGN" != "1" ] && [ -z "$SIGN_IDENTITY" ]; then
     exit 1
 fi
 
-echo "==> Building Blink v$VERSION (release)"
+echo "==> Building Canvas v$VERSION (release)"
 
 # The note panels load this bundle from Resources; build it if it's stale/missing.
 EDITOR_HTML="$ROOT/web/editor/dist/editor.html"
@@ -59,8 +59,8 @@ if [ ! -f "$EDITOR_HTML" ]; then
 fi
 
 cd "$ROOT"
-swift build -c release --product BlinkApp
-BIN_PATH="$(swift build -c release --product BlinkApp --show-bin-path)/BlinkApp"
+swift build -c release --product CanvasApp
+BIN_PATH="$(swift build -c release --product CanvasApp --show-bin-path)/CanvasApp"
 
 echo "==> Assembling $APP_NAME.app"
 mkdir -p "$BUILD_DIR"
@@ -115,7 +115,7 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>Blink uses your local network to share notes with your paired iPhone or iPad.</string>
+  <string>Canvas uses your local network to share notes with your paired iPhone or iPad.</string>
   <key>NSBonjourServices</key>
   <array>
     <string>_blink-notes._tcp</string>
@@ -140,24 +140,6 @@ else
     bash "$ROOT/../../tools/release/verify-companion-signature.sh" "$BUNDLE"
 fi
 
-echo "==> Creating DMG"
-DMG_STAGING="$(mktemp -d)"
-cp -R "$BUNDLE" "$DMG_STAGING/"
-ln -s /Applications "$DMG_STAGING/Applications"
-hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"
-rm -rf "$DMG_STAGING"
-[ "$SKIP_SIGN" = "1" ] || codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH"
-
-if [ "$SKIP_NOTARIZE" = "1" ] || [ "$SKIP_SIGN" = "1" ]; then
-    echo "==> Skipping notarization"
-else
-    echo "==> Notarizing (profile: $NOTARY_PROFILE)"
-    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
-    echo "==> Stapling"
-    xcrun stapler staple "$DMG_PATH"
-fi
-
-echo ""
-echo "==> Done: $DMG_PATH"
-ls -lh "$DMG_PATH"
-[ "$SKIP_SIGN" = "1" ] || spctl --assess --type open --context context:primary-signature -v "$DMG_PATH" 2>&1 || true
+# Package each outer bundle name separately. Published @arach/blink installers
+# require Blink.app inside Blink.dmg and cannot follow a filename-only alias.
+BLINK_SIGN_IDENTITY="$SIGN_IDENTITY" bash "$SCRIPT_DIR/package-dmgs.sh" "$BUNDLE" "$BUILD_DIR"

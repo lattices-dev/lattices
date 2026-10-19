@@ -180,7 +180,7 @@ struct SettingsView: View {
         HStack(spacing: 7) {
             BlinkMark(ink: settingsTheme.palette.ink)
                 .frame(width: 16, height: 16)
-            Text("blink")
+            Text("Canvas")
                 .font(.system(size: 16, weight: .light, design: .serif))
                 .tracking(-0.2)
                 .foregroundStyle(settingsTheme.palette.ink)
@@ -283,12 +283,12 @@ struct SettingsView: View {
                     Button("Reveal") {
                         NSWorkspace.shared.activateFileViewerSelecting([notesDirectory])
                     }
-                    .accessibilityHint("Shows the Blink notes folder in Finder")
+                    .accessibilityHint("Shows the Canvas notes folder in Finder")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(title: "Config file", subtitle: store.displayPath) {
                     Button("Open") { openConfig() }
-                        .accessibilityHint("Opens Blink's JSON configuration file")
+                        .accessibilityHint("Opens Canvas's JSON configuration file")
                 }
             }
 
@@ -305,12 +305,12 @@ struct SettingsView: View {
                 SettingsDivider()
                 HudSettingsControlRow(
                     title: "Launch at login",
-                    subtitle: "Start Blink when you sign in"
+                    subtitle: "Start Canvas when you sign in"
                 ) {
                     Toggle("Launch at login", isOn: launchAtLogin)
                         .toggleStyle(BrandToggleStyle())
                         .labelsHidden()
-                        .accessibilityLabel("Launch Blink at login")
+                        .accessibilityLabel("Launch Canvas at login")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
@@ -383,7 +383,7 @@ struct SettingsView: View {
                     subtitle: "Fonts, colors, glass and named styles live in config.json"
                 ) {
                     Button("Open") { openConfig() }
-                        .accessibilityHint("Opens Blink's JSON configuration file")
+                        .accessibilityHint("Opens Canvas's JSON configuration file")
                 }
             }
         }
@@ -398,7 +398,7 @@ struct SettingsView: View {
                 ) {
                     BrandSegmented(selection: appearance, options: [("Auto", "auto"), ("Light", "light"), ("Dark", "dark")])
                     .frame(width: HudLayout.popoverWidthCompact / 2)
-                    .accessibilityLabel("Blink appearance")
+                    .accessibilityLabel("Canvas appearance")
                 }
                 SettingsDivider()
                 HudSettingsControlRow(
