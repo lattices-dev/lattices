@@ -1,4 +1,4 @@
-name: Release Blink npm
+name: Release Canvas npm (@arach/blink)
 
 # Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
@@ -43,13 +43,13 @@ jobs:
           set -euo pipefail
 
           version="$(node -p "require('./products/blink/packages/npm/package.json').version")"
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$GITHUB_REF_NAME" != "blink-npm-v$version" ]]; then
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "$GITHUB_REF_NAME" != "blink-npm-v$version" && "$GITHUB_REF_NAME" != "canvas-npm-v$version" ]]; then
             echo "Tag $GITHUB_REF_NAME does not match package version $version." >&2
             exit 1
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=blink-v$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=canvas-v$version" >> "$GITHUB_OUTPUT"
 
       - name: Download and verify signed CLI
         shell: bash
@@ -60,13 +60,30 @@ jobs:
         run: |
           set -euo pipefail
 
+          asset="canvas-macos-arm64"
+          # The rename release must ship the canonical CLI, never silently
+          # substitute an older Blink binary when Canvas publishing failed.
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          release_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "$release_sha" != "$source_sha" ]]; then
+            echo "Release $RELEASE_TAG belongs to $release_sha, but this package source is $source_sha." >&2
+            exit 1
+          fi
           mkdir -p products/blink/packages/npm/dist
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern blink-macos-arm64 \
-            --output products/blink/packages/npm/dist/blink
-          chmod +x products/blink/packages/npm/dist/blink
-          test "$(products/blink/packages/npm/dist/blink --version)" = "$VERSION"
-          codesign --verify --strict --verbose=2 products/blink/packages/npm/dist/blink
+            --pattern "$asset" \
+            --output products/blink/packages/npm/dist/canvas
+          chmod +x products/blink/packages/npm/dist/canvas
+          test "$(products/blink/packages/npm/dist/canvas --version)" = "$VERSION"
+          codesign --verify --strict --verbose=2 \
+            -R '=anchor apple generic and certificate leaf[subject.OU] = "2U83JFPW66" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists' \
+            products/blink/packages/npm/dist/canvas
+          cp products/blink/packages/npm/dist/canvas products/blink/packages/npm/dist/blink
+
+      - name: Test command and installer compatibility
+        working-directory: products/blink/packages/npm
+        run: npm test
 
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}

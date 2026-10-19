@@ -106,7 +106,7 @@ struct BlinkMobileSettingsView: View {
             HudSettingsRow(
                 icon: "info.circle",
                 iconColor: BlinkMobileTheme.secondaryInk,
-                title: "Blink",
+                title: "Canvas",
                 subtitle: "Read-only companion"
             ) {
                 Text(version)

@@ -126,11 +126,11 @@ public enum BlinkSnapshotBuilderError: Error, LocalizedError, Equatable, Sendabl
     public var errorDescription: String? {
         switch self {
         case .unstableDirectory(let attempts):
-            return "Blink notes changed during \(attempts) consecutive snapshot reads."
+            return "Canvas notes changed during \(attempts) consecutive snapshot reads."
         case .directoryReadFailed(let detail):
-            return "Blink could not read the notes directory: \(detail)"
+            return "Canvas could not read the notes directory: \(detail)"
         case .revisionEncodingFailed(let detail):
-            return "Blink could not encode the snapshot revision: \(detail)"
+            return "Canvas could not encode the snapshot revision: \(detail)"
         }
     }
 }

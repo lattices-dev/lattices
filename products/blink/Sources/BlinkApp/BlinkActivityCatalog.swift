@@ -74,7 +74,7 @@ enum BlinkActivityScope: String, CaseIterable, Identifiable {
     case editor = "Editor"
 
     var id: String { rawValue }
-    var displayTitle: String { rawValue }
+    var displayTitle: String { self == .application ? "Canvas" : rawValue }
 }
 
 /// One discoverable Blink capability. Resolvers intentionally remain closures:
@@ -309,7 +309,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .commandPalette,
                 title: "Command Palette",
-                description: "Find any note or available Blink action.",
+                description: "Find any note or available Canvas action.",
                 symbolName: "command",
                 group: .findAndOpen,
                 scope: .application,
@@ -349,7 +349,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .openSettings,
                 title: "Settings",
-                description: "Open Blink settings.",
+                description: "Open Canvas settings.",
                 symbolName: "gearshape",
                 group: .findAndOpen,
                 scope: .application,
@@ -361,7 +361,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .openGuide,
                 title: "Help & Shortcuts",
-                description: "Learn Blink's workspace model and review every shortcut.",
+                description: "Learn Canvas's workspace model and review every shortcut.",
                 symbolName: "questionmark.circle",
                 group: .findAndOpen,
                 scope: .application,
@@ -372,8 +372,8 @@ private extension BlinkActivityCatalog {
             ),
             BlinkActivity(
                 id: .quitBlink,
-                title: "Quit Blink",
-                description: "Flush pending saves and quit Blink.",
+                title: "Quit Canvas",
+                description: "Flush pending saves and quit Canvas.",
                 symbolName: "power",
                 group: .findAndOpen,
                 scope: .application,
@@ -479,7 +479,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .saveNote,
                 title: "Save Now",
-                description: "Flush the current edit immediately; Blink also saves automatically.",
+                description: "Flush the current edit immediately; Canvas also saves automatically.",
                 symbolName: "square.and.arrow.down",
                 group: .readAndWrite,
                 scope: .editor,
@@ -499,7 +499,7 @@ private extension BlinkActivityCatalog {
 
             BlinkActivity(
                 id: .toggleBlink,
-                title: "Blink All Notes / None",
+                title: "Show or Hide All Notes",
                 description: "Hide every note, or restore the whole arrangement.",
                 symbolName: "eye",
                 group: .focusAndVisibility,
@@ -654,7 +654,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .revealNotesFolder,
                 title: "Reveal Notes Folder",
-                description: "Open Blink's notes directory in Finder.",
+                description: "Open Canvas's notes directory in Finder.",
                 symbolName: "folder",
                 group: .styleAndFiles,
                 scope: .application,
@@ -665,7 +665,7 @@ private extension BlinkActivityCatalog {
             BlinkActivity(
                 id: .openConfigFile,
                 title: "Open Config File",
-                description: "Open Blink's agent-editable configuration file.",
+                description: "Open Canvas's agent-editable configuration file.",
                 symbolName: "doc.badge.gearshape",
                 group: .styleAndFiles,
                 scope: .application,

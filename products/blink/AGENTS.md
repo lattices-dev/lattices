@@ -1,12 +1,35 @@
 # AGENTS.md
 
-This tree is the Blink product inside the Lattices monorepo (`products/blink`).
-Keep `Blink.app`, NoteStore, and the panel runtime separate from the Lattices
-menu bar app even though they share this repository and website.
+This tree is Canvas (formerly Blink) inside the Lattices monorepo
+(`products/blink`). Keep `Canvas.app`, NoteStore, and the panel runtime separate
+from the Lattices menu bar app even though they share this repository and website.
 
-## Blink in 60 seconds
+## Product and release names
 
-Blink is a native macOS spatial note-taking app. It is not a document library
+Current source builds produce `Canvas.app` (executable `Canvas`) and the `canvas`
+CLI. SwiftPM products `CanvasApp` and `canvas` are canonical; `BlinkApp` and
+`blink` remain executable aliases over the same targets. The family CLI exposes
+`lats canvas`, with `lats blink` as an alias. It forwards to this product without
+sharing the Lattices app lifecycle.
+
+The 2.3.0 release contract uses `canvas-v2.3.0` in
+`lattices-dev/lattices`: `Canvas.dmg` contains `Canvas.app`. Its legacy
+`blink-v2.3.0` channel and the `arach/blink` `v2.3.0` mirror use a distinct
+`Blink.dmg` containing a real `Blink.app`. Both app directories have the same
+signed contents, visible Canvas name, and identity. The npm package remains
+`@arach/blink`; both CLI names are included. Check publication and the selected
+artifact before describing installed behavior. See `docs/release.md`.
+
+Keep existing identity and storage boundaries unchanged: macOS bundle ID
+`dev.arach.blink`, iOS bundle ID `dev.arach.blink.mobile`, the default
+`~/Library/Application Support/Blink` directory, `blink.sock`, `blink.*`
+frontmatter, the `blink://attachments/` scheme, settings keys, Keychain items,
+and Bonjour/peer protocol identifiers. `system.hello` retains `app: "Blink"` and
+adds `displayName: "Canvas"`. The rename requires no note or settings migration.
+
+## Canvas in use
+
+Canvas is a native macOS spatial note-taking app. It is not a document library
 with detachable windows: **the note is the window, and the desktop is the
 workspace**.
 
@@ -16,17 +39,18 @@ The human loop is capture → place → recall:
    new-note hotkey.
 2. The note opens as its one floating `NSPanel`; reopening it focuses that panel
    rather than creating a duplicate.
-3. Move, resize, shade, or focus panels to arrange a working set. Blink restores
+3. Move, resize, shade, or focus panels to arrange a working set. Canvas restores
    each note to the same place.
 4. Edit and read in the same panel. The menubar popover and command palette are
    launchers, not alternate document windows.
 
-Blink is an `LSUIElement` menubar-only app: floating note panels + menubar
+Canvas is an `LSUIElement` menubar-only app: floating note panels + menubar
 popover + command palette, with no Dock icon and no main/library window. The v1
 Tauri app remains at tag `v1-final`; port lessons and behavior, never its code.
 
-When operating Blink rather than changing its code, use the `blink` CLI for
-notes and edit `config.json` for behavior/appearance. Drive the GUI only when a
+When operating Canvas rather than changing its code, use `canvas` (or the
+compatible `blink` command) for notes and edit `config.json` for behavior and
+appearance. Drive the GUI only when a
 task specifically requires the live visual surface. The installable agent skill
 is `skills/blink` in the Lattices catalog:
 
@@ -61,19 +85,27 @@ NoteStore notifications → AppModel snapshot → popover / palette / open panel
 - External writers are first-class. The directory watcher calls
   `NoteStore.reconcile()`, producing the same notifications as in-app edits.
 - `config.json` owns behavior and appearance and hot-applies independently of
-  note state. `BLINK_HOME` overrides the file-backed root (notes, config, and
-  attachments) for tests/agents; it does not redirect `UserDefaults`. The Mac
-  peer host is disabled whenever `BLINK_HOME` is set so sandbox notes can never
-  inherit the production device identity or trust list.
+  note state. The first nonempty value of `CANVAS_HOME`, then `BLINK_HOME`,
+  overrides the file-backed root (notes, config, attachments, ledger, and socket)
+  for tests/agents; it does not redirect `UserDefaults`. Use
+  `BlinkPaths.home(environment:)` and `BlinkPaths.hasHomeOverride(environment:)`
+  for this policy. The Mac peer host is disabled with either nonempty override
+  so sandbox notes cannot inherit the production device identity or trust list.
+- Preserve explicit `behavior.mobileAccess` choices. For an absent key, only a
+  valid, nonempty production Keychain approval list enables access. New installs,
+  malformed intent or trust, and read failures stay off. Deriving this choice
+  must not rewrite config/preferences or create identity. A later settings save
+  stores the effective choice explicitly; per-request trust checks remain required.
 
 ## Source-of-truth order
 
 When documents disagree, use this order:
 
-1. Current code and tests describe shipped behavior.
+1. Current code and tests describe source behavior. Verify released behavior
+   against the selected release; source changes are not publication evidence.
 2. This file's hard requirements are non-regression constraints.
 3. `docs/cli.md`, `docs/config.md`, `docs/workspaces.md`, and `docs/release.md`
-   describe shipped agent-facing or release surfaces.
+   describe agent-facing or release surfaces; respect their source/release labels.
 4. `docs/placement.md` is mixed-status: the grid primitive is shipped; its
    live-plane collision, scene, and tidy semantics are proposed.
 5. `docs/v2-plan.md`, `docs/v2-ui-map.md`, and
@@ -89,14 +121,14 @@ Other useful references:
 - UI studies / visual spec: `design/studio` (tracked shared-Studio app;
   `bun dev` → `localhost:3060/studio`).
 - The CLI operates on the same files as the app:
-  `blink ls/cat/new/present/type/write/search/rm/path/workspace`; see
+  `canvas ls/cat/new/present/type/write/search/rm/path/workspace`; see
   `docs/cli.md`.
-- Agents configure Blink by editing
+- Agents configure Canvas by editing
   `~/Library/Application Support/Blink/config.json`, not by driving Settings;
   see `docs/config.md`.
-- `blink workspace` defines a named treatment in `config.json`; membership is
+- `canvas workspace` defines a named treatment in `config.json`; membership is
   one `blink.workspace` frontmatter key. See `docs/workspaces.md`. Brands are
-  generic treatments—never hardcode a specific product identity into Blink.
+  generic treatments—never hardcode a specific product identity into Canvas.
 
 ## Where changes belong
 
@@ -131,9 +163,9 @@ Other useful references:
 ```sh
 swift build                  # resolves pinned Hudson (BLINK_HUDSON_SOURCE=path for local checkout)
 swift test                   # BlinkCore tests
-swift build --product blink  # notes CLI (docs/cli.md)
+swift build --product canvas # notes CLI (blink remains a build alias)
 (cd web/editor && bun install && bun run build)   # editor bundle
-./scripts/run-app.sh --debug --restart            # bundle dist/Blink.app + launch
+./scripts/run-app.sh --debug --restart            # bundle dist/Canvas.app + launch
 (cd apps/ios && xcodegen generate)                 # generate BlinkMobile.xcodeproj
 ```
 
@@ -164,7 +196,7 @@ swift build --product blink  # notes CLI (docs/cli.md)
 - Log prefix `[BLINK]` via HudLogger (HudsonObservability).
 - Hyper = ⌃⌥⇧⌘. Global hotkeys use Carbon `RegisterEventHotKey` and do not
   require Accessibility permission.
-- User-visible name is "Blink".
+- User-visible name is "Canvas"; retain existing storage and protocol identifiers.
 - GUI verification: LSUIElement apps are invisible to System Events' "visible
-  processes." Activate Blink before synthesized keystrokes, and use `AXRaise`
+  processes." Activate Canvas before synthesized keystrokes, and use `AXRaise`
   for restored panels.

@@ -32,7 +32,7 @@ enum BlinkPeerTrustStoreError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidHostKey:
-            return "Blink's saved Mac identity is invalid. Remove its Keychain item before retrying."
+            return "Canvas's saved Mac identity is invalid. Remove its Keychain item before retrying."
         }
     }
 }
@@ -45,6 +45,17 @@ enum BlinkPeerTrustStoreError: Error, LocalizedError {
 /// secrets, so they live in the Keychain rather than in `UserDefaults`.
 public final class BlinkPeerTrustStore: @unchecked Sendable {
     private static let productionStorageKey = "blink.peer.trusted-devices"
+
+    /// Inspect existing approvals without initializing the normal trust store,
+    /// which intentionally removes obsolete preference-based credentials.
+    public static func mobileAccessEnabled(configuration: Data?, hasHomeOverride: Bool) -> Bool {
+        BlinkMobileAccessPolicy.resolve(
+            configuration: configuration,
+            hasHomeOverride: hasHomeOverride
+        ) {
+            try BlinkKeychainSecretStorage().data(forKey: productionStorageKey)
+        }
+    }
 
     private let storage: any BlinkPeerSecretStorage
     private let storageKey: String

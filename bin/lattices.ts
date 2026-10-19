@@ -4,7 +4,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
-import { loadDaemonClient, tryDaemon, withDaemon, targetHost, isRemoteTarget } from "./cli/daemon.ts";
+import { loadDaemonClient, tryDaemon, withDaemon, targetHost, isRemoteTarget, remoteHostName } from "./cli/daemon.ts";
 import { printHome, printUsage } from "./cli/usage.ts";
 import {
   hasFlag,
@@ -3520,6 +3520,12 @@ switch (command) {
     // resources they own -- are never touched by an unrelated CLI invocation.
     const { mcpCommand } = await import("./mcp/server.ts");
     await mcpCommand(args.slice(1));
+    break;
+  }
+  case "canvas":
+  case "blink": {
+    const { canvasCommand } = await import("./cli/canvas.ts");
+    process.exitCode = canvasCommand(args.slice(1), { remoteHost: remoteHostName() });
     break;
   }
   case "action": {

@@ -2,7 +2,7 @@ import ArgumentParser
 import BlinkCore
 import Foundation
 
-/// `blink workspace …` — the agent-facing face of Notes Workspaces.
+/// `canvas workspace …` — the agent-facing face of Notes Workspaces.
 ///
 /// A workspace is two things kept deliberately apart:
 /// - a **definition** in `config.json` → `workspaces.<name>` (title + brand),
@@ -211,7 +211,7 @@ struct WorkspaceInit: AsyncParsableCommand {
         discussion: """
         Safe to re-run: an existing workspace is updated, never replaced. With no \
         brand flags the workspace is created unbranded, and its notes render with \
-        Blink's defaults until you brand it.
+        Canvas defaults until you brand it.
         """
     )
 
@@ -259,7 +259,7 @@ struct WorkspaceList: AsyncParsableCommand {
         }
 
         guard !workspaces.isEmpty else {
-            FileHandle.standardError.write(Data("no workspaces — create one with `blink workspace init <name>`\n".utf8))
+            FileHandle.standardError.write(Data("no workspaces — create one with `canvas workspace init <name>`\n".utf8))
             return
         }
         let width = workspaces.keys.map(\.count).max() ?? 0
@@ -364,7 +364,7 @@ struct WorkspaceNotes: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "notes",
         abstract: "List the notes in a workspace, most recently updated first.",
-        discussion: "How an agent reopens its workspace: list the ids, then `blink cat` or open them in the app."
+        discussion: "How an agent reopens its workspace: list the ids, then `canvas cat` or open them in the app."
     )
 
     @Argument(help: "Workspace name.") var name: String
@@ -484,7 +484,7 @@ private func emit(name: String, workspace: Workspace, store: WorkspaceStore, jso
     if let style = workspace.style { print("  style      \(style)") }
     print("  notes      \(noteCounts()[name] ?? 0)")
     if brand.isEmpty {
-        print("  brand      unbranded — Blink defaults")
+        print("  brand      unbranded — Canvas defaults")
         return
     }
     if let v = brand.mark {

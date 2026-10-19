@@ -113,6 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             CompanionMenuBarVisibility.shared.alwaysShow = config.behavior.alwaysShowMenuBarIcon
             self?.applyHotkeys(config)
             self?.applyLoginItem(config)
+            self?.updatePeerServer()
             // Reflect an appearance change (or any state) in the menu checkmarks.
             self?.contextMenu = self?.buildContextMenu()
         }
@@ -156,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let mainMenu = NSMenu()
 
         let appMenuItem = NSMenuItem()
-        let appMenu = NSMenu(title: "Blink")
+        let appMenu = NSMenu(title: "Canvas")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
@@ -182,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appMenu.addItem(.separator())
         appItem("Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         appMenu.addItem(.separator())
-        appItem("Quit Blink", action: #selector(menuQuit), keyEquivalent: "q")
+        appItem("Quit Canvas", action: #selector(menuQuit), keyEquivalent: "q")
 
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
@@ -260,7 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.readerLayer.toggle()
         }
         if let chord = KeyChord.parse(config.hotkeys.newNote) {
-            statusItem?.button?.toolTip = "Blink — \(chord.display) for a new note"
+            statusItem?.button?.toolTip = "Canvas — \(chord.display) for a new note"
         }
     }
 
@@ -347,7 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             switch method {
             case "system.hello":
                 let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-                result = ["protocol": "2.0", "version": version, "app": "Blink"]
+                result = ["protocol": "2.0", "version": version, "app": "Blink", "displayName": "Canvas"]
             case "placements.list": result = panelManager.placementList()
             case "notes.list":
                 result = await store.all().map { ["id": $0.id, "title": $0.title, "updated": ISO8601DateFormatter().string(from: $0.updatedAt)] }
@@ -409,7 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             sendDeskResponse(
                 requestID: requestID,
                 success: false,
-                error: "Blink received a malformed desk command"
+                error: "Canvas received a malformed desk command"
             )
             return
         }
@@ -465,7 +466,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
 
         guard applied else {
-            return .failure("Blink could not \(verb.rawValue) note “\(noteID)”")
+            return .failure("Canvas could not \(verb.rawValue) note “\(noteID)”")
         }
 
         log.info(
@@ -688,6 +689,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         let accessItem = NSMenuItem(title: "Mobile Access", action: nil, keyEquivalent: "")
         let accessMenu = NSMenu()
+        let toggleAccess = NSMenuItem(title: "Enable Mobile Access", action: #selector(menuToggleMobileAccess), keyEquivalent: "")
+        toggleAccess.target = self
+        toggleAccess.state = BlinkConfigStore.shared.config.behavior.mobileAccess ? .on : .off
+        accessMenu.addItem(toggleAccess)
+        accessMenu.addItem(.separator())
         let trustedPeers = peerServer?.trustedPeers ?? []
         if let peerSyncUnavailableReason {
             let unavailableItem = NSMenuItem(
@@ -724,7 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let accessHelp = NSMenuItem(
             title: peerSyncUnavailableReason == nil
                 ? "New devices ask for approval on this Mac"
-                : "Check local-network access, then relaunch Blink",
+                : "Check local-network access, then relaunch Canvas",
             action: nil,
             keyEquivalent: ""
         )
@@ -740,7 +746,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Quit Blink", action: #selector(menuQuit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Canvas", action: #selector(menuQuit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -817,7 +823,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let failure = NSAlert()
             failure.alertStyle = .critical
             failure.messageText = "Couldn’t Revoke Access"
-            failure.informativeText = "Blink couldn’t update its secure device list. Access remains approved. \(error.localizedDescription)"
+            failure.informativeText = "Canvas couldn’t update its secure device list. Access remains approved. \(error.localizedDescription)"
             failure.addButton(withTitle: "OK")
             failure.runModal()
         }
@@ -827,11 +833,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.terminate(nil)
     }
 
+    @objc private func menuToggleMobileAccess() {
+        BlinkConfigStore.shared.update { $0.behavior.mobileAccess.toggle() }
+    }
+
+    private func updatePeerServer() {
+        if BlinkConfigStore.shared.config.behavior.mobileAccess {
+            if peerServer == nil { startPeerServer() }
+        } else {
+            peerServer?.stop(); peerServer = nil
+            peerSyncStatus.unavailableReason = peerSyncUnavailableReason
+        }
+    }
+
     private func startPeerServer() {
-        if let override = ProcessInfo.processInfo.environment["BLINK_HOME"],
-           !override.isEmpty {
-            peerSyncStatus.unavailableReason = "Disabled while BLINK_HOME is set"
-            log.info("[BLINK] mobile sync disabled for BLINK_HOME sandbox")
+        guard BlinkConfigStore.shared.config.behavior.mobileAccess else {
+            peerSyncStatus.unavailableReason = "Mobile access is disabled"
+            return
+        }
+        if BlinkPaths.hasHomeOverride() {
+            peerSyncStatus.unavailableReason = "Disabled while CANVAS_HOME or BLINK_HOME is set"
+            log.info("[BLINK] mobile sync disabled for custom home")
             return
         }
         peerStartupFailure = nil
@@ -847,7 +869,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
 
         let machineName = Host.current().localizedName ?? "Mac"
-        var displayName = "Blink · \(machineName)"
+        var displayName = "Canvas · \(machineName)"
         while displayName.utf8.count > 60 { displayName.removeLast() }
         let server: BlinkLANPeerServer
         do {
@@ -881,9 +903,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private var peerSyncUnavailableReason: String? {
-        if let override = ProcessInfo.processInfo.environment["BLINK_HOME"],
-           !override.isEmpty {
-            return "Disabled while BLINK_HOME is set"
+        if !BlinkConfigStore.shared.config.behavior.mobileAccess { return "Mobile access is disabled" }
+        if BlinkPaths.hasHomeOverride() {
+            return "Disabled while CANVAS_HOME or BLINK_HOME is set"
         }
         if let peerStartupFailure { return peerStartupFailure }
         if let failure = peerServer?.advertisingFailure {
@@ -900,8 +922,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Allow \(identity.name) to read your Blink notes?"
-        alert.informativeText = "This request came from a nearby device on your local network. Allowing it creates an encrypted, read-only offline copy. You can revoke access from Blink’s menu."
+        alert.messageText = "Allow \(identity.name) to read your Canvas notes?"
+        alert.informativeText = "This request came from a nearby device on your local network. Allowing it creates an encrypted, read-only offline copy. You can revoke access from Canvas’s menu."
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Not Now")
         return alert.runModal() == .alertFirstButtonReturn
@@ -955,7 +977,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if guideWindow == nil {
             let host = NSHostingController(rootView: BlinkGuideView(activities: activities))
             let window = NSWindow(contentViewController: host)
-            window.title = "Blink Help & Shortcuts"
+            window.title = "Canvas Help & Shortcuts"
             window.styleMask = [.titled, .closable, .resizable]
             window.setContentSize(NSSize(width: 780, height: 610))
             window.contentMinSize = NSSize(width: 720, height: 520)
@@ -976,7 +998,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 rootView: SettingsView(store: .shared, notesDirectory: Self.notesDirectory())
             )
             let window = NSWindow(contentViewController: host)
-            window.title = "Blink Settings"
+            window.title = "Canvas Settings"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             WindowFrameChrome.configure(window)
             window.setContentSize(NSSize(width: 780, height: 580))

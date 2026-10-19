@@ -1,33 +1,24 @@
 #!/usr/bin/env bash
-# Build the release assets and publish them to a GitHub release on arach/lattices.
-# Uploads the signed+notarized Blink.dmg (human download) and the blink CLI
-# binary (blink-macos-arm64). The npm package ships its own copy of the CLI.
+# Build the release assets and publish them to a GitHub release on lattices-dev/lattices.
+# Uploads the signed+notarized Canvas.dmg (human download) and the canvas CLI
+# binary (canvas-macos-arm64). The npm package ships its own copy of the CLI.
 #
-#   ./tools/release/ship.sh [--dry-run] [--skip-dmg]
+#   ./tools/release/ship.sh [--dry-run [--skip-dmg]]
 #
 # Env:
-#   BLINK_RELEASE_REPO    default: arach/lattices
+#   BLINK_RELEASE_REPO    default: lattices-dev/lattices
 #   BLINK_RELEASE_TARGET  remote ref local HEAD must match (default: main)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DIST_DIR="$ROOT/dist"
-REPO="${BLINK_RELEASE_REPO:-arach/lattices}"
+REPO="${BLINK_RELEASE_REPO:-lattices-dev/lattices}"
 TARGET="${BLINK_RELEASE_TARGET:-main}"
 VERSION="${BLINK_VERSION:-$(node -p "require(process.argv[1]).version" "$ROOT/packages/npm/package.json" 2>/dev/null || echo '2.0.0')}"
-TAG="blink-v${VERSION}"
+TAG="canvas-v${VERSION}"
 DRY_RUN=0
 SKIP_DMG=0
-TMP=""
-NOTES=""
-
-cleanup() {
-    [ -n "$TMP" ] && [ -d "$TMP" ] && rm -rf "$TMP" || true
-    [ -n "$NOTES" ] && rm -f "$NOTES" || true
-}
-trap cleanup EXIT
-
 run() {
     if [ "$DRY_RUN" -eq 1 ]; then printf 'DRY RUN:'; printf ' %q' "$@"; printf '\n'; return 0; fi
     "$@"
@@ -42,6 +33,11 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+if [ "$DRY_RUN" -eq 0 ] && [ "$SKIP_DMG" -eq 1 ]; then
+    echo "Error: --skip-dmg is only supported with --dry-run; publication requires freshly verified images." >&2
+    exit 1
+fi
 
 command -v gh >/dev/null || { echo "Error: gh not found" >&2; exit 1; }
 cd "$ROOT"
@@ -64,6 +60,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
         echo "Error: refusing to publish release assets with BLINK_SKIP_SIGN=1." >&2
         exit 1
     fi
+    if [ "${BLINK_SKIP_NOTARIZE:-0}" = "1" ]; then
+        echo "Error: refusing to publish release assets with BLINK_SKIP_NOTARIZE=1." >&2
+        exit 1
+    fi
 
     REMOTE_SHA="$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null || true)"
     if [ -z "$REMOTE_SHA" ]; then
@@ -77,65 +77,27 @@ if [ "$DRY_RUN" -eq 0 ]; then
     fi
 fi
 
-ASSETS=()
-
 # CLI binary (also what the npm package embeds).
-echo "==> Building blink CLI asset..."
+echo "==> Building canvas CLI asset..."
 run bash "$SCRIPT_DIR/build-cli.sh"
-CLI_ASSET="$DIST_DIR/blink-macos-arm64"
+CLI_ASSET="$DIST_DIR/canvas-macos-arm64"
 if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$DIST_DIR"
-    cp "$ROOT/packages/npm/dist/blink" "$CLI_ASSET"
+    cp "$ROOT/packages/npm/dist/canvas" "$CLI_ASSET"
 fi
-ASSETS+=("$CLI_ASSET")
+if [ "$DRY_RUN" -eq 0 ]; then cp "$CLI_ASSET" "$DIST_DIR/blink-macos-arm64"; fi
 
 # Signed + notarized DMG (the human download).
 if [ "$SKIP_DMG" -eq 0 ]; then
     echo "==> Building DMG asset..."
     run bash "$SCRIPT_DIR/build-dmg.sh" "$VERSION"
-    ASSETS+=("$DIST_DIR/Blink.dmg")
-    # A versioned copy so the release lists Blink-<version>.dmg too.
-    TMP="$(mktemp -d)"
-    VERSIONED="$TMP/Blink-$VERSION.dmg"
-    if [ "$DRY_RUN" -eq 0 ]; then cp "$DIST_DIR/Blink.dmg" "$VERSIONED"; ASSETS+=("$VERSIONED"); fi
+
 fi
 
-NOTES="$(mktemp)"
-cat > "$NOTES" <<EOF
-Blink $VERSION
-
-Download **Blink.dmg** for Mac (Apple Silicon), or install the CLI:
-
-    npm install -g @arach/blink
-
-Then \`blink ls\`, \`blink present\`, \`blink type\`. See the
-[Blink CLI reference](https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md).
-EOF
-
+# Publish both release channels at the same source commit. Already-published
+# 2.2.0 installers only query blink-v2.* and require Blink.app in Blink.dmg.
 if [ "$DRY_RUN" -eq 1 ]; then
-    echo "==> DRY RUN: would create/update release $TAG in $REPO with:"
-    printf '   - %s\n' "${ASSETS[@]}"
-elif gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-    TAG_SHA="$(gh api "repos/$REPO/commits/$TAG" --jq .sha 2>/dev/null || true)"
-    if [ "$TAG_SHA" != "$SOURCE_SHA" ]; then
-        echo "Error: existing tag $TAG resolves to ${TAG_SHA:-unknown}, not local HEAD $SOURCE_SHA." >&2
-        echo "Refusing to replace assets for a different source commit." >&2
-        exit 1
-    fi
-    echo "==> Updating release $TAG in $REPO..."
-    EDIT_ARGS=("$TAG" --repo "$REPO" --latest=false --title "Blink $VERSION" --notes-file "$NOTES")
-    if [[ "$VERSION" == *-* ]]; then EDIT_ARGS+=(--prerelease); fi
-    gh release edit "${EDIT_ARGS[@]}"
-    gh release upload "$TAG" "${ASSETS[@]}" --repo "$REPO" --clobber
+    bash "$SCRIPT_DIR/publish-assets.sh" --dry-run "$VERSION" "$REPO" "$SOURCE_SHA" "$DIST_DIR"
 else
-    echo "==> Creating release $TAG in $REPO..."
-    CREATE_ARGS=("$TAG" "${ASSETS[@]}" --repo "$REPO" --target "$SOURCE_SHA" \
-        --latest=false --title "Blink $VERSION" --notes-file "$NOTES")
-    if [[ "$VERSION" == *-* ]]; then CREATE_ARGS+=(--prerelease); fi
-    gh release create "${CREATE_ARGS[@]}"
+    bash "$SCRIPT_DIR/publish-assets.sh" "$VERSION" "$REPO" "$SOURCE_SHA" "$DIST_DIR"
 fi
-rm -f "$NOTES"
-NOTES=""
-
-echo ""
-[ "$DRY_RUN" -eq 1 ] && echo "==> Dry run complete for $TAG" || echo "==> Shipped $TAG to $REPO"
