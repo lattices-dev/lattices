@@ -5,6 +5,17 @@ import Foundation
 import Security
 import UIKit
 
+// Keep the persistence boundary injectable so sample-mode tests use disposable
+// storage and can hold a cache operation in flight without touching real notes.
+protocol BlinkMobileCache: Sendable {
+    func loadRecord() async throws -> BlinkSnapshotCacheRecord?
+    func apply(_ incoming: BlinkSnapshot, sourceIdentity: String?, syncedAt: Date?) async throws -> BlinkSnapshot
+    func recordSuccessfulSync(sourceIdentity: String, at date: Date) async throws -> Bool
+    func removeAll() async throws
+}
+
+extension BlinkSnapshotCache: BlinkMobileCache {}
+
 @MainActor
 final class BlinkMobileModel: ObservableObject {
     enum CacheState: Equatable {
@@ -31,17 +42,22 @@ final class BlinkMobileModel: ObservableObject {
         }
     }
 
-    @Published private(set) var snapshot: BlinkSnapshot?
+    @Published private var savedSnapshot: BlinkSnapshot?
+    @Published private(set) var isShowingSamples = false
     @Published private(set) var nearbyPeers: [BlinkLANPeerCandidate] = []
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var isSyncing = false
-    @Published private(set) var cacheState: CacheState = .loading
+    @Published private var savedCacheState: CacheState = .loading
+    @Published private var isRemovingOfflineNotes = false
+    @Published private var isConnecting = false
     @Published private(set) var discoveryState: DiscoveryState = .searching
     @Published private(set) var lastSuccessfulSyncAt: Date?
     @Published var presentedError: String?
 
     private var client: BlinkLANPeerClient?
-    private let cache: BlinkSnapshotCache
+    private let cache: any BlinkMobileCache
+    private let makeClient: () throws -> BlinkLANPeerClient
+    private var hasRequestedDiscovery = false
     private var discoveryTask: Task<Void, Never>?
     private var hasLoadedCache = false
     private var discoveryStartedAt = Date()
@@ -49,18 +65,49 @@ final class BlinkMobileModel: ObservableObject {
     private var cacheSourceIdentity: String?
     private var connectionGeneration = 0
 
-    init() {
+    init(
+        cache: (any BlinkMobileCache)? = nil,
+        makeClient: (() throws -> BlinkLANPeerClient)? = nil
+    ) {
         let support = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        cache = BlinkSnapshotCache(
+        self.cache = cache ?? BlinkSnapshotCache(
             fileURL: support
                 .appendingPathComponent("Blink", isDirectory: true)
                 .appendingPathComponent("snapshot.json", isDirectory: false),
             excludeFromBackup: true
         )
+        self.makeClient = makeClient ?? {
+            let credential = try BlinkDeviceCredentialSeed.loadOrCreate()
+            return BlinkLANPeerClient(
+                identity: BlinkPeerClientIdentity(
+                    credential: credential,
+                    name: BlinkDeviceCredentialSeed.displayName(for: credential)
+                )
+            )
+        }
         activate()
+    }
+
+    // Samples are a display overlay, never the source for a cache write or ETag.
+    var snapshot: BlinkSnapshot? { isShowingSamples ? BlinkSampleNotes.snapshot : savedSnapshot }
+    var cacheState: CacheState { isShowingSamples ? .ready : savedCacheState }
+    var savedNoteCount: Int { savedSnapshot?.notes.count ?? 0 }
+    var hasSavedSnapshot: Bool { savedSnapshot != nil }
+    var savedLastSyncedAt: Date? { lastSuccessfulSyncAt ?? savedSnapshot?.generatedAt }
+
+    var canShowSampleNotes: Bool { !isSyncing && !isConnecting && !isRemovingOfflineNotes }
+    var canRemoveOfflineNotes: Bool { !isShowingSamples && !isSyncing && !isRemovingOfflineNotes }
+
+    func showSampleNotes() {
+        guard canShowSampleNotes else { return }
+        isShowingSamples = true
+    }
+
+    func exitSampleNotes() {
+        isShowingSamples = false
     }
 
     var notes: [BlinkSnapshotNote] {
@@ -70,7 +117,7 @@ final class BlinkMobileModel: ObservableObject {
         } ?? []
     }
 
-    var lastSyncedAt: Date? { lastSuccessfulSyncAt ?? snapshot?.generatedAt }
+    var lastSyncedAt: Date? { isShowingSamples ? nil : lastSuccessfulSyncAt ?? savedSnapshot?.generatedAt }
 
     func activate() {
         if !hasLoadedCache {
@@ -79,6 +126,13 @@ final class BlinkMobileModel: ObservableObject {
             let generation = cacheGeneration
             Task { await loadCache(generation: generation) }
         }
+        if hasRequestedDiscovery { startDiscovery() }
+    }
+
+    /// Opening Connection is the first action that may access identity or LAN.
+    func startDiscovery() {
+        guard !isShowingSamples else { return }
+        hasRequestedDiscovery = true
         guard discoveryTask == nil else { return }
         guard configureClientIfNeeded(), let client else { return }
         discoveryStartedAt = Date()
@@ -109,15 +163,16 @@ final class BlinkMobileModel: ObservableObject {
     }
 
     func retryDiscovery() {
-        client?.stopBrowsing()
-        guard configureClientIfNeeded(), let client else { return }
-        discoveryStartedAt = Date()
-        discoveryState = .searching
-        client.startBrowsing()
+        guard !isShowingSamples else { return }
+        deactivate()
+        startDiscovery()
     }
 
     func connect(to candidate: BlinkLANPeerCandidate) async -> Bool {
-        guard let client, !isSyncing else { return false }
+        guard !isShowingSamples, !isRemovingOfflineNotes, !isConnecting,
+              let client, !isSyncing else { return false }
+        isConnecting = true
+        defer { isConnecting = false }
         connectionGeneration += 1
         let connection = connectionGeneration
         connectionState = .requestingAccess(candidate.name)
@@ -148,6 +203,7 @@ final class BlinkMobileModel: ObservableObject {
     }
 
     func disconnect() {
+        guard !isShowingSamples else { return }
         connectionGeneration += 1
         client?.disconnect()
         connectionState = .disconnected
@@ -155,19 +211,20 @@ final class BlinkMobileModel: ObservableObject {
 
     @discardableResult
     func refresh() async -> Bool {
-        guard let host = connectionState.host, !isSyncing else { return false }
+        guard !isShowingSamples, !isRemovingOfflineNotes,
+              let host = connectionState.host, !isSyncing else { return false }
         return await sync(host: host, connection: connectionGeneration)
     }
 
     private func sync(host: BlinkPeerHost, connection: Int) async -> Bool {
-        guard let client, !isSyncing else { return false }
+        guard !isShowingSamples, !isRemovingOfflineNotes, let client, !isSyncing else { return false }
         isSyncing = true
         defer { isSyncing = false }
         let generation = cacheGeneration
         let sourceIdentity = host.publicKey
         let isSameHost = cacheSourceIdentity == sourceIdentity
         do {
-            switch try await client.fetchSnapshot(ifNoneMatch: isSameHost ? snapshot?.etag : nil) {
+            switch try await client.fetchSnapshot(ifNoneMatch: isSameHost ? savedSnapshot?.etag : nil) {
             case .notModified:
                 guard connection == connectionGeneration,
                       client.pairedHost?.publicKey == sourceIdentity
@@ -196,10 +253,10 @@ final class BlinkMobileModel: ObservableObject {
                     syncedAt: syncedAt
                 )
                 guard generation == cacheGeneration else { return false }
-                snapshot = cached
+                savedSnapshot = cached
                 cacheSourceIdentity = sourceIdentity
                 lastSuccessfulSyncAt = syncedAt
-                cacheState = .ready
+                savedCacheState = .ready
                 return connection == connectionGeneration
                     && client.pairedHost?.publicKey == sourceIdentity
             }
@@ -215,6 +272,9 @@ final class BlinkMobileModel: ObservableObject {
     }
 
     func clearOfflineNotes() async {
+        guard canRemoveOfflineNotes else { return }
+        isRemovingOfflineNotes = true
+        defer { isRemovingOfflineNotes = false }
         // Removing offline notes is also a connection boundary. Cancelling the
         // live or pending peer operation prevents an automatic refresh from
         // recreating the cache after the person confirms removal.
@@ -224,17 +284,18 @@ final class BlinkMobileModel: ObservableObject {
             let generation = cacheGeneration
             try await cache.removeAll()
             guard generation == cacheGeneration else { return }
-            snapshot = nil
+            savedSnapshot = nil
             cacheSourceIdentity = nil
             lastSuccessfulSyncAt = nil
-            cacheState = .ready
+            savedCacheState = .ready
         } catch {
             presentedError = error.localizedDescription
         }
     }
 
     func retryCacheLoad() {
-        cacheState = .loading
+        guard !isShowingSamples, !isRemovingOfflineNotes, !isSyncing else { return }
+        savedCacheState = .loading
         cacheGeneration += 1
         let generation = cacheGeneration
         Task { await loadCache(generation: generation) }
@@ -244,13 +305,13 @@ final class BlinkMobileModel: ObservableObject {
         do {
             let record = try await cache.loadRecord()
             guard generation == cacheGeneration else { return }
-            snapshot = record?.snapshot
+            savedSnapshot = record?.snapshot
             cacheSourceIdentity = record?.sourceIdentity
             lastSuccessfulSyncAt = record?.lastSuccessfulSyncAt
-            cacheState = .ready
+            savedCacheState = .ready
         } catch {
             guard generation == cacheGeneration else { return }
-            cacheState = .failed(error.localizedDescription)
+            savedCacheState = .failed(error.localizedDescription)
         }
     }
 
@@ -258,13 +319,7 @@ final class BlinkMobileModel: ObservableObject {
     private func configureClientIfNeeded() -> Bool {
         if client != nil { return true }
         do {
-            let credential = try BlinkDeviceCredentialSeed.loadOrCreate()
-            let client = BlinkLANPeerClient(
-                identity: BlinkPeerClientIdentity(
-                    credential: credential,
-                    name: BlinkDeviceCredentialSeed.displayName(for: credential)
-                )
-            )
+            let client = try makeClient()
             client.observeConnection { [weak self] isConnected in
                 guard !isConnected else { return }
                 Task { @MainActor [weak self] in

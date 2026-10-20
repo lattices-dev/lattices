@@ -1,0 +1,7 @@
+{
+  "description": "Canvas by Lattices is a read-only companion to Canvas for Mac. Browse your Mac's notes and workspaces on iPhone and iPad, then keep reading offline.\n\nConnect to a Mac running Canvas on the same local network and approve your device on the Mac. Your notes transfer in an encrypted snapshot. The original Markdown files stay on your Mac; this app stores a local copy for reading.\n\n• Browse notes by workspace\n• Search downloaded notes, even offline\n• Read notes in layouts for iPhone and iPad\n• Explore sample notes without a Mac or an account\n\nThis first release is a viewer for Canvas notes. Create and edit your notes on the Mac. To sync your own notes, you need Canvas for Mac and local-network access. No account or cloud service is required.\n\nRemove the downloaded copy in Settings → On This Device → Notes → Remove Notes. Your Mac's original notes stay in place.",
+  "keywords": "notes,markdown,spatial,companion,offline,workspace,read,recall,mac,sync",
+  "marketingUrl": "https://blink.arach.dev",
+  "promotionalText": "Your Canvas notes from Mac, ready to read on iPhone and iPad. Browse workspaces, search offline, or explore sample notes before connecting your Mac.",
+  "supportUrl": "https://blink.arach.dev/support/"
+}

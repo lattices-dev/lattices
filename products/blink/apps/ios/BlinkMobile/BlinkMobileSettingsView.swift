@@ -2,6 +2,12 @@ import BlinkPeer
 import HudsonUI
 import SwiftUI
 
+// Keep the established domain so existing installations retain working links.
+private enum BlinkMobileLinks {
+    static let support = URL(string: "https://blink.arach.dev/support/")!
+    static let privacy = URL(string: "https://blink.arach.dev/privacy/")!
+}
+
 private enum BlinkSettingsRoute: Hashable {
     case connection
     case appearance
@@ -37,6 +43,7 @@ struct BlinkMobileSettingsView: View {
                 .padding(.bottom, 36)
             }
             .background(BlinkBackdrop())
+            .sampleNotesBanner(isPresented: model.isShowingSamples, onExit: model.exitSampleNotes)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(BlinkMobileTheme.canvas, for: .navigationBar)
@@ -47,14 +54,17 @@ struct BlinkMobileSettingsView: View {
                 }
             }
             .navigationDestination(for: BlinkSettingsRoute.self) { route in
-                switch route {
-                case .connection:
-                    ConnectionView(model: model)
-                case .appearance:
-                    BlinkAppearanceSettingsView()
-                case .storage:
-                    BlinkStorageSettingsView(model: model)
+                Group {
+                    switch route {
+                    case .connection:
+                        ConnectionView(model: model)
+                    case .appearance:
+                        BlinkAppearanceSettingsView()
+                    case .storage:
+                        BlinkStorageSettingsView(model: model)
+                    }
                 }
+                .sampleNotesBanner(isPresented: model.isShowingSamples, onExit: model.exitSampleNotes)
             }
         }
         .presentationDetents([.large])
@@ -96,7 +106,7 @@ struct BlinkMobileSettingsView: View {
                 subtitle: storageSubtitle,
                 onTap: { path.append(.storage) }
             ) {
-                BlinkSettingsBadge("\(model.notes.count)", color: BlinkMobileTheme.secondaryInk)
+                BlinkSettingsBadge("\(model.savedNoteCount)", color: BlinkMobileTheme.secondaryInk)
             }
         }
     }
@@ -112,6 +122,29 @@ struct BlinkMobileSettingsView: View {
                 Text(version)
                     .font(.caption.monospaced())
                     .foregroundStyle(BlinkMobileTheme.faintInk)
+            }
+            if !model.isShowingSamples {
+                HudSettingsRow(
+                    icon: "doc.text.magnifyingglass",
+                    iconColor: BlinkMobileTheme.signal,
+                    title: "Try sample notes",
+                    subtitle: "Explore without connecting to a Mac",
+                    onTap: {
+                        model.showSampleNotes()
+                        if model.isShowingSamples { dismiss() }
+                    }
+                )
+                .disabled(!model.canShowSampleNotes)
+            }
+            Link(destination: BlinkMobileLinks.support) {
+                Label("Help & Support", systemImage: "questionmark.circle")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 14)
+            }
+            Link(destination: BlinkMobileLinks.privacy) {
+                Label("Privacy Policy", systemImage: "hand.raised")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 14)
             }
         }
     }
@@ -149,7 +182,7 @@ struct BlinkMobileSettingsView: View {
     }
 
     private var storageSubtitle: String {
-        guard let lastSyncedAt = model.lastSyncedAt else { return "No notes saved" }
+        guard let lastSyncedAt = model.savedLastSyncedAt else { return "No notes saved" }
         return "Updated \(blinkSettingsAge(since: lastSyncedAt).lowercased())"
     }
 
@@ -273,7 +306,7 @@ private struct BlinkStorageSettingsView: View {
                         title: "Saved",
                         subtitle: updatedValue
                     ) {
-                        BlinkSettingsBadge("\(model.notes.count)", color: BlinkMobileTheme.signal)
+                        BlinkSettingsBadge("\(model.savedNoteCount)", color: BlinkMobileTheme.signal)
                     }
                     Rectangle()
                         .fill(BlinkMobileTheme.hairline)
@@ -283,11 +316,11 @@ private struct BlinkStorageSettingsView: View {
                         icon: "wifi.slash",
                         iconColor: BlinkMobileTheme.secondaryInk,
                         title: "Without your Mac",
-                        subtitle: model.snapshot == nil ? "Unavailable" : "Available"
+                        subtitle: model.hasSavedSnapshot ? "Available" : "Unavailable"
                     )
                 }
 
-                if model.snapshot != nil {
+                if model.hasSavedSnapshot && !model.isShowingSamples {
                     HudSettingsSection("Data", labelTint: BlinkMobileTheme.faintInk) {
                         HudSettingsRow(
                             icon: "trash",
@@ -296,6 +329,7 @@ private struct BlinkStorageSettingsView: View {
                             subtitle: "Mac notes are not changed",
                             onTap: { confirmingRemoval = true }
                         )
+                        .disabled(!model.canRemoveOfflineNotes)
                     }
                 }
             }
@@ -323,7 +357,7 @@ private struct BlinkStorageSettingsView: View {
     }
 
     private var updatedValue: String {
-        guard let lastSyncedAt = model.lastSyncedAt else { return "Not updated" }
+        guard let lastSyncedAt = model.savedLastSyncedAt else { return "Not updated" }
         return "Updated \(blinkSettingsAge(since: lastSyncedAt).lowercased())"
     }
 }

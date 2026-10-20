@@ -1,3 +1,5 @@
+// Private local sockets belong to the macOS app and CLI.
+#if os(macOS)
 import Darwin
 import Foundation
 
@@ -163,3 +165,4 @@ public final class BlinkSocketServer: @unchecked Sendable {
         }
     }
 }
+#endif
