@@ -33,7 +33,7 @@ described in [Agent setup](/action/docs/agent-setup).
 
 ## How Action relates to Lattices
 
-Lattices 0.15.0 owns workspace organization on `lattices.sock`. Action 0.4.0
+Lattices 0.15.1 owns workspace organization on `lattices.sock`. Action 0.4.0
 owns native computer use on `action.sock`. Both sockets are in
 `~/.lattices/run`. Quitting one app does not stop the other. Remote access goes only through the opt-in Lattices gateway. See
 [API](/action/docs/api#private-connection).

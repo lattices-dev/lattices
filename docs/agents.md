@@ -62,7 +62,7 @@ To install the Action product itself, run `lattices action install`. It
 downloads the latest signed `Action.app` release to `/Applications`.
 `lattices action status` reports install, runtime, and agent state;
 `lattices action call <method>` talks to the Action agent without a monorepo
-checkout. Action 0.4.0 and Lattices 0.15.0 use authenticated private IPC;
+checkout. Action 0.4.0 and Lattices 0.15.1 use authenticated private IPC;
 earlier releases use the local agent port. Let the matching CLI discover the endpoint.
 See [Processes and ports](/lattices/docs/concepts#processes-and-ports).
 

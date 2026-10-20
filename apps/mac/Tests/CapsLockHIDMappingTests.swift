@@ -41,4 +41,22 @@ final class CapsLockHIDMappingTests: XCTestCase {
         }
         XCTAssertEqual(CapsLockHIDMapping.parse("100000001 UserKeyMapping ()", registryID: 0x100000001), [])
     }
+    func testHIDChildWaitDoesNotReenterMainRunLoop() {
+        XCTAssertTrue(Thread.isMainThread)
+        var reentered = false
+        RunLoop.main.perform { reentered = true }
+        let worker = DispatchQueue(label: "test.keyboard-hid")
+        let result = worker.sync {
+            CapsLockHIDTransportController.runCommand(
+                ["-c", "printf ready; exec 1>&- 2>&-; sleep 0.2; exit 7"],
+                executableURL: URL(fileURLWithPath: "/bin/sh")
+            )
+        }
+        XCTAssertEqual(result.status, 7)
+        XCTAssertEqual(result.output, "ready")
+        XCTAssertFalse(reentered, "A child wait must not dispatch a recursive cleanup callback")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertTrue(reentered, "The callback must remain queued until cleanup returns")
+    }
+
 }

@@ -14,7 +14,7 @@ Run the installer from a terminal inside your Hyprland desktop. Do not run the i
 
 Bun runs the app and CLI. Quickshell provides the desktop window and gesture trail. The installer also checks tmux, Python, grim, wtype, ffmpeg and tesseract. Other distributions must provide those commands before using `--no-deps`.
 
-Tailscale is optional for local use. Set up Tailscale separately to pair with another machine. Version 0.15.0 uses authenticated private IPC locally and a separate gateway for remote access. See [Private IPC and the gateway](/lattices/docs/concepts#private-ipc-and-the-gateway) before enabling remote access.
+Tailscale is optional for local use. Set up Tailscale separately to pair with another machine. Version 0.15.1 uses authenticated private IPC locally and a separate gateway for remote access. See [Private IPC and the gateway](/lattices/docs/concepts#private-ipc-and-the-gateway) before enabling remote access.
 
 ## Install
 

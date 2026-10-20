@@ -73,7 +73,7 @@ crashes and disconnects, and you can reattach anytime.
 | **CLI** | macOS, Linux | The `lats` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
 | **Menu bar app** | macOS | Command palette, window tiling, project discovery, screen text indexing, voice commands |
 | **Linux host and app** | Linux (Hyprland) | `lattices-host` serves the agent API; a Quickshell app and a tray menu sit on top of it |
-| **Agent API** | macOS, Linux | Authenticated WebSocket on `lattices.sock` in 0.15.0. RPC methods and real-time events; see [Concepts](/lattices/docs/concepts#private-ipc-and-the-gateway) |
+| **Agent API** | macOS, Linux | Authenticated WebSocket on `lattices.sock` in 0.15.1. RPC methods and real-time events; see [Concepts](/lattices/docs/concepts#private-ipc-and-the-gateway) |
 | **MCP server** | macOS | `lats mcp` serves the `browser_*` and `host_*` tools to agent harnesses. See [MCP](/lattices/docs/mcp) |
 | **Screen scanner** | macOS | Reads text from visible windows using the Accessibility API (60s) and Apple Vision OCR (2h), indexes with FTS5 |
 | **Node.js client** | macOS, Linux | Zero-dependency `daemonCall()` helper for scripting |

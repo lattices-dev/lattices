@@ -26,7 +26,7 @@ Lattices **hosts** the voice engine inside the menu bar process. You do not
 need a separate `voxd` for normal use. On app boot, Lattices starts an
 in-process live-session server and tears it down on quit.
 
-Lattices 0.15.0 and Speech 0.3.0 use private local connections. Install the
+Lattices 0.15.1 and Speech 0.3.0 use private local connections. Install the
 Lattices app and CLI at the same version.
 
 ### Private connection

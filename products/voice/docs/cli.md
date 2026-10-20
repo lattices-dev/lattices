@@ -22,7 +22,7 @@ The CLI reads the capability token from
 WebSocket handshake to the daemon. The daemon forwards output verbs only for
 clients that present the token.
 
-In Speech 0.3.0 and Lattices 0.15.0, both hops use private Unix sockets,
+In Speech 0.3.0 and Lattices 0.15.1, both hops use private Unix sockets,
 `~/.lattices/run/lattices.sock` and `~/.lattices/run/speech.sock`. The CLI finds
 them and their tokens for you. The command set does not change.
 

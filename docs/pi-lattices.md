@@ -6,7 +6,7 @@ strictly-prefixed `lattices_*` tools on Pi session start.
 
 The extension preserves the Lattices runtime model:
 
-- It calls the existing macOS-native daemon. Lattices 0.15.0 uses
+- It calls the existing macOS-native daemon. Lattices 0.15.1 uses
   private IPC by default. Install the compatible extension from this checkout.
 - It does not bundle or route through `cua-driver`.
 - Run-backed computer-use tools keep Lattices `treatment` semantics.
@@ -39,7 +39,7 @@ lats app
 
 Use the extension and app from matching source. The extension finds
 `~/.lattices/run/lattices.sock` and its private token; no host or port setting
-is needed. Use the compatible extension from this checkout with Lattices 0.15.0.
+is needed. Use the compatible extension from this checkout with Lattices 0.15.1.
 
 An explicit `LATTICES_DAEMON_HOST` or `LATTICES_DAEMON_PORT` selects TCP. The
 extension sends no local token to that target unless

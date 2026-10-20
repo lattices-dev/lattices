@@ -10,7 +10,7 @@ import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
 import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
 
-const latticesCliVersion = "0.15.0";
+const latticesCliVersion = "0.15.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 // Public entry point documented in docs/install-linux.md.
 const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";

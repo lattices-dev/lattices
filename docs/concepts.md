@@ -43,7 +43,7 @@ destination table below names the process that does the work.
 
 ## Processes and ports
 
-**Lattices 0.15.0, Action 0.4.0 and Speech 0.3.0 use private IPC for local APIs.** Remote
+**Lattices 0.15.1, Action 0.4.0 and Speech 0.3.0 use private IPC for local APIs.** Remote
 access uses a separate, opt-in gateway on the verified Tailscale address,
 port 9399 by default. Starting a product does not start that gateway.
 
@@ -91,7 +91,7 @@ and from the gateway.
 
 <LinuxRuntimeDiagram />
 
-In 0.15.0, `lattices-host` is a Bun process with
+In 0.15.1, `lattices-host` is a Bun process with
 `lattices.sock` and `companion.sock` in `~/.lattices/run`. The Quickshell app's
 backend and the tray use the local host. Remote requests enter through the
 separate gateway. The Linux host has no TCP compatibility listener.
@@ -119,13 +119,13 @@ It is retained for upgrade reference. Binding and authorization are separate bou
 | 9399 and 5287 | Linux `lattices-host` and companion bridge | Local host calls use loopback; the host also listens on its tailnet address when available. Remote devices must pair |
 | none | Blink.app local API | `blink.sock` in the `BLINK_HOME` directory, mode 0600 |
 
-In Lattices 0.15.0, port 9399 belongs to the opt-in gateway by default. In
-versions before 0.15.0, it belongs to the host or daemon. Matching the port
+In Lattices 0.15.1, port 9399 belongs to the opt-in gateway by default. In
+versions before 0.15.1, it belongs to the host or daemon. Matching the port
 number alone does not make clients compatible.
 
 ## Private IPC and the gateway
 
-> **Versions:** Lattices 0.15.0, Action 0.4.0 and Speech 0.3.0 use private IPC.
+> **Versions:** Lattices 0.15.1, Action 0.4.0 and Speech 0.3.0 use private IPC.
 > The [process table](#processes-and-ports) lists the default
 > endpoints. Local clients connect directly to each product. Remote clients
 > use the gateway and its approved method grants.
@@ -281,7 +281,7 @@ embedded voice runtime on `voice.sock`. It does not use Voice.app.
 | **Command Bar** | The menu bar app's primary interface (**Control+Option+Space** by default). Search and run actions for apps, windows, workspaces, and settings. |
 | **Workspace layer** | A named group of windows that you switch as one unit with **⌘⌥** arrows or `lats layer`. See [Layers](/lattices/docs/layers). Not the same as an Action private layer. |
 | **Window Tiling**     | Snap terminal windows to preset screen positions (halves, quarters, thirds, maximize, center). Works from the CLI (`lats tile`) or the command bar. |
-| **Agent API** | Lattices RPC methods and events hosted by the menu bar app on macOS or `lattices-host` on Linux. Current versions use authenticated WebSocket over `lattices.sock`; versions before 0.15.0 use TCP 9399. See the [API reference](/lattices/docs/api). |
+| **Agent API** | Lattices RPC methods and events hosted by the menu bar app on macOS or `lattices-host` on Linux. Current versions use authenticated WebSocket over `lattices.sock`; versions before 0.15.1 use TCP 9399. See the [API reference](/lattices/docs/api). |
 | **Private IPC** | Local communication over a Unix socket owned by the current user. Product APIs authenticate local clients before accepting requests; the gateway is not involved. |
 | **Gateway** | Separate, opt-in process for remote access. It verifies Tailscale identity and signed requests, checks approved product/method grants, and connects to the product through private IPC. |
 | **Agent** | Any program that calls the agent API autonomously: an AI coding agent, a shell script, a CI pipeline, or a custom tool. |
@@ -306,8 +306,8 @@ embedded voice runtime on `voice.sock`. It does not use Voice.app.
 ## Core architecture
 
 - The menu bar app is the core on macOS. It provides the command bar,
-  window tiling, OCR, project discovery and the agent API. Versions from 0.15.0 expose
-  that API through `lattices.sock`; versions before 0.15.0 use TCP 9399. The app
+  window tiling, OCR, project discovery and the agent API. Versions from 0.15.1 expose
+  that API through `lattices.sock`; versions before 0.15.1 use TCP 9399. The app
   works with or without tmux.
 - The `lats` CLI calls the agent API for windows, layers, search and OCR. It
   runs `tmux` commands directly for session management.

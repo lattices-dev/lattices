@@ -12,7 +12,7 @@
 - Window navigation falls through CG → AX → AppleScript depending on macOS permissions
 - Space switching uses private SkyLight framework APIs loaded via dlopen at runtime
 - Source builds use authenticated private IPC: the daemon listens on `~/.lattices/run/lattices.sock`, with a private `lattices.token` required before WebSocket upgrade. `LATTICES_RUNTIME_DIR` overrides the runtime directory for isolated runs. Legacy loopback TCP requires explicit `LATTICES_ALLOW_LOOPBACK_TCP=1` and still requires authentication.
-- The voice runtime stays in-process in the menu bar app, using private `voice.sock` and `voice.token`; Speech remains an independent app using `speech.sock`. See `LatticesLocalEndpoints`. Lattices 0.15.0 requires matching app and CLI versions; Action 0.4.0 and Speech 0.3.0 use their own matching clients.
+- The voice runtime stays in-process in the menu bar app, using private `voice.sock` and `voice.token`; Speech remains an independent app using `speech.sock`. See `LatticesLocalEndpoints`. Lattices 0.15.1 requires matching app and CLI versions; Action 0.4.0 and Speech 0.3.0 use their own matching clients.
 - Remote access belongs to the separate, opt-in `lats gateway start --tailnet` process. It binds the verified Tailscale IP, authenticates peers and signed requests, and enforces locally approved exact product/method grants. Product startup must not implicitly start a network gateway.
 - Bare `lats` (no args) shows a home/status screen — use `lats start` (alias: `lats tmux`) to create or attach a session
 - `lats search <q> --deep` and `--all` both request all search sources (index + live terminal inspection)
