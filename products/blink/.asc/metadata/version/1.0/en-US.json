@@ -1,0 +1,8 @@
+{
+  "description": "Canvas brings your Mac's spatial notes to iPhone and iPad for read-only recall.\n\nBrowse your notes, open a note, filter by workspace, and search. After a sync, your downloaded notes remain available when your Mac is offline.\n\nPair with Canvas on your Mac over the same local network. Approve the device on your Mac to receive an encrypted snapshot of your notes. Your original Markdown files stay on the Mac. The mobile app keeps a local copy that you can remove in Settings.\n\n• Read notes and workspaces from your Mac\n• Search your downloaded notes offline\n• Pair over the local network with explicit approval on your Mac\n• Use layouts designed for iPhone and iPad\n• Try sample notes without a Mac or an account\n\nCanvas does not require an account or a cloud service. A Mac running Canvas is required to sync your own notes. Mobile notes are read-only in this release.",
+  "keywords": "notes,markdown,spatial,companion,offline,workspace,read,recall,mac,sync",
+  "marketingUrl": "https://blink.arach.dev",
+  "promotionalText": "Read your Mac's spatial notes on iPhone and iPad. Pair on your local network, keep notes available offline, or explore sample notes first.",
+  "supportUrl": "https://blink.arach.dev/support/",
+  "whatsNew": "The first App Store release of Canvas for iPhone and iPad. Pair with Canvas on your Mac to read notes offline, or try sample notes without pairing."
+}

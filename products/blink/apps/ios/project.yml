@@ -8,7 +8,8 @@ packages:
   Blink:
     path: ../..
   Hudson:
-    path: ../../../../../hudson
+    url: git@github.com:arach/hudson.git
+    revision: 79ca548b2b30335a3c37fb031a753481dedaaf79
 targets:
   BlinkMobile:
     type: application
@@ -42,7 +43,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.arach.blink.mobile
         PRODUCT_NAME: Canvas
-        MARKETING_VERSION: 0.1.0
+        PRODUCT_MODULE_NAME: BlinkMobile
+        MARKETING_VERSION: 1.0
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: 6.0
         DEVELOPMENT_TEAM: 2U83JFPW66
@@ -50,6 +52,21 @@ targets:
         TARGETED_DEVICE_FAMILY: 1,2
         SUPPORTS_MACCATALYST: NO
         CODE_SIGN_STYLE: Automatic
+  BlinkMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: BlinkMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.arach.blink.mobile.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Canvas.app/Canvas"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: 6.0
+        DEVELOPMENT_TEAM: 2U83JFPW66
 schemes:
   BlinkMobile:
     build:
@@ -57,3 +74,7 @@ schemes:
         BlinkMobile: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - BlinkMobileTests

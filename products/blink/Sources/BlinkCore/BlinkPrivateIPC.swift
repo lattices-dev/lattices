@@ -1,3 +1,5 @@
+// Private local sockets belong to the macOS app and CLI.
+#if os(macOS)
 import Darwin
 import Foundation
 
@@ -76,3 +78,4 @@ public enum BlinkPrivateIPC {
         guard unlink(url.path) == 0 else { throw POSIXError(.EACCES) }
     }
 }
+#endif
