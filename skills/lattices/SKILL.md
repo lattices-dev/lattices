@@ -13,8 +13,8 @@ Lattices is a macOS workspace manager. The menu bar app hosts a local daemon.
 Agents drive it with the `lats` CLI. Older installs only
 have the long name: if `lats` is not found, run the same command as `lattices`.
 
-Lattices 0.15.0 uses `~/.lattices/run/lattices.sock` and `lattices.token`.
-The matching 0.15.0 CLI finds the socket and sends the token. Upgrade the app
+Lattices 0.15.1 uses `~/.lattices/run/lattices.sock` and `lattices.token`.
+The matching 0.15.1 CLI finds the socket and sends the token. Upgrade the app
 and CLI together; older TCP clients need migration.
 
 When this skill is invoked, run the command. Summarize the result. Do not

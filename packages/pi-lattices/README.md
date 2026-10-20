@@ -1,7 +1,7 @@
 # @arach/pi-lattices
 
 Pi extension that exposes the local Lattices macOS daemon as typed `lattices_*`
-tools. It wraps Lattices' existing API. Version 0.2.0 uses private IPC with Lattices 0.15.0. It
+tools. It wraps Lattices' existing API. Version 0.2.0 uses private IPC with Lattices 0.15.1. It
 does **not** bundle `cua-driver`, replace the Lattices daemon, or silently enable
 browser automation.
 
@@ -118,7 +118,7 @@ Finder with `capture: false`; it does not launch or focus Finder because the
 ## Configuration
 
 Version 0.2.0 finds `~/.lattices/run/lattices.sock` and its private token by
-default. Use Lattices 0.15.0 and extension 0.2.0, with no host or port overrides for normal local use.
+default. Use Lattices 0.15.1 and extension 0.2.0, with no host or port overrides for normal local use.
 
 Set a request timeout before starting Pi if needed:
 

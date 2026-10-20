@@ -55,7 +55,7 @@ automatically.
 
 ## Private connection
 
-Speech 0.3.0 and Lattices 0.15.0 use the private sockets below.
+Speech 0.3.0 and Lattices 0.15.1 use the private sockets below.
 Upgrade the app and its clients together.
 
 - Voice.app listens on `~/.lattices/run/speech.sock` and accepts only peers

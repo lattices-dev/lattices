@@ -79,7 +79,7 @@ only the active job. `lats voice stop` does not stop listening. Use
 | Speak without the Lattices daemon | `speech.enqueue` directly on Voice.app, with the capability token. See [API](/speech/docs/api#authentication). |
 | Speak from another machine | Use the opt-in tailnet gateway with a grant such as `speech:speech.enqueue`. See [API](/speech/docs/api#private-connection). |
 
-Speech 0.3.0 and Lattices 0.15.0 use private sockets in `~/.lattices/run`.
+Speech 0.3.0 and Lattices 0.15.1 use private sockets in `~/.lattices/run`.
 Install matching app and CLI versions. `lats` handles authentication for you.
 
 ## Read next

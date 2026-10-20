@@ -26,7 +26,7 @@ method `GET`, path `/visit` and an empty body. The host checks them, and that
 the device holds `input.trackpad`, before upgrading. Otherwise it answers
 401 or 403 as for any other route.
 
-In Lattices 0.15.0, the companion bridge listens on a private
+In Lattices 0.15.1, the companion bridge listens on a private
 socket, `~/.lattices/run/companion.sock`, and no longer opens port 5287 or
 advertises over Bonjour. The visiting machine reaches `/visit` through the
 host's tailnet gateway (`lats gateway start --tailnet`), on the gateway port

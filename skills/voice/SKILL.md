@@ -27,17 +27,17 @@ and the result. Do not invent intent names or slot values.
 lats voice status
 ```
 
-If the daemon is down, start it with `lats app`. Lattices 0.15.0 uses
+If the daemon is down, start it with `lats app`. Lattices 0.15.1 uses
 `voice.sock` and `lattices.sock` under `~/.lattices/run`; Speech 0.3.0 uses
 `speech.sock`. Each service requires its matching token. Install Lattices app
-and CLI 0.15.0 together. The CLI handles discovery and authentication.
+and CLI 0.15.1 together. The CLI handles discovery and authentication.
 
 Capability file:
 
 `~/Library/Application Support/Lattices/Voice/hudson-voice-runtime.json`
 
 Override the voice port only for compatibility tests with
-`LATTICES_VOICE_PORT`. Version 0.15.0 opens a voice TCP listener only
+`LATTICES_VOICE_PORT`. Version 0.15.1 opens a voice TCP listener only
 with the explicit `LATTICES_VOICE_ALLOW_LEGACY_TCP=1` compatibility setting.
 
 ## Speaking

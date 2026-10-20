@@ -1,4 +1,4 @@
-/** Runtime boundaries in Lattices 0.15.0, Action 0.4.0 and Speech 0.3.0. */
+/** Runtime boundaries in Lattices 0.15.1, Action 0.4.0 and Speech 0.3.0. */
 export function MacRuntimeDiagram() {
   return (
     <figure className="runtime-map" aria-label="macOS runtime boundaries: private local IPC and an optional remote gateway">
@@ -51,7 +51,7 @@ export function MacRuntimeDiagram() {
           <p className="runtime-entry"><code>canvas</code> CLI, note files, socket clients</p>
         </section>
       </div>
-      <figcaption>Lattices 0.15.0, Action 0.4.0, Speech 0.3.0 and Canvas 2.3.0. Products keep separate app lifecycles and do not start the gateway. The playback bridge passes through the local Lattices API; voice input stays local. Action-owned Chrome retains its separate loopback CDP listener.</figcaption>
+      <figcaption>Lattices 0.15.1, Action 0.4.0, Speech 0.3.0 and Canvas 2.3.0. Products keep separate app lifecycles and do not start the gateway. The playback bridge passes through the local Lattices API; voice input stays local. Action-owned Chrome retains its separate loopback CDP listener.</figcaption>
     </figure>
   )
 }
@@ -80,7 +80,7 @@ export function LinuxRuntimeDiagram() {
         <dl><div><dt>Tailscale network listener</dt><dd><code>:9399</code> by default</dd></div></dl>
         <p className="runtime-entry">Remote clients require Tailscale identity and pairing. Action RemoteEngine requests reach the host only with approved grants.</p>
       </section>
-      <figcaption>Lattices 0.15.0 architecture; the macOS rollout does not verify Linux runtime behavior. The Linux UI, host, and gateway are separate processes. The host has no TCP compatibility listener.</figcaption>
+      <figcaption>Lattices 0.15.1 architecture; the macOS rollout does not verify Linux runtime behavior. The Linux UI, host, and gateway are separate processes. The host has no TCP compatibility listener.</figcaption>
     </figure>
   )
 }

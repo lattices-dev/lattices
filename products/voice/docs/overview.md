@@ -52,7 +52,7 @@ For the listening side, see [Lattices voice](/lattices/docs/voice).
 
 ### Private connection
 
-Speech 0.3.0 and Lattices 0.15.0 use private Unix sockets in
+Speech 0.3.0 and Lattices 0.15.1 use private Unix sockets in
 `~/.lattices/run`.
 
 | Direction | Endpoint |

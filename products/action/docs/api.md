@@ -40,7 +40,7 @@ Every method requires an authenticated connection.
 ### Private connection
 
 Action 0.4.0 uses the private connection below. Install its matching runtime
-and Lattices CLI 0.15.0. Earlier TCP clients do not automatically fall back.
+and Lattices CLI 0.15.1. Earlier TCP clients do not automatically fall back.
 
 | Property | Value |
 | --- | --- |
