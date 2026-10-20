@@ -62,8 +62,8 @@ export default function Hero() {
             </p>
             <p className="mt-2 max-w-md text-[11px] leading-[1.6] text-faintx">
               Canvas is the new name for Blink. The download installs{' '}
-              <span className="text-dimx">Blink.app</span>, and the command-line tool is still{' '}
-              <code className="text-dimx">blink</code>.
+              <span className="text-dimx">Canvas.app</span>, and the command-line tool is{' '}
+              <code className="text-dimx">canvas</code>.
             </p>
           </div>
 

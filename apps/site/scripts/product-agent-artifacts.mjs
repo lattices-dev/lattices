@@ -319,7 +319,7 @@ function formatProductAgents(product, docs) {
 
 function formatProductNaming(product) {
   return product.id === 'blink' && product.title === 'Canvas' ? [
-    'Canvas is the product name. The current release still uses `blink`, `@arach/blink`, `Blink.app`, `BLINK_HOME`, and the `~/Library/Application Support/Blink/` storage directory. Use those exact installed names; the product rename does not provide a `canvas` command or migrate stored notes.', '',
+    'Canvas 2.3.0 ships `Canvas.app` and the `canvas` CLI. `blink` and `Blink.app` remain compatibility names. The npm package remains `@arach/blink`, and existing notes stay in `~/Library/Application Support/Blink/`. A nonempty `CANVAS_HOME` takes precedence over a nonempty `BLINK_HOME`; no data move is required.', '',
   ] : []
 }
 

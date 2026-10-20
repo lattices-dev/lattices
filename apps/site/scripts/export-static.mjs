@@ -52,7 +52,7 @@ function recordSitemap(path, { priority = '0.7', lastmod } = {}) {
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
 const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/blink-v2.1.0/Blink.dmg'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/Canvas.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -686,16 +686,16 @@ async function writeBlinkDownloadRedirect() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <meta name="description" content="Download ${product.title} for macOS. The current release is still named Blink.app." />
+    <meta name="description" content="Download ${product.title} for macOS. The current release installs Canvas.app." />
     <link rel="canonical" href="${SITE_URL}${route}" />
     <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
     <title>Download ${product.title} for macOS — Lattices</title>
   </head>
   <body>
     <h1>Download ${product.title} for macOS</h1>
-    <p>${product.title} is the new name for Blink. The current download is still Blink.dmg and installs Blink.app.</p>
-    <p id="download-status">Finding the latest Blink release…</p>
-    <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Blink release manually</a>.</p>
+    <p>Canvas 2.3.0 installs Canvas.app. Existing Blink notes and settings stay in place.</p>
+    <p id="download-status">Finding the latest Canvas release…</p>
+    <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Canvas release manually</a>.</p>
     <script>
       const releasesUrl = ${JSON.stringify(BLINK_RELEASES_API_URL)}
       const legacyUrl = ${JSON.stringify(BLINK_LEGACY_DOWNLOAD_URL)}
@@ -714,21 +714,21 @@ async function writeBlinkDownloadRedirect() {
             !candidate.draft &&
             !candidate.prerelease &&
             typeof candidate.tag_name === 'string' &&
-            candidate.tag_name.startsWith('blink-v')
+            candidate.tag_name.startsWith('canvas-v')
           )
-          const asset = release?.assets?.find((candidate) => candidate.name === 'Blink.dmg')
+          const asset = release?.assets?.find((candidate) => candidate.name === 'Canvas.dmg')
 
           if (asset?.browser_download_url) {
             link.href = asset.browser_download_url
-            link.textContent = 'Download Blink manually'
+            link.textContent = 'Download Canvas manually'
             window.location.replace(asset.browser_download_url)
             return
           }
         } catch (error) {
-          console.warn('Could not resolve the latest monorepo Blink release', error)
+          console.warn('Could not resolve the latest monorepo Canvas release', error)
         }
 
-        status.textContent = 'Starting the current Blink download…'
+        status.textContent = 'Starting the current Canvas download…'
         window.location.replace(legacyUrl)
       }
 

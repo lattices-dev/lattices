@@ -337,8 +337,8 @@ test('Canvas resources follow the public docs root and preserve all Blink retrie
     assert.equal(await read('/canvas/AGENTS.md'), instructions)
     assert.equal(await read('/blink/agents.md'), instructions)
     assert.match(instructions, /^# Canvas: agent instructions/m)
-    assert.match(instructions, /current release still uses `blink`, `@arach\/blink`, `Blink\.app`, `BLINK_HOME`/)
-    assert.doesNotMatch(instructions, /`canvas ls|Canvas\.app|CANVAS_HOME/)
+    assert.match(instructions, /Canvas 2\.3\.0 ships `Canvas\.app` and the `canvas` CLI/)
+    assert.match(instructions, /`CANVAS_HOME` takes precedence over a nonempty `BLINK_HOME`/)
     assert.ok(!result.artifacts.includes('/canvas/agents.md'))
     assert.ok(!result.artifacts.includes('/blink/AGENTS.md'))
     for (const suffix of ['overview.md', 'agents/index.md']) {

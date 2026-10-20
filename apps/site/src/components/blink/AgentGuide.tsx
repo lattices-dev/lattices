@@ -21,7 +21,7 @@ const DOCS = [
 const CONTRACT = [
   {
     term: 'Use the CLI',
-    detail: 'Prefer blink over GUI automation. It handles slugs, atomic writes, stdin, and structured output.',
+    detail: 'Prefer canvas over GUI automation. It handles slugs, atomic writes, stdin, and structured output.',
   },
   {
     term: 'Files are truth',
@@ -52,7 +52,7 @@ export default function AgentGuide() {
               The whole operating contract, <span className="text-acc">without the GUI.</span>
             </>
           }
-          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. Canvas still installs as Blink.app and its CLI is still blink, so the commands and paths below keep that name."
+          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. Canvas 2.3.0 installs Canvas.app and the canvas CLI. The blink command remains an alias; existing note paths stay unchanged."
         />
 
         <Reveal>
@@ -95,10 +95,10 @@ export default function AgentGuide() {
               <div className="p-4 md:p-5">
                 <pre className="whitespace-pre-wrap break-words text-[11.5px] leading-[1.9] text-dimx">
                   <code>{`npm install -g @arach/blink
-blink app install
-blink app open
+canvas app install
+canvas app open
 
-blink present q3-plan $'# Q3 plan\\n\\nShip it.' \\
+canvas present q3-plan $'# Q3 plan\\n\\nShip it.' \\
   --slot 6 --style focus --json`}</code>
                 </pre>
               </div>

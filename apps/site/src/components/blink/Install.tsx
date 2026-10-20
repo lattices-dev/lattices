@@ -19,7 +19,7 @@ export function Install() {
               Free, open source, <span className="text-acc">and yours</span>.
             </>
           }
-          sub="A single native app for macOS. No account — download it, press Hyper+N, and start. Canvas is the new name for Blink: the current release installs Blink.app, and the CLI is still blink."
+          sub="A single native app for macOS. No account — download it, press Hyper+N, and start. Canvas 2.3.0 installs Canvas.app and the canvas CLI. Existing Blink notes and settings stay in place."
         />
 
         <Reveal>

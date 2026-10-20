@@ -103,4 +103,3 @@ export function DocPager({ currentSlug, product }: { currentSlug: string; produc
     </nav>
   )
 }
-
