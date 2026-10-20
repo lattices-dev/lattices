@@ -80,7 +80,7 @@ export function LinuxRuntimeDiagram() {
         <dl><div><dt>Tailscale network listener</dt><dd><code>:9399</code> by default</dd></div></dl>
         <p className="runtime-entry">Remote clients require Tailscale identity and pairing. Action RemoteEngine requests reach the host only with approved grants.</p>
       </section>
-      <figcaption>Development-source architecture; the macOS rollout does not verify Linux runtime behavior. The Linux UI, host, and gateway are separate processes. The host has no TCP compatibility listener.</figcaption>
+      <figcaption>Lattices 0.15.0 architecture; the macOS rollout does not verify Linux runtime behavior. The Linux UI, host, and gateway are separate processes. The host has no TCP compatibility listener.</figcaption>
     </figure>
   )
 }

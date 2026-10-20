@@ -119,20 +119,21 @@ It is retained for upgrade reference. Binding and authorization are separate bou
 | 9399 and 5287 | Linux `lattices-host` and companion bridge | Local host calls use loopback; the host also listens on its tailnet address when available. Remote devices must pair |
 | none | Blink.app local API | `blink.sock` in the `BLINK_HOME` directory, mode 0600 |
 
-The development-source port 9399 belongs to the gateway by default. The same
-number in a published release belongs to the host or daemon. Matching the
-port number alone does not make clients compatible.
+In Lattices 0.15.0, port 9399 belongs to the opt-in gateway by default. In
+versions before 0.15.0, it belongs to the host or daemon. Matching the port
+number alone does not make clients compatible.
 
 ## Private IPC and the gateway
 
-> **Status:** implemented in matching development builds; not in a published
-> product release. The [process table](#processes-and-ports) lists the default
+> **Versions:** Lattices 0.15.0, Action 0.4.0 and Speech 0.3.0 use private IPC.
+> The [process table](#processes-and-ports) lists the default
 > endpoints. Local clients connect directly to each product. Remote clients
 > use the gateway and its approved method grants.
 
 **Local services use private Unix sockets.** The main Lattices, Action and
 Speech APIs use `~/.lattices/run`; Canvas keeps its socket in its own data directory,
-`~/Library/Application Support/Blink` by default (`BLINK_HOME` overrides it).
+`~/Library/Application Support/Blink` by default. A nonempty `CANVAS_HOME`
+overrides that path, followed by a nonempty `BLINK_HOME`.
 Socket directories are mode `0700`, and sockets are mode `0600`. Services in `~/.lattices/run`
 write a random capability token beside the socket, also mode `0600`.
 
@@ -305,7 +306,7 @@ embedded voice runtime on `voice.sock`. It does not use Voice.app.
 ## Core architecture
 
 - The menu bar app is the core on macOS. It provides the command bar,
-  window tiling, OCR, project discovery and the agent API. Source builds expose
+  window tiling, OCR, project discovery and the agent API. Versions from 0.15.0 expose
   that API through `lattices.sock`; versions before 0.15.0 use TCP 9399. The app
   works with or without tmux.
 - The `lats` CLI calls the agent API for windows, layers, search and OCR. It
