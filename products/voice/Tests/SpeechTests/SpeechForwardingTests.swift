@@ -6,12 +6,16 @@ typealias DaemonRequest = SpeechAppRuntime.DaemonRequest
 typealias DaemonResponse = SpeechAppRuntime.DaemonResponse
 typealias DaemonEvent = SpeechAppRuntime.DaemonEvent
 // Production defaults are unused; tests bind their own loopback port.
-enum LatticesLocalEndpoints { static let speechCompanionURL = URL(string: "ws://127.0.0.1:9397")! }
+enum LatticesLocalEndpoints {
+    static let speechCompanionURL = URL(string: "ws://127.0.0.1:9397")!
+    static let speechCompanionSocketPath = "/unused/speech.sock"
+    static let speechCompanionTokenURL = URL(fileURLWithPath: "/unused/speech.token")
+}
 
 final class SpeechForwardingTests: XCTestCase {
     @MainActor
     func testSeparateCallerReservationsAndHostSurvivalAfterClientCloses() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent(UUID().uuidString)
         let tokenFile = directory.appendingPathComponent("capability")
         let api = SpeechApi()
         let queue = SpeechQueue(synthesizer: FakeSpeechSynthesizer(), player: FakeSpeechPlayer())
@@ -49,7 +53,7 @@ final class SpeechForwardingTests: XCTestCase {
 
     @MainActor
     func testOldReceiveFailureCannotCloseReconnectedSocket() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent(UUID().uuidString)
         let tokenFile = directory.appendingPathComponent("capability")
         let api = SpeechApi()
         let queue = SpeechQueue(synthesizer: FakeSpeechSynthesizer(), player: FakeSpeechPlayer())
@@ -79,7 +83,7 @@ final class SpeechForwardingTests: XCTestCase {
     }
 
     func testClientBoundaryRejectsMissingWrongDuplicateAndBrowserTokens() throws {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent(UUID().uuidString)
         try Data("local-secret".utf8).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }
         let start = "GET / HTTP/1.1\r\n"

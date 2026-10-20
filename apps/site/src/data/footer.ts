@@ -1,3 +1,4 @@
+import { docsProducts, docsHome, docsProduct } from '../lib/docs-catalog'
 import { productLinks } from './products'
 
 export interface FooterLink {
@@ -20,31 +21,22 @@ export const footerColumns: FooterColumn[] = [
     title: 'Products',
     links: [
       ...productLinks.map(({ title, href }) => ({ label: title, href })),
-      { label: 'What it can do', href: '/family' },
       { label: 'All products', href: '/products' },
     ],
   },
   {
-    title: 'Docs',
-    links: [
-      { label: 'Overview', href: '/docs/overview' },
-      { label: 'Quickstart', href: '/docs/quickstart' },
-      { label: 'Concepts', href: '/docs/concepts' },
-      { label: 'Configuration', href: '/docs/config' },
-      { label: 'Layers & tab groups', href: '/docs/layers' },
-      { label: 'Mouse gestures', href: '/docs/mouse-gestures' },
-      { label: 'Screen OCR & search', href: '/docs/ocr' },
-      { label: 'Menu bar app', href: '/docs/app' },
-    ],
+    title: 'Documentation',
+    links: docsProducts.map((product) => ({ label: product.title, href: docsHome(product.id) })),
   },
   {
     title: 'For agents',
     links: [
-      { label: 'Agent guide', href: '/docs/agents' },
-      { label: 'Agent API', href: '/docs/api' },
-      { label: 'Embedded SDK', href: '/docs/embedded-sdk' },
-      { label: 'Action for agents', href: '/action/agents/' },
-      { label: 'Blink for agents', href: '/blink/agents.md' },
+      { label: 'Agent guide', href: '/lattices/docs/agents' },
+      { label: 'Agent API', href: '/lattices/docs/api' },
+      { label: 'Embedded SDK', href: '/lattices/docs/embedded-sdk' },
+      { label: 'Action for agents', href: '/action/docs/agent-setup' },
+      { label: `${docsProduct('blink').title} for agents`, href: docsProduct('blink').agent.guide },
+      { label: 'Speech for agents', href: '/speech/docs/agents' },
       { label: 'llms.txt', href: '/llms.txt' },
       { label: 'AGENTS.md', href: '/AGENTS.md' },
     ],

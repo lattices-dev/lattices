@@ -31,7 +31,7 @@ const markNotes: Record<BrandSlug, { meaning: string; accent: string; tab: strin
   blink: {
     meaning: 'A panel frame with two blocks stepping across it. The front block, the note in hand, carries the accent.',
     accent: 'The note in hand',
-    tab: 'Blink — spatial notes from Lattices',
+    tab: 'Canvas — spatial notes from Lattices',
   },
   speech: {
     meaning: 'Two waveform bars frozen at the playhead: the word just spoken and the one sounding now. Short then tall, they also draw a speaker.',
@@ -94,7 +94,7 @@ export default function BrandPage() {
       <main className="brand-main" data-pagefind-body>
         <header className="brand-intro">
           <h1>Brand</h1>
-          <p>Four marks on one grid, with one ink and one accent.</p>
+          <p>Product marks, app icons, favicons and social cards.</p>
           <nav className="brand-toc" aria-label="On this page">
             <ul>
               {toc.map(([id, title]) => (
@@ -125,7 +125,7 @@ export default function BrandPage() {
           ))}
         </div>
 
-        <Section id="marks" title="Marks" lede="Every mark spans the same 16 units of a 20-unit box, so the four line up at any size.">
+        <Section id="marks" title="Marks" lede="Every mark spans the same 16 units of a 20-unit box, so they line up at any size.">
           <ul className="brand-marks">
             {products.map(({ slug, title }) => (
               <li key={slug} className="brand-card brand-mark-card">
@@ -433,7 +433,7 @@ function Ladder({ ground }: { ground: Ground }) {
 
 function TabStrip({ ground, active }: { ground: Ground; active: BrandSlug }) {
   return (
-    <div className="brand-tabs" data-ground={ground} role="img" aria-label={`The four favicons in a ${ground} tab strip`}>
+    <div className="brand-tabs" data-ground={ground} role="img" aria-label={`The product favicons in a ${ground} tab strip`}>
       <ul>
         {products.map(({ slug, href }) => (
           <li key={slug} className="brand-tab" data-active={slug === active || undefined}>
@@ -452,11 +452,11 @@ const ogSpec = [
   ['Mark', "Cropped to the glyph bounds in its kit's README and fitted to a 120 px box at (120, 120)."],
   ['Copy', 'Title 30 px under the mark, then subtitle and tag, in a 360 px column.'],
   ['Preview', 'From (540, 120) off the right and bottom edges, 660 × 510 visible.'],
-  ['Family', 'Action, Blink and Speech only: the Lattices mark and name, 60 px above the bottom edge.'],
+  ['Family', 'Action, Canvas and Speech only: the Lattices mark and name, 60 px above the bottom edge.'],
   ['Accent', `Each mark keeps its coral. A 4 px bar runs along the bottom edge, ${latticesAccent.light} to #d4502c, on every card.`],
 ] as const
 
-const ogRoutes = ['/', '/docs', '/action', '/blink', '/speech'] as const
+const ogRoutes = ['/', '/docs', '/action', '/canvas', '/speech'] as const
 
 function OpenGraph() {
   const [guides, setGuides] = useState(false)

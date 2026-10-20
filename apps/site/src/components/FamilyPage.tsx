@@ -31,9 +31,8 @@ export default function FamilyPage() {
         </div>
 
         <CapabilitySection
-          number="01"
           label="Agents"
-          kicker="One state, two operators"
+          kicker="Workspace access"
           title="Your agent works in the same workspace."
           description="It can inspect what is open, find the right window, and reshape the desktop with you, without inventing a second environment."
           product="Built into Lattices"
@@ -42,7 +41,6 @@ export default function FamilyPage() {
         />
 
         <CapabilitySection
-          number="02"
           label="Computer use"
           kicker="When the work leaves the terminal"
           title="Let your computers use your workspace."
@@ -53,18 +51,16 @@ export default function FamilyPage() {
         />
 
         <CapabilitySection
-          number="03"
           label="Notes"
           kicker="Keep context where it belongs"
           title="Have your assistant create and manage notes in your workspace."
           description="Pin working memory beside the window it describes, so the thought survives after the tab, task, or conversation moves on."
-          product="Meet Blink"
-          href="/blink"
+          product="Meet Canvas"
+          href="/canvas"
           visual={<NotesVisual />}
         />
 
         <CapabilitySection
-          number="04"
           label="Speech"
           kicker="A voice for agents"
           title="Smart voice readouts with HUD readalong if you want it."
@@ -77,12 +73,12 @@ export default function FamilyPage() {
         <section className="family-close">
           <div>
             <p className="family-kicker">The Lattices family</p>
-            <h2>One desktop. The right tool appears when the work asks for it.</h2>
+            <h2>Choose a product.</h2>
           </div>
           <nav aria-label="Lattices products">
             <a href="/">Lattices</a>
             <a href="/action">Action</a>
-            <a href="/blink">Blink</a>
+            <a href="/canvas">Canvas</a>
             <a href="/speech">Speech</a>
           </nav>
         </section>
@@ -94,7 +90,6 @@ export default function FamilyPage() {
 }
 
 function CapabilitySection({
-  number,
   label,
   kicker,
   title,
@@ -103,7 +98,6 @@ function CapabilitySection({
   href,
   visual,
 }: {
-  number: string
   label: string
   kicker: string
   title: string
@@ -115,7 +109,6 @@ function CapabilitySection({
   return (
     <section className="family-capability">
       <p className="family-capability-index">
-        <span>{number}</span>
         {label}
       </p>
       <div className="family-capability-copy">

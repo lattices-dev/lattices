@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 // lattices action — install, launch, and drive the Action product
-// (products/action → Action.app + ActionAgent on ws://127.0.0.1:4319)
+// (products/action → Action.app + ActionAgent on private local IPC)
 //
 // Commands:
 //   lattices action              Status (installed version, running, agent)
@@ -20,6 +20,7 @@ import { get } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { actionAgentCall, isActionAgentRunning } from "./action-agent-client";
 import { distribution } from "./distribution";
+import { localEndpoint } from "../packages/desktop-client/local-ipc";
 
 const __dirname = import.meta.dir;
 const REPO = distribution.repository;
@@ -259,7 +260,7 @@ async function status(json: boolean): Promise<void> {
       version,
       running,
       agentReachable: agent,
-      agentUrl: "ws://127.0.0.1:4319",
+      agentUrl: `unix:${process.env.ACTION_SOCKET_PATH || localEndpoint("action").socketPath}`,
       checkout,
       bundleId: ACTION_BUNDLE_ID,
     }, null, 2));
@@ -269,7 +270,7 @@ async function status(json: boolean): Promise<void> {
   console.log("Action — native computer-use (lattices product)");
   console.log(`  installed   ${appPath ? `${version ?? "unknown version"} (${appPath})` : "no"}`);
   console.log(`  running     ${running ? "yes" : "no"}`);
-  console.log(`  agent       ${agent ? "reachable (ws://127.0.0.1:4319)" : "not reachable"}`);
+  console.log(`  agent       ${agent ? "reachable (private local IPC)" : "not reachable"}`);
   console.log(`  checkout    ${checkout ?? "none (products/action not found)"}`);
   console.log("  capability  Run `lats action capabilities`; version alone does not prove layer support.");
   if (!appPath) {
@@ -287,7 +288,7 @@ async function callAgent(method: string | undefined, paramsJson: string | undefi
     return;
   }
   if (!(await isActionAgentRunning())) {
-    console.error("Action agent is not reachable (ws://127.0.0.1:4319).");
+    console.error("Action agent is not reachable (private local IPC).");
     console.error("Start it with: lattices action launch");
     process.exit(1);
   }
@@ -317,7 +318,7 @@ Usage:
   lattices action update       Reinstall the latest release
   lattices action launch       Open Action.app (use --launch with install)
   lattices action quit         Quit Action.app
-  lattices action call <m> [j] Raw Action agent call (ws://127.0.0.1:4319)
+  lattices action call <m> [j] Raw Action agent call (private local IPC)
   lattices action mcp          Start the installed Action MCP server over stdio
   lattices action capabilities Read-only build fingerprints, native capability manifest, and MCP routing
   lattices action layer <verb> Private Action display lifecycle (requires runtime checkout/install)

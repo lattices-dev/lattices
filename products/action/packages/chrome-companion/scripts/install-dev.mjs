@@ -4,7 +4,7 @@ import { access } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { profileName } from "./mira-chrome.mjs";
+import { profileName, profileDir } from "./mira-chrome.mjs";
 
 const rootPath = fileURLToPath(new URL("..", import.meta.url));
 const distPath = join(rootPath, "dist");
@@ -45,6 +45,8 @@ console.log("");
 console.log("Or run fully automated install:");
 console.log("  bun run install:self");
 console.log("");
+console.log("Register the approved extension id with native messaging:");
+console.log(`  bun scripts/install-native-host.mjs <extension-id> ${JSON.stringify(profileDir)}`);
+console.log("This also installs the private bridge as a user LaunchAgent.");
 console.log("Then run:");
-console.log("  bun run bridge");
 console.log("  bun run health");

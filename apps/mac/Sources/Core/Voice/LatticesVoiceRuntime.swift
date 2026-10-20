@@ -9,8 +9,7 @@ import VoxService
 /// Boot/shutdown owner for Lattices' embedded voice runtime.
 ///
 /// Lattices is the permission and lifecycle owner: the menu bar process starts
-/// an in-process Vox live-session server on a **deterministic** loopback port
-/// (`LatticesLocalEndpoints.voiceRuntimePort`, default **9398**), writes a
+/// an in-process Vox live-session server on a private Unix socket, writes a
 /// private Hudson capability file, and tears it down on quit.
 ///
 /// Clients (Workspace Assistant mic, Hands-Off, voice commands) resolve through
@@ -84,25 +83,27 @@ enum LatticesVoiceRuntime {
 // MARK: - In-process host
 
 /// Lattices-owned Vox host. Modeled on the former HudsonKit
-/// `HudsonVoiceRuntimeHost`, but with a fixed Lattices port family instead of
-/// a random ephemeral port.
+/// `HudsonVoiceRuntimeHost`, with private IPC owned by Lattices.
 private final class Host: @unchecked Sendable {
     static let shared = Host()
 
     private let lock = NSRecursiveLock()
     private let bindAddress = LatticesLocalEndpoints.loopbackHost
-    private let port: UInt16
+    private let port: UInt16 = 0
+    private let socketPath = LatticesLocalEndpoints.voiceSocketPath
+    private let tokenURL = LatticesLocalEndpoints.voiceTokenURL
     private let runtimeHomeURL: URL
     private let runtimeCapabilityURL: URL
     private let voxRuntimeURL: URL
     private var runtimeService: VoxRuntimeService?
+    private var ownsCapability = false
 
     private(set) var isRunning = false
 
     var capabilityURL: URL { runtimeCapabilityURL }
 
     var endpointURL: String {
-        "ws://\(bindAddress):\(port)"
+        "unix:\(socketPath)"
     }
 
     private init() {
@@ -110,7 +111,6 @@ private final class Host: @unchecked Sendable {
         runtimeHomeURL = home
         runtimeCapabilityURL = home.appendingPathComponent("hudson-voice-runtime.json")
         voxRuntimeURL = home.appendingPathComponent("vox-runtime.json")
-        port = LatticesLocalEndpoints.resolvedVoiceRuntimePort
     }
 
     func start() throws {
@@ -143,10 +143,13 @@ private final class Host: @unchecked Sendable {
             engine: asrEngine,
             ttsEngine: ttsEngine,
             defaultSynthesisModelId: defaultSynthesisModelId,
-            authToken: authToken
+            authToken: authToken,
+            socketPath: socketPath
         )
         do {
             try service.start()
+            try VoxPrivateIPC.writePrivateFile(Data(authToken.utf8), to: tokenURL)
+            ownsCapability = true
             try writeRuntimeCapability(authToken: authToken, startedAt: Date())
             runtimeService = service
             isRunning = true
@@ -169,19 +172,16 @@ private final class Host: @unchecked Sendable {
     }
 
     private func configureEnvironment(authToken: String) throws {
-        try FileManager.default.createDirectory(at: runtimeHomeURL, withIntermediateDirectories: true)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o700],
-            ofItemAtPath: runtimeHomeURL.path
-        )
+        try VoxPrivateIPC.prepareDirectory(runtimeHomeURL)
         setenv("VOX_HOME", runtimeHomeURL.path, 1)
         setenv("VOX_RUNTIME_PATH", voxRuntimeURL.path, 1)
         setenv("VOX_HOST", bindAddress, 1)
-        setenv("VOX_PORT", String(port), 1)
+        unsetenv("VOX_PORT")
+        setenv("VOX_SOCKET_PATH", socketPath, 1)
         setenv("VOX_AUTH_TOKEN", authToken, 1)
         // Point HudsonVoice's capability reader at Lattices' file (not Hudson Menu's).
         setenv(HudsonVoiceRuntime.runtimePathEnvironmentKey, runtimeCapabilityURL.path, 1)
-        setenv("LATTICES_VOICE_PORT", String(port), 1)
+        unsetenv("LATTICES_VOICE_PORT")
     }
 
     private func persistPreferences() throws {
@@ -199,22 +199,21 @@ private final class Host: @unchecked Sendable {
             authToken: authToken,
             pid: getpid(),
             startedAt: ISO8601DateFormatter().string(from: startedAt),
-            voxRuntimePath: voxRuntimeURL.path
+            voxRuntimePath: voxRuntimeURL.path,
+            socketPath: socketPath,
+            tokenPath: tokenURL.path
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(document)
-        try data.write(to: runtimeCapabilityURL, options: .atomic)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: runtimeCapabilityURL.path
-        )
+        try VoxPrivateIPC.writePrivateFile(data, to: runtimeCapabilityURL)
     }
 
     private func removeRuntimeCapability() {
-        if FileManager.default.fileExists(atPath: runtimeCapabilityURL.path) {
-            try? FileManager.default.removeItem(at: runtimeCapabilityURL)
-        }
+        guard ownsCapability else { return }
+        try? FileManager.default.removeItem(at: runtimeCapabilityURL)
+        try? FileManager.default.removeItem(at: tokenURL)
+        ownsCapability = false
     }
 
     private static func defaultRuntimeHomeURL() -> URL {
@@ -251,7 +250,7 @@ private final class Host: @unchecked Sendable {
 private struct RuntimeCapabilityDocument: Encodable {
     let schemaVersion = 1
     let service = "hudson-voice"
-    let transport = "ws+json-rpc"
+    let transport = "unix+ws+json-rpc"
     let host: String
     let port: UInt16
     let webSocketUrl: String
@@ -259,6 +258,8 @@ private struct RuntimeCapabilityDocument: Encodable {
     let pid: Int32
     let startedAt: String
     let voxRuntimePath: String
+    let socketPath: String
+    let tokenPath: String
 
     init(
         host: String,
@@ -266,11 +267,15 @@ private struct RuntimeCapabilityDocument: Encodable {
         authToken: String,
         pid: Int32,
         startedAt: String,
-        voxRuntimePath: String
+        voxRuntimePath: String,
+        socketPath: String,
+        tokenPath: String
     ) {
         self.host = host
         self.port = port
-        self.webSocketUrl = "ws://\(host):\(port)"
+        self.webSocketUrl = URL(fileURLWithPath: socketPath).absoluteString
+        self.socketPath = socketPath
+        self.tokenPath = tokenPath
         self.authToken = authToken
         self.pid = pid
         self.startedAt = startedAt

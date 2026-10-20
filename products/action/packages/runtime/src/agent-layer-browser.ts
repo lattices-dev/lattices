@@ -521,7 +521,6 @@ export async function ensureLayerBrowser(profile?: string, options: { workspace?
     "-n", "-j", "-g", "-a", config.app, "--args",
     `--user-data-dir=${config.profileDir}`,
     `--remote-debugging-port=${config.port}`,
-    "--remote-allow-origins=*",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-background-timer-throttling",

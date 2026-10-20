@@ -1,4 +1,4 @@
 {
   "releasesUrl": "https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100",
-  "fallbackUrl": "https://github.com/lattices-dev/lattices/releases/download/action-v0.3.0/Action.dmg"
+  "fallbackUrl": "https://github.com/lattices-dev/lattices/releases/download/action-v0.4.0/Action.dmg"
 }

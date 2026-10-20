@@ -1,10 +1,19 @@
+---
+title: Agent API proposal
+description: Proposed design for a broader Blink agent API. Not implemented; see the agent socket API for the shipped subset.
+---
+
 # Blink v2 — The Agent API (live plane, over a Unix socket)
+
+> **Status: proposal.** This document is a design proposal from July 2026, not a
+> description of the shipped app. Blink implements only a small subset of it.
+> For the methods that exist today, see [Agent socket API](/blink/docs/api).
 
 > Draft 2026-07-15. Companion to `notes-representation.md` (what a note *is* and
 > where its bytes live) and `cli.md` (the `blink` CLI, agent surface layer 2).
 > This doc specifies **layer 2.5**: a live, bidirectional query/command surface
 > the *running app* exposes over a Unix domain socket. Opinionated on purpose —
-> argue with it before it's built. **Status: proposed. Not built yet.** The
+> argue with it before it's built. **Status: proposed.** A subset now ships (see the status note above). The
 > rendering/safety substrate it depends on (§7) *is* implemented.
 
 The one-line thesis:

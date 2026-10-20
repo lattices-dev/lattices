@@ -1,5 +1,8 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
+import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 const DEFAULT_DAEMON_HOST = "127.0.0.1";
 const DEFAULT_DAEMON_PORT = 9399;
@@ -11,12 +14,50 @@ export function daemonConfig(overrides = {}) {
   const rawTimeout = overrides.timeoutMs ?? process.env.LATTICES_DAEMON_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS;
   const port = Number(rawPort);
   const timeoutMs = Number(rawTimeout);
+  const directory = process.env.LATTICES_RUNTIME_DIR || join(homedir(), ".lattices", "run");
+  const tokenFile = join(directory, "lattices.token");
+  const explicitNetwork = overrides.host !== undefined || overrides.port !== undefined
+    || !!process.env.LATTICES_DAEMON_HOST || !!process.env.LATTICES_DAEMON_PORT;
+  const compatibility = process.env.LATTICES_ALLOW_LOOPBACK_TCP === "1";
+  if (!explicitNetwork && !compatibility) return {
+    host: "localhost", port: 0, socketPath: join(directory, "lattices.sock"), tokenFile,
+    timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+  };
+  if (typeof host !== "string" || /[\r\n]/.test(host)) throw new Error("Invalid daemon host");
 
   return {
     host,
     port: Number.isFinite(port) && port > 0 ? port : DEFAULT_DAEMON_PORT,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+    // Explicit remote endpoints, including local tunnels, never receive a
+    // local capability. Loopback compatibility needs a separate opt-in.
+    ...(compatibility && ["127.0.0.1", "localhost", "::1"].includes(host) ? { tokenFile } : {}),
   };
+}
+
+// Standalone Node 18 package: match desktop-client/local-ipc.ts without a
+// dependency on repository TypeScript sources.
+function privateToken(tokenFile, socketPath) {
+  const uid = process.getuid?.(), dir = lstatSync(dirname(tokenFile));
+  if (!dir.isDirectory() || (dir.mode & 0o077) !== 0 || (uid !== undefined && dir.uid !== uid)) {
+    throw new Error("Local IPC directory must be owned by this user with mode 0700");
+  }
+  if (socketPath) {
+    const socket = lstatSync(socketPath);
+    if (!socket.isSocket() || (socket.mode & 0o077) !== 0 || (uid !== undefined && socket.uid !== uid)) {
+      throw new Error("Local IPC socket must be private and owned by this user");
+    }
+  }
+  const fd = openSync(tokenFile, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.nlink !== 1 || (uid !== undefined && info.uid !== uid) || (info.mode & 0o077) !== 0 || info.size > 256) {
+      throw new Error("Local IPC token must be a private, user-owned regular file");
+    }
+    const token = readFileSync(fd, "utf8").trim();
+    if (!/^[A-Za-z0-9_+/=-]{32,256}$/.test(token)) throw new Error("Invalid local IPC token");
+    return token;
+  } finally { closeSync(fd); }
 }
 
 // Daemons from before LAT-012 only know the old method names.
@@ -35,15 +76,17 @@ export async function daemonCall(method, params = null, options = {}) {
 }
 
 function sendRequest(method, params, options) {
-  const { host, port, timeoutMs } = daemonConfig(options);
+  const { host, port, timeoutMs, socketPath, tokenFile } = daemonConfig(options);
+  const token = tokenFile ? privateToken(tokenFile, socketPath) : undefined;
   const id = randomBytes(4).toString("hex");
   const request = JSON.stringify({ id, method, params: params ?? null });
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host, port });
+    const socket = createConnection(socketPath ? { path: socketPath } : { host, port });
     let settled = false;
     let upgraded = false;
     let buffer = Buffer.alloc(0);
+    let expectedAccept = "";
 
     const timer = setTimeout(() => {
       if (!settled) {
@@ -70,9 +113,11 @@ function sendRequest(method, params, options) {
 
     socket.on("connect", () => {
       const key = randomBytes(16).toString("base64");
+      expectedAccept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
       const upgrade = [
         "GET / HTTP/1.1",
-        `Host: ${host}:${port}`,
+        `Host: ${socketPath ? "localhost" : `${host}:${port}`}`,
+        ...(token ? [`x-lattices-token: ${token}`] : []),
         "Upgrade: websocket",
         "Connection: Upgrade",
         `Sec-WebSocket-Key: ${key}`,
@@ -83,15 +128,23 @@ function sendRequest(method, params, options) {
       socket.write(upgrade);
     });
 
+    socket.on("close", () => {
+      if (!settled) { settled = true; cleanup(); reject(new Error("Daemon connection closed")); }
+    });
+
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
 
       if (!upgraded) {
         const headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd === -1) return;
+        if (headerEnd === -1) {
+          if (buffer.length > 16_384) { settled = true; cleanup(); reject(new Error("Oversized WebSocket upgrade response")); }
+          return;
+        }
 
         const header = buffer.subarray(0, headerEnd).toString();
-        if (!header.includes("101")) {
+        const accepts = header.split("\r\n").filter(line => /^sec-websocket-accept:/i.test(line));
+        if (headerEnd > 16_384 || !/^HTTP\/1\.[01] 101(?: |$)/.test(header) || accepts.length !== 1 || accepts[0].slice(accepts[0].indexOf(":") + 1).trim() !== expectedAccept) {
           settled = true;
           cleanup();
           const error = new Error("WebSocket upgrade failed");
@@ -106,7 +159,9 @@ function sendRequest(method, params, options) {
       }
 
       while (true) {
-        const parsedFrame = parseFrame(buffer);
+        let parsedFrame;
+        try { parsedFrame = parseFrame(buffer); }
+        catch (error) { settled = true; cleanup(); reject(error); return; }
         if (!parsedFrame) break;
         buffer = parsedFrame.rest;
 
@@ -144,6 +199,7 @@ function sendRequest(method, params, options) {
 export function isDaemonUnavailable(error) {
   const code = error?.code;
   return code === "ECONNREFUSED"
+    || code === "ENOENT"
     || code === "ECONNRESET"
     || code === "EHOSTUNREACH"
     || code === "ENETUNREACH"
@@ -198,6 +254,8 @@ function parseFrame(buf) {
     payloadLen = Number(buf.readBigUInt64BE(2));
     offset = 10;
   }
+
+  if (!Number.isSafeInteger(payloadLen) || payloadLen > 16 * 1024 * 1024) throw new Error("WebSocket frame exceeds limit");
 
   if (isMasked) offset += 4;
   if (buf.length < offset + payloadLen) return null;

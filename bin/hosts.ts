@@ -17,6 +17,8 @@ export interface HostEntry {
   address: string;
   port: number;
   source: "local" | "config" | "env" | "tailnet";
+  socketPath?: string;
+  tokenFile?: string;
 }
 
 export interface HostStatus extends HostEntry {
@@ -47,7 +49,7 @@ export function configuredHosts(
   }
 ): HostEntry[] {
   const local = daemonEndpoint(env);
-  const hosts = new Map<string, HostEntry>([["local", { name: "local", address: local.host, port: local.port, source: "local" }]]);
+  const hosts = new Map<string, HostEntry>([["local", { name: "local", address: local.host, port: local.port, source: "local", ...(local.socketPath ? {socketPath: local.socketPath} : {}), ...(local.tokenFile ? {tokenFile: local.tokenFile} : {}) }]]);
   const raw = readConfig();
   if (raw) {
     const parsed = JSON.parse(raw) as { hosts?: Record<string, { address?: string; port?: number }> };
@@ -69,7 +71,7 @@ export function resolveHost(name: string | undefined, hosts = configuredHosts())
 }
 
 export function callHost(host: HostEntry, method: string, params?: Record<string, unknown> | null, timeoutMs = 10_000) {
-  return daemonCallTo({ host: host.address, port: host.port }, method, params, timeoutMs);
+  return daemonCallTo({ host: host.address, port: host.port, socketPath: host.socketPath, tokenFile: host.tokenFile }, method, params, timeoutMs);
 }
 
 function portOpen(address: string, port: number, timeoutMs: number): Promise<boolean> {

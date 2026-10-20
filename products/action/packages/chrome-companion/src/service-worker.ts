@@ -15,6 +15,7 @@ type ChromeTab = {
 
 declare const chrome: {
   runtime: {
+    connectNative: (name: string) => NativePort,
     lastError?: { message?: string };
     getURL: (path: string) => string;
     onInstalled?: { addListener: (callback: () => void) => void };
@@ -65,17 +66,19 @@ type BridgeRequest = {
   message: ActionMessage;
 };
 
-const bridgeURL = "ws://127.0.0.1:4321/chrome-companion";
-let bridgeSocket: WebSocket | null = null;
+interface NativePort {
+  postMessage(value: unknown): void;
+  onMessage: { addListener(callback: (value: unknown) => void): void };
+  onDisconnect: { addListener(callback: () => void): void };
+}
+let bridgeSocket: NativePort | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
 chrome.runtime.onInstalled?.addListener(() => {
   connectBridge();
-  void ensureBridgePage();
 });
 chrome.runtime.onStartup?.addListener(() => {
   connectBridge();
-  void ensureBridgePage();
 });
 connectBridge();
 
@@ -93,19 +96,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 function connectBridge() {
-  if (bridgeSocket && bridgeSocket.readyState <= WebSocket.OPEN) {
-    return;
-  }
-
-  bridgeSocket = new WebSocket(bridgeURL);
-  bridgeSocket.addEventListener("open", () => {
-    bridgeSocket?.send(JSON.stringify({ type: "hello", name: "Action Chrome Companion" }));
-  });
-  bridgeSocket.addEventListener("message", (event) => {
-    void handleBridgeMessage(event.data);
-  });
-  bridgeSocket.addEventListener("close", scheduleReconnect);
-  bridgeSocket.addEventListener("error", scheduleReconnect);
+  if (bridgeSocket) return;
+  try {
+    bridgeSocket = chrome.runtime.connectNative("dev.lattices.action.chrome");
+    bridgeSocket.onMessage.addListener(value => { void handleBridgeMessage(JSON.stringify(value)); });
+    bridgeSocket.onDisconnect.addListener(scheduleReconnect);
+  } catch { scheduleReconnect(); }
 }
 
 function scheduleReconnect() {
@@ -132,7 +128,7 @@ async function handleBridgeMessage(data: unknown) {
     ? await dispatchMessage(request.message).catch((error) => ({ ok: false as const, error: errorMessage(error) }))
     : ({ ok: false as const, error: "Unsupported Action companion message." });
 
-  bridgeSocket?.send(JSON.stringify({ id: request.id, response }));
+  bridgeSocket?.postMessage({ id: request.id, response });
 }
 
 async function dispatchMessage(message: ActionMessage): Promise<ActionResponse> {

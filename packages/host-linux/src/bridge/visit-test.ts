@@ -127,7 +127,7 @@ export class VisitTestConnection {
 }
 
 export async function runVisitTest(argv: string[]) {
-  let host = "127.0.0.1:5287", name = "visit-test", identity = join(STATE_DIR, "visit-test-key.json");
+  let host: string | undefined, name = "visit-test", identity = join(STATE_DIR, "visit-test-key.json");
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i], value = argv[++i];
     if (!value) throw new Error(`${arg} needs a value`);
@@ -136,6 +136,8 @@ export async function runVisitTest(argv: string[]) {
     else if (arg === "--identity") identity = value;
     else throw new Error(`Unknown visit-test argument: ${arg}`);
   }
+  if (!host) throw new Error("Usage: lattices-host visit-test --host TAILNET_HOST:9399 [--name NAME] [--identity PATH]");
+  if (!host.includes(":")) host += ":9399";
   const client = new VisitTestClient(`http://${host}`, loadOrCreateBridgeKey(identity), name);
   await client.pair();
   const visit = await client.connect();

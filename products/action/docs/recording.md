@@ -1,11 +1,15 @@
-# Recording
+---
+title: Recording
+description: How Action records a window or region and signals completion
+order: 8
+---
 
 Recording is the most important runtime path in this project.
 
 This page documents how it currently works and what assumptions should remain
 true while the product is still being hardened.
 
-## What Is Stable Right Now
+## What is stable now
 
 The native recording path now succeeds for:
 
@@ -18,7 +22,7 @@ The successful path produces:
 - a `.finished` marker file
 - an optional debug log if `--debug-log` is supplied
 
-## The Key Discovery
+## The key discovery
 
 The main recording bug was not just a bad capture configuration.
 
@@ -31,7 +35,7 @@ The deeper issue was lifecycle ownership:
 That is why the current solution uses a dedicated `recording-probe` mode inside
 `Action.app`.
 
-## Current Recording Path
+## Current recording path
 
 For a region recording request:
 
@@ -44,11 +48,11 @@ For a region recording request:
 
 Core files:
 
-- [ActionRecordingProbeLauncher.swift](native/engine/CoreSources/ActionRecordingProbeLauncher.swift)
-- [RecordingProbeAppRunner.swift](native/engine/Sources/RecordingProbeAppRunner.swift)
-- [ActionHostMain.swift](native/engine/Sources/ActionHostMain.swift)
+- [ActionRecordingProbeLauncher.swift](../native/engine/CoreSources/ActionRecordingProbeLauncher.swift)
+- [RecordingProbeAppRunner.swift](../native/engine/Sources/RecordingProbeAppRunner.swift)
+- [ActionHostMain.swift](../native/engine/Sources/ActionHostMain.swift)
 
-## Testing Recording
+## Testing recording
 
 The wrapper script is:
 
@@ -59,7 +63,7 @@ bun run native:test:record
 For lower-level testing, `run-app-host.sh` can call recording commands
 directly.
 
-## Important Caveat
+## Important caveat
 
 The initial CLI reply usually means:
 
@@ -71,14 +75,14 @@ It does **not** mean:
 
 Completion is represented by the finished marker file.
 
-## What To Preserve
+## What to preserve
 
 - real AppKit lifecycle for actual recording work
 - stop-file and finished-file based orchestration
 - debug-log passthrough for probe runs
 - clean app/agent separation even if the app is doing the final recording work
 
-## What To Avoid
+## What to avoid
 
 - pushing real recording back into a plain headless lifecycle
 - assuming a WebSocket ack is equivalent to a completed recording

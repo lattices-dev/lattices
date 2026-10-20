@@ -59,9 +59,9 @@ test("voice skill teaches say, simulate and intents", () => {
   expect(source).toContain("windows.place");
 });
 
-test("blink skill teaches the shipped notes CLI", () => {
+test("Canvas skill teaches the shipped CLI and compatibility alias", () => {
   const source = readFileSync(join(skillsRoot, "blink", "SKILL.md"), "utf8");
-  expect(source).toContain("blink present");
+  expect(source).toContain("canvas present");
   expect(source).toContain("blink ls --json");
   expect(source).not.toContain("MCP waits");
 });

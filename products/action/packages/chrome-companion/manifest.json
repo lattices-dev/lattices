@@ -8,7 +8,7 @@
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self'"
   },
   "content_scripts": [
     {
@@ -25,11 +25,10 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "tabs"
+    "tabs",
+    "nativeMessaging"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "http://127.0.0.1/*",
-    "ws://127.0.0.1/*"
+    "<all_urls>"
   ]
 }

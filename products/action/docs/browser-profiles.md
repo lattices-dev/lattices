@@ -1,7 +1,11 @@
-# Browser Identity: Regular Chrome, Action Browsers, Seeded Identities
+---
+title: Browser profiles
+description: Regular Chrome, Action browsers, and identities seeded from your Chrome profiles
+order: 5
+---
 
 How Action gives an agent a **browser identity** without taking over your daily
-Chrome — and which kind of control you get in each case.
+Chrome, and which kind of control you get in each case.
 
 ## Three browsers, two kinds of control
 
@@ -76,12 +80,12 @@ tool works against it.
 
 ## Named identities
 
-Identities are created on first use — any unused name gives you a fresh blank
+Identities are created on first use: any unused name gives you a fresh blank
 one. Shipped conventions:
 
-- `agent-browser` — the default blank agent identity
-- `work` — seeded from your work Chrome profile, per the example above
-- `mira` — the creative/Midjourney identity used by the companion tooling
+- `agent-browser`: the default blank agent identity
+- `work`: seeded from your work Chrome profile, per the example above
+- `mira`: the creative/Midjourney identity used by the companion tooling
 
 Create and prepare one with the companion extension loaded:
 
@@ -150,13 +154,20 @@ Notes:
 - Cookies are not a complete identity (localStorage / passkeys may still need a
   one-time interactive login in the Action identity).
 
-## Chrome Companion (generic extension)
+## Chrome companion (generic extension)
 
 Package: `packages/chrome-companion`
 
 - Manifest V3 extension with DOM observe / resolve / act helpers
-- Localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
+- In Action versions before 0.4.0, a localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
 - One-time **Load unpacked** per Action identity (`dist/` after build)
+
+Action 0.4.0 uses Chrome native messaging instead
+of the extension's TCP connection. The registered native host connects to
+`~/.lattices/run/action-chrome.sock` with `action-chrome.token`. Use the matching
+extension, native host, and Action runtime, including for a local installation.
+Register the host for the exact extension ID and Chrome user-data directory;
+registration for regular Chrome does not cover a separate Action identity.
 
 ```bash
 bun run chrome:companion:build
@@ -168,11 +179,11 @@ bun run chrome:companion:profile -- setup work
 Chrome Stable often ignores `--load-extension`; the reliable path is manual
 unpacked install inside the Action-owned identity.
 
-## Action Browser MCP
+## Action browser MCP
 
-Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root — the
+Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root. The
 browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
-See [the lattices MCP doc](../../../docs/mcp.md).
+See [the Lattices MCP doc](/lattices/docs/mcp).
 
 ### Tools
 
@@ -184,7 +195,8 @@ See [the lattices MCP doc](../../../docs/mcp.md).
 | `browser_import_cookies` | Dry-run or confirm a seed from a regular Chrome profile |
 | `browser_companion_status` | Extension dist + bridge health |
 | `browser_open` | Open in an Action browser, or `mode: "regular"` for an open-only handoff |
-| `browser_tabs` / `browser_snapshot` / `browser_click` / `browser_fill` / `browser_screenshot` / `browser_close` | DOM automation via CDP — Action browsers only |
+| `browser_tabs` / `browser_snapshot` / `browser_click` / `browser_fill` / `browser_screenshot` / `browser_close` | DOM automation via CDP, Action browsers only |
+| `browser_console` | Read console messages from an Action browser tab |
 | `browser_resize` | Set a tab to an explicit viewport width and height for responsive checks; `target: "window"` resizes the real Chrome window instead |
 
 ### Two MCP surfaces
@@ -260,13 +272,13 @@ Browser opens a fresh session per tool call. Two consequences shape the design:
 - The server keeps the requested viewport in memory and re-applies it on every
   session, so a resize survives the later `browser_screenshot` that is the whole
   point of it. It is per-tab, in-memory only, and dropped when the tab or the
-  browser closes — nothing is written to the profile.
+  browser closes. Nothing is written to the profile.
 - `reset` cannot simply call `clearDeviceMetricsOverride`: a foreign session's
   clear is accepted and does nothing, leaving Chrome stuck at the stale size. The
   reset re-sets the metrics to adopt ownership first, then clears them.
 
 `deviceScaleFactor` defaults to `1`, which makes screenshot pixels equal CSS
-pixels — a 390-wide viewport returns a 390px-wide PNG. Read `exact` in the reply
+pixels: a 390-wide viewport returns a 390px-wide PNG. Read `exact` in the reply
 before trusting a capture: a page with a hard `min-width` can refuse to lay out
 as narrow as it was asked to.
 
@@ -308,7 +320,7 @@ and readiness checks. Zero fails immediately without opening a tab. Expiry
 returns an MCP tool error and cancels pending transport work; increasing
 `waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
 
-Configure the MCP server as `command: "lattices", args: ["mcp"]` — no path, so it
+Configure the MCP server as `command: "lattices", args: ["mcp"]`, no path, so it
 cannot be pinned to a stale checkout or plugin cache. On the next MCP process
 start, `initialize` reports the lattices version, and `tools/list` exposes
 `browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their

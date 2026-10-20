@@ -1,6 +1,8 @@
 import Foundation
 
 enum LatticesLocalEndpoints {
+    static let speechCompanionSocketPath = "/unused/speech.sock"
+    static let speechCompanionTokenURL = URL(fileURLWithPath: "/unused/speech.token")
     static let speechCompanionURL = URL(string: "ws://127.0.0.1:9397")!
 }
 @main

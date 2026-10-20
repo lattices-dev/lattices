@@ -48,7 +48,7 @@ final class LocalNetworkScanner: ObservableObject {
         progress = 0
     }
 
-    func scan(port: Int = 5287) async {
+    func scan(port: Int = 9399) async {
         guard !isScanning else { return }
 
         guard let interface = LocalNetworkProbe.primaryIPv4Interface() else {

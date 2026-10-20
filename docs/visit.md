@@ -19,12 +19,22 @@ Your own cursor never left, so ending a visit can't strand it.
 
 ## Channel
 
-`GET /visit` on the bridge port (5287) upgrades to a WebSocket. The upgrade
+`GET /visit` on the gateway (port 9399 by default) upgrades to a WebSocket. The upgrade
 request carries the same signed headers as every protected bridge request
 (`X-Lattices-Device-Id`, `-Timestamp`, `-Nonce`, `-Signature`), signed over
 method `GET`, path `/visit` and an empty body. The host checks them, and that
 the device holds `input.trackpad`, before upgrading. Otherwise it answers
 401 or 403 as for any other route.
+
+In Lattices 0.15.0, the companion bridge listens on a private
+socket, `~/.lattices/run/companion.sock`, and no longer opens port 5287 or
+advertises over Bonjour. The visiting machine reaches `/visit` through the
+host's tailnet gateway (`lats gateway start --tailnet`), on the gateway port
+(9399 by default), with the same signed headers. Configure the gateway address
+explicitly. The gateway checks tailnet identity; the companion still checks
+device pairing, signatures and `input.trackpad`. The gateway relays encrypted
+visit frames without decrypting them. Companion device trust stays in the
+companion's store; approving a gateway RPC client does not grant a visit.
 
 Every frame after that is a **binary** message: a ChaChaPoly sealed box in its
 combined form (12-byte nonce, ciphertext, 16-byte tag). There's no base64. The

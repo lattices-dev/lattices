@@ -1,6 +1,7 @@
 import { request as httpRequest } from "node:http";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { companionTokenPath, readPrivateToken } from "./local-security.js";
 
 export type CompanionJobState = "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
 
@@ -197,6 +198,8 @@ export class CompanionClient {
   async request<T>(method: string, path: string, body?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
     const base = parseBaseUrl(this.baseUrl);
     const payload = bodyText(body);
+    if (base.url && (process.env.ACTION_COMPANION_ALLOW_TCP !== "1" || base.url.protocol !== "http:" || !["localhost", "127.0.0.1"].includes(base.url.hostname))) throw new Error("Companion local TCP is disabled; use private IPC or the remote gateway");
+    const headers = { "Host": base.socketPath ? "localhost" : base.url!.host, "x-lattices-token": readPrivateToken(companionTokenPath()), ...(payload ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } : {}) };
 
     return new Promise<T>((resolvePromise, reject) => {
       const timeout = setTimeout(() => {
@@ -208,9 +211,7 @@ export class CompanionClient {
           socketPath: base.socketPath,
           path,
           method,
-          headers: payload
-            ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) }
-            : undefined,
+          headers,
         }
         : {
           protocol: base.url!.protocol,
@@ -218,9 +219,7 @@ export class CompanionClient {
           port: base.url!.port,
           path,
           method,
-          headers: payload
-            ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) }
-            : undefined,
+          headers,
         };
 
       const req = httpRequest(requestOptions, (response) => {

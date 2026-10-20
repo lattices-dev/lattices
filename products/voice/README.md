@@ -58,11 +58,21 @@ the core daemon, which forwards speech output to Voice. The helper keeps the
 older `speech.*` RPC names and `dev.lattices.Speech` bundle identifier for
 compatibility with existing clients.
 
+These addresses describe apps installed from published releases:
+
 | Surface | Address | Owner |
 | --- | --- | --- |
 | Agent API, including `voice.*` | `ws://127.0.0.1:9399` | Lattices core |
 | Dictation and live voice sessions | `ws://127.0.0.1:9398` | Lattices core |
 | Speech queue and playback, `speech.*` | `ws://127.0.0.1:9397` | Voice helper |
+
+Source builds with the unreleased private IPC changes use `lattices.sock`,
+`voice.sock`, and `speech.sock` under `~/.lattices/run`, respectively. This also
+applies when those builds are installed locally. Use matching app and CLI
+builds. Direct Speech clients send the `speech.token` value as
+`x-lattices-token`, with `Host: localhost` and no `Origin` header, over the Unix
+socket. Port 9397 opens only with `LATTICES_SPEECH_TCP=1`. See the
+[source-build API contract](https://lattices.dev/speech/docs/api#source-builds-unreleased).
 
 For example, `voice.say` forwards to `speech.enqueue`, and `voice.list`
 forwards to `speech.voices`. A successful enqueue returns a job ID and state;
@@ -82,13 +92,14 @@ lattices voice select af_heart --provider kokoro
 stops capture and runs the transcript. Voice's Swift package contains the
 speech-output runtime, not the microphone runtime.
 
-Direct RPC clients authenticate with the `x-lattices-speech-token` WebSocket
+In published releases, direct RPC clients authenticate with the `x-lattices-speech-token` WebSocket
 header. Voice creates the token at
 `~/Library/Application Support/Speech/RPC/capability` while running; the
 Lattices CLI reads and sends it automatically. Output requests report
 `helper_not_installed`, `helper_unreachable`, or `helper_unauthorized` when the
 helper cannot serve them. Use the Apps menu to install or open Voice, then
-retry through the CLI.
+retry through the CLI. Source builds retain that header and capability file for
+compatibility; new direct clients should use `speech.token` as described above.
 
 This product exposes a WebSocket RPC server. The repository's root MCP server
 currently registers browser tools; speech clients use the CLI or RPC described

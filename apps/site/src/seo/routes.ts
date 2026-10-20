@@ -1,4 +1,5 @@
 import { actionDescription } from '../lib/action-schema'
+import { docsProduct } from '../lib/docs-catalog'
 
 /** Canonical origin. Matches public/CNAME and the tags in index.html. */
 export const SITE_ORIGIN = 'https://lattices.dev'
@@ -46,6 +47,22 @@ const latticesApp: SoftwareFacts = {
   softwareVersion: latticesAppVersion,
 }
 
+const canvas = docsProduct('blink')
+const canvasRoute: RouteMeta = {
+  path: canvas.home,
+  title: `${canvas.title} — spatial notes from Lattices`,
+  description: `${canvas.title} is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.`,
+  priority: '0.9',
+  jsonLd: 'software',
+  software: {
+    name: canvas.title,
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'macOS',
+    downloadUrl: `${SITE_ORIGIN}${canvas.home}/download`,
+    free: true,
+  },
+}
+
 export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/',
@@ -87,21 +104,8 @@ export const staticRoutes: readonly RouteMeta[] = [
       downloadUrl: `${SITE_ORIGIN}/action/download`,
     },
   },
-  {
-    path: '/blink',
-    title: 'Blink — spatial notes from Lattices',
-    description:
-      'Blink is spatial notes from Lattices: each note is a floating panel, and the desktop is the workspace.',
-    priority: '0.9',
-    jsonLd: 'software',
-    software: {
-      name: 'Blink',
-      applicationCategory: 'ProductivityApplication',
-      operatingSystem: 'macOS',
-      downloadUrl: `${SITE_ORIGIN}/blink/download`,
-      free: true,
-    },
-  },
+  canvasRoute,
+  { ...canvasRoute, path: '/blink', canonicalPath: canvas.home, sitemap: false },
   {
     path: '/speech',
     title: 'Speech — a standalone player from Lattices',
@@ -119,12 +123,14 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/products',
     title: 'Products — Lattices',
-    description: 'Browse Lattices, Action, Blink, Speech, and the agent API.',
+    description: 'Find each product and its documentation: Lattices, Action, Canvas, and Speech.',
     priority: '0.9',
     jsonLd: 'none',
   },
   {
     path: '/family',
+    canonicalPath: '/products',
+    sitemap: false,
     title: 'What Lattices can do — Lattices',
     description:
       'A guided tour from workspace layout and agent collaboration to computer use, spatial notes, and speech.',
@@ -134,7 +140,7 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/brand',
     title: 'Brand — Lattices',
-    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Blink and Speech.',
+    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Canvas and Speech.',
     priority: '0.6',
     jsonLd: 'none',
   },

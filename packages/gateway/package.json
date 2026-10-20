@@ -1,0 +1,10 @@
+{
+  "name": "@lattices/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in authenticated remote gateway to private Lattices product runtimes",
+  "bin": { "lattices-gateway": "./src/main.ts" },
+  "scripts": { "test": "bun test", "start": "bun src/main.ts" },
+  "engines": { "bun": ">=1.1" }
+}

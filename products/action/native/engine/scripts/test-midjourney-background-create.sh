@@ -14,8 +14,7 @@ PROMPT="${ACTION_MIDJOURNEY_PROMPT:-a polished product demo frame of a tiny tran
 MOONDREAM_PYTHON="${ACTION_MOONDREAM_PYTHON:-/Users/art/dev/moondream-local-poc/.venv/bin/python}"
 SHOW_OVERLAY="${ACTION_MIDJOURNEY_SHOW_OVERLAY:-0}"
 USE_COMPANION="${ACTION_MIDJOURNEY_USE_COMPANION:-auto}"
-COMPANION_RPC_URL="${ACTION_CHROME_COMPANION_RPC_URL:-http://127.0.0.1:4321/rpc}"
-COMPANION_HEALTH_URL="${ACTION_CHROME_COMPANION_HEALTH_URL:-http://127.0.0.1:4321/health}"
+COMPANION_IPC_MODULE="$ROOT_DIR/packages/runtime/src/chrome-companion-ipc.ts"
 
 if [[ ! -x "$APP_EXECUTABLE" ]]; then
   "$SCRIPT_DIR/build-app.sh" >/dev/stderr
@@ -240,18 +239,13 @@ verify_with_moondream() {
 }
 
 companion_available() {
-  "$BUN_BIN" - "$COMPANION_HEALTH_URL" <<'BUN' >/dev/null
-const healthURL = process.argv[2];
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 900);
+  "$BUN_BIN" - "$COMPANION_IPC_MODULE" <<'BUN' >/dev/null
 try {
-  const response = await fetch(healthURL, { signal: controller.signal });
-  const json = await response.json();
+  const { chromeCompanionRequest } = await import(process.argv[2]);
+  const json = await chromeCompanionRequest("/health", undefined, 900);
   process.exit(json.connected ? 0 : 1);
 } catch {
   process.exit(1);
-} finally {
-  clearTimeout(timeout);
 }
 BUN
 }
@@ -259,8 +253,9 @@ BUN
 companion_rpc() {
   local method="$1"
   local output_path="$2"
-  "$BUN_BIN" - "$COMPANION_RPC_URL" "$method" "$PROMPT" > "$output_path" <<'BUN'
-const [rpcURL, method, prompt] = process.argv.slice(2);
+  "$BUN_BIN" - "$COMPANION_IPC_MODULE" "$method" "$PROMPT" > "$output_path" <<'BUN'
+const [modulePath, method, prompt] = process.argv.slice(2);
+const { chromeCompanionRequest } = await import(modulePath);
 const message = {
   method,
   params: {
@@ -276,20 +271,9 @@ if (method === "midjourney.setPrompt" || method === "midjourney.submitPrompt") {
   message.params.prompt = prompt;
 }
 
-const response = await fetch(rpcURL, {
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify(message),
-});
-const text = await response.text();
-process.stdout.write(text);
-let parsed;
-try {
-  parsed = JSON.parse(text);
-} catch {
-  process.exit(1);
-}
-process.exit(parsed.ok ? 0 : 1);
+const response = await chromeCompanionRequest("/rpc", message);
+process.stdout.write(JSON.stringify(response));
+process.exit(response.ok ? 0 : 1);
 BUN
 }
 
@@ -310,7 +294,7 @@ BUN
 }
 
 run_companion_flow() {
-  log_event "policy" "using Action Chrome Companion bridge at $COMPANION_RPC_URL"
+  log_event "policy" "using the private Action Chrome Companion connection"
   local before_json="$OUTPUT_DIR/companion-before.json"
   local submit_json="$OUTPUT_DIR/companion-submit.json"
   local poll_json="$OUTPUT_DIR/companion-poll.json"

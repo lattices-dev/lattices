@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import WebSocket from "ws";
+import { actionSocketPath, actionTokenPath, readPrivateToken } from "./local-security.js";
 
 import type {
   AxActionTier,
@@ -149,7 +151,7 @@ export class DriveAgentClient {
     const socket = await this.ensureConnected();
     const id = randomUUID();
     const cleanParams = Object.fromEntries(
-      Object.entries(params).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      Object.entries({ ...params, authToken: readPrivateToken(actionTokenPath()), protocolVersion: "2" }).filter((entry): entry is [string, string] => entry[1] !== undefined),
     );
 
     return new Promise<Record<string, string>>((resolvePromise, reject) => {
@@ -205,7 +207,14 @@ export class DriveAgentClient {
 
   private connectOnce(timeoutMs: number): Promise<WebSocket> {
     return new Promise<WebSocket>((resolvePromise, reject) => {
-      const socket = new WebSocket(`ws://${this.host}:${this.port}`);
+      const token = readPrivateToken(actionTokenPath());
+      const tcp = process.env.ACTION_ALLOW_TCP === "1";
+      if (tcp && !["127.0.0.1", "localhost", "::1"].includes(this.host)) throw new Error("Action compatibility TCP must use loopback; use the host gateway for remote access");
+      const socket = new WebSocket(tcp ? `ws://${this.host}:${this.port}` : `ws+unix://${actionSocketPath()}:/`, {
+        headers: { "x-lattices-token": token, ...(tcp ? {} : { Host: "localhost" }) },
+        maxPayload: 16 * 1024 * 1024,
+        handshakeTimeout: timeoutMs,
+      });
       const timeout = setTimeout(() => {
         socket.close();
         reject(new Error("Action agent connection timed out"));

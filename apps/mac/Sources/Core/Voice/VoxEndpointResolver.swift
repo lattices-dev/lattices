@@ -7,8 +7,7 @@ import HudsonVoice
 ///
 /// Preferred path: the Lattices-hosted capability file written at boot by
 /// `LatticesVoiceRuntime` (`HUDSON_VOICE_RUNTIME_PATH` → Application Support/
-/// Lattices/Voice/hudson-voice-runtime.json) on the deterministic port
-/// `LatticesLocalEndpoints.voiceRuntimePort` (**9398**).
+/// Lattices/Voice/hudson-voice-runtime.json) over private IPC.
 ///
 /// Fallbacks exist for dev (external voxd / env overrides) but normal product
 /// operation does not require an external daemon.
@@ -33,7 +32,7 @@ enum HudsonVoiceRuntimeResolver {
             clientId: clientId,
             mode: mode,
             metadata: ["hostApp": "lattices"]
-        ) {
+        ), connection.endpoint.socketPath != nil || ProcessInfo.processInfo.environment["LATTICES_VOICE_ALLOW_LEGACY_TCP"] == "1" {
             return (
                 endpoint: connection.endpoint,
                 options: connection.options,
@@ -44,6 +43,9 @@ enum HudsonVoiceRuntimeResolver {
             )
         }
 
+        // Legacy discovery is explicit. A missing/invalid private capability
+        // must not silently route the microphone to another process.
+        guard ProcessInfo.processInfo.environment["LATTICES_VOICE_ALLOW_LEGACY_TCP"] == "1" else { return nil }
         // 2. File / env discovery (legacy external voxd, tests).
         guard let runtime = resolvedRuntimeFallback() else { return nil }
         var options = HudVoxLiveSessionOptions(
@@ -64,10 +66,7 @@ enum HudsonVoiceRuntimeResolver {
         )
     }
 
-    /// Fallbacks when the Lattices capability file is missing (host failed, or
-    /// a non-voice build tool is probing). Prefer Lattices' deterministic port
-    /// over the old external voxd default so we do not silently talk to a
-    /// dead/unrelated process.
+    /// Explicit compatibility discovery for external TCP runtimes.
     private static func resolvedRuntimeFallback() -> (host: String, port: UInt16, source: String, pid: Int?, authToken: String?, path: String?)? {
         for candidate in runtimeFileCandidates() {
             guard let runtime = readRuntimeFile(candidate.url),
@@ -99,20 +98,6 @@ enum HudsonVoiceRuntimeResolver {
                 source: "env",
                 pid: nil,
                 authToken: nonEmpty(env["VOX_AUTH_TOKEN"]),
-                path: nil
-            )
-        }
-
-        // Only advertise the well-known port when this process is actually
-        // hosting the voice runtime (auth + listener ready). Avoids clients
-        // connecting to a dead 9398 and hanging on "Transcribing…".
-        if LatticesVoiceRuntime.isRunning {
-            return (
-                host: LatticesLocalEndpoints.loopbackHost,
-                port: LatticesLocalEndpoints.resolvedVoiceRuntimePort,
-                source: "lattices-default",
-                pid: nil,
-                authToken: nil,
                 path: nil
             )
         }

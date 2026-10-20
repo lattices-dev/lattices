@@ -1,5 +1,8 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createConnection } from "node:net";
+import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 // This SDK only needs a small, synchronous subset of Zod. Keeping that subset
 // here avoids making every CLI install pull in a general-purpose schema library
@@ -130,8 +133,29 @@ const z = {
   object: objectSchema,
 };
 
-const DAEMON_HOST = "127.0.0.1";
-const DAEMON_PORT = 9399;
+// Kept self-contained for the standalone Node 18 SDK package. Match the
+// ownership/mode checks in packages/desktop-client/local-ipc.ts.
+function localDaemonEndpoint() {
+  const directory = process.env.LATTICES_RUNTIME_DIR || join(homedir(), ".lattices", "run");
+  const socketPath = join(directory, "lattices.sock");
+  const tokenFile = join(directory, "lattices.token");
+  const uid = process.getuid?.();
+  const dir = lstatSync(directory), socket = lstatSync(socketPath);
+  if (!dir.isDirectory() || (dir.mode & 0o077) !== 0 || (uid !== undefined && dir.uid !== uid)
+    || !socket.isSocket() || (socket.mode & 0o077) !== 0 || (uid !== undefined && socket.uid !== uid)) {
+    throw new Error("Local IPC socket must be private and owned by this user");
+  }
+  const fd = openSync(tokenFile, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.nlink !== 1 || (uid !== undefined && info.uid !== uid) || (info.mode & 0o077) !== 0 || info.size > 256) {
+      throw new Error("Local IPC token must be a private, user-owned regular file");
+    }
+    const token = readFileSync(fd, "utf8").trim();
+    if (!/^[A-Za-z0-9_+/=-]{32,256}$/.test(token)) throw new Error("Invalid local IPC token");
+    return { socketPath, token };
+  } finally { closeSync(fd); }
+}
 
 export const computerTreatmentSchema = z.enum([
   "observe",
@@ -709,6 +733,7 @@ export function magicCursor(params) {
 }
 
 export async function daemonCall(method, params = null, timeoutMs = 3000) {
+  const { socketPath, token } = localDaemonEndpoint();
   const id = randomBytes(4).toString("hex");
   const deadline = Date.now() + timeoutMs;
   const request = JSON.stringify({ id, method, params: params ?? null, deadline });
@@ -716,11 +741,12 @@ export async function daemonCall(method, params = null, timeoutMs = 3000) {
   const uncertain = () => new Error("Daemon connection lost or deadline exceeded; action outcome uncertain; do not retry blindly");
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: DAEMON_HOST, port: DAEMON_PORT });
+    const socket = createConnection({ path: socketPath });
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
     let sent = false;
+    let expectedAccept = "";
 
     const timer = setTimeout(() => {
       if (!settled) {
@@ -752,9 +778,11 @@ export async function daemonCall(method, params = null, timeoutMs = 3000) {
     });
     socket.on("connect", () => {
       const key = randomBytes(16).toString("base64");
+      expectedAccept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
       const upgrade = [
         "GET / HTTP/1.1",
-        `Host: ${DAEMON_HOST}:${DAEMON_PORT}`,
+        "Host: localhost",
+        `x-lattices-token: ${token}`,
         "Upgrade: websocket",
         "Connection: Upgrade",
         `Sec-WebSocket-Key: ${key}`,
@@ -770,9 +798,13 @@ export async function daemonCall(method, params = null, timeoutMs = 3000) {
 
       if (!upgraded) {
         const headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd === -1) return;
+        if (headerEnd === -1) {
+          if (buffer.length > 16_384) { settled = true; cleanup(); reject(new Error("Oversized WebSocket upgrade response")); }
+          return;
+        }
         const header = buffer.subarray(0, headerEnd).toString();
-        if (!header.includes("101")) {
+        const accepts = header.split("\r\n").filter(line => /^sec-websocket-accept:/i.test(line));
+        if (headerEnd > 16_384 || !/^HTTP\/1\.[01] 101(?: |$)/.test(header) || accepts.length !== 1 || accepts[0].slice(accepts[0].indexOf(":") + 1).trim() !== expectedAccept) {
           settled = true;
           cleanup();
           reject(new Error("WebSocket upgrade failed"));
@@ -785,7 +817,9 @@ export async function daemonCall(method, params = null, timeoutMs = 3000) {
       }
 
       while (true) {
-        const result = parseFrame(buffer);
+        let result;
+        try { result = parseFrame(buffer); }
+        catch (error) { settled = true; cleanup(); reject(error); return; }
         if (!result) break;
         buffer = result.rest;
 
@@ -861,6 +895,8 @@ function parseFrame(buf) {
     payloadLen = Number(buf.readBigUInt64BE(2));
     offset = 10;
   }
+
+  if (!Number.isSafeInteger(payloadLen) || payloadLen > 16 * 1024 * 1024) throw new Error("WebSocket frame exceeds limit");
 
   if (isMasked) offset += 4;
   if (buf.length < offset + payloadLen) return null;

@@ -1,5 +1,5 @@
 {
-  "originHash" : "a678ee9960bb09a6b314c101f043f0771865061b267516d42dae28fd1f6425a7",
+  "originHash" : "e33dffd62659c2ad0efc2f7d86803ad2bba696b4013c0a616de1e9ca0dedf309",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -15,17 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:arach/hudson.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "71fee5e03192dffe48056dedc0efacc94925bb62"
-      }
-    },
-    {
-      "identity" : "moonshine-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/moonshine-ai/moonshine-swift.git",
-      "state" : {
-        "revision" : "45a14f9edf1f2a6913d3aff38c1fd4e72d5b7daa",
-        "version" : "0.1.5"
+        "revision" : "d7647584f85ad2227ed2acc83a6ffcbef6f527df"
       }
     },
     {
@@ -33,8 +23,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/arach/vox.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "9190158f071083f22d0bda2f73f4e8d5f8763a90"
+        "revision" : "df744e5403a265bf411003a4d1b931365d2328de"
       }
     }
   ],

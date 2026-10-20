@@ -1,8 +1,9 @@
 // The companion bridge over HTTP, matching
 // apps/mac/Sources/Bundle/Companion/LatticesCompanionBridgeServer.swift:
-// port 5287, the same routes, status codes and error shape, so the iOS
-// companion adds a Linux host by address (host:5287) like any Mac.
+// The runtime uses a private Unix socket. The optional remote gateway serves
+// these same signed routes on its own port (9399 by default).
 
+import { authorizeLocalRequest, protectSocket } from "../private-ipc.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { hostname } from "node:os";
 import { hasCommand } from "../exec.ts";
@@ -15,11 +16,13 @@ import { ENDED_HERE, startVisitControl } from "./visit-control.ts";
 import { QuickshellVisitorOverlay } from "./visitor-overlay.ts";
 import type { VisitDependencies, VisitorOverlay } from "./visit.ts";
 
-export const BRIDGE_PORT = 5287;
+export const BRIDGE_PORT = 9399;
 const MAX_BODY_BYTES = 512 * 1024;
 
 export interface BridgeOptions {
   hosts: string[];
+  socketPath?: string;
+  token?: string;
   port?: number;
   name?: string;
   version: string;
@@ -96,7 +99,7 @@ export function startBridge(options: BridgeOptions) {
           port: boundPort(),
           protocolVersion: "1",
           version: options.version,
-          mode: "local-network-secure",
+          mode: "private-ipc-gateway",
           bridgePublicKey: security.publicKeyBase64,
           bridgeFingerprint: security.fingerprint,
           requestSigningRequired: true,
@@ -107,7 +110,11 @@ export function startBridge(options: BridgeOptions) {
         return json(200, deck.manifest(name));
       case "POST /pairing/request": {
         const request = JSON.parse(body.toString("utf8")) as PairingRequest;
+        const priorKey = security.trustedDevices().find(device => device.id === request.deviceID)?.publicKey;
         const response = await security.handlePairing(request);
+        if (response.disposition === "approved" && priorKey && priorKey !== request.devicePublicKey) {
+          await Promise.all([...visits.channels].filter(channel => channel.deviceID === request.deviceID).map(channel => channel.finish(4001, "Device key changed")));
+        }
         options.log(`pairing ${response.disposition} for ${request.deviceName}`);
         return json(response.disposition === "denied" ? 403 : 200, response);
       }
@@ -126,13 +133,17 @@ export function startBridge(options: BridgeOptions) {
 
   const boundPort = () => servers[0]?.port ?? options.port ?? BRIDGE_PORT;
   type VisitSocketData = { auth: AuthorizedRequest; channel?: VisitChannel };
-  const servers = options.hosts.map((hostname) =>
+  if (!options.socketPath && options.hosts.some(host => host !== "127.0.0.1")) throw new Error("Companion remote access belongs to lattices-gateway");
+  const listeners = options.socketPath ? [{ unix: options.socketPath }] : options.hosts.map(hostname => ({ hostname, port: options.port ?? BRIDGE_PORT }));
+  if (options.socketPath && !options.token) throw new Error("Private companion token required");
+  const servers = listeners.map((listener) =>
     Bun.serve<VisitSocketData>({
-      hostname,
-      port: options.port ?? BRIDGE_PORT,
-      idleTimeout: 255, // pairing waits on a person
+      ...listener,
+      maxRequestBodySize: MAX_BODY_BYTES,
       async fetch(req, server) {
         try {
+          if (req.headers.has("origin")) return error(403, "Browser origins are not allowed");
+          if (options.socketPath && !authorizeLocalRequest(req, options.token!)) return error(403, "Local authentication required");
           if (stopping) return error(503, "Bridge stopping");
           if (req.method === "GET" && new URL(req.url).pathname === "/visit") {
             const body = Buffer.from(await req.arrayBuffer());
@@ -162,6 +173,7 @@ export function startBridge(options: BridgeOptions) {
     })
   );
 
+  const removeSocket = options.socketPath ? protectSocket(options.socketPath) : () => {};
   const endVisits = async () => {
     const channels = [...visits.channels];
     await Promise.all(channels.map((channel) => channel.finish(1000, ENDED_HERE)));
@@ -188,6 +200,7 @@ export function startBridge(options: BridgeOptions) {
     controlPath: control?.path ?? null,
     endVisits,
     async revoke(deviceID: string) {
+      approvals.decide(deviceID, false);
       if (!security.revoke(deviceID)) return false;
       await Promise.all([...visits.channels]
         .filter((channel) => channel.deviceID === deviceID)
@@ -200,6 +213,7 @@ export function startBridge(options: BridgeOptions) {
       control?.stop();
       await visits.stop();
       for (const s of servers) s.stop(true);
+      removeSocket();
     },
   };
 }

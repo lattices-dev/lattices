@@ -1,13 +1,15 @@
-// Lightweight WebSocket client for lattices daemon (ws://127.0.0.1:9399)
+// Lightweight authenticated client: private Unix socket locally, explicit remote gateway.
 // Uses Node `net` module with manual HTTP upgrade + minimal WS framing.
 // Zero npm dependencies.
 
 import { createConnection, type Socket } from "node:net";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pairingHeaders } from "./host-pairing.ts";
+import { localEndpoint, readLocalToken, validateLocalSocket, type DaemonEndpoint } from "./local-ipc.ts";
+export type { DaemonEndpoint } from "./local-ipc.ts";
 
 const DEFAULT_DAEMON_HOST = "127.0.0.1";
 const DEFAULT_DAEMON_PORT = 9399;
@@ -20,10 +22,15 @@ const DEFAULT_DAEMON_PORT = 9399;
  */
 export function daemonEndpoint(
   env: Record<string, string | undefined> = process.env
-): { host: string; port: number } {
+): DaemonEndpoint {
+  if (!env.LATTICES_DAEMON_HOST && !env.LATTICES_DAEMON_PORT && env.LATTICES_ALLOW_LOOPBACK_TCP !== "1") return localEndpoint("lattices", env);
   const host = env.LATTICES_DAEMON_HOST?.trim() || DEFAULT_DAEMON_HOST;
   const port = Number(env.LATTICES_DAEMON_PORT);
-  return { host, port: Number.isInteger(port) && port > 0 ? port : DEFAULT_DAEMON_PORT };
+  return { host, port: Number.isInteger(port) && port > 0 ? port : DEFAULT_DAEMON_PORT,
+    // A loopback address can be an SSH tunnel. Only the separate compatibility
+    // opt-in permits sending this machine's capability over local TCP.
+    ...(env.LATTICES_ALLOW_LOOPBACK_TCP === "1" && ["127.0.0.1", "localhost", "::1"].includes(host)
+      ? { tokenFile: localEndpoint("lattices", env).tokenFile } : {}) };
 }
 
 // The Voice helper (bundle dev.lattices.Speech) writes this capability when it
@@ -72,7 +79,9 @@ function callerHeader(): string[] {
 }
 
 interface ParsedFrame {
-  payload: string;
+  payload: Buffer;
+  opcode: number;
+  final: boolean;
   rest: Buffer<ArrayBuffer>;
 }
 
@@ -136,26 +145,34 @@ export async function daemonCall(
 
 /** `daemonCall` against an explicit host, for clients that address several (LAT-013). */
 export async function daemonCallTo(
-  endpoint: { host: string; port: number },
+  endpoint: DaemonEndpoint,
   method: string,
   params?: Record<string, unknown> | null,
-  timeoutMs = 3000
+  timeoutMs = 3000,
+  signal?: AbortSignal
 ): Promise<unknown> {
   try {
-    return await sendRequest(endpoint, method, params, timeoutMs);
+    return await sendRequest(endpoint, method, params, timeoutMs, signal);
   } catch (err) {
     const legacy = legacyMethodName(method, params);
-    if (!legacy || (err as Error).message !== `Unknown method: ${method}`) throw err;
-    return sendRequest(endpoint, legacy, params, timeoutMs);
+    if (signal?.aborted || !legacy || (err as Error).message !== `Unknown method: ${method}`) throw err;
+    return sendRequest(endpoint, legacy, params, timeoutMs, signal);
   }
 }
 
 async function sendRequest(
-  endpoint: { host: string; port: number },
+  endpoint: DaemonEndpoint,
   method: string,
   params: Record<string, unknown> | null | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<unknown> {
+  signal?.throwIfAborted();
+  if (endpoint.socketPath) validateLocalSocket(endpoint.socketPath);
+  // A programmatic caller may explicitly provide tokenFile for local TCP
+  // compatibility. Reject remote use before reading any local credential.
+  if (endpoint.tokenFile && !endpoint.socketPath && !["127.0.0.1", "localhost", "::1"].includes(endpoint.host)) throw new Error("Refusing to send a local capability to a remote host");
+  const localToken = endpoint.tokenFile ? readLocalToken(endpoint.tokenFile) : undefined;
   const id = randomBytes(4).toString("hex");
   const deadline = Date.now() + timeoutMs;
   const request = JSON.stringify({ id, method, params: params ?? null, deadline });
@@ -164,24 +181,35 @@ async function sendRequest(
 
   return new Promise((resolve, reject) => {
     const { host, port } = endpoint;
-    const socket = createConnection({ host, port });
+    const socket = createConnection(endpoint.socketPath ? { path: endpoint.socketPath } : { host, port });
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
     let sent = false;
+    let expectedAccept = "";
+    let fragments: Buffer[] | null = null;
+    let fragmentBytes = 0;
 
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        socket.destroy();
+        cleanup();
         reject(mutation && sent ? uncertain() : new Error("Daemon request timed out"));
       }
     }, timeoutMs + (mutation ? 1500 : 0));
 
     const cleanup = () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", aborted);
       socket.destroy();
     };
+
+    const aborted = () => {
+      if (settled) return;
+      settled = true; cleanup(); reject(signal?.reason ?? new Error("Daemon call cancelled"));
+    };
+    signal?.addEventListener("abort", aborted, { once: true });
+    if (signal?.aborted) aborted();
 
     socket.on("error", (err) => {
       if (!settled) {
@@ -199,20 +227,23 @@ async function sendRequest(
       }
     });
     socket.on("connect", () => {
+      if (settled) return;
       // Send HTTP upgrade request
       const key = randomBytes(16).toString("base64");
+      expectedAccept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
       const upgrade = [
         `GET / HTTP/1.1`,
-        `Host: ${host}:${port}`,
+        `Host: ${endpoint.socketPath ? "localhost" : `${host}:${port}`}`,
         `Upgrade: websocket`,
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,
         `Sec-WebSocket-Version: 13`,
-        ...voiceTokenHeader(method),
+        ...(endpoint.socketPath || localToken ? voiceTokenHeader(method) : []),
+        ...(localToken ? [`x-lattices-token: ${localToken}`] : []),
         ...callerHeader(),
         // A paired remote host needs every connection signed (LAT-013). A
         // pairing request goes unsigned so a host that forgot us can re-pair.
-        ...(method === "clients.pair" ? [] : pairingHeaders(endpoint)),
+        ...(endpoint.socketPath || method === "clients.pair" ? [] : pairingHeaders(endpoint)),
         ``,
         ``,
       ].join("\r\n");
@@ -220,13 +251,20 @@ async function sendRequest(
     });
 
     socket.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      if (buffer.length + chunk.length > 64 * 1024 * 1024) {
+        settled = true; cleanup(); reject(new Error("Daemon response exceeds size limit")); return;
+      }
       buffer = Buffer.concat([buffer, chunk]) as Buffer<ArrayBuffer>;
 
       if (!upgraded) {
         const headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd === -1) return;
+        if (headerEnd === -1 || headerEnd > 8192) {
+          if (buffer.length > 8192) { settled = true; cleanup(); reject(new Error("Daemon upgrade exceeds size limit")); }
+          return;
+        }
         const header = buffer.subarray(0, headerEnd).toString();
-        if (!header.includes("101")) {
+        if (!/^HTTP\/1\.[01] 101(?: |$)/.test(header)) {
           settled = true;
           cleanup();
           // lattices-host explains a 401/403 in the body (unpaired, revoked, bad signature).
@@ -234,6 +272,10 @@ async function sendRequest(
           const reason = (status === "401" || status === "403") ? buffer.subarray(headerEnd + 4).toString().trim() : "";
           reject(new Error(reason ? `WebSocket upgrade failed (${status}): ${reason}` : "WebSocket upgrade failed"));
           return;
+        }
+        const accept = header.split("\r\n").filter(line => /^sec-websocket-accept:/i.test(line));
+        if (accept.length !== 1 || accept[0]!.split(":").slice(1).join(":").trim() !== expectedAccept) {
+          settled = true; cleanup(); reject(new Error("Invalid WebSocket upgrade response")); return;
         }
         upgraded = true;
         buffer = buffer.subarray(headerEnd + 4);
@@ -246,12 +288,29 @@ async function sendRequest(
       // The daemon can push broadcast events before the RPC response.
       // Keep consuming frames until we see our matching response id.
       while (true) {
-        const result = parseFrame(buffer);
+        let result: ParsedFrame | null;
+        try { result = parseFrame(buffer); } catch (error) { settled = true; cleanup(); reject(error); return; }
         if (!result) break;
         buffer = result.rest;
 
         try {
-          const parsed = JSON.parse(result.payload);
+          if (result.opcode === 8) throw new Error("Daemon connection closed");
+          if (result.opcode === 9) { sendFrame(socket, result.payload, 10); continue; }
+          if (result.opcode === 10) continue;
+          if (result.opcode === 2) throw new Error("Unexpected binary daemon response");
+          if (result.opcode === 0) {
+            if (!fragments) throw new Error("Unexpected continuation frame");
+          } else {
+            if (fragments) throw new Error("Interrupted fragmented daemon response");
+            fragments = []; fragmentBytes = 0;
+          }
+          fragmentBytes += result.payload.length;
+          if (fragmentBytes > 64 * 1024 * 1024) throw new Error("Daemon response exceeds size limit");
+          fragments.push(result.payload);
+          if (!result.final) continue;
+          const payload = Buffer.concat(fragments, fragmentBytes);
+          fragments = null; fragmentBytes = 0;
+          const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payload));
           if (parsed.event) {
             continue;
           }
@@ -262,17 +321,17 @@ async function sendRequest(
             settled = true;
             cleanup();
             if (parsed.error) {
-              reject(new Error(parsed.error));
+              reject(new Error(typeof parsed.error === "string" ? parsed.error : parsed.error.message ?? "Daemon request failed"));
             } else {
               resolve(parsed.result);
             }
           }
           return;
-        } catch {
+        } catch (error) {
           if (!settled) {
             settled = true;
             cleanup();
-            reject(mutation && sent ? uncertain() : new Error("Invalid JSON response from daemon"));
+            reject(mutation && sent ? uncertain() : error instanceof SyntaxError || error instanceof TypeError ? new Error("Invalid JSON response from daemon") : error);
           }
           return;
         }
@@ -297,24 +356,24 @@ export async function isDaemonRunning(): Promise<boolean> {
 
 // MARK: - WebSocket framing helpers
 
-function sendFrame(socket: Socket, text: string): void {
-  const payload = Buffer.from(text, "utf8");
+function sendFrame(socket: Socket, text: string | Buffer, opcode = 1): void {
+  const payload = typeof text === "string" ? Buffer.from(text, "utf8") : text;
   const mask = randomBytes(4);
   const len = payload.length;
 
   let header: Buffer;
   if (len < 126) {
     header = Buffer.alloc(2);
-    header[0] = 0x81; // FIN + text opcode
+    header[0] = 0x80 | opcode; // FIN + opcode
     header[1] = 0x80 | len; // masked + length
   } else if (len < 65536) {
     header = Buffer.alloc(4);
-    header[0] = 0x81;
+    header[0] = 0x80 | opcode;
     header[1] = 0x80 | 126;
     header.writeUInt16BE(len, 2);
   } else {
     header = Buffer.alloc(10);
-    header[0] = 0x81;
+    header[0] = 0x80 | opcode;
     header[1] = 0x80 | 127;
     header.writeBigUInt64BE(BigInt(len), 2);
   }
@@ -331,7 +390,10 @@ function sendFrame(socket: Socket, text: string): void {
 function parseFrame(buf: Buffer): ParsedFrame | null {
   if (buf.length < 2) return null;
 
-  const isMasked = (buf[1]! & 0x80) !== 0;
+  const opcode = buf[0]! & 15;
+  const final = (buf[0]! & 0x80) !== 0;
+  if ((buf[0]! & 0x70) || (buf[1]! & 0x80) || ![0, 1, 2, 8, 9, 10].includes(opcode)) throw new Error("Invalid daemon frame");
+  if (opcode >= 8 && (!final || (buf[1]! & 127) > 125)) throw new Error("Invalid daemon control frame");
   let payloadLen = buf[1]! & 0x7f;
   let offset = 2;
 
@@ -341,24 +403,15 @@ function parseFrame(buf: Buffer): ParsedFrame | null {
     offset = 4;
   } else if (payloadLen === 127) {
     if (buf.length < 10) return null;
-    payloadLen = Number(buf.readBigUInt64BE(2));
+    const wideLength = buf.readBigUInt64BE(2);
+    if (wideLength > 64n * 1024n * 1024n) throw new Error("Daemon frame exceeds size limit");
+    payloadLen = Number(wideLength);
     offset = 10;
   }
 
-  if (isMasked) offset += 4;
   if (buf.length < offset + payloadLen) return null;
-
-  let payload = buf.subarray(offset, offset + payloadLen);
-  if (isMasked) {
-    const maskKey = buf.subarray(offset - 4, offset);
-    payload = Buffer.alloc(payloadLen);
-    for (let i = 0; i < payloadLen; i++) {
-      payload[i] = buf[offset + i]! ^ maskKey[i % 4]!;
-    }
-  }
-
   return {
-    payload: payload.toString("utf8"),
+    payload: buf.subarray(offset, offset + payloadLen), opcode, final,
     rest: buf.subarray(offset + payloadLen) as Buffer<ArrayBuffer>,
   };
 }

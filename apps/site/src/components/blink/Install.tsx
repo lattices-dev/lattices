@@ -1,10 +1,10 @@
 import { SectionHeader, PrimaryButton, GhostButton, Reveal, MockTitleBar } from './shared'
 
-/** Blink's own references, which the family footer doesn't carry. */
+/** Canvas's own references, which the family footer doesn't carry. */
 const RELEASE_LINKS = [
   { href: 'https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md', label: 'CLI docs', external: true },
-  { href: '/blink/llms.txt', label: 'llms.txt', external: false },
-  { href: '/blink/agents.md', label: 'AGENTS.md', external: false },
+  { href: '/canvas/llms.txt', label: 'llms.txt', external: false },
+  { href: '/canvas/AGENTS.md', label: 'AGENTS.md', external: false },
   { href: 'https://blink.arach.dev/privacy/', label: 'Privacy', external: true },
 ] as const
 
@@ -19,7 +19,7 @@ export function Install() {
               Free, open source, <span className="text-acc">and yours</span>.
             </>
           }
-          sub="A single native app for macOS. No account — download it, press Hyper+N, and start."
+          sub="A single native app for macOS. No account — download it, press Hyper+N, and start. Canvas is the new name for Blink: the current release installs Blink.app, and the CLI is still blink."
         />
 
         <Reveal>
@@ -34,7 +34,7 @@ export function Install() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3 shrink-0">
-                  <PrimaryButton href="/blink/download">
+                  <PrimaryButton href="/canvas/download">
                     <span className="text-[15px] leading-none" aria-hidden>
                       ↓
                     </span>{' '}

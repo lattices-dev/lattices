@@ -9,9 +9,9 @@
 # the compositor has imported its environment (Hyprland does this on login).
 
 [Unit]
-Description=lattices-host: expose this desktop to other lattices machines over the tailnet
+Description=lattices-host: private desktop runtime
 PartOf=graphical-session.target
-After=graphical-session.target tailscaled.service
+After=graphical-session.target
 
 [Service]
 ExecStart=/usr/bin/env bun %h/dev/projects/lattices/packages/host-linux/src/main.ts --quiet

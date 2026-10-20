@@ -2,12 +2,12 @@ import { MockTitleBar, Reveal, SectionHeader } from './shared'
 
 const DOCS = [
   {
-    href: '/blink/llms.txt',
+    href: '/canvas/llms.txt',
     label: 'llms.txt',
     detail: 'product map + canonical links',
   },
   {
-    href: '/blink/agents.md',
+    href: '/canvas/AGENTS.md',
     label: 'agents.md',
     detail: 'complete operating contract',
   },
@@ -33,7 +33,7 @@ const CONTRACT = [
   },
   {
     term: 'App optional',
-    detail: 'Writes still land while Blink is closed. The app reconciles them when it is running or next opens.',
+    detail: 'Writes still land while the app is closed. The app reconciles them when it is running or next opens.',
   },
   {
     term: 'Configure by file',
@@ -52,7 +52,7 @@ export default function AgentGuide() {
               The whole operating contract, <span className="text-acc">without the GUI.</span>
             </>
           }
-          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. These are the stable entry points an agent can discover and act on."
+          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. Canvas still installs as Blink.app and its CLI is still blink, so the commands and paths below keep that name."
         />
 
         <Reveal>

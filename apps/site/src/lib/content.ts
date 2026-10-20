@@ -1,23 +1,9 @@
-import navJson from '../data/nav.json'
-import { navBlurb, rewriteDocMarkdown } from '../seo/describe'
+import { publishedDocs, rewriteDocLinks, type DocEntry, type ProductId } from './docs-catalog'
+import { rewriteDocMarkdown } from '../seo/describe'
 import { splitFrontmatter } from './frontmatter'
 import { extractHeadings, prepareMarkdown, type Heading } from './markdown'
 
-export interface NavItem {
-  id: string
-  title: string
-  description?: string
-  href: string
-}
-
-export interface NavGroup {
-  id: string
-  title: string
-  items: NavItem[]
-}
-
-export interface DocPage {
-  slug: string
+export interface DocPage extends DocEntry {
   title: string
   description?: string
   order: number
@@ -37,7 +23,7 @@ export interface BlogPost {
   headings: Heading[]
 }
 
-const docModules = import.meta.glob<string>('../../../../docs/*.md', {
+const docModules = import.meta.glob<string>(['../../../../docs/*.md', '../../../../products/action/docs/*.md', '../../../../products/blink/docs/*.md', '../../../../products/blink/landing/public/agents.md', '../../../../products/voice/docs/*.md', '../../content/action/*.md'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -49,34 +35,25 @@ const blogModules = import.meta.glob<string>('../../content/blog/*.{md,mdx}', {
   eager: true,
 })
 
-export const navGroups: NavGroup[] = navJson.groups.map((group) => ({
-  id: group.id,
-  title: group.title,
-  items: group.items.map((item) => ({
-    ...item,
-    href: `/docs/${item.id}`,
-  })),
-}))
-
-export const docs: DocPage[] = Object.entries(docModules)
-  .map(([path, raw]) => {
-    const slug = slugFromPath(path)
-    const { data, content } = splitFrontmatter(raw)
-    const prepared = prepareMarkdown(content)
-    const explicitTitle = stringValue(data.title)
-    const rewritten = rewriteDocMarkdown(prepared, explicitTitle)
-    const title = explicitTitle || rewritten.firstH1 || titleFromSlug(slug)
-
-    return {
-      slug,
-      title,
-      description: stringValue(data.description) || navBlurb(slug) || rewritten.summary || undefined,
-      order: numberValue(data.order) ?? 999,
-      content: rewritten.markdown,
-      headings: extractHeadings(rewritten.markdown),
-    }
-  })
-  .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title))
+export const docs: DocPage[] = publishedDocs.map((entry) => {
+  const path = entry.source.startsWith('apps/site/')
+    ? `../../${entry.source.slice('apps/site/'.length)}`
+    : `../../../../${entry.source}`
+  const raw = docModules[path]
+  if (raw === undefined) throw new Error(`Missing catalog source: ${entry.source}`)
+  const { data, content } = splitFrontmatter(raw)
+  const prepared = prepareMarkdown(rewriteDocLinks(content, entry.source))
+  const explicitTitle = stringValue(data.title)
+  const rewritten = rewriteDocMarkdown(prepared, explicitTitle)
+  return {
+    ...entry,
+    title: explicitTitle || rewritten.firstH1 || entry.title,
+    description: stringValue(data.description) || rewritten.summary,
+    order: numberValue(data.order) ?? 999,
+    content: rewritten.markdown,
+    headings: extractHeadings(rewritten.markdown),
+  }
+})
 
 export const blogPosts: BlogPost[] = Object.entries(blogModules)
   .map(([path, raw]) => {
@@ -99,16 +76,16 @@ export const blogPosts: BlogPost[] = Object.entries(blogModules)
   .filter((post) => !post.draft)
   .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
 
-export function getDoc(slug: string): DocPage | undefined {
-  return docs.find((doc) => doc.slug === slug)
+export function getDoc(slug: string, product: ProductId = 'lattices'): DocPage | undefined {
+  return docs.find((doc) => doc.slug === slug && doc.product === product)
 }
 
 export function getBlogPost(slug: string): BlogPost | undefined {
   return blogPosts.find((post) => post.slug === slug)
 }
 
-export function defaultDoc(): DocPage {
-  return getDoc('overview') || docs[0]
+export function defaultDoc(product: ProductId = 'lattices'): DocPage {
+  return getDoc('overview', product)!
 }
 
 function slugFromPath(path: string): string {

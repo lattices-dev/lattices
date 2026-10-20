@@ -3956,9 +3956,14 @@ Primary source:
 
 ## Transport
 
-- Protocol: WebSocket
-- Default host: `127.0.0.1`
-- Default port: `4319`
+Working-tree contract (unreleased; installed releases may still use TCP):
+
+- Protocol: WebSocket over the private Unix socket `~/.lattices/run/action.sock`.
+- Credential: `~/.lattices/run/action.token`; every upgrade requires its value in `x-lattices-token`, including access to read-only methods.
+- The runtime directory is mode `0700`; socket and token are mode `0600`. `LATTICES_RUNTIME_DIR` overrides the directory; `ACTION_SOCKET_PATH` overrides the agent socket.
+- Local clients send `Host: localhost`. Browser `Origin` headers are rejected.
+- Loopback TCP on `127.0.0.1:4319` is compatibility-only and requires explicit `ACTION_ALLOW_TCP=1`; it still requires authentication and never serves as a silent fallback.
+- Remote clients connect through the separate paired gateway. Keep Action's AppKit and recording lifecycles independent from Lattices.
 
 ## Request Shape
 

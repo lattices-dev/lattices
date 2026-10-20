@@ -13,10 +13,10 @@ function fixture(name = "home") {
   const dir = mkdtempSync(join(tmpdir(), "lattices-install-")); cleanup.push(dir);
   const home = join(dir, name), source = join(dir, "source");
   mkdirSync(home);
-  for (const path of ["bin", "apps/linux", "packages/host-linux/src", "packages/host-linux/visitor", "packages/npm/sdk", "docs", "assets"]) mkdirSync(join(source, path), { recursive: true });
+  for (const path of ["bin", "apps/linux", "packages/host-linux/src", "packages/gateway/src", "packages/host-linux/visitor", "packages/npm/sdk", "docs", "assets"]) mkdirSync(join(source, path), { recursive: true });
   for (const path of ["package.json", "packages/host-linux/package.json"]) writeFileSync(join(source, path), '{"name":"fixture","version":"1.0.0"}');
   writeFileSync(join(source, "packages/host-linux/bun.lock"), "{}");
-  for (const path of ["packages/host-linux/src/main.ts", "packages/host-linux/visitor/shell.qml", "packages/npm/sdk/cua.mjs", "docs/quickstart.md"]) writeFileSync(join(source,path), "// fixture");
+  for (const path of ["packages/host-linux/src/main.ts", "packages/gateway/src/server.ts", "packages/host-linux/visitor/shell.qml", "packages/npm/sdk/cua.mjs", "docs/quickstart.md"]) writeFileSync(join(source,path), "// fixture");
   writeFileSync(join(source, "bin/lattices.ts"), 'console.log("fixture CLI")');
   writeFileSync(join(source, "assets/logo-mark.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   cpSync(join(root, "apps/linux/integrations/omarchy"), join(source, "apps/linux/integrations/omarchy"), { recursive: true });

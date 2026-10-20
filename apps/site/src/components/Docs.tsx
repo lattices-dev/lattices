@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
-import { defaultDoc, getDoc, navGroups, type DocPage } from '../lib/content'
+import { defaultDoc, getDoc, type DocPage } from '../lib/content'
 import { formatBuildDate, getBuildMeta, type DocMeta } from '../lib/build-meta'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { DocsSidebar, DocPager } from './DocsNavigation'
+import { docsProduct, docsHome, isCurrentDoc, type ProductId } from '../lib/docs-catalog'
 import { SiteFooter, SiteHeader } from './SiteChrome'
+import { DocsAgentContext } from './DocsAgentContext'
+import { sourceDate } from '../seo/docs'
 
 interface DocsPageProps {
   slug?: string
+  product: ProductId
 }
 
-export function DocsPage({ slug }: DocsPageProps) {
-  const doc = slug ? getDoc(slug) : defaultDoc()
+export function DocsPage({ slug, product }: DocsPageProps) {
+  const doc = slug ? getDoc(slug, product) : defaultDoc(product)
   const [meta, setMeta] = useState<DocMeta | null>(null)
 
   useEffect(() => {
@@ -17,7 +22,7 @@ export function DocsPage({ slug }: DocsPageProps) {
     let cancelled = false
     getBuildMeta().then((m) => {
       if (cancelled) return
-      setMeta(m?.docs?.[doc.slug] ?? null)
+      setMeta(m?.docs?.[doc.id] ?? null)
     })
     return () => {
       cancelled = true
@@ -27,14 +32,14 @@ export function DocsPage({ slug }: DocsPageProps) {
   if (!doc) {
     return (
       <div className="docs-page">
-        <SiteHeader />
+        <SiteHeader docsProductId={product} />
         <main className="not-found-shell" data-pagefind-ignore>
           <div className="not-found-card">
             <p className="not-found-kicker">404</p>
             <h1 className="not-found-title">Page not found</h1>
             <p className="not-found-desc">
               The docs page may have been moved.{' '}
-              <a href="/docs/overview">Back to the docs overview →</a>
+              <a href={docsHome(product)}>Back to the docs overview →</a>
             </p>
           </div>
         </main>
@@ -43,128 +48,47 @@ export function DocsPage({ slug }: DocsPageProps) {
     )
   }
 
-  const updatedLabel = formatBuildDate(meta?.updatedAt)
+  const updatedAt = sourceDate(meta?.updatedAt)
+  const updatedLabel = formatBuildDate(updatedAt)
 
   return (
     <div className="docs-page">
-      <SiteHeader />
-      <main className="docs-shell" data-pagefind-body>
+      <SiteHeader docsProductId={product} />
+      <main className="docs-shell" data-pagefind-body={isCurrentDoc(doc) ? true : undefined} data-pagefind-ignore={!isCurrentDoc(doc) ? true : undefined}>
         <aside className="docs-sidebar" data-pagefind-ignore>
-          <Sidebar key={doc.slug} currentSlug={doc.slug} />
+          <DocsSidebar key={doc.id} product={product} currentSlug={doc.slug} />
         </aside>
-        <article className="docs-article">
+        <article className="docs-article" aria-labelledby="doc-title">
           <header className="docs-article-header">
-            <h1>{doc.title}</h1>
+            <a className="docs-product-home" href={docsHome(product)}>{docsProduct(product).title} documentation</a>
+            <h1 id="doc-title">{doc.title}</h1>
             {doc.description && <p>{doc.description}</p>}
-            {(updatedLabel || meta?.editUrl) && (
-              <div className="docs-meta">
-                {updatedLabel && <span>Updated {updatedLabel}</span>}
-                {meta?.editUrl && (
-                  <a
-                    href={meta.editUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Edit on GitHub →
-                  </a>
-                )}
-              </div>
-            )}
+            <div className="docs-meta">
+              {updatedLabel && <span>Updated <time dateTime={updatedAt}>{updatedLabel}</time></span>}
+              {meta?.editUrl && (
+                <a
+                  href={meta.editUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Edit on GitHub →
+                </a>
+              )}
+              <DocsAgentContext key={doc.id} doc={doc} product={product} />
+            </div>
           </header>
+          {!isCurrentDoc(doc) && (
+            <p className="docs-status-notice">Archived {doc.kind}. This document records a proposal or past work and is not current product guidance. <a href={docsHome(product)}>Read the current {docsProduct(product).title} docs.</a></p>
+          )}
           <MarkdownRenderer content={doc.content} />
-          <DocPager currentSlug={doc.slug} />
+          <DocPager product={product} currentSlug={doc.slug} />
         </article>
         <aside className="docs-toc" data-pagefind-ignore>
           <TableOfContents doc={doc} />
         </aside>
       </main>
-      <SiteFooter current={`/docs/${doc.slug}`} />
+      <SiteFooter current={doc.canonicalPath!} />
     </div>
-  )
-}
-
-function Sidebar({ currentSlug }: { currentSlug: string }) {
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const currentItem = navGroups.flatMap((group) => group.items).find((item) => item.id === currentSlug)
-
-  return (
-    <nav className="sidebar-nav" aria-label="Documentation">
-      <div className="desktop-sidebar-nav">
-        <NavGroups currentSlug={currentSlug} />
-      </div>
-      <div className={mobileOpen ? 'mobile-docs-nav open' : 'mobile-docs-nav'}>
-        <button
-          type="button"
-          className="mobile-docs-trigger"
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-docs-panel"
-          onClick={() => setMobileOpen((open) => !open)}
-        >
-          <span>
-            <span className="mobile-docs-label">Docs menu</span>
-            <span className="mobile-docs-current">{currentItem?.title || 'Documentation'}</span>
-          </span>
-          <span className="mobile-docs-chevron" aria-hidden="true">{mobileOpen ? '−' : '+'}</span>
-        </button>
-        <div id="mobile-docs-panel" className="mobile-docs-panel" hidden={!mobileOpen}>
-          <NavGroups currentSlug={currentSlug} compact />
-        </div>
-      </div>
-    </nav>
-  )
-}
-
-function NavGroups({ currentSlug, compact = false }: { currentSlug: string; compact?: boolean }) {
-  return (
-    <>
-      {navGroups.map((group) => (
-        <details key={group.id} open={!compact || group.items.some((item) => item.id === currentSlug)}>
-          <summary>
-            <span>{group.title}</span>
-            <span>▾</span>
-          </summary>
-          <ul>
-            {group.items.map((item) => (
-              <li key={item.id}>
-                <a
-                  className={currentSlug === item.id ? 'active' : undefined}
-                  href={item.href}
-                  aria-current={currentSlug === item.id ? 'page' : undefined}
-                >
-                  {item.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
-    </>
-  )
-}
-
-function DocPager({ currentSlug }: { currentSlug: string }) {
-  const items = navGroups.flatMap((group) => group.items)
-  const index = items.findIndex((item) => item.id === currentSlug)
-  if (index < 0) return null
-  const prev = items[index - 1]
-  const next = items[index + 1]
-  if (!prev && !next) return null
-
-  return (
-    <nav className="docs-pager" aria-label="Previous and next page" data-pagefind-ignore>
-      {prev ? (
-        <a className="docs-pager-link" href={prev.href} rel="prev">
-          <small>Previous</small>
-          <span>{prev.title}</span>
-        </a>
-      ) : <span />}
-      {next && (
-        <a className="docs-pager-link next" href={next.href} rel="next">
-          <small>Next</small>
-          <span>{next.title}</span>
-        </a>
-      )}
-    </nav>
   )
 }
 

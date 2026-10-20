@@ -1,3 +1,4 @@
+import { chromeCompanionRequest, chromeCompanionSocket } from "../chrome-companion-ipc.js";
 import type {
   BrowserPageState,
   Bounds,
@@ -19,7 +20,7 @@ import {
 import type { SurfaceAdapter } from "./types.js";
 
 const chromeBundleId = "com.google.Chrome";
-const defaultCompanionBridgeURL = "http://127.0.0.1:4321";
+
 
 type CompanionSurfaceTarget = {
   tabId?: number;
@@ -84,13 +85,12 @@ function surfaceLooksLikeChrome(surface: SurfaceRef): boolean {
 }
 
 function companionBridgeURL(): string {
-  return process.env.ACTION_CHROME_COMPANION_BRIDGE_URL ?? defaultCompanionBridgeURL;
+  return `unix:${chromeCompanionSocket()}`;
 }
 
 async function companionHealth(): Promise<CompanionHealth> {
   try {
-    const response = await fetch(`${companionBridgeURL()}/health`);
-    return await response.json() as CompanionHealth;
+    return await chromeCompanionRequest<CompanionHealth>("/health");
   } catch (error) {
     return {
       ok: false,
@@ -101,15 +101,9 @@ async function companionHealth(): Promise<CompanionHealth> {
 }
 
 async function companionRPC<T>(message: CompanionMessage, timeoutMs?: number): Promise<T> {
-  const response = await fetch(`${companionBridgeURL()}/rpc`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(message),
-    ...(timeoutMs === undefined ? {} : { signal: AbortSignal.timeout(timeoutMs) }),
-  });
-  const payload = await response.json() as CompanionActionResponse<T>;
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.ok ? `Chrome Companion bridge returned ${response.status}.` : payload.error);
+  const payload = await chromeCompanionRequest<CompanionActionResponse<T>>("/rpc", message, timeoutMs);
+  if (!payload.ok) {
+    throw new Error(payload.error);
   }
   return payload.result;
 }

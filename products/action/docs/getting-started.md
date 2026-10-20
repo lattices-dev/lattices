@@ -1,106 +1,154 @@
-# Getting Started
+---
+title: Getting started
+description: Install Action.app, grant permissions, and check the local agent
+order: 1
+---
 
-This is the shortest path to a useful local dev loop for `action`.
+This page installs the released `Action.app` and checks that its agent runs.
+To build Action from source, see [Build from source](#build-from-source).
 
 ## Prerequisites
 
-- macOS on Apple Silicon
-- Bun
-- Swift/Xcode native build tooling
-- willingness to grant Accessibility and Screen Recording permissions for native automation tests
+- macOS on Apple Silicon.
+- [Bun](https://bun.sh/docs/installation).
+- The Lattices CLI. Install it with `bun add --global @lattices/lattices`.
 
-## Install
+## Install and launch
 
-```bash
-bun install
+1. Install the app:
+
+   ```sh
+   lats action install
+   ```
+
+   The command downloads `Action.dmg` from the latest `action-v*` GitHub
+   release and installs `/Applications/Action.app`. It does not need a source
+   checkout. Add `--launch` to open the app after installation.
+
+2. Launch the app:
+
+   ```sh
+   lats action launch
+   ```
+
+3. Grant Accessibility and Screen Recording to `Action.app` when macOS asks.
+   Native control needs Accessibility. Screenshots and recording need Screen
+   Recording.
+
+4. Check the status:
+
+   ```sh
+   lats action status --json
+   ```
+
+   Expect `installed: true`, `running: true`, and `agentReachable: true`. The
+   `agentUrl` is `ws://127.0.0.1:4319`.
+
+If `agentReachable` is `false`, launch the app again with `lats action launch`.
+`Action.app` starts its agent helper when it launches.
+
+## Query the agent
+
+```sh
+lats action call ping
+lats action call status
+lats action call permissions.snapshot
 ```
 
-## Build The Native App
+`status` lists the supported methods, the protocol version, and the path of
+the capability-token file. Parameters are a JSON object; the CLI sends each
+value as a string:
 
-```bash
-bun run native:app:build
+```sh
+lats action call capture.screenshotScreen '{"output":"/tmp/action-screen.png"}'
 ```
 
-This produces a signed app bundle at:
+See [API](/action/docs/api) for every method.
 
-`native/dist/Action.app`
+## Connect an agent
 
-## Check Native Health
+The app alone does not include the MCP server. To connect Claude Code, Codex,
+or another MCP harness, install the matching runtime bundle and configure it as
+described in [Agent setup](/action/docs/agent-setup). After that, verify the
+install:
 
-On an authorized development host, use the doctor wrapper before debugging capture:
-
-```bash
-bun run native:doctor
+```sh
+lats action capabilities
 ```
 
-This command changes the native build. Do not use it as read-only preflight on
-an installation target; install a matched app/runtime with rollback there.
-For private layers, read [Agent layer](agent-layer.md) and verify capabilities,
-host quarantine, and desktop-preservation acceptance before opening.
+Expect `runtimeParity.state` to be `matched-source-digest`. A version number
+alone does not prove that the app and runtime match.
 
-The development-host doctor command:
+## Quit
 
-- builds the app if needed
-- signs it
-- verifies signature state
-- reports current Accessibility and Screen Recording status
-
-## Launch The App
-
-```bash
-bun run native:launch
+```sh
+lats action quit
 ```
 
-Rebuild and relaunch after a native change:
+This quits the Action launcher. Prepared [agent-layer](/action/docs/agent-layer)
+displays stay connected until you release them explicitly.
 
-```bash
-bun run native:relaunch
-```
+## Build from source
 
-From the Lattices repo root, `bun run action:launch` and `bun run action:dev` call the same scripts.
+Use this path only on a development host. Requirements are macOS 14 or newer,
+Bun, and a Swift 6.2 toolchain. Without a developer signing identity, the build
+uses ad hoc signing, and permission checks are not stable across rebuilds.
 
-## Useful Smoke Commands
+From `products/action` in a Lattices checkout:
 
-Check permissions:
+1. Install dependencies:
 
-```bash
-bun run native:permissions:status
-```
+   ```sh
+   bun install
+   ```
 
-Request permissions:
+2. Build the signed app:
 
-```bash
-bun run native:permissions:request
-```
+   ```sh
+   bun run native:app:build
+   ```
 
-Run a screenshot smoke test:
+   The build writes `native/dist/Action.app`, including the agent helper.
 
-```bash
-bun run native:test:screenshot
-```
+3. Launch the app:
 
-Run a recording smoke test:
+   ```sh
+   bun run native:launch
+   ```
 
-```bash
-bun run native:test:record
-```
+   The launch command rebuilds only if the app is missing or older than its
+   sources. After a native change, use `bun run native:relaunch`.
 
-## Important Runtime Note
+4. Check the bundle and permissions:
 
-Recording is asynchronous.
+   ```sh
+   bun run native:verify
+   bun run native:permissions:status
+   ```
 
-The initial CLI response means recording startup was accepted. Completion is
-represented by the artifact plus a finished marker file written later by the
-recording path.
+5. With permissions granted, run the capture smoke checks:
 
-If you are debugging recording, inspect:
+   ```sh
+   bun run native:test:screenshot
+   bun run native:test:record
+   ```
 
-- the `.mov` output
-- the `.finished` marker
-- the debug log passed through `--debug-log`
+   The recording check waits for completion and reports the video, the
+   `.finished` marker, and the debug log.
 
-## Where To Read Next
+`bun run native:doctor` builds, signs, verifies, and reports permissions in one
+step. It changes the native build. Do not run it as a read-only check on an
+installation target. From the Lattices repository root, `bun run action:launch`
+and `bun run action:dev` call the same launch and relaunch scripts.
 
-- [docs/native-runtime.md](docs/native-runtime.md)
-- [docs/recording.md](docs/recording.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+## Recording is asynchronous
+
+A recording start reply means that startup was accepted. It does not mean that
+the recording finished. Completion is the movie file plus a `.finished` marker.
+See [Recording](/action/docs/recording).
+
+## Next steps
+
+- [Concepts](/action/docs/concepts)
+- [Native runtime](/action/docs/native-runtime)
+- [Browser](/action/docs/browser)

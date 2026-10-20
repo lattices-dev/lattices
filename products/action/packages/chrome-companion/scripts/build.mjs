@@ -1,8 +1,9 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url);
-const rootPath = root.pathname;
+const rootPath = fileURLToPath(root);
 const distPath = join(rootPath, "dist");
 
 await rm(distPath, { recursive: true, force: true });

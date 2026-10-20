@@ -1,14 +1,14 @@
-// Lightweight WebSocket client for the Action agent (ws://127.0.0.1:4319)
+// Authenticated WebSocket client over the Action private Unix socket
 // Same framing approach as daemon-client.ts; the Action protocol differs:
 // request  { id, method, params: { [key]: string } }
 // response { id, ok, result?: { [key]: string }, error?: string }
 // Zero npm dependencies.
 
 import { createConnection, type Socket } from "node:net";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
+import { localEndpoint, readLocalToken, validateLocalSocket } from "../packages/desktop-client/local-ipc";
 
-const AGENT_HOST = "127.0.0.1";
-const AGENT_PORT = 4319;
+const MAX_FRAME_SIZE = 16 * 1024 * 1024;
 
 interface ParsedFrame {
   payload: string;
@@ -30,16 +30,23 @@ export async function actionAgentCall(
   params?: Record<string, unknown> | null,
   timeoutMs = 3000
 ): Promise<ActionAgentResult> {
+  const endpoint = localEndpoint("action");
+  if (process.env.ACTION_SOCKET_PATH) endpoint.socketPath = process.env.ACTION_SOCKET_PATH;
+  const token = readLocalToken(endpoint.tokenFile!);
+  validateLocalSocket(endpoint.socketPath!);
   const id = randomBytes(8).toString("hex");
   const stringParams: Record<string, string> = {};
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value === null || value === undefined) continue;
     stringParams[key] = typeof value === "string" ? value : JSON.stringify(value);
   }
+  stringParams.authToken = token;
+  stringParams.protocolVersion = "2";
   const request = JSON.stringify({ id, method, params: stringParams });
 
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: AGENT_HOST, port: AGENT_PORT });
+    const socket = createConnection(endpoint.socketPath!);
+    const key = randomBytes(16).toString("base64");
     let settled = false;
     let buffer = Buffer.alloc(0);
     let upgraded = false;
@@ -65,11 +72,14 @@ export async function actionAgentCall(
       }
     });
 
+    socket.on("close", () => {
+      if (!settled) { settled = true; cleanup(); reject(new Error("Action agent disconnected")); }
+    });
     socket.on("connect", () => {
-      const key = randomBytes(16).toString("base64");
       const upgrade = [
         `GET / HTTP/1.1`,
-        `Host: ${AGENT_HOST}:${AGENT_PORT}`,
+        `Host: localhost`,
+        `x-lattices-token: ${token}`,
         `Upgrade: websocket`,
         `Connection: Upgrade`,
         `Sec-WebSocket-Key: ${key}`,
@@ -85,9 +95,13 @@ export async function actionAgentCall(
 
       if (!upgraded) {
         const headerEnd = buffer.indexOf("\r\n\r\n");
-        if (headerEnd === -1) return;
+        if (headerEnd === -1) {
+          if (buffer.length > 16_384) { settled = true; cleanup(); reject(new Error("Oversized Action handshake")); }
+          return;
+        }
         const header = buffer.subarray(0, headerEnd).toString();
-        if (!header.includes("101")) {
+        const expectedAccept = createHash("sha1").update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+        if (!/^HTTP\/1\.[01] 101(?: |$)/.test(header) || !header.split("\r\n").some(line => line.toLowerCase().startsWith("sec-websocket-accept:") && line.slice(line.indexOf(":") + 1).trim() === expectedAccept)) {
           settled = true;
           cleanup();
           reject(new Error("WebSocket upgrade failed"));
@@ -99,7 +113,8 @@ export async function actionAgentCall(
       }
 
       while (true) {
-        const result = parseFrame(buffer);
+        let result: ParsedFrame | null;
+        try { result = parseFrame(buffer); } catch (error) { settled = true; cleanup(); reject(error); return; }
         if (!result) break;
         buffer = result.rest;
 
@@ -190,6 +205,7 @@ function parseFrame(buf: Buffer): ParsedFrame | null {
     offset = 10;
   }
 
+  if (!Number.isSafeInteger(payloadLen) || payloadLen > MAX_FRAME_SIZE) throw new Error("Oversized Action response");
   if (isMasked) offset += 4;
   if (buf.length < offset + payloadLen) return null;
 

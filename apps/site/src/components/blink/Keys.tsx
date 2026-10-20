@@ -25,7 +25,7 @@ const KEYS: {
     letter: 'N',
   },
   {
-    action: 'blink all notes',
+    action: 'show or hide all notes',
     scope: 'global',
     spoken: 'Control Option Shift Command B',
     visual: 'hyper',
