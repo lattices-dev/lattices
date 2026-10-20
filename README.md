@@ -116,7 +116,7 @@ const windows = await daemonCall('windows.search', { query: 'api' })
 console.log(windows)
 ```
 
-Apps installed from published releases host the API at `ws://127.0.0.1:9399`, without connection authentication. Source builds with the private IPC changes use `~/.lattices/run/lattices.sock` and a local token instead. Use a matching CLI and app build; installing a source build locally does not make it a public release. Read the [API reference](https://lattices.dev/lattices/docs/api) and [agent guide](https://lattices.dev/lattices/docs/agents) for the transport that matches your build.
+Lattices 0.15.0 hosts the API at `~/.lattices/run/lattices.sock` and requires a local token before the WebSocket upgrade. Install the matching 0.15.0 CLI and app together. Versions before 0.15.0 use `ws://127.0.0.1:9399`; clients that connect directly to that port must migrate. Read the [API reference](https://lattices.dev/lattices/docs/api) and [agent guide](https://lattices.dev/lattices/docs/agents) for the transport that matches your build.
 
 You can also expose the CLI as a stdio MCP server:
 
@@ -219,7 +219,7 @@ These instructions target the repository source, which can be ahead of the npm r
 
 ## Linux host
 
-The [Linux host](https://github.com/lattices-dev/lattices/blob/main/packages/host-linux/README.md) exposes a Hyprland desktop through the same API envelope (`{id, method, params}`). The private IPC source build keeps the host and visit bridge on local Unix sockets. Remote access requires the separate gateway: run `lats gateway start --tailnet` on the Linux host, then approve paired clients and their grants. The gateway uses port 9399 for both RPC and visit traffic. Older builds listen directly on port 9399 and use port 5287 for visits; use matching host and client builds.
+The [Linux host](https://github.com/lattices-dev/lattices/blob/main/packages/host-linux/README.md) exposes a Hyprland desktop through the same API envelope (`{id, method, params}`). Version 0.15.0 keeps the host and visit bridge on local Unix sockets. Remote access requires the separate gateway: run `lats gateway start --tailnet` on the Linux host, then approve paired clients and their grants. The gateway uses port 9399 for both RPC and visit traffic. Older builds listen directly on port 9399 and use port 5287 for visits; use matching host and client builds.
 
 Install Bun and Tailscale, then run these commands inside a Hyprland session. Visiting also requires Quickshell for the cursor overlay and `wtype` for keyboard input.
 
