@@ -27,7 +27,7 @@ export default function BlinkPage() {
         <Keys />
         <Install />
       </main>
-      <SiteFooter current="/blink" />
+      <SiteFooter current="/canvas" />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { chromeCompanionRequest } from "../../runtime/src/chrome-companion-ipc.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -161,8 +162,7 @@ async function checkProfile() {
   }
 
   try {
-    const response = await fetch(process.env.ACTION_CHROME_COMPANION_HEALTH_URL || "http://127.0.0.1:4321/health");
-    summary.bridgeHealth = await response.json();
+    summary.bridgeHealth = await chromeCompanionRequest("/health");
   } catch {
     summary.bridgeHealth = { ok: false, connected: false, error: "Bridge server is not reachable." };
   }

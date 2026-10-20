@@ -1,7 +1,7 @@
 // Explicit safe process acceptance: SPEECH_REVIEW_APP must name a task-owned
 // staged app. A separate control connection reserves playback before enqueue,
 // then cancels the queued job before releasing; the probe produces no audio.
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
@@ -9,13 +9,14 @@ import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 const app = process.env.SPEECH_REVIEW_APP;
 if (!app) throw new Error('Set SPEECH_REVIEW_APP to the task-owned staged Voice.app.');
-const dir = await mkdtemp(join(tmpdir(), 'speech-lifecycle-'));
+const dir = await mkdtemp(join(await realpath(tmpdir()), 'speech-lifecycle-'));
 const capability = join(dir, 'capability');
 const root = resolve(import.meta.dir, '..');
 const probe = join(dir, 'speech-proxy-process');
 execFileSync('/usr/bin/xcrun', ['swiftc', '-parse-as-library', '-swift-version', '5',
   join(root, 'tests/fixtures/speech-proxy-process.swift'),
   join(root, 'apps/mac/Sources/Core/CompanionApps/SpeechCompanionConnection.swift'),
+  join(root, 'apps/mac/Sources/Core/CompanionApps/SpeechUnixWebSocket.swift'),
   join(root, 'apps/mac/Sources/Core/Daemon/DaemonProtocol.swift'), '-o', probe]);
 const host = spawn(join(app, 'Contents/MacOS/Voice'), ['--diagnose-host', capability], { stdio: ['ignore', 'pipe', 'pipe'] });
 const hostExit = once(host, 'exit');

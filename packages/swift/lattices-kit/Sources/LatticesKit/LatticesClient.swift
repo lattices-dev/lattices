@@ -37,7 +37,11 @@ public struct LatticesEvent: Codable, Equatable, Sendable {
 }
 
 public final class LatticesClient: @unchecked Sendable {
-    public static let defaultEndpoint = URL(string: "ws://127.0.0.1:9399")!
+    public static var defaultEndpoint: URL {
+        let directory = ProcessInfo.processInfo.environment["LATTICES_RUNTIME_DIR"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices/run")
+        return directory.appendingPathComponent("lattices.sock")
+    }
 
     private let transport: LatticesTransport
 
@@ -135,7 +139,7 @@ actor LatticesTransport {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private var task: URLSessionWebSocketTask?
+    private var task: LocalWebSocket?
     private var receiveTask: Task<Void, Never>?
     private var pending: [String: CheckedContinuation<JSONValue, Error>] = [:]
     private var pendingTimeouts: [String: Task<Void, Never>] = [:]
@@ -154,7 +158,7 @@ actor LatticesTransport {
 
     func connect() {
         guard task == nil else { return }
-        let nextTask = session.webSocketTask(with: endpoint)
+        let nextTask = LocalWebSocket(endpoint: endpoint, session: session)
         task = nextTask
         nextTask.resume()
         receiveTask = Task { await receiveLoop(task: nextTask) }
@@ -223,7 +227,7 @@ actor LatticesTransport {
         }
     }
 
-    private func receiveLoop(task: URLSessionWebSocketTask) async {
+    private func receiveLoop(task: LocalWebSocket) async {
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
@@ -273,7 +277,7 @@ actor LatticesTransport {
         }
     }
 
-    private func handleDisconnect(task disconnectedTask: URLSessionWebSocketTask, error: Error) {
+    private func handleDisconnect(task disconnectedTask: LocalWebSocket, error: Error) {
         guard task === disconnectedTask else { return }
         task = nil
         receiveTask = nil

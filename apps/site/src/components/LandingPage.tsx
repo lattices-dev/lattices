@@ -10,7 +10,7 @@ import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
 import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
 
-const latticesCliVersion = "0.14.1";
+const latticesCliVersion = "0.15.0";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 // Public entry point documented in docs/install-linux.md.
 const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";
@@ -884,8 +884,8 @@ function HandsOnSection() {
           a 3×3 <em>matrix</em> — the same completer as the logo.
         </p>
         <div className="hands-links">
-          <a href="/docs/app">Shortcut reference &rarr;</a>
-          <a href="/docs/mouse-gestures">Mouse gestures &rarr;</a>
+          <a href="/lattices/docs/app">Shortcut reference &rarr;</a>
+          <a href="/lattices/docs/mouse-gestures">Mouse gestures &rarr;</a>
         </div>
       </SectionHead>
 
@@ -1001,7 +1001,7 @@ export default function App() {
             <a href="/blog" className="nav-link nav-blog-link">
               Blog
             </a>
-            <a href="/docs/overview" className="nav-link">
+            <a href="/lattices/docs/overview" className="nav-link">
               Docs
             </a>
             <a
@@ -1040,7 +1040,7 @@ export default function App() {
                 <span aria-hidden="true"><AppleIcon /></span>
                 Download for macOS
               </a>
-              <a href="/docs/overview" className="hero-secondary-cta">
+              <a href="/lattices/docs/overview" className="hero-secondary-cta">
                 Read the docs
               </a>
             </div>
@@ -1142,7 +1142,7 @@ export default function App() {
               <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
             </div>
             <div className="omarchy-links">
-              <a href="/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
+              <a href="/lattices/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
               <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
             </div>
           </div>
@@ -1210,7 +1210,7 @@ export default function App() {
                   <a href="/action" className="agent-api-link cua-stage-api-link">
                     Meet Action &rarr;
                   </a>
-                  <a href="/docs/api" className="agent-api-link cua-stage-api-link cua-stage-api-secondary">
+                  <a href="/lattices/docs/api" className="agent-api-link cua-stage-api-link cua-stage-api-secondary">
                     Computer-use API &rarr;
                   </a>
                 </div>
@@ -1412,7 +1412,7 @@ export default function App() {
                 <li><code>computer.elementAction</code> — stage or execute those ids</li>
                 <li><code>computer.verify</code> — confirm via OCR or AX</li>
               </ul>
-              <a href="/docs/api" className="agent-api-link">
+              <a href="/lattices/docs/api" className="agent-api-link">
                 Full API reference &rarr;
               </a>
             </div>
@@ -1481,15 +1481,15 @@ export default function App() {
                 <code>bun install -g @lattices/lattices</code>
                 <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
               </div>
-              <small>CLI {latticesCliVersion} · <a href="/docs/quickstart">Setup guide</a></small>
+              <small>CLI {latticesCliVersion} · <a href="/lattices/docs/quickstart">Setup guide</a></small>
               <span className="sr-only" role="status">{installCopy === "Copied" ? "Command copied" : ""}</span>
             </div>
           </div>
           <details className="install-developer">
             <summary>Developer setup <span>Agent skills &amp; API</span></summary>
             <div className="install-developer-options">
-              <div><h3>Agent skills</h3><code>npx skills add lattices-dev/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/docs/agents">Agent setup →</a></div>
-              <div><h3>Typed API</h3><code>npm i @lattices/lattices</code><p>Build scripts and integrations for your workspace.</p><a href="/docs/api">API reference →</a></div>
+              <div><h3>Agent skills</h3><code>npx skills add lattices-dev/lattices</code><p>Teach your coding agent to use Lattices.</p><a href="/lattices/docs/agents">Agent setup →</a></div>
+              <div><h3>Typed API</h3><code>npm i @lattices/lattices</code><p>Build scripts and integrations for your workspace.</p><a href="/lattices/docs/api">API reference →</a></div>
             </div>
           </details>
         </section>
@@ -1537,7 +1537,7 @@ export default function App() {
               CLI package
             </a>
             <a
-              href="/docs/api"
+              href="/lattices/docs/api"
               className="btn btn-secondary"
               onClick={() => trackCta('view_api', '/docs/api')}
             >

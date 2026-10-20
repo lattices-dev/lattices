@@ -6,6 +6,7 @@
       "name": "www",
       "dependencies": {
         "@arach/arc": "^0.9.1",
+        "github-slugger": "^2.0.0",
         "motion": "^12.42.2",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",

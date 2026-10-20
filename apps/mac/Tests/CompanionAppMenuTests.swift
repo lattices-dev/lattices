@@ -15,7 +15,7 @@ final class CompanionAppMenuTests: XCTestCase {
         let root = NSMenu()
         controller.attach(to: root)
         let apps = root.items.first!.submenu!
-        XCTAssertEqual(apps.items.map(\.title), ["Blink", "Action", "Voice"])
+        XCTAssertEqual(apps.items.map(\.title), ["Canvas", "Action", "Voice"])
         for product in apps.items {
             let menu = product.submenu!
             XCTAssertEqual(menu.items.last?.title, "Install")

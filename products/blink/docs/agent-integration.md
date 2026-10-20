@@ -1,4 +1,14 @@
+---
+title: Agent integration proposal
+description: Proposed agent verb set and integration surfaces (CLI, MCP, skill, SDK). Not implemented beyond the current CLI.
+---
+
 # Blink v2 — Agent Interface: verbs & surfaces
+
+> **Status: proposal.** This document is a design proposal, not a description of
+> the shipped app. There is no Blink MCP server or SDK today. For current agent
+> surfaces, see the [`blink` CLI](/blink/docs/cli) and the
+> [Agent socket API](/blink/docs/api).
 
 > Draft 2026-07-15. Sits **above** `agent-api.md` (the raw Unix-socket JSON-RPC,
 > layer 2.5) and beside `cli.md`. This doc specifies two things:

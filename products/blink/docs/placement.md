@@ -1,11 +1,23 @@
-# Blink — Desk placement model
+---
+title: Placement
+description: The grid placement model for note panels: what ships today and what is proposed.
+---
+
+# Canvas — Desk placement model
 
 > Draft 2026-07-15. How agents (and the user) put notes *where they go* on screen.
-> Blink's own design; the good ideas are adapted from **Lattices'** placement
+> Canvas's own design; the good ideas are adapted from **Lattices'** placement
 > engine (one primitive + aliases, declarative, deterministic, provenance-gated)
 > — the ideas, not a dependency. Companion to `agent-integration.md` (the verbs)
-> and `cli.md`. Status: the **primitive is shipped** (`BlinkCore/BlinkGrid`);
-> the live-plane parts (auto / collision / scenes / tidy) land with the socket.
+> and `cli.md`.
+
+> **Status: mixed.** Shipped: the `BlinkGrid` primitive and the `slot 1…9`
+> home (`blink present --slot N`, `notes.present` on the
+> [agent socket](/canvas/docs/api)), plus named desks (`blink desk save` /
+> `restore`). Proposed and not built: named-zone and span targets in the CLI or
+> frontmatter, `auto`, provenance-gated collisions, `tidy`, scenes, and display
+> addressing by stable id. The agent socket exists, but these parts did not ship
+> with it.
 
 ## Thesis: one primitive, everything else is sugar
 
@@ -96,7 +108,7 @@ scene. Cheap, high value.
 
 ## Deliberately skipped
 
-Lattices tiles arbitrary *foreign* windows over Accessibility APIs; Blink owns its
+Lattices tiles arbitrary *foreign* windows over Accessibility APIs; Canvas owns its
 panels and gives each note a declarative home, so we skip its scar tissue:
 
 - **masonry / bin-packing / auto-tiling** — non-reproducible in a fixed-home model
@@ -115,6 +127,10 @@ panels and gives each note a declarative home, so we skip its scar tissue:
 - **Shipped:** `BlinkGrid` primitive + spans + named/spec resolver; `slot 1…9`
   place-on-open (declarative home) and live slot-move via `blink present --slot N`;
   shared geometry with the visual `GridOverlay`.
-- **Next (with the socket / live plane):** `blink.place` (named + span) via
-  `--place`; deterministic `auto`; provenance + collision routing; `tidy`; scenes;
-  multi-screen by stable id.
+- **Shipped, related:** named desks. `blink desk save` captures the current
+  arrangement, which covers the "capture-current-as-scene" idea above without
+  the declarative scene format.
+- **Proposed, not built:** `blink.place` (named + span) via `--place`;
+  deterministic `auto`; provenance + collision routing; `tidy`; declarative
+  scenes; multi-screen by stable id. Today `blink desk` addresses displays by
+  one-based index.

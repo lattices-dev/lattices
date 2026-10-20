@@ -1,0 +1,2406 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "id": "lattices",
+      "title": "Lattices",
+      "description": "Windows, workspaces, terminal sessions, and voice input.",
+      "home": "/",
+      "agent": {
+        "guide": "/lattices/docs/agents",
+        "firstCheck": "lats call api.schema",
+        "expect": "The daemon method list. Then read `lats call desktop.snapshot` before you move any window.",
+        "boundary": "Lattices owns windows, tiling, spaces, workspace layers, tmux sessions, screen text, and voice input. Native app control is Action; notes are Canvas; spoken output is Speech."
+      },
+      "docsHome": "/lattices/docs"
+    },
+    {
+      "id": "action",
+      "title": "Action",
+      "description": "Observe and control apps, browsers, and recordings.",
+      "home": "/action",
+      "agent": {
+        "guide": "/action/docs/agent-setup",
+        "firstCheck": "lats action status",
+        "expect": "Install, runtime, and agent state. Over MCP, read `capabilities` and `tools/list` and report the native/runtime match before you take control.",
+        "boundary": "Action owns native observe, resolve, act, and record, private agent layers, and Action-owned browsers. Window tiling and workspaces are Lattices."
+      },
+      "docsHome": "/action/docs"
+    },
+    {
+      "id": "blink",
+      "title": "Canvas",
+      "description": "Spatial notes, placement, and named desks.",
+      "home": "/canvas",
+      "agent": {
+        "guide": "/canvas/docs/agents",
+        "firstCheck": "blink ls --json",
+        "expect": "The note list as JSON. Set `BLINK_HOME` to a scratch directory for automation that must not touch the user's notes.",
+        "boundary": "Canvas owns spatial notes: one Markdown file per floating panel, placement, and named desks. It does not control other windows or speak."
+      },
+      "docsHome": "/canvas/docs"
+    },
+    {
+      "id": "speech",
+      "title": "Speech",
+      "description": "Queue text, choose voices, and control playback.",
+      "home": "/speech",
+      "agent": {
+        "guide": "/speech/docs/agents",
+        "firstCheck": "lats voice status --json",
+        "expect": "A `helper` section with the Voice.app queue, or an error code with a recovery step. This check makes no sound.",
+        "boundary": "Speech owns spoken output: the queue, voices, and playback. Listening and spoken commands are Lattices voice input."
+      },
+      "docsHome": "/speech/docs"
+    }
+  ],
+  "pages": [
+    {
+      "id": "lattices:overview",
+      "product": "lattices",
+      "slug": "overview",
+      "source": "docs/overview.md",
+      "title": "Overview",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/overview",
+      "aliases": [
+        "/docs/overview",
+        "/lattices/docs",
+        "/docs"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/overview.md",
+        "/agent/raw/docs/overview.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:quickstart",
+      "product": "lattices",
+      "slug": "quickstart",
+      "source": "docs/quickstart.md",
+      "title": "Quickstart",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/quickstart",
+      "aliases": [
+        "/docs/quickstart"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/quickstart.md",
+        "/agent/raw/docs/quickstart.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:install-linux",
+      "product": "lattices",
+      "slug": "install-linux",
+      "source": "docs/install-linux.md",
+      "title": "Install on Linux",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/install-linux",
+      "aliases": [
+        "/docs/install-linux"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/install-linux.md",
+        "/agent/raw/docs/install-linux.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:concepts",
+      "product": "lattices",
+      "slug": "concepts",
+      "source": "docs/concepts.md",
+      "title": "Concepts and runtime",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/concepts",
+      "aliases": [
+        "/docs/concepts"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/concepts.md",
+        "/agent/raw/docs/concepts.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:app",
+      "product": "lattices",
+      "slug": "app",
+      "source": "docs/app.md",
+      "title": "Menu bar app",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/app",
+      "aliases": [
+        "/docs/app"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/app.md",
+        "/agent/raw/docs/app.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:config",
+      "product": "lattices",
+      "slug": "config",
+      "source": "docs/config.md",
+      "title": "Configuration",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/config",
+      "aliases": [
+        "/docs/config"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/config.md",
+        "/agent/raw/docs/config.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:layers",
+      "product": "lattices",
+      "slug": "layers",
+      "source": "docs/layers.md",
+      "title": "Layers and tabs",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/layers",
+      "aliases": [
+        "/docs/layers"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/layers.md",
+        "/agent/raw/docs/layers.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:workspace-map",
+      "product": "lattices",
+      "slug": "workspace-map",
+      "source": "docs/workspace-map.md",
+      "title": "Workspace map",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/workspace-map",
+      "aliases": [
+        "/docs/workspace-map"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/workspace-map.md",
+        "/agent/raw/docs/workspace-map.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:tiling-reference",
+      "product": "lattices",
+      "slug": "tiling-reference",
+      "source": "docs/tiling-reference.md",
+      "title": "Window placement",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/tiling-reference",
+      "aliases": [
+        "/docs/tiling-reference"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/tiling-reference.md",
+        "/agent/raw/docs/tiling-reference.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:mouse-gestures",
+      "product": "lattices",
+      "slug": "mouse-gestures",
+      "source": "docs/mouse-gestures.md",
+      "title": "Mouse gestures",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/mouse-gestures",
+      "aliases": [
+        "/docs/mouse-gestures"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/mouse-gestures.md",
+        "/agent/raw/docs/mouse-gestures.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:ocr",
+      "product": "lattices",
+      "slug": "ocr",
+      "source": "docs/ocr.md",
+      "title": "Screen OCR and search",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/ocr",
+      "aliases": [
+        "/docs/ocr"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/ocr.md",
+        "/agent/raw/docs/ocr.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:visit",
+      "product": "lattices",
+      "slug": "visit",
+      "source": "docs/visit.md",
+      "title": "Visit a workspace",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/visit",
+      "aliases": [
+        "/docs/visit"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/visit.md",
+        "/agent/raw/docs/visit.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:voice",
+      "product": "lattices",
+      "slug": "voice",
+      "source": "docs/voice.md",
+      "title": "Voice input",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/voice",
+      "aliases": [
+        "/docs/voice"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/voice.md",
+        "/agent/raw/docs/voice.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:agents",
+      "product": "lattices",
+      "slug": "agents",
+      "source": "docs/agents.md",
+      "title": "For agents",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/agents",
+      "aliases": [
+        "/docs/agents"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/agents.md",
+        "/agent/raw/docs/agents.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:api",
+      "product": "lattices",
+      "slug": "api",
+      "source": "docs/api.md",
+      "title": "API reference",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/api",
+      "aliases": [
+        "/docs/api"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/api.md",
+        "/agent/raw/docs/api.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:mcp",
+      "product": "lattices",
+      "slug": "mcp",
+      "source": "docs/mcp.md",
+      "title": "Shared MCP launcher",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/mcp",
+      "aliases": [
+        "/docs/mcp"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/mcp.md",
+        "/agent/raw/docs/mcp.md"
+      ],
+      "ownership": "lattices + action"
+    },
+    {
+      "id": "lattices:agent-layer-guide",
+      "product": "lattices",
+      "slug": "agent-layer-guide",
+      "source": "docs/agent-layer-guide.md",
+      "title": "Agent layer",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/agent-layer-guide",
+      "aliases": [
+        "/docs/agent-layer-guide"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/agent-layer-guide.md",
+        "/agent/raw/docs/agent-layer-guide.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:cluster-verbs",
+      "product": "lattices",
+      "slug": "cluster-verbs",
+      "source": "docs/cluster-verbs.md",
+      "title": "Paired hosts",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/cluster-verbs",
+      "aliases": [
+        "/docs/cluster-verbs"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/cluster-verbs.md",
+        "/agent/raw/docs/cluster-verbs.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:pi-lattices",
+      "product": "lattices",
+      "slug": "pi-lattices",
+      "source": "docs/pi-lattices.md",
+      "title": "Pi integration",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/pi-lattices",
+      "aliases": [
+        "/docs/pi-lattices"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/pi-lattices.md",
+        "/agent/raw/docs/pi-lattices.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:embedded-sdk",
+      "product": "lattices",
+      "slug": "embedded-sdk",
+      "source": "docs/embedded-sdk.md",
+      "title": "Embedded SDK",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/embedded-sdk",
+      "aliases": [
+        "/docs/embedded-sdk"
+      ],
+      "navGroup": "Development",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/embedded-sdk.md",
+        "/agent/raw/docs/embedded-sdk.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:terminal-kit",
+      "product": "lattices",
+      "slug": "terminal-kit",
+      "source": "docs/terminal-kit.md",
+      "title": "Terminal Kit",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/terminal-kit",
+      "aliases": [
+        "/docs/terminal-kit"
+      ],
+      "navGroup": "Development",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/terminal-kit.md",
+        "/agent/raw/docs/terminal-kit.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:release",
+      "product": "lattices",
+      "slug": "release",
+      "source": "docs/release.md",
+      "title": "Releases",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/release",
+      "aliases": [
+        "/docs/release"
+      ],
+      "navGroup": "Development",
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/release.md",
+        "/agent/raw/docs/release.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:agent-execution-plan",
+      "product": "lattices",
+      "slug": "agent-execution-plan",
+      "source": "docs/agent-execution-plan.md",
+      "title": "Agent execution plan",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/agent-execution-plan",
+      "aliases": [
+        "/docs/agent-execution-plan"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/agent-execution-plan.md",
+        "/agent/raw/docs/agent-execution-plan.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:agent/cua-implementation",
+      "product": "lattices",
+      "slug": "agent/cua-implementation",
+      "source": "docs/agent/cua-implementation.md",
+      "title": "Cua implementation",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/agent/cua-implementation.md",
+        "/agent/raw/docs/agent/cua-implementation.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:agent/dewey-agent-architecture",
+      "product": "lattices",
+      "slug": "agent/dewey-agent-architecture",
+      "source": "docs/agent/dewey-agent-architecture.md",
+      "title": "Dewey agent architecture",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/agent/dewey-agent-architecture.md",
+        "/agent/raw/docs/agent/dewey-agent-architecture.md"
+      ],
+      "ownership": "external: dewey / family integration"
+    },
+    {
+      "id": "lattices:agent/dewey-eve-agent",
+      "product": "lattices",
+      "slug": "agent/dewey-eve-agent",
+      "source": "docs/agent/dewey-eve-agent.md",
+      "title": "Dewey eve agent",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/agent/dewey-eve-agent.md",
+        "/agent/raw/docs/agent/dewey-eve-agent.md"
+      ],
+      "ownership": "external: dewey / family integration"
+    },
+    {
+      "id": "lattices:ai-chat-ux-review",
+      "product": "lattices",
+      "slug": "ai-chat-ux-review",
+      "source": "docs/ai-chat-ux-review.md",
+      "title": "Ai chat ux review",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/ai-chat-ux-review",
+      "aliases": [
+        "/docs/ai-chat-ux-review"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/ai-chat-ux-review.md",
+        "/agent/raw/docs/ai-chat-ux-review.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:assistant-knowledge",
+      "product": "lattices",
+      "slug": "assistant-knowledge",
+      "source": "docs/assistant-knowledge.md",
+      "title": "Assistant knowledge",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/assistant-knowledge",
+      "aliases": [
+        "/docs/assistant-knowledge"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/assistant-knowledge.md",
+        "/agent/raw/docs/assistant-knowledge.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:companion-deck-builder-spec",
+      "product": "lattices",
+      "slug": "companion-deck-builder-spec",
+      "source": "docs/companion-deck-builder-spec.md",
+      "title": "Companion deck builder spec",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/companion-deck-builder-spec",
+      "aliases": [
+        "/docs/companion-deck-builder-spec"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/companion-deck-builder-spec.md",
+        "/agent/raw/docs/companion-deck-builder-spec.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:companion-deck",
+      "product": "lattices",
+      "slug": "companion-deck",
+      "source": "docs/companion-deck.md",
+      "title": "Companion deck",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/companion-deck",
+      "aliases": [
+        "/docs/companion-deck"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/companion-deck.md",
+        "/agent/raw/docs/companion-deck.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:component-extraction-roadmap",
+      "product": "lattices",
+      "slug": "component-extraction-roadmap",
+      "source": "docs/component-extraction-roadmap.md",
+      "title": "Component extraction roadmap",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/component-extraction-roadmap",
+      "aliases": [
+        "/docs/component-extraction-roadmap"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/component-extraction-roadmap.md",
+        "/agent/raw/docs/component-extraction-roadmap.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:gesture-customization-proposal",
+      "product": "lattices",
+      "slug": "gesture-customization-proposal",
+      "source": "docs/gesture-customization-proposal.md",
+      "title": "Gesture customization proposal",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/gesture-customization-proposal",
+      "aliases": [
+        "/docs/gesture-customization-proposal"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/gesture-customization-proposal.md",
+        "/agent/raw/docs/gesture-customization-proposal.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:github-profile",
+      "product": "lattices",
+      "slug": "github-profile",
+      "source": "docs/github-profile.md",
+      "title": "Github profile",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/github-profile",
+      "aliases": [
+        "/docs/github-profile"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/github-profile.md",
+        "/agent/raw/docs/github-profile.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:handsoff-test-scenarios",
+      "product": "lattices",
+      "slug": "handsoff-test-scenarios",
+      "source": "docs/handsoff-test-scenarios.md",
+      "title": "Handsoff test scenarios",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/handsoff-test-scenarios",
+      "aliases": [
+        "/docs/handsoff-test-scenarios"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/handsoff-test-scenarios.md",
+        "/agent/raw/docs/handsoff-test-scenarios.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:hudson-overlay-alignment",
+      "product": "lattices",
+      "slug": "hudson-overlay-alignment",
+      "source": "docs/hudson-overlay-alignment.md",
+      "title": "Hudson overlay alignment",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/hudson-overlay-alignment",
+      "aliases": [
+        "/docs/hudson-overlay-alignment"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/hudson-overlay-alignment.md",
+        "/agent/raw/docs/hudson-overlay-alignment.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:hudson-overlay-next-steps",
+      "product": "lattices",
+      "slug": "hudson-overlay-next-steps",
+      "source": "docs/hudson-overlay-next-steps.md",
+      "title": "Hudson overlay next steps",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/hudson-overlay-next-steps",
+      "aliases": [
+        "/docs/hudson-overlay-next-steps"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/hudson-overlay-next-steps.md",
+        "/agent/raw/docs/hudson-overlay-next-steps.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:hyperspace-grid-snappiness",
+      "product": "lattices",
+      "slug": "hyperspace-grid-snappiness",
+      "source": "docs/hyperspace-grid-snappiness.md",
+      "title": "Hyperspace grid snappiness",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/hyperspace-grid-snappiness",
+      "aliases": [
+        "/docs/hyperspace-grid-snappiness"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/hyperspace-grid-snappiness.md",
+        "/agent/raw/docs/hyperspace-grid-snappiness.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:machines-arrangement",
+      "product": "lattices",
+      "slug": "machines-arrangement",
+      "source": "docs/machines-arrangement.md",
+      "title": "Machines arrangement",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/machines-arrangement",
+      "aliases": [
+        "/docs/machines-arrangement"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/machines-arrangement.md",
+        "/agent/raw/docs/machines-arrangement.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:machines-tab",
+      "product": "lattices",
+      "slug": "machines-tab",
+      "source": "docs/machines-tab.md",
+      "title": "Machines tab",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/machines-tab",
+      "aliases": [
+        "/docs/machines-tab"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/machines-tab.md",
+        "/agent/raw/docs/machines-tab.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:namespace-migration",
+      "product": "lattices",
+      "slug": "namespace-migration",
+      "source": "docs/namespace-migration.md",
+      "title": "Namespace migration",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/namespace-migration",
+      "aliases": [
+        "/docs/namespace-migration"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/namespace-migration.md",
+        "/agent/raw/docs/namespace-migration.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:presentation-execution-review",
+      "product": "lattices",
+      "slug": "presentation-execution-review",
+      "source": "docs/presentation-execution-review.md",
+      "title": "Presentation execution review",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/presentation-execution-review",
+      "aliases": [
+        "/docs/presentation-execution-review"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/presentation-execution-review.md",
+        "/agent/raw/docs/presentation-execution-review.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:prompts/hands-off-system",
+      "product": "lattices",
+      "slug": "prompts/hands-off-system",
+      "source": "docs/prompts/hands-off-system.md",
+      "title": "Hands off system",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/prompts/hands-off-system.md",
+        "/agent/raw/docs/prompts/hands-off-system.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:prompts/hands-off-turn",
+      "product": "lattices",
+      "slug": "prompts/hands-off-turn",
+      "source": "docs/prompts/hands-off-turn.md",
+      "title": "Hands off turn",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/prompts/hands-off-turn.md",
+        "/agent/raw/docs/prompts/hands-off-turn.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:prompts/voice-advisor",
+      "product": "lattices",
+      "slug": "prompts/voice-advisor",
+      "source": "docs/prompts/voice-advisor.md",
+      "title": "Voice advisor",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/prompts/voice-advisor.md",
+        "/agent/raw/docs/prompts/voice-advisor.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:prompts/voice-fallback",
+      "product": "lattices",
+      "slug": "prompts/voice-fallback",
+      "source": "docs/prompts/voice-fallback.md",
+      "title": "Voice fallback",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/prompts/voice-fallback.md",
+        "/agent/raw/docs/prompts/voice-fallback.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-001-gesture-visual-customization",
+      "product": "lattices",
+      "slug": "proposals/LAT-001-gesture-visual-customization",
+      "source": "docs/proposals/LAT-001-gesture-visual-customization.md",
+      "title": "Lat 001 gesture visual customization",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-001-gesture-visual-customization.md",
+        "/agent/raw/docs/proposals/LAT-001-gesture-visual-customization.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-002-shared-overlay-canvas",
+      "product": "lattices",
+      "slug": "proposals/LAT-002-shared-overlay-canvas",
+      "source": "docs/proposals/LAT-002-shared-overlay-canvas.md",
+      "title": "Lat 002 shared overlay canvas",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-002-shared-overlay-canvas.md",
+        "/agent/raw/docs/proposals/LAT-002-shared-overlay-canvas.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-003-menu-bar-controller-architecture",
+      "product": "lattices",
+      "slug": "proposals/LAT-003-menu-bar-controller-architecture",
+      "source": "docs/proposals/LAT-003-menu-bar-controller-architecture.md",
+      "title": "Lat 003 menu bar controller architecture",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-003-menu-bar-controller-architecture.md",
+        "/agent/raw/docs/proposals/LAT-003-menu-bar-controller-architecture.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-004-interactive-overlay-actors",
+      "product": "lattices",
+      "slug": "proposals/LAT-004-interactive-overlay-actors",
+      "source": "docs/proposals/LAT-004-interactive-overlay-actors.md",
+      "title": "Lat 004 interactive overlay actors",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-004-interactive-overlay-actors.md",
+        "/agent/raw/docs/proposals/LAT-004-interactive-overlay-actors.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-005-action-runtime-product-spine",
+      "product": "lattices",
+      "slug": "proposals/LAT-005-action-runtime-product-spine",
+      "source": "docs/proposals/LAT-005-action-runtime-product-spine.md",
+      "title": "Lat 005 action runtime product spine",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-005-action-runtime-product-spine.md",
+        "/agent/raw/docs/proposals/LAT-005-action-runtime-product-spine.md"
+      ],
+      "ownership": "action + lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-006-followup-gaps",
+      "product": "lattices",
+      "slug": "proposals/LAT-006-followup-gaps",
+      "source": "docs/proposals/LAT-006-followup-gaps.md",
+      "title": "Lat 006 followup gaps",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-006-followup-gaps.md",
+        "/agent/raw/docs/proposals/LAT-006-followup-gaps.md"
+      ],
+      "ownership": "action + lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-006-runs-and-capture-in-lattices",
+      "product": "lattices",
+      "slug": "proposals/LAT-006-runs-and-capture-in-lattices",
+      "source": "docs/proposals/LAT-006-runs-and-capture-in-lattices.md",
+      "title": "Lat 006 runs and capture in lattices",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-006-runs-and-capture-in-lattices.md",
+        "/agent/raw/docs/proposals/LAT-006-runs-and-capture-in-lattices.md"
+      ],
+      "ownership": "action + lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-007-unified-app-shell",
+      "product": "lattices",
+      "slug": "proposals/LAT-007-unified-app-shell",
+      "source": "docs/proposals/LAT-007-unified-app-shell.md",
+      "title": "Lat 007 unified app shell",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-007-unified-app-shell.md",
+        "/agent/raw/docs/proposals/LAT-007-unified-app-shell.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-008-pi-lattices-computer-use",
+      "product": "lattices",
+      "slug": "proposals/LAT-008-pi-lattices-computer-use",
+      "source": "docs/proposals/LAT-008-pi-lattices-computer-use.md",
+      "title": "Lat 008 pi lattices computer use",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-008-pi-lattices-computer-use.md",
+        "/agent/raw/docs/proposals/LAT-008-pi-lattices-computer-use.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-009-protected-windows",
+      "product": "lattices",
+      "slug": "proposals/LAT-009-protected-windows",
+      "source": "docs/proposals/LAT-009-protected-windows.md",
+      "title": "Lat 009 protected windows",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-009-protected-windows.md",
+        "/agent/raw/docs/proposals/LAT-009-protected-windows.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-010-greenlit-wave",
+      "product": "lattices",
+      "slug": "proposals/LAT-010-greenlit-wave",
+      "source": "docs/proposals/LAT-010-greenlit-wave.md",
+      "title": "Lat 010 greenlit wave",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-010-greenlit-wave.md",
+        "/agent/raw/docs/proposals/LAT-010-greenlit-wave.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-011-companion-app-architecture",
+      "product": "lattices",
+      "slug": "proposals/LAT-011-companion-app-architecture",
+      "source": "docs/proposals/LAT-011-companion-app-architecture.md",
+      "title": "Lat 011 companion app architecture",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-011-companion-app-architecture.md",
+        "/agent/raw/docs/proposals/LAT-011-companion-app-architecture.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-011-companion-app-implementation",
+      "product": "lattices",
+      "slug": "proposals/LAT-011-companion-app-implementation",
+      "source": "docs/proposals/LAT-011-companion-app-implementation.md",
+      "title": "Lat 011 companion app implementation",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-011-companion-app-implementation.md",
+        "/agent/raw/docs/proposals/LAT-011-companion-app-implementation.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-012-domain-api",
+      "product": "lattices",
+      "slug": "proposals/LAT-012-domain-api",
+      "source": "docs/proposals/LAT-012-domain-api.md",
+      "title": "Lat 012 domain api",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-012-domain-api.md",
+        "/agent/raw/docs/proposals/LAT-012-domain-api.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-013-linux-host",
+      "product": "lattices",
+      "slug": "proposals/LAT-013-linux-host",
+      "source": "docs/proposals/LAT-013-linux-host.md",
+      "title": "Lat 013 linux host",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-013-linux-host.md",
+        "/agent/raw/docs/proposals/LAT-013-linux-host.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:proposals/LAT-014-paired-macs",
+      "product": "lattices",
+      "slug": "proposals/LAT-014-paired-macs",
+      "source": "docs/proposals/LAT-014-paired-macs.md",
+      "title": "Lat 014 paired macs",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/proposals/LAT-014-paired-macs.md",
+        "/agent/raw/docs/proposals/LAT-014-paired-macs.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:reference/install-agent",
+      "product": "lattices",
+      "slug": "reference/install-agent",
+      "source": "docs/reference/install-agent.md",
+      "title": "Install agent",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/reference/install-agent.md",
+        "/agent/raw/docs/reference/install-agent.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:repo-structure",
+      "product": "lattices",
+      "slug": "repo-structure",
+      "source": "docs/repo-structure.md",
+      "title": "Repo structure",
+      "kind": "history",
+      "canonicalPath": "/lattices/docs/archive/repo-structure",
+      "aliases": [
+        "/docs/repo-structure"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/repo-structure.md",
+        "/agent/raw/docs/repo-structure.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:reports/host-linux-build-identity",
+      "product": "lattices",
+      "slug": "reports/host-linux-build-identity",
+      "source": "docs/reports/host-linux-build-identity.md",
+      "title": "Host linux build identity",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/reports/host-linux-build-identity.md",
+        "/agent/raw/docs/reports/host-linux-build-identity.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:reports/host-linux-command-socket",
+      "product": "lattices",
+      "slug": "reports/host-linux-command-socket",
+      "source": "docs/reports/host-linux-command-socket.md",
+      "title": "Host linux command socket",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/reports/host-linux-command-socket.md",
+        "/agent/raw/docs/reports/host-linux-command-socket.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:reports/host-linux-health",
+      "product": "lattices",
+      "slug": "reports/host-linux-health",
+      "source": "docs/reports/host-linux-health.md",
+      "title": "Host linux health",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/reports/host-linux-health.md",
+        "/agent/raw/docs/reports/host-linux-health.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:reports/remove-lan-mouse",
+      "product": "lattices",
+      "slug": "reports/remove-lan-mouse",
+      "source": "docs/reports/remove-lan-mouse.md",
+      "title": "Remove lan mouse",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/reports/remove-lan-mouse.md",
+        "/agent/raw/docs/reports/remove-lan-mouse.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:seo/competitor-research",
+      "product": "lattices",
+      "slug": "seo/competitor-research",
+      "source": "docs/seo/competitor-research.md",
+      "title": "Competitor research",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/seo/competitor-research.md",
+        "/agent/raw/docs/seo/competitor-research.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:seo/explainer-batch-02",
+      "product": "lattices",
+      "slug": "seo/explainer-batch-02",
+      "source": "docs/seo/explainer-batch-02.md",
+      "title": "Explainer batch 02",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/seo/explainer-batch-02.md",
+        "/agent/raw/docs/seo/explainer-batch-02.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:seo/pilot-delivery",
+      "product": "lattices",
+      "slug": "seo/pilot-delivery",
+      "source": "docs/seo/pilot-delivery.md",
+      "title": "Pilot delivery",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/seo/pilot-delivery.md",
+        "/agent/raw/docs/seo/pilot-delivery.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:seo/strategy",
+      "product": "lattices",
+      "slug": "seo/strategy",
+      "source": "docs/seo/strategy.md",
+      "title": "Strategy",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/seo/strategy.md",
+        "/agent/raw/docs/seo/strategy.md"
+      ],
+      "ownership": "family"
+    },
+    {
+      "id": "lattices:voice-command-protocol",
+      "product": "lattices",
+      "slug": "voice-command-protocol",
+      "source": "docs/voice-command-protocol.md",
+      "title": "Voice command protocol",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/voice-command-protocol",
+      "aliases": [
+        "/docs/voice-command-protocol"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/voice-command-protocol.md",
+        "/agent/raw/docs/voice-command-protocol.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:voice-error-model",
+      "product": "lattices",
+      "slug": "voice-error-model",
+      "source": "docs/voice-error-model.md",
+      "title": "Voice error model",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/voice-error-model",
+      "aliases": [
+        "/docs/voice-error-model"
+      ],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/docs/markdown/voice-error-model.md",
+        "/agent/raw/docs/voice-error-model.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "action:overview",
+      "product": "action",
+      "slug": "overview",
+      "source": "products/action/docs/overview.md",
+      "title": "Overview",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/overview",
+      "aliases": [
+        "/action/docs"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/action/overview.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:getting-started",
+      "product": "action",
+      "slug": "getting-started",
+      "source": "products/action/docs/getting-started.md",
+      "title": "Install and first use",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/getting-started",
+      "aliases": [],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/action/getting-started.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:concepts",
+      "product": "action",
+      "slug": "concepts",
+      "source": "products/action/docs/concepts.md",
+      "title": "Concepts and runtime",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/concepts",
+      "aliases": [],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "action"
+    },
+    {
+      "id": "action:agent-setup",
+      "product": "action",
+      "slug": "agent-setup",
+      "source": "apps/site/content/action/agent-setup.md",
+      "title": "Connect an agent",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/agent-setup",
+      "aliases": [
+        "/action/agents",
+        "/action/docs/agents"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/action/agent-setup.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:browser",
+      "product": "action",
+      "slug": "browser",
+      "source": "products/action/docs/browser.md",
+      "title": "Browser workflow",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/browser",
+      "aliases": [],
+      "navGroup": "Computer use",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "action"
+    },
+    {
+      "id": "action:browser-profiles",
+      "product": "action",
+      "slug": "browser-profiles",
+      "source": "products/action/docs/browser-profiles.md",
+      "title": "Browser profiles",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/browser-profiles",
+      "aliases": [],
+      "navGroup": "Computer use",
+      "agent": true,
+      "rawAliases": [
+        "/action/browser-profiles.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:agent-layer",
+      "product": "action",
+      "slug": "agent-layer",
+      "source": "products/action/docs/agent-layer.md",
+      "title": "Agent layer",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/agent-layer",
+      "aliases": [],
+      "navGroup": "Computer use",
+      "agent": true,
+      "rawAliases": [
+        "/action/agent-layer.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:recording",
+      "product": "action",
+      "slug": "recording",
+      "source": "products/action/docs/recording.md",
+      "title": "Recording",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/recording",
+      "aliases": [],
+      "navGroup": "Computer use",
+      "agent": true,
+      "rawAliases": [
+        "/action/recording.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:stage",
+      "product": "action",
+      "slug": "stage",
+      "source": "products/action/docs/stage.md",
+      "title": "Stage",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/stage",
+      "aliases": [],
+      "navGroup": "Computer use",
+      "agent": true,
+      "rawAliases": [
+        "/action/stage.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:api",
+      "product": "action",
+      "slug": "api",
+      "source": "products/action/docs/api.md",
+      "title": "API reference",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/api",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/action/api.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:native-runtime",
+      "product": "action",
+      "slug": "native-runtime",
+      "source": "products/action/docs/native-runtime.md",
+      "title": "Native runtime",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/native-runtime",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/action/native-runtime.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:remote-engine",
+      "product": "action",
+      "slug": "remote-engine",
+      "source": "apps/site/content/action/remote-engine.md",
+      "title": "Remote Linux",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/remote-engine",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/action/remote-engine.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:skill",
+      "product": "action",
+      "slug": "skill",
+      "source": "products/action/docs/skill.md",
+      "title": "Agent skill",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/skill",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/action/skill.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:ARCHITECTURE",
+      "product": "action",
+      "slug": "ARCHITECTURE",
+      "source": "products/action/docs/ARCHITECTURE.md",
+      "title": "Architecture",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/ARCHITECTURE.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:AX_BACKGROUND_AUTOMATION",
+      "product": "action",
+      "slug": "AX_BACKGROUND_AUTOMATION",
+      "source": "products/action/docs/AX_BACKGROUND_AUTOMATION.md",
+      "title": "Ax background automation",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/AX_BACKGROUND_AUTOMATION.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:CAPTURE_CONTROLS_PRECEDENT",
+      "product": "action",
+      "slug": "CAPTURE_CONTROLS_PRECEDENT",
+      "source": "products/action/docs/CAPTURE_CONTROLS_PRECEDENT.md",
+      "title": "Capture controls precedent",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/CAPTURE_CONTROLS_PRECEDENT.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:COMPOSITION_AND_SCENARIOS",
+      "product": "action",
+      "slug": "COMPOSITION_AND_SCENARIOS",
+      "source": "products/action/docs/COMPOSITION_AND_SCENARIOS.md",
+      "title": "Composition and scenarios",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/COMPOSITION_AND_SCENARIOS.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:COMPUTER_USE_AGENT",
+      "product": "action",
+      "slug": "COMPUTER_USE_AGENT",
+      "source": "products/action/docs/COMPUTER_USE_AGENT.md",
+      "title": "Computer use agent",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/COMPUTER_USE_AGENT.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:LIVE_INSPECTION_RUNTIME",
+      "product": "action",
+      "slug": "LIVE_INSPECTION_RUNTIME",
+      "source": "products/action/docs/LIVE_INSPECTION_RUNTIME.md",
+      "title": "Live inspection runtime",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/LIVE_INSPECTION_RUNTIME.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:MILESTONE_GUIDED_CAPTURE_LOOP",
+      "product": "action",
+      "slug": "MILESTONE_GUIDED_CAPTURE_LOOP",
+      "source": "products/action/docs/MILESTONE_GUIDED_CAPTURE_LOOP.md",
+      "title": "Milestone guided capture loop",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/MILESTONE_GUIDED_CAPTURE_LOOP.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:PRECEDENT_HUD_STAGE",
+      "product": "action",
+      "slug": "PRECEDENT_HUD_STAGE",
+      "source": "products/action/docs/PRECEDENT_HUD_STAGE.md",
+      "title": "Precedent hud stage",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/PRECEDENT_HUD_STAGE.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:PRECEDENT_REVIEW",
+      "product": "action",
+      "slug": "PRECEDENT_REVIEW",
+      "source": "products/action/docs/PRECEDENT_REVIEW.md",
+      "title": "Precedent review",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/PRECEDENT_REVIEW.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:REVIEW_UX_V1",
+      "product": "action",
+      "slug": "REVIEW_UX_V1",
+      "source": "products/action/docs/REVIEW_UX_V1.md",
+      "title": "Review ux v1",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/REVIEW_UX_V1.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:RUNTIME_BUILD_CHECKLIST",
+      "product": "action",
+      "slug": "RUNTIME_BUILD_CHECKLIST",
+      "source": "products/action/docs/RUNTIME_BUILD_CHECKLIST.md",
+      "title": "Runtime build checklist",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/RUNTIME_BUILD_CHECKLIST.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:SURFACE_ADAPTER_PLAN",
+      "product": "action",
+      "slug": "SURFACE_ADAPTER_PLAN",
+      "source": "products/action/docs/SURFACE_ADAPTER_PLAN.md",
+      "title": "Surface adapter plan",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/SURFACE_ADAPTER_PLAN.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:V0",
+      "product": "action",
+      "slug": "V0",
+      "source": "products/action/docs/V0.md",
+      "title": "V0",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/V0.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:VISION",
+      "product": "action",
+      "slug": "VISION",
+      "source": "products/action/docs/VISION.md",
+      "title": "Vision",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/VISION.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:agent/overview",
+      "product": "action",
+      "slug": "agent/overview",
+      "source": "products/action/docs/agent/overview.md",
+      "title": "Overview",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/agent/overview.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:agent/recording",
+      "product": "action",
+      "slug": "agent/recording",
+      "source": "products/action/docs/agent/recording.md",
+      "title": "Recording",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/agent/recording.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:decisions/ACT-001-surface-adapter-architecture",
+      "product": "action",
+      "slug": "decisions/ACT-001-surface-adapter-architecture",
+      "source": "products/action/docs/decisions/ACT-001-surface-adapter-architecture.md",
+      "title": "Act 001 surface adapter architecture",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/decisions/ACT-001-surface-adapter-architecture.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:decisions/ACT-002-hermes-action-mcp",
+      "product": "action",
+      "slug": "decisions/ACT-002-hermes-action-mcp",
+      "source": "products/action/docs/decisions/ACT-002-hermes-action-mcp.md",
+      "title": "Act 002 hermes action mcp",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/decisions/ACT-002-hermes-action-mcp.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:eng/act-ensure-surface-blink-report",
+      "product": "action",
+      "slug": "eng/act-ensure-surface-blink-report",
+      "source": "products/action/docs/eng/act-ensure-surface-blink-report.md",
+      "title": "Act ensure surface blink report",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/eng/act-ensure-surface-blink-report.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:eng/act-ensure-surface-blink",
+      "product": "action",
+      "slug": "eng/act-ensure-surface-blink",
+      "source": "products/action/docs/eng/act-ensure-surface-blink.md",
+      "title": "Act ensure surface blink",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/eng/act-ensure-surface-blink.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:eng/browser-resize-report",
+      "product": "action",
+      "slug": "eng/browser-resize-report",
+      "source": "products/action/docs/eng/browser-resize-report.md",
+      "title": "Browser resize report",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/eng/browser-resize-report.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:eng/coordinate-click-and-ocr-gaps",
+      "product": "action",
+      "slug": "eng/coordinate-click-and-ocr-gaps",
+      "source": "products/action/docs/eng/coordinate-click-and-ocr-gaps.md",
+      "title": "Coordinate click and ocr gaps",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/eng/coordinate-click-and-ocr-gaps.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:eng/talkie-drive-session-field-report",
+      "product": "action",
+      "slug": "eng/talkie-drive-session-field-report",
+      "source": "products/action/docs/eng/talkie-drive-session-field-report.md",
+      "title": "Talkie drive session field report",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/eng/talkie-drive-session-field-report.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:fast-browser-experiment",
+      "product": "action",
+      "slug": "fast-browser-experiment",
+      "source": "products/action/docs/fast-browser-experiment.md",
+      "title": "Fast browser experiment",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/fast-browser-experiment.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:harnesses/hermes-action",
+      "product": "action",
+      "slug": "harnesses/hermes-action",
+      "source": "products/action/docs/harnesses/hermes-action.md",
+      "title": "Hermes action",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/harnesses/hermes-action.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:native-runtime.agent",
+      "product": "action",
+      "slug": "native-runtime.agent",
+      "source": "products/action/docs/native-runtime.agent.md",
+      "title": "Native runtime.agent",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/native-runtime.agent.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:overview.agent",
+      "product": "action",
+      "slug": "overview.agent",
+      "source": "products/action/docs/overview.agent.md",
+      "title": "Overview.agent",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/overview.agent.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:prompts/recording-debug",
+      "product": "action",
+      "slug": "prompts/recording-debug",
+      "source": "products/action/docs/prompts/recording-debug.md",
+      "title": "Recording debug",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/prompts/recording-debug.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:prompts/runtime-change",
+      "product": "action",
+      "slug": "prompts/runtime-change",
+      "source": "products/action/docs/prompts/runtime-change.md",
+      "title": "Runtime change",
+      "kind": "prompt",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/prompts/runtime-change.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:recording.agent",
+      "product": "action",
+      "slug": "recording.agent",
+      "source": "products/action/docs/recording.agent.md",
+      "title": "Recording.agent",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/recording.agent.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "action:remote-engine:superseded",
+      "product": "action",
+      "slug": "remote-engine",
+      "source": "products/action/docs/remote-engine.md",
+      "title": "Remote Linux",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [],
+      "ownership": "action"
+    },
+    {
+      "id": "action:theming.agent",
+      "product": "action",
+      "slug": "theming.agent",
+      "source": "products/action/docs/theming.agent.md",
+      "title": "Theming.agent",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/action/theming.agent.md"
+      ],
+      "ownership": "action"
+    },
+    {
+      "id": "blink:overview",
+      "product": "blink",
+      "slug": "overview",
+      "source": "products/blink/docs/overview.md",
+      "title": "Overview",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/overview",
+      "aliases": [
+        "/blink/docs",
+        "/blink/docs/overview",
+        "/canvas/docs"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/overview.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:concepts",
+      "product": "blink",
+      "slug": "concepts",
+      "source": "products/blink/docs/concepts.md",
+      "title": "Concepts and runtime",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/concepts",
+      "aliases": [
+        "/blink/docs/concepts"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/concepts.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:cli",
+      "product": "blink",
+      "slug": "cli",
+      "source": "products/blink/docs/cli.md",
+      "title": "CLI reference",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/cli",
+      "aliases": [
+        "/blink/docs/cli"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/cli.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:placement",
+      "product": "blink",
+      "slug": "placement",
+      "source": "products/blink/docs/placement.md",
+      "title": "Placement",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/placement",
+      "aliases": [
+        "/blink/docs/placement"
+      ],
+      "navGroup": "Notes and desks",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/placement.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:workspaces",
+      "product": "blink",
+      "slug": "workspaces",
+      "source": "products/blink/docs/workspaces.md",
+      "title": "Named desks",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/workspaces",
+      "aliases": [
+        "/blink/docs/workspaces"
+      ],
+      "navGroup": "Notes and desks",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/workspaces.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:config",
+      "product": "blink",
+      "slug": "config",
+      "source": "products/blink/docs/config.md",
+      "title": "Configuration",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/config",
+      "aliases": [
+        "/blink/docs/config"
+      ],
+      "navGroup": "Notes and desks",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/config.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:ios-sync",
+      "product": "blink",
+      "slug": "ios-sync",
+      "source": "products/blink/docs/ios-sync.md",
+      "title": "iOS sync",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/ios-sync",
+      "aliases": [
+        "/blink/docs/ios-sync"
+      ],
+      "navGroup": "Notes and desks",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/ios-sync.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:agents",
+      "product": "blink",
+      "slug": "agents",
+      "source": "products/blink/landing/public/agents.md",
+      "title": "For agents",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/agents",
+      "aliases": [
+        "/blink/docs/agents"
+      ],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/blink/agents.md",
+        "/blink/docs/markdown/agents.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:api",
+      "product": "blink",
+      "slug": "api",
+      "source": "products/blink/docs/api.md",
+      "title": "API reference",
+      "kind": "guide",
+      "canonicalPath": "/canvas/docs/api",
+      "aliases": [
+        "/blink/docs/api"
+      ],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/blink/docs/markdown/api.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:release",
+      "product": "blink",
+      "slug": "release",
+      "source": "products/blink/docs/release.md",
+      "title": "Releases",
+      "kind": "reference",
+      "canonicalPath": "/canvas/docs/release",
+      "aliases": [
+        "/blink/docs/release"
+      ],
+      "navGroup": "Reference",
+      "agent": false,
+      "rawAliases": [
+        "/blink/docs/markdown/release.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:agent-api",
+      "product": "blink",
+      "slug": "agent-api",
+      "source": "products/blink/docs/agent-api.md",
+      "title": "Agent api",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/blink/docs/markdown/archive/agent-api.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:agent-integration",
+      "product": "blink",
+      "slug": "agent-integration",
+      "source": "products/blink/docs/agent-integration.md",
+      "title": "Agent integration",
+      "kind": "proposal",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/blink/docs/markdown/archive/agent-integration.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "blink:eng-named-desks-and-agent-socket",
+      "product": "blink",
+      "slug": "eng-named-desks-and-agent-socket",
+      "source": "products/blink/docs/eng-named-desks-and-agent-socket.md",
+      "title": "Eng named desks and agent socket",
+      "kind": "history",
+      "canonicalPath": null,
+      "aliases": [],
+      "navGroup": null,
+      "agent": false,
+      "rawAliases": [
+        "/blink/docs/markdown/archive/eng-named-desks-and-agent-socket.md"
+      ],
+      "ownership": "blink"
+    },
+    {
+      "id": "speech:overview",
+      "product": "speech",
+      "slug": "overview",
+      "source": "products/voice/docs/overview.md",
+      "title": "Overview",
+      "kind": "guide",
+      "canonicalPath": "/speech/docs/overview",
+      "aliases": [
+        "/speech/docs"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "speech"
+    },
+    {
+      "id": "speech:quickstart",
+      "product": "speech",
+      "slug": "quickstart",
+      "source": "products/voice/docs/quickstart.md",
+      "title": "Quickstart",
+      "kind": "guide",
+      "canonicalPath": "/speech/docs/quickstart",
+      "aliases": [],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "speech"
+    },
+    {
+      "id": "speech:agents",
+      "product": "speech",
+      "slug": "agents",
+      "source": "products/voice/docs/agents.md",
+      "title": "For agents",
+      "kind": "guide",
+      "canonicalPath": "/speech/docs/agents",
+      "aliases": [],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "speech"
+    },
+    {
+      "id": "speech:cli",
+      "product": "speech",
+      "slug": "cli",
+      "source": "products/voice/docs/cli.md",
+      "title": "CLI reference",
+      "kind": "guide",
+      "canonicalPath": "/speech/docs/cli",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "speech"
+    },
+    {
+      "id": "speech:api",
+      "product": "speech",
+      "slug": "api",
+      "source": "products/voice/docs/api.md",
+      "title": "API reference",
+      "kind": "guide",
+      "canonicalPath": "/speech/docs/api",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [],
+      "ownership": "speech"
+    }
+  ]
+}

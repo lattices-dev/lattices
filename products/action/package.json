@@ -1,7 +1,7 @@
 {
   "name": "action",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Native-first macOS capture and demo workstation",
   "homepage": "https://lattices.dev/action",
   "repository": {
@@ -108,9 +108,11 @@
   "devDependencies": {
     "@arach/dewey": "^0.3.6",
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "ws": "^8.22.0"
   }
 }

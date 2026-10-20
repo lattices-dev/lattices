@@ -4,7 +4,7 @@ import XCTest
 
 final class SpeechRPCCapabilityTests: XCTestCase {
     func testPrivateCapabilityAndHeaderValidation() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("capability")
         let capability = try SpeechRPCCapability(url: url)

@@ -2644,7 +2644,7 @@ struct ActionLauncherRootView: View {
                     icon: "cpu",
                     iconColor: agentIsHealthy ? StageHUDTheme.runOk : StageHUDTheme.textMuted,
                     title: "Local agent",
-                    subtitle: "Local WebSocket"
+                    subtitle: "Private local connection"
                 ) {
                     ActionSettingsStatusBadge(
                         text: humanAgentStatus,
@@ -2657,7 +2657,7 @@ struct ActionLauncherRootView: View {
                 ActionSettingsRow(
                     icon: "network",
                     title: "Endpoint",
-                    subtitle: "ws://127.0.0.1:4319"
+                    subtitle: "Private local connection"
                 ) {
                     EmptyView()
                 }

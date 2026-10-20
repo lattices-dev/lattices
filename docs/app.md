@@ -262,7 +262,15 @@ Choosing a sidebar page leaves the canvas and navigates normally.
 
 Agents can move the tray via
 `settings.spaceBezel.set` (`top`, `bottom`, `center`, or `travelEdge`
-to dock at the edge of travel). Only bare Ctrl+arrows are claimed;
+to dock at the edge of travel). **Desktop shimmer** in Settings > Keyboard
+adjusts the passing light from Off to its original strength, with a subtle
+15% default. Rapid switches share one pass instead of stacking light. Changes
+apply on the next switch without restarting; Reduce Motion and Reduce
+Transparency suppress the effect. Agents can also set it with
+`settings.spaceBezel.set {"shimmerIntensity":0.15}` (range 0–1; zero is off).
+The filmstrip stays visible while the switch is in progress, then waits 0.85
+seconds after landing before its 0.12-second fade.
+Only bare Ctrl+arrows are claimed;
 Ctrl+Option+arrows still tile. While the feature is on, the app
 disables Mission Control's "Move left/right a space" symbolic hotkeys
 (they would replay the slide animation); the original setting is

@@ -1,7 +1,6 @@
-// Who may connect. The host listens only on its tailnet address, and each
-// connection is identified with `tailscale whois`: by default only devices
-// owned by the same Tailscale user as this machine get in. Loopback is
-// trusted, like the Mac daemon, so local tools work without Tailscale.
+// Remote gateway identity admission. Each network peer is identified with
+// tailscale whois. Private runtime sockets use their own local authentication;
+// the gateway explicitly rejects the local marker returned here for loopback.
 
 import { run } from "./exec.ts";
 
@@ -29,9 +28,9 @@ export function isLoopback(address: string): boolean {
   return a === "::1" || a.startsWith("127.");
 }
 
-export async function selfIdentity(): Promise<{ userId: string; login: string; ips: string[]; hostname: string }> {
+export async function selfIdentity(): Promise<{ userId: string; login: string; ips: string[]; hostname: string; dnsName?: string }> {
   const status = JSON.parse(await run("tailscale", ["status", "--json"])) as {
-    Self: { UserID: number; HostName: string; TailscaleIPs: string[] };
+    Self: { UserID: number; HostName: string; DNSName?: string; TailscaleIPs: string[] };
     User?: Record<string, { LoginName?: string }>;
   };
   const userId = String(status.Self.UserID);
@@ -40,6 +39,7 @@ export async function selfIdentity(): Promise<{ userId: string; login: string; i
     login: status.User?.[userId]?.LoginName ?? "",
     ips: status.Self.TailscaleIPs,
     hostname: status.Self.HostName,
+    dnsName: status.Self.DNSName?.replace(/\.$/, ""),
   };
 }
 
@@ -66,14 +66,17 @@ const cache = new Map<string, { at: number; identity: Identity | null }>();
 export async function identify(address: string, policy: Policy): Promise<Identity | null> {
   if (isLoopback(address)) return { user: "local", node: "localhost", local: true };
   const ip = address.replace(/^::ffff:/, "");
-  const hit = cache.get(ip);
+  const key = JSON.stringify([ip, [...policy.allowUsers].sort(), [...policy.allowTags].sort()]);
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.identity;
+  for (const [key, value] of cache) if (Date.now() - value.at >= 60_000) cache.delete(key);
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
   let identity: Identity | null = null;
   try {
     identity = admit(JSON.parse(await run("tailscale", ["whois", "--json", ip])) as WhoIs, policy);
   } catch {
     identity = null;
   }
-  cache.set(ip, { at: Date.now(), identity });
+  cache.set(key, { at: Date.now(), identity });
   return identity;
 }

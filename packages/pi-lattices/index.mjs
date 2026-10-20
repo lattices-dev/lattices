@@ -651,10 +651,11 @@ function formatSuccess(result) {
 
 function formatError(toolName, error) {
   const config = daemonConfig();
+  const endpoint = config.socketPath ?? `ws://${config.host}:${config.port}`;
   const original = error instanceof Error ? error.message : String(error);
   const text = isDaemonUnavailable(error)
     ? [
-        `Lattices daemon is not reachable at ws://${config.host}:${config.port}.`,
+        `Lattices daemon is not reachable at ${endpoint}.`,
         "Start Lattices with: lattices app",
         "Then retry the Pi tool.",
         `Tool: ${toolName}`,
@@ -669,7 +670,7 @@ function formatError(toolName, error) {
     content: [{ type: "text", text }],
     details: {
       tool: toolName,
-      daemon: `ws://${config.host}:${config.port}`,
+      daemon: endpoint,
       error: original,
       daemonUnavailable: isDaemonUnavailable(error),
     },

@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
+import { localEndpoint } from "../../packages/desktop-client/local-ipc.ts";
+import { localEvents } from "../../packages/desktop-client/local-events.ts";
 import { daemonCallTo } from "../../packages/desktop-client/daemon-client.ts";
 import { changeUnit, withUserBus } from "../../packages/host-linux/src/service-client.ts";
 import type { Display, Window } from "../../packages/desktop-client/contracts.ts";
@@ -7,9 +9,7 @@ import { loadLinuxHintPack } from "../../packages/desktop-client/hints.ts";
 import { diagnoseHost } from "../../packages/desktop-client/doctor.ts";
 import { watchAppearance } from "./appearance.ts";
 
-const port = Number(process.env.LATTICES_LINUX_PORT ?? 9399);
-if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local host port");
-const endpoint = { host: "127.0.0.1", port };
+const endpoint = localEndpoint("lattices");
 process.env.LATTICES_CLIENT = "linux-app";
 // daemonCallTo propagates this budget to the worker; timeout cancellation is
 // acknowledged before reporting safe failure, otherwise outcome is uncertain.
@@ -23,28 +23,22 @@ interface Describe {
 }
 interface Client { id: string; name: string; scope?: string; capabilities?: string[]; node?: string }
 interface Pending { deviceID: string; deviceName: string; fingerprint: string; capabilities: string[] }
-let events: WebSocket | undefined;
+let events: {close(): void} | undefined;
 let refreshing = false;
 let refreshAgain = false;
 let debounce: ReturnType<typeof setTimeout> | undefined;
 
 function watchEvents() {
-  if (events && events.readyState < WebSocket.CLOSING) return;
-  const socket = new WebSocket(`ws://${endpoint.host}:${port}`);
-  events = socket;
-  socket.onopen = () => socket.send(JSON.stringify({ id: "linux-app-events", method: "events.subscribe", params: { events: ["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed", "virtual.changed"] } }));
-  socket.onmessage = (event) => {
-    try {
-      if (!JSON.parse(String(event.data)).event || debounce) return;
+  if (events) return;
+  try {
+    events = localEvents(["windows.changed", "spaces.changed", "host.healthChanged", "layers.changed", "virtual.changed"], () => {
+      if (debounce) return;
       debounce = setTimeout(() => { debounce = undefined; void refresh(); }, 180);
-    } catch { /* Ignore non-event frames. */ }
-  };
-  socket.onerror = () => {};
-  socket.onclose = () => {
-    if (events !== socket) return;
-    events = undefined;
-    emit({ type: "offline", message: "The local host disconnected. Refresh to reconnect." });
-  };
+    }, () => {
+      events = undefined;
+      emit({ type: "offline", message: "The local host disconnected. Refresh to reconnect." });
+    }, endpoint);
+  } catch (error) { emit({type: "offline", message: (error as Error).message}); }
 }
 
 async function refresh() {

@@ -46,8 +46,14 @@ const hostFlag = args.indexOf("--host");
 if (hostFlag !== -1 && hostFlag < args.length - 1) {
   const [, host] = args.splice(hostFlag, 2);
   const [name, port] = host.split(":");
-  process.env.LATTICES_DAEMON_HOST = name;
-  if (port) process.env.LATTICES_DAEMON_PORT = port;
+  if (name === "local") {
+    delete process.env.LATTICES_DAEMON_HOST;
+    delete process.env.LATTICES_DAEMON_PORT;
+    delete process.env.LATTICES_ALLOW_LOOPBACK_TCP;
+  } else {
+    process.env.LATTICES_DAEMON_HOST = name;
+    if (port) process.env.LATTICES_DAEMON_PORT = port;
+  }
 }
 if (args[0]?.startsWith("@")) {
   const host = args.shift()!.slice(1);
@@ -977,7 +983,7 @@ async function daemonStatusCommand(): Promise<void> {
   const m = Math.floor((uptime % 3600) / 60);
   const s = uptime % 60;
   const uptimeStr = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
-  console.log(`\x1b[32m●\x1b[0m Daemon running on ws://127.0.0.1:9399`);
+  console.log(`\x1b[32m●\x1b[0m Daemon running on its private local socket`);
   console.log(`  uptime:    ${uptimeStr}`);
   console.log(`  clients:   ${status.clientCount}`);
   console.log(`  windows:   ${status.windowCount}`);
@@ -3520,6 +3526,12 @@ switch (command) {
     // resources they own -- are never touched by an unrelated CLI invocation.
     const { mcpCommand } = await import("./mcp/server.ts");
     await mcpCommand(args.slice(1));
+    break;
+  }
+  case "gateway": {
+    const { execFileSync } = await import("node:child_process");
+    try { execFileSync(process.execPath, [resolve(import.meta.dir, "lattices-gateway.ts"), ...args.slice(1)], { stdio: "inherit" }); }
+    catch (error) { process.exitCode = typeof (error as {status?: unknown}).status === "number" ? (error as {status: number}).status : 1; }
     break;
   }
   case "canvas":

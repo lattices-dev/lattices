@@ -107,3 +107,14 @@ test("tmux receives the target as one literal argument for attach and switch", (
     assert.deepEqual(received, ["tmux", inside ? "switch-client" : "attach", "-t", target]);
   }
 });
+
+test("gateway dispatch keeps the Bun executable found by the GUI launcher", (t) => {
+  const found = spawnSync("which", ["bun"], { encoding: "utf8" });
+  if (found.status !== 0) { t.skip("Bun is unavailable"); return; }
+  const result = spawnSync(fs.realpathSync(new URL("../bin/lattices", import.meta.url)), ["gateway", "--help"], {
+    encoding: "utf8", timeout: 10_000,
+    env: { ...process.env, PATH: "/usr/bin:/bin", LATTICES_BUN_BIN: found.stdout.trim() },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /gateway.*tailnet/s);
+});

@@ -40,11 +40,15 @@ const archive = `${staging}.tar.gz`;
 const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 try {
   mkdirSync(stagedActionRoot, { recursive: true });
-  mkdirSync(join(staging, "bin"), { recursive: true });
-  const pairingSource = resolve(root, "../../bin/host-pairing.ts");
-  const pairingTarget = join(staging, "bin/host-pairing.ts");
-  cpSync(pairingSource, pairingTarget);
-  if (sha256(pairingTarget) !== sha256(pairingSource)) throw new Error("Staged host-pairing dependency differs from the canonical source.");
+  const sourceDependencies: Record<string, string> = {};
+  for (const dependency of ["bin/host-pairing.ts", "packages/desktop-client/host-pairing.ts"]) {
+    const source = resolve(root, "../..", dependency);
+    const target = join(staging, dependency);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(source, target);
+    if (sha256(target) !== sha256(source)) throw new Error(`Staged dependency differs: ${dependency}`);
+    sourceDependencies[dependency] = sha256(target);
+  }
   for (const file of ["package.json", "bun.lock", "tsconfig.json"]) cpSync(join(root, file), join(stagedActionRoot, file));
   // Copy exact fingerprint inputs and source assets, never sessions, credentials or build output.
   cpSync(join(root, "packages"), join(stagedActionRoot, "packages"), { recursive: true, filter: (source) => {
@@ -72,14 +76,14 @@ try {
   const provenance = {
     schemaVersion: 1, product: "Action", createdAt: new Date().toISOString(),
     orchestrationSourceDigest: digest, nativeBuild: manifest.build,
-    actionRoot: "products/action", sourceDependencies: { "bin/host-pairing.ts": sha256(pairingTarget) },
+    actionRoot: "products/action", sourceDependencies,
     nativeExecutableSha256: sha256(join(stagedActionRoot, "native/dist/Action.app/Contents/MacOS/Action")),
     instructions: instructionHashes, bunVersion: execFileSync("bun", ["--version"], { encoding: "utf8" }).trim(),
     desktopIsolationAcceptance: { state: "not-certified", note: "A matching artifact pair does not certify a host/display configuration. Preserve host quarantine and rollback; reconnect MCP and validate acceptance separately." },
   };
   writeFileSync(join(staging, "runtime-provenance.json"), JSON.stringify(provenance, null, 2) + "\n");
   writeFileSync(join(stagedActionRoot, "runtime-provenance.json"), JSON.stringify(provenance, null, 2) + "\n");
-  writeFileSync(join(staging, "README-runtime.md"), "# Action agent runtime candidate\n\nSet `ACTION_ROOT=<bundle>/products/action` and configure MCP as `bun <ACTION_ROOT>/packages/mcp/src/index.ts`. Keep the bundle's `bin/` directory alongside `products/`; the runtime imports its canonical host-pairing dependency from there. Run the CLI's `capabilities` and fresh MCP `capabilities` / `tools/list`; reconnect after updates. Native primitives use the bundled signed app. This candidate does not certify desktop isolation. Preserve the host's quarantine and the previous runtime for rollback. See `<ACTION_ROOT>/docs/agent-layer.md` before opening.\n");
+  writeFileSync(join(staging, "README-runtime.md"), "# Action agent runtime candidate\n\nSet `ACTION_ROOT=<bundle>/products/action` and configure MCP as `bun <ACTION_ROOT>/packages/mcp/src/index.ts`. Keep the bundle's `bin/` and `packages/` directories alongside `products/`; the runtime imports its canonical host-pairing dependency from there. Run the CLI's `capabilities` and fresh MCP `capabilities` / `tools/list`; reconnect after updates. Native primitives use the bundled signed app. This candidate does not certify desktop isolation. Preserve the host's quarantine and the previous runtime for rollback. See `<ACTION_ROOT>/docs/agent-layer.md` before opening.\n");
   execFileSync("/usr/bin/tar", ["-czf", archive, "-C", staging, ...readdirSync(staging).sort()]);
   renameSync(staging, output);
   renameSync(archive, `${output}.tar.gz`);

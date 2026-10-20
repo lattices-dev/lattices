@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -14,9 +14,17 @@ test("app bridge correlates receipts, reports failed health, and blocks unsuppor
     capabilityHealth: { "windows.place": { available: false, reason: "Placement unavailable in fixture" } },
     eventStream: { state: "connected" },
   };
+  const fixture = mkdtempSync("/tmp/lats-app-ipc-");
+  const runtime = join(fixture, "run");
+  mkdirSync(runtime, { mode: 0o700 });
+  const token = "a".repeat(64);
+  writeFileSync(join(runtime, "lattices.token"), token, { mode: 0o600 });
   const server = Bun.serve({
-    hostname: "127.0.0.1", port: 0,
-    fetch(request, server) { return server.upgrade(request) ? undefined : new Response("Upgrade required", { status: 426 }); },
+    unix: join(runtime, "lattices.sock"),
+    fetch(request, server) {
+      if (request.headers.get("x-lattices-token") !== token || request.headers.get("host") !== "localhost") return new Response("Forbidden", { status: 403 });
+      return server.upgrade(request) ? undefined : new Response("Upgrade required", { status: 426 });
+    },
     websocket: {
       message(socket, data) {
         const request = JSON.parse(String(data));
@@ -34,12 +42,12 @@ test("app bridge correlates receipts, reports failed health, and blocks unsuppor
       },
     },
   });
-  const fixture = mkdtempSync(join(tmpdir(), "lattices-bridge-appearance-"));
+  chmodSync(join(runtime, "lattices.sock"), 0o600);
   const current = join(fixture, "state/omarchy/current");
   mkdirSync(current, { recursive: true });
   const child = Bun.spawn([process.execPath, fileURLToPath(new URL("../apps/linux/backend.ts", import.meta.url))], {
     stdin: "pipe", stdout: "pipe", stderr: "pipe",
-    env: { ...process.env, LATTICES_LINUX_PORT: String(server.port), XDG_CONFIG_HOME: join(fixture, "config"), XDG_STATE_HOME: join(fixture, "state") },
+    env: { ...process.env, LATTICES_RUNTIME_DIR: runtime, XDG_CONFIG_HOME: join(fixture, "config"), XDG_STATE_HOME: join(fixture, "state") },
   });
   const messages: Record<string, any>[] = [];
   const listeners = new Set<() => void>();

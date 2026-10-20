@@ -29,7 +29,7 @@ final class AddHostController: ObservableObject {
 
     /// Typed by hand when Bonjour can't see the Mac.
     @Published var manualHost = ""
-    @Published var manualPort = "5287"
+    @Published var manualPort = "9399"
 
     private let client = DeckBridgeClient()
     private var pairingTask: Task<Void, Never>?

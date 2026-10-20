@@ -9,7 +9,7 @@ import Foundation
 // (a worktree); its directory must be named `hudson`. HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
 let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
-    ? .package(url: "git@github.com:arach/hudson.git", branch: "main")
+    ? .package(url: "git@github.com:arach/hudson.git", revision: "d7647584f85ad2227ed2acc83a6ffcbef6f527df")
     : .package(path: Context.environment["LATTICES_HUDSON_PATH"] ?? "../../../hudson")
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
@@ -23,12 +23,30 @@ if voiceEnabled { latticesDefines.append(.define("LATTICES_VOICE")) }
 if bundleEnabled { latticesDefines.append(.define("LATTICES_BUNDLE")) }
 
 // Vox is already a HudsonVoice transitive dep; Lattices also links VoxService
-// directly so it can host the live-session runtime in-process on boot.
+// directly so it can host the live-session runtime in-process on boot. Local
+// Hudson builds use the sibling Vox checkout as well; release builds select
+// both git dependencies with LATTICES_HUDSON_SOURCE=git.
+let voxHasGitOverride = ["HUDSON_VOX_GIT_URL", "HUDSON_VOX_GIT_REVISION", "HUDSON_VOX_GIT_BRANCH", "HUDSON_VOX_PACKAGE"].contains {
+    !(Context.environment[$0]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+}
 let voxSource = Context.environment["LATTICES_VOX_SOURCE"] ?? Context.environment["HUDSON_VOX_PATH"]
-let voxDependency: Package.Dependency? = voiceEnabled
-    ? (voxSource.map { .package(path: $0) }
-        ?? .package(url: "https://github.com/arach/vox.git", branch: "main"))
-    : nil
+    ?? (hudsonSource == "git" || voxHasGitOverride ? nil : "../../../vox")
+let voxGitURL = Context.environment["HUDSON_VOX_GIT_URL"] ?? "https://github.com/arach/vox.git"
+let voxPackageIdentity = Context.environment["HUDSON_VOX_PACKAGE"]
+    ?? URL(fileURLWithPath: voxSource ?? voxGitURL).deletingPathExtension().lastPathComponent.lowercased()
+let voxDependency: Package.Dependency? = voiceEnabled ? {
+    if let voxSource { return .package(path: voxSource) }
+    if let revision = Context.environment["HUDSON_VOX_GIT_REVISION"] {
+        return .package(url: voxGitURL, revision: revision)
+    }
+    if let branch = Context.environment["HUDSON_VOX_GIT_BRANCH"] {
+        return .package(url: voxGitURL, branch: branch)
+    }
+    if Context.environment["HUDSON_VOX_GIT_URL"] != nil {
+        return .package(url: voxGitURL, branch: "main")
+    }
+    return .package(url: voxGitURL, revision: "df744e5403a265bf411003a4d1b931365d2328de")
+}() : nil
 
 var latticesDependencies: [Target.Dependency] = [
     .product(name: "DeckKit", package: "swift"),
@@ -39,8 +57,7 @@ var latticesDependencies: [Target.Dependency] = [
 ]
 if voiceEnabled {
     latticesDependencies.append(.product(name: "HudsonVoice", package: "hudson"))
-    // Package identity for https://github.com/arach/vox.git is "vox".
-    latticesDependencies.append(.product(name: "VoxService", package: "vox"))
+    latticesDependencies.append(.product(name: "VoxService", package: voxPackageIdentity))
 }
 
 var packageDependencies: [Package.Dependency] = [

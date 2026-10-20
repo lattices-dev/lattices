@@ -1,5 +1,3 @@
-import navJson from '../data/nav.json'
-
 /** Collapse a description to a single line that fits a search snippet. */
 export function clampMeta(text: string, max = 155): string {
   const clean = text.replace(/\s+/g, ' ').trim()
@@ -8,15 +6,6 @@ export function clampMeta(text: string, max = 155): string {
   const space = cut.lastIndexOf(' ')
   const trimmed = (space > 80 ? cut.slice(0, space) : cut).replace(/[.,;:]+$/, '')
   return `${trimmed}…`
-}
-
-export function navBlurb(slug: string): string | undefined {
-  for (const group of navJson.groups) {
-    for (const item of group.items) {
-      if (item.id === slug && item.description) return item.description
-    }
-  }
-  return undefined
 }
 
 export interface RewrittenDoc {

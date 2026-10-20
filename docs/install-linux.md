@@ -14,7 +14,7 @@ Run the installer from a terminal inside your Hyprland desktop. Do not run the i
 
 Bun runs the app and CLI. Quickshell provides the desktop window and gesture trail. The installer also checks tmux, Python, grim, wtype, ffmpeg and tesseract. Other distributions must provide those commands before using `--no-deps`.
 
-Tailscale is optional for local use. Set up Tailscale separately to pair with another machine. The host trusts local loopback connections. Remote devices must pair before controlling the desktop.
+Tailscale is optional for local use. Set up Tailscale separately to pair with another machine. Version 0.15.0 uses authenticated private IPC locally and a separate gateway for remote access. See [Private IPC and the gateway](/lattices/docs/concepts#private-ipc-and-the-gateway) before enabling remote access.
 
 ## Install
 
@@ -90,7 +90,7 @@ Run:
 
 ```sh
 lats help
-lats --host 127.0.0.1:9399 doctor
+lats doctor
 systemctl --user status lattices-host lattices-tray
 lats app
 ```

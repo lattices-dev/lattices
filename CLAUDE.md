@@ -11,6 +11,28 @@ Lattices is a macOS developer workspace manager that pairs tmux sessions with a 
 - **Swift menu bar app**: `apps/mac/Sources/` — native macOS app (SwiftUI + AppKit)
 - **Docs**: `docs/` — documentation source files
 
+## Canvas product contract
+
+Canvas (formerly Blink) remains an independent app under `products/blink/`.
+Read its `AGENTS.md` before changing notes, panels, CLI, or the iOS companion.
+Current source builds provide `Canvas.app` and `canvas`, with `BlinkApp` and
+`blink` as SwiftPM executable aliases. The family entry point is `lats canvas`;
+`lats blink` remains an alias. Quitting Lattices must not close Canvas panels.
+
+The published npm package remains `@arach/blink`; a renamed source build is not
+proof of a published Canvas release. Preserve the existing bundle ID
+`dev.arach.blink`, `~/Library/Application Support/Blink`, `blink.sock`,
+`blink.*` frontmatter, settings, Keychain items, and peer protocol identifiers.
+Nonempty `CANVAS_HOME` takes precedence over nonempty `BLINK_HOME`; empty values
+are ignored. The rename does not move notes or reset settings.
+
+The 2.3.0 release contract uses `Canvas.dmg` containing `Canvas.app` for the
+canonical channel and a distinct `Blink.dmg` containing `Blink.app` for legacy
+installers. Both contain the same signed app and stable identity. See
+`products/blink/docs/release.md` for tag, mirror, and publication requirements.
+Preserve explicit mobile-access choices and existing Keychain approvals;
+new installs remain off.
+
 ## Build Commands
 
 ### Swift App

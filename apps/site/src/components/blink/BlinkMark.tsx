@@ -30,7 +30,7 @@ const frame =
  * grid's 1.2-unit gap. The front block, the note in hand, carries the accent.
  */
 export function BlinkMark({
-  theme, color, accent, label = 'Blink', decorative = true, ...svgProps
+  theme, color, accent, label = 'Canvas', decorative = true, ...svgProps
 }: BlinkMarkProps) {
   const ink = color ?? (theme ? latticesPalette[theme].ink : 'currentColor')
   const front = accent === false ? ink : accent ?? (theme ? latticesAccent[theme] : undefined)

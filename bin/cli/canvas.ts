@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-/** Forward only to the independently installed local Canvas notes CLI. */
+/** Forward only to the independently installed notes CLI; never start a gateway. */
 export function canvasCommand(args: string[], options: {
   remoteHost?: string;
   which?: (name: string) => string | null;
@@ -9,7 +9,7 @@ export function canvasCommand(args: string[], options: {
 } = {}): number {
   const report = options.report ?? console.error;
   if (options.remoteHost) {
-    report("lats canvas is local-only. Select the local host to use the installed Canvas CLI.");
+    report("lats canvas is local-only. Use gateway.call with product canvas for approved remote methods.");
     return 1;
   }
   const which = options.which ?? (name => Bun.which(name));

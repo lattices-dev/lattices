@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { installNativeHost } from "./install-native-host.mjs";
 import { access } from "node:fs/promises";
 import {
   companionName,
@@ -10,10 +11,10 @@ import {
   miraChromePid,
   pollPickerAndComplete,
   profileName,
+  profileDir,
   stageMiraWindow,
   triggerLoadUnpacked,
   activateMiraExtensionsWindow,
-  completePicker,
   sleep,
 } from "./mira-chrome.mjs";
 
@@ -37,6 +38,7 @@ async function main() {
 
   const before = await listExtensions(cdp.call.bind(cdp));
   if (before.some((entry) => entry.name === companionName)) {
+    installNativeHost(before.find((entry) => entry.name === companionName).id, profileDir);
     console.log(`${companionName} is already installed.`);
     console.log(JSON.stringify(before, null, 2));
     cdp.close();
@@ -51,8 +53,8 @@ async function main() {
 
   const pickerResult = await pollPickerAndComplete(pid, dist, 20000);
   if (!pickerResult.completed) {
-    console.log("Picker not detected; attempting go-to-folder path entry anyway.");
-    completePicker(pid, dist);
+    cdp.close();
+    throw new Error("Extension directory picker was not detected; refusing to type into another Chrome surface.");
   } else {
     console.log("picker:", pickerResult.state);
   }
@@ -66,6 +68,7 @@ async function main() {
     throw new Error(`${companionName} was not installed`);
   }
 
+  installNativeHost(extensions.find((entry) => entry.name === companionName).id, profileDir);
   console.log(`Installed ${companionName} successfully.`);
 }
 

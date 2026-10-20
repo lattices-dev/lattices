@@ -259,21 +259,34 @@ export async function pollPickerAndComplete(pid, folderPath, timeoutMs = 20000) 
 
 export async function triggerLoadUnpacked(call) {
   const result = await call("Runtime.evaluate", {
-    expression: `(() => {
+    expression: `(async () => {
       const toolbar = document.querySelector("extensions-manager")?.shadowRoot
         ?.querySelector("extensions-toolbar");
       const devToggle = toolbar?.shadowRoot?.querySelector("#devMode");
       if (devToggle && !devToggle.checked) {
         devToggle.click();
       }
-      toolbar?.shadowRoot?.querySelector("#loadUnpacked")?.click();
+      // The checkbox changes before Chrome has persisted its developer-mode setting.
+      // Loading in that interval fails, even though the switch already looks enabled.
+      let ready = false;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const info = await new Promise(resolve => chrome.developerPrivate.getProfileConfiguration(resolve));
+        if (info.inDeveloperMode && info.canLoadUnpacked) { ready = true; break; }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (!ready) throw new Error("Chrome did not enable unpacked extension loading");
+      const load = toolbar?.shadowRoot?.querySelector("#loadUnpacked");
+      if (!load) throw new Error("Load unpacked button is unavailable");
+      load.click();
       return {
         devMode: Boolean(devToggle?.checked),
         clicked: true,
       };
     })()`,
+    awaitPromise: true,
     returnByValue: true,
   });
+  if (result.exceptionDetails) throw new Error("Chrome could not open the extension directory picker");
   return result.result?.value ?? result;
 }
 

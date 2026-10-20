@@ -3448,15 +3448,15 @@ final class LatticesApi {
                     "runtimeAvailable": .bool(runtime != nil),
                     "runtimeHost": .string(runtime?.source ?? "none"),
                     "service": .string("hudson-voice"),
-                    "transport": .string("ws+json-rpc"),
+                    "transport": .string(runtime?.endpoint.socketPath == nil ? "ws+json-rpc" : "unix+ws+json-rpc"),
                     "capabilities": .array(capabilities),
                     "endpoint": runtime.map { .string($0.endpoint.url.absoluteString) } ?? .null,
-                    "port": runtime.map { .int(Int($0.endpoint.port)) } ?? .null,
+                    "port": runtime.map { $0.endpoint.socketPath == nil ? JSON.int(Int($0.endpoint.port)) : JSON.null } ?? .null,
                     "pid": runtime?.pid.map { .int($0) } ?? .null,
                     "capabilityPath": runtime?.capabilityPath.map { .string($0) } ?? .null,
                     "requiresAuth": .bool(runtime?.authToken != nil),
                     "runtimeError": .null,
-                    "note": .string("Lattices hosts authenticated Vox transcription (and TTS when available) via HudsonVoice on the local voice port."),
+                    "note": .string("Lattices hosts authenticated Vox transcription (and TTS when available) via HudsonVoice over private local IPC."),
                 ])
                 #else
                 return .object([
@@ -3639,13 +3639,13 @@ final class LatticesApi {
             access: .mutate,
             params: [
                 Param(name: "host", type: "string", required: true, description: "Name, e.g. archie"),
-                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:5287)"),
+                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:9399)"),
                 Param(name: "side", type: "string", required: false, description: "Side of this Mac's screens the host sits on: left, right, top, bottom (default right)"),
             ],
             returns: .custom("Object with 'pairing' and 'code'"),
             handler: { params in
                 guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
-                let address = params?["address"]?.stringValue ?? "\(name):5287"
+                let address = params?["address"]?.stringValue ?? "\(name):9399"
                 guard let side = VisitTrust.Side(rawValue: params?["side"]?.stringValue ?? "right") else {
                     throw RouterError.custom("side: expected left, right, top or bottom")
                 }

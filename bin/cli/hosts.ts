@@ -7,7 +7,7 @@ import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost } from "
 /**
  * lats hosts [--discover] [--json]   list reachable lattices hosts (LAT-013)
  * lats hosts describe <name>         host.describe for one host
- * lats hosts pair [name] [--read-only | --drive]  pair this machine with a lattices-host
+ * lats hosts pair [name] [--read-only | --drive] [--grant product:method]  pair with a gateway
  */
 export async function hostsCommand(args: string[]): Promise<void> {
   const json = hasFlag(args, "json");
@@ -58,26 +58,44 @@ export async function hostsCommand(args: string[]): Promise<void> {
 }
 
 /**
- * Ask a lattices-host to trust this machine. A person approves on the host
- * (desktop notification, or `lats call clients.approve` there); this waits.
+ * Ask a gateway to trust this machine. A person approves with
+ * `lats gateway approve` on the host; this waits.
  */
+export function parsePairOptions(args: string[]): { name?: string; scope: "read" | "act" | "drive"; grants?: string[] } {
+  let name: string | undefined;
+  const grants: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--grant" || arg.startsWith("--grant=")) {
+      const grant = arg === "--grant" ? args[++i] : arg.slice(8);
+      if (!grant || !/^(lattices|action|blink|speech):[a-zA-Z][a-zA-Z0-9_.]*$/.test(grant)) throw new Error("--grant requires an exact product:method, for example action:status");
+      grants.push(grant);
+    } else if (["--read-only", "--drive"].includes(arg)) continue;
+    else if (arg.startsWith("--")) throw new Error(`Unknown pairing option: ${arg}`);
+    else if (name) throw new Error("Specify one host to pair");
+    else name = arg;
+  }
+  if (hasFlag(args, "read-only") && hasFlag(args, "drive")) throw new Error("Choose --read-only or --drive");
+  if (grants.length && (hasFlag(args, "read-only") || hasFlag(args, "drive"))) throw new Error("Choose exact --grant permissions or a scope shorthand");
+  return { name, scope: grants.length || hasFlag(args, "read-only") ? "read" : hasFlag(args, "drive") ? "drive" : "act", ...(grants.length ? { grants: [...new Set(grants)] } : {}) };
+}
+
 async function pairCommand(args: string[]): Promise<void> {
-  const name = args.find((a) => !a.startsWith("--"));
+  const { name, scope, grants } = parsePairOptions(args);
   const host = resolveHost(name);
-  // act by default; --drive also asks for computer.* input, --read-only for less.
-  const scope = hasFlag(args, "read-only") ? "read" : hasFlag(args, "drive") ? "drive" : "act";
   const { params, fingerprint } = pairingRequest(scope);
   const where = `${host.address}:${host.port}`;
-  console.log(`Pairing ${params.clientName} with ${where} (${scope}).`);
+  console.log(`Pairing ${params.clientName} with ${where} (${grants?.join(", ") ?? scope}).`);
   console.log(`This client's code: ${fingerprint} \u2014 approve on the host only if its notification shows the same code.`);
-  console.log(`(On the host: lats call clients.list, then lats call clients.approve '{"clientID":"${params.clientID}"}')`);
-  const result = (await callHost(host, "clients.pair", params, 135_000)) as {
+  console.log(`(On the host: lats gateway clients, then lats gateway approve ${params.clientID})`);
+  const result = (await callHost(host, "clients.pair", { ...params, ...(grants ? { grants } : {}) }, 135_000)) as {
     disposition: string;
     host: string;
     hostPublicKey: string;
     hostFingerprint: string;
     scope: "read" | "act" | "drive" | null;
     detail?: string;
+    grants?: string[];
   };
   if (result.disposition === "denied" || !result.scope) {
     console.error(`Not paired: ${result.detail ?? "denied"}`);
@@ -87,7 +105,11 @@ async function pairCommand(args: string[]): Promise<void> {
     { host: host.address, port: host.port },
     { host: result.host, hostPublicKey: result.hostPublicKey, hostFingerprint: result.hostFingerprint, scope: result.scope, pairedAt: new Date().toISOString() }
   );
-  console.log(`Paired with ${result.host} (host code ${result.hostFingerprint}, scope ${result.scope}).`);
+  console.log(`Paired with ${result.host} (host code ${result.hostFingerprint}, permissions ${result.grants?.join(", ") ?? result.scope}).`);
   console.log(`Keys: ${CLIENT_FILE}, ${PAIRED_HOSTS_FILE}`);
-  console.log(`Check: lats --host ${host.address}:${host.port} call host.describe`);
+  if (!result.grants || result.grants.includes("lattices:host.describe")) {
+    console.log(`Check: lats --host ${host.address}:${host.port} call host.describe`);
+  } else {
+    console.log("Use gateway.call with one of the approved product and method grants above.");
+  }
 }

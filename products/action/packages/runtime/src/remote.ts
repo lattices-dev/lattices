@@ -123,7 +123,7 @@ export class RemoteHostClient {
         reject(new Error(`${method} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
       this.pending.set(id, { resolve: resolve as (v: Json) => void, reject, timer });
-      socket.send(JSON.stringify({ id, method, params }));
+      socket.send(JSON.stringify({ id, method, params, deadline: Date.now() + timeoutMs }));
     });
   }
 

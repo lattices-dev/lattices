@@ -1,13 +1,11 @@
 import { withRequestContext } from "./request-context.ts";
 import type { ServerWebSocket } from "bun";
-import { identify, type Identity, type Policy } from "./auth.ts";
-import { BridgeSecurityError } from "./bridge/security.ts";
-import { gate, type ConnAuth, type DaemonPairing, type PairParams } from "./pairing.ts";
+import { type Identity } from "./auth.ts";
+import { authorizeLocalRequest, privateToken, protectSocket } from "./private-ipc.ts";
 import type { Request, Router } from "./router.ts";
 
 interface Conn {
   identity: Identity;
-  auth: ConnAuth;
   /** Events this connection asked for; null means all (the default, as on the Mac). */
   events: Set<string> | null;
   active: Set<AbortController>;
@@ -38,52 +36,32 @@ export const KNOWN_EVENTS = ["windows.changed", "spaces.changed", "computer.acte
 
 
 export interface ServeOptions {
-  hosts: string[];
-  port: number;
-  policy: Policy;
+  /** Fixed private Unix socket; remote traffic belongs to lattices-gateway. */
+  socketPath: string;
+  tokenFile: string;
   router: Router;
-  /** Pairing for non-loopback clients; null with --no-pairing. */
-  pairing: DaemonPairing | null;
   log: (line: string) => void;
 }
 
-export function serve({ hosts, port, policy, router, pairing, log }: ServeOptions) {
+export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
+  const token = privateToken(tokenFile);
   const sockets = new Set<ServerWebSocket<Conn>>();
-
-  const servers = hosts.map((hostname) =>
-    Bun.serve<Conn, never>({
-      hostname,
-      port,
+  const server = Bun.serve<Conn, never>({
+      unix: socketPath,
       async fetch(req, server) {
-        const address = server.requestIP(req)?.address ?? "";
-        const identity = await identify(address, policy);
-        if (!identity) {
-          log(`denied ${address}`);
-          return new Response("forbidden: not an allowed tailnet identity\n", { status: 403 });
-        }
-        let client = null;
-        if (pairing && !identity.local) {
-          try {
-            client = pairing.authenticate(new URL(req.url).pathname, req.headers);
-          } catch (err) {
-            if (!(err instanceof BridgeSecurityError)) throw err;
-            log(`unauthenticated ${identity.user}@${identity.node}: ${err.message}`);
-            return new Response(`${err.message}\n`, { status: err.status });
-          }
-        }
-        const auth: ConnAuth = { local: identity.local === true, client, pairingRequired: pairing !== null };
-        if (server.upgrade(req, { data: { identity, auth, events: null, active: new Set<AbortController>() } })) return undefined;
+        if (req.method !== "GET" || new URL(req.url).pathname !== "/" || !authorizeLocalRequest(req, token)) return new Response("forbidden\n", { status: 403 });
+        const identity: Identity = { user: "local", node: "localhost", local: true };
+        if (server.upgrade(req, { data: { identity, events: null, active: new Set<AbortController>() } })) return undefined;
         // Plain HTTP GET / answers a health check, like the companion bridge.
-        return Response.json({ ok: true, service: "lattices-host", websocket: `ws://${hostname}:${port}` });
+        return Response.json({ ok: true, service: "lattices-host", transport: "private-ipc" });
       },
       websocket: {
-        // Recordings and captures come back as base64; leave room for them.
-        maxPayloadLength: 64 * 1024 * 1024,
+        // Bound incoming requests; outgoing captures can be larger.
+        maxPayloadLength: 1024 * 1024,
         open(ws) {
           sockets.add(ws);
           const { user, node } = ws.data.identity;
-          const client = ws.data.auth.client;
-          log(`connected ${user}@${node}${client ? ` as ${client.name}` : ws.data.auth.local || !pairing ? "" : " (unpaired)"}`);
+          log(`connected ${user}@${node}`);
         },
         close(ws) {
           sockets.delete(ws);
@@ -93,33 +71,15 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
           let request: Request;
           try {
             request = JSON.parse(String(raw));
-            if (typeof request.method !== "string") throw new Error("missing method");
+            if (typeof request.method !== "string" || !/^[A-Za-z][A-Za-z0-9_.]{0,127}$/.test(request.method)) throw new Error("missing method");
+            if (request.params != null && (typeof request.params !== "object" || Array.isArray(request.params))) throw new Error("invalid params");
+            if (String(request.id ?? "?").length > 128 || ws.data.active.size >= 16) throw new Error("request limit");
             if (request.deadline !== undefined && (!Number.isFinite(request.deadline) || !Number.isSafeInteger(request.deadline))) throw new Error("invalid deadline");
           } catch {
             ws.send(JSON.stringify({ id: "?", result: null, error: "Invalid request JSON" }));
             return;
           }
           const id = String(request.id ?? "?");
-          const reply = (result: unknown, error: string | null): void => {
-            ws.send(JSON.stringify({ id, result: error ? null : result, error }));
-          };
-          const endpoint = router.lookup(request.method);
-          const denied = gate(ws.data.auth, {
-            method: request.method,
-            access: endpoint?.access ?? "read",
-            loopbackOnly: endpoint?.loopbackOnly,
-          });
-          if (denied) {
-            log(`${request.method} denied: ${denied.split(":")[0]}`);
-            return reply(null, denied);
-          }
-          if (request.method === "clients.pair") {
-            if (!pairing) return reply(null, "Pairing is off on this host (--no-pairing)");
-            if (ws.data.auth.local) return reply(null, "Loopback is already trusted; pair from another machine");
-            const result = await pairing.pair((request.params ?? {}) as PairParams, ws.data.identity);
-            log(`pairing ${ws.data.identity.node}: ${result.disposition}`);
-            return reply(result, null);
-          }
           const subscription = handleSubscription(ws.data, request.method, request.params);
           if (subscription) {
             ws.send(JSON.stringify({ id, result: subscription, error: null }));
@@ -134,26 +94,22 @@ export function serve({ hosts, port, policy, router, pairing, log }: ServeOption
           } finally { ws.data.active.delete(controller); }
         },
       },
-    })
-  );
+    });
 
+  const removeSocket = protectSocket(socketPath);
   return {
-    ports: servers.map(server => server.port!),
+    ports: [server.port],
     clientCount: () => sockets.size,
-    /** Close the connections a revoked client has open. */
-    disconnect(clientID: string) {
-      for (const ws of sockets) if (ws.data.auth.client?.id === clientID) ws.close(4001, "revoked");
-    },
     broadcast(event: string, data: unknown) {
       const frame = JSON.stringify({ event, data });
       for (const ws of sockets) {
-        if (gate(ws.data.auth, { method: "events.subscribe", access: "read" })) continue;
         if (!ws.data.events || ws.data.events.has(event)) ws.send(frame);
       }
     },
     stop() {
       for (const ws of sockets) for (const controller of ws.data.active) controller.abort();
-      for (const server of servers) server.stop(true);
+      server.stop(true);
+      removeSocket();
     },
   };
 }

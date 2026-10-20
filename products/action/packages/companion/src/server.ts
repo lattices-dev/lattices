@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, chmodSync, lstatSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { createConnection } from "node:net";
+import { companionTokenPath, ensurePrivateToken, secureDirectory, tokenMatches } from "../../runtime/src/local-security.js";
 
 import { ActionCompanionDatabase, DB_SCHEMA_VERSION, RPC_VERSION, type JobRecord } from "./db.js";
 import { ActionCompanionQueue } from "./queue.js";
@@ -38,7 +40,9 @@ function resolveConfig(): CompanionConfig {
   const databasePath = resolve(process.env.ACTION_COMPANION_DB_PATH ?? resolve(supportDirectory, "action-companion.sqlite"));
   const socketPath = resolve(process.env.ACTION_COMPANION_SOCKET_PATH ?? resolve(runtimeDirectory, "companion.sock"));
   const portRaw = process.env.ACTION_COMPANION_PORT;
-  const port = portRaw ? Number(portRaw) : undefined;
+  const port = process.env.ACTION_COMPANION_ALLOW_TCP === "1" && portRaw ? Number(portRaw) : undefined;
+  if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Invalid companion TCP port");
+  if (process.env.ACTION_COMPANION_HOST && process.env.ACTION_COMPANION_HOST !== "127.0.0.1") throw new Error("Companion TCP compatibility is loopback only");
   return {
     actionRoot,
     supportDirectory,
@@ -64,7 +68,10 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 
 async function readBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
+  let length = 0;
   for await (const chunk of request) {
+    length += Buffer.byteLength(chunk);
+    if (length > 1_048_576) throw new Error("Request body exceeds 1 MiB");
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   const text = Buffer.concat(chunks).toString("utf8").trim();
@@ -206,7 +213,7 @@ function indexJobResult(db: ActionCompanionDatabase, job: JobRecord, result: unk
   }
 }
 
-function createHandler(input: { config: CompanionConfig; db: ActionCompanionDatabase; queue: ActionCompanionQueue; secretsLoadedAt: string }) {
+function createHandler(input: { config: CompanionConfig; db: ActionCompanionDatabase; queue: ActionCompanionQueue; secretsLoadedAt: string; token: string }) {
   const { config, db, queue, secretsLoadedAt } = input;
   const capabilities = {
     rpcVersion: RPC_VERSION,
@@ -217,6 +224,18 @@ function createHandler(input: { config: CompanionConfig; db: ActionCompanionData
 
   return async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     try {
+      const headerNames = request.rawHeaders.filter((_, index) => index % 2 === 0).map(name => name.toLowerCase());
+      if (headerNames.filter(name => name === "host").length !== 1 ||
+          headerNames.filter(name => name === "x-lattices-token").length !== 1 ||
+          request.headers.origin !== undefined || !tokenMatches(request.headers["x-lattices-token"], input.token)) {
+        sendJson(response, 401, { ok: false, error: "Authenticated local IPC required" }); return;
+      }
+      const host = request.headers.host;
+      const allowedHosts = request.socket.remoteAddress
+        ? [`127.0.0.1:${config.port}`, `localhost:${config.port}`] : ["localhost"];
+      if (!host || !allowedHosts.includes(host)) {
+        sendJson(response, 403, { ok: false, error: "Invalid Host" }); return;
+      }
       const url = new URL(request.url ?? "/", "http://action-companion.local");
       const method = request.method ?? "GET";
       const parts = url.pathname.split("/").filter(Boolean);
@@ -400,7 +419,9 @@ function createHandler(input: { config: CompanionConfig; db: ActionCompanionData
 
 export async function main(): Promise<void> {
   const config = resolveConfig();
-  mkdirSync(config.runtimeDirectory, { recursive: true });
+  secureDirectory(config.runtimeDirectory);
+  secureDirectory(dirname(config.socketPath));
+  const token = ensurePrivateToken(companionTokenPath());
   mkdirSync(dirname(config.databasePath), { recursive: true });
 
   const db = new ActionCompanionDatabase(config.databasePath);
@@ -409,7 +430,7 @@ export async function main(): Promise<void> {
     actionRoot: config.actionRoot,
     companionBaseUrl: `unix:${config.socketPath}`,
   });
-  const handler = createHandler({ config, db, queue, secretsLoadedAt: secrets.loadedAt });
+  const handler = createHandler({ config, db, queue, secretsLoadedAt: secrets.loadedAt, token });
   const unixServer = createServer((request, response) => {
     void handler(request, response);
   });
@@ -419,15 +440,29 @@ export async function main(): Promise<void> {
     })
     : undefined;
 
+  for (const server of [unixServer, tcpServer]) {
+    if (server) { server.requestTimeout = 10_000; server.headersTimeout = 5_000; server.maxHeadersCount = 32; }
+  }
   if (existsSync(config.socketPath)) {
-    rmSync(config.socketPath, { force: true });
+    const info = lstatSync(config.socketPath);
+    if (!info.isSocket() || info.uid !== process.getuid?.()) throw new Error("Refusing to replace a non-owned companion socket");
+    const active = await new Promise<boolean>((resolve) => {
+      const socket = createConnection(config.socketPath);
+      socket.once("connect", () => { socket.destroy(); resolve(true); });
+      socket.once("error", (error: NodeJS.ErrnoException) => { socket.destroy(); resolve(error.code !== "ECONNREFUSED" && error.code !== "ENOENT"); });
+      socket.setTimeout(500, () => { socket.destroy(); resolve(true); });
+    });
+    if (active) throw new Error("Companion socket is already active");
+    rmSync(config.socketPath);
   }
 
-  await new Promise<void>((resolvePromise) => {
-    unixServer.listen(config.socketPath, resolvePromise);
+  await new Promise<void>((resolvePromise, reject) => {
+    unixServer.once("error", reject);
+    unixServer.listen(config.socketPath, () => { chmodSync(config.socketPath, 0o600); resolvePromise(); });
   });
   if (tcpServer && config.port) {
-    await new Promise<void>((resolvePromise) => {
+    await new Promise<void>((resolvePromise, reject) => {
+      tcpServer.once("error", reject);
       tcpServer.listen(config.port, config.host, resolvePromise);
     });
   }

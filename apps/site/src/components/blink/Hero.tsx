@@ -20,7 +20,7 @@ export default function Hero() {
           <div className="rise-in rise-1">
             <h1 className="text-balance">
               <span className="font-display block text-[66px] md:text-[86px] font-semibold tracking-[-0.025em] leading-[0.84] text-[var(--text)]">
-                blink
+                canvas
               </span>
               <span className="font-display mt-6 block max-w-md text-[32px] md:text-[40px] font-medium tracking-[-0.012em] leading-[0.98] text-[var(--text)]">
                 spatial notes for your Mac
@@ -40,13 +40,13 @@ export default function Hero() {
                 <span className="text-faintx">new note</span>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
-                <HyperChord letter="B" action="Blink all panels" />
-                <span className="text-faintx">blink all panels</span>
+                <HyperChord letter="B" action="Show or hide all panels" />
+                <span className="text-faintx">show or hide all panels</span>
               </div>
             </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <PrimaryButton href="/blink/download">
+              <PrimaryButton href="/canvas/download">
                 <span className="text-[15px] leading-none" aria-hidden>
                   ↓
                 </span>{' '}
@@ -59,6 +59,11 @@ export default function Hero() {
 
             <p className="mt-5 text-[11px] text-faintx">
               free & open source · macOS 14+ · Apple Silicon
+            </p>
+            <p className="mt-2 max-w-md text-[11px] leading-[1.6] text-faintx">
+              Canvas is the new name for Blink. The download installs{' '}
+              <span className="text-dimx">Canvas.app</span>, and the command-line tool is{' '}
+              <code className="text-dimx">canvas</code>.
             </p>
           </div>
 

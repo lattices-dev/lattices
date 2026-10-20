@@ -1,11 +1,10 @@
 import puppeteer from "puppeteer";
 import { readFileSync } from "fs";
-import { join, dirname, extname } from "path";
+import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, "..", "public");
-const repoRoot = join(__dirname, "..", "..", "..");
 
 // ── Grid ────────────────────────────────────────────────────────
 // 30px grid: GCD(1200, 630) = 30, so it tiles exactly: 40 columns, 21 rows.
@@ -61,11 +60,19 @@ function mark(slug, size) {
 // ── Previews ────────────────────────────────────────────────────
 // Each fills the preview window: product art cropped to cover it, or an
 // interface mock drawn at that size.
-const MIME = { ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
-
-function artPreview(path, position = "center") {
-  const data = readFileSync(join(repoRoot, path)).toString("base64");
-  return `<img class="art" src="data:${MIME[extname(path)]};base64,${data}" style="object-position: ${position}" alt="">`;
+// A notes illustration avoids presenting an older app build as the renamed UI.
+function canvasPreview() {
+  return `<div style="width: 100%; height: 100%; position: relative; background: radial-gradient(ellipse at 70% 20%, #3c4147, #171c23 75%); color: #edf0f3; font-family: Inter, sans-serif;">
+    <article style="position: absolute; left: 36px; top: 38px; width: 350px; padding: 28px; background: #30353bea; border: 1px solid #ffffff26; border-radius: 14px; box-shadow: 0 20px 50px #0005;">
+      <p style="margin: 0 0 18px; color: #dba77d; font-size: 12px; letter-spacing: .1em;">PROJECT NOTES</p>
+      <h2 style="margin: 0 0 16px; font-size: 28px; font-weight: 600;">Room to think.</h2>
+      <p style="margin: 0; font-size: 17px; line-height: 1.65; color: #cad0d7;">Keep the working draft nearby.<br>Move a thought into place.<br>Come back when you're ready.</p>
+    </article>
+    <article style="position: absolute; left: 165px; top: 310px; width: 340px; padding: 26px; background: #ece3d2; color: #38332e; border: 1px solid #fff6; border-radius: 14px; box-shadow: 0 20px 50px #0005;">
+      <h2 style="margin: 0 0 18px; font-size: 23px; font-weight: 600;">Before we ship</h2>
+      <p style="margin: 0; font-size: 17px; line-height: 1.8;">☑ Review the draft<br>☐ Check the details<br>☐ Share the notes</p>
+    </article>
+  </div>`;
 }
 
 function lights() {
@@ -359,7 +366,7 @@ const pages = [
     tag: "WebSocket API",
     title: "lattices api",
     subtitle:
-      "20+ RPC methods over WebSocket. Window tiling, screen map, terminal discovery, and more.",
+      "RPC API for window tiling, screen maps, terminal discovery, and workspace control.",
     preview: apiPreview,
   },
   {
@@ -374,11 +381,11 @@ const pages = [
   {
     filename: "og-blink.png",
     product: "blink",
-    tag: "lattices.dev/blink",
-    title: "blink",
+    tag: "lattices.dev/canvas",
+    title: "canvas",
     subtitle:
       "Spatial notes: each note is a floating panel, and the desktop is the workspace.",
-    preview: () => artPreview("products/blink/landing/public/hero-desk.png"),
+    preview: canvasPreview,
   },
   {
     filename: "og-speech.png",
@@ -908,5 +915,10 @@ async function generate(configs) {
 }
 
 console.log("Generating OG images...\n");
-await generate(pages);
+const requested = process.argv.slice(2);
+const selected = requested.length ? pages.filter((page) => requested.includes(page.filename)) : pages;
+for (const filename of requested) {
+  if (!pages.some((page) => page.filename === filename)) throw new Error(`Unknown OG image: ${filename}`);
+}
+await generate(selected);
 console.log("\nDone!");

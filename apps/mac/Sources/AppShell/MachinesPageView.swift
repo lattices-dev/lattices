@@ -147,7 +147,7 @@ private struct MachinePairSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Add machine").font(Typo.heading(15))
             TextField("Name", text: $name).disabled(waiting)
-            TextField("Bridge address · host:5287", text: $address).disabled(waiting)
+            TextField("Bridge address · host:9399", text: $address).disabled(waiting)
             Picker("Type", selection: $kind) {
                 Text("Lattices host").tag("host")
                 Text("Visit host").tag("visit")
@@ -186,7 +186,7 @@ private struct MachinePairSheet: View {
         }
         if kind == "host" { done(); dismiss(); return }
         var bridge = URLComponents(url: base, resolvingAgainstBaseURL: false)!
-        bridge.port = base.port ?? 5287
+        bridge.port = base.port ?? 9399
         let bridgeAddress = String(bridge.url!.absoluteString.dropFirst("http://".count))
         waiting = true
         error = nil

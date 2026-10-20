@@ -1,3 +1,4 @@
+import { docsHome, docsProduct, type ProductId } from '../lib/docs-catalog'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { footerColumns, licenseUrl } from '../data/footer'
 import { productLinks } from '../data/products'
@@ -57,10 +58,6 @@ export function ProductsMenu() {
       </button>
       {open ? (
         <div id="products-menu-panel" className="products-menu-panel" aria-label="Products">
-          <a href="/family" className="products-menu-link" onClick={() => setOpen(false)}>
-            <span>What it can do</span>
-            <small>A guided tour of the Lattices family</small>
-          </a>
           {productLinks.map((product) => (
             <a
               key={product.href}
@@ -73,8 +70,8 @@ export function ProductsMenu() {
             </a>
           ))}
           <a href="/products" className="products-menu-link products-menu-all" onClick={() => setOpen(false)}>
-            <span>All products</span>
-            <small>Browse the full Lattices family</small>
+            <span>Products and documentation</span>
+            <small>Choose a product and its docs</small>
           </a>
         </div>
       ) : null}
@@ -89,7 +86,7 @@ export interface HeaderProduct {
   mark: ReactNode
 }
 
-export function SiteHeader({ product }: { product?: HeaderProduct }) {
+export function SiteHeader({ product, docsProductId }: { product?: HeaderProduct; docsProductId?: ProductId }) {
   const [searchOpen, setSearchOpen] = useState(false)
   // The initial theme is set synchronously by the inline script in index.html
   // to avoid a flash of wrong-theme content. This effect re-syncs on toggle.
@@ -142,7 +139,7 @@ export function SiteHeader({ product }: { product?: HeaderProduct }) {
             <ProductsMenu />
             <a href="/learn">Learn</a>
             <a href="/blog" className="nav-blog-link">Blog</a>
-            <a href="/docs/overview">Docs</a>
+            <a href={docsHome(docsProductId || (product?.href.slice(1) as ProductId) || 'lattices')}>{docsProductId ? `${docsProduct(docsProductId).title} docs` : 'Docs'}</a>
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
               Search
               <span aria-hidden="true">⌘K</span>
@@ -172,6 +169,7 @@ const footerMarks: Record<string, ReactNode> = {
       style={{ width: 14, height: 14 }}
     />
   ),
+  '/canvas': <BlinkMark width={14} height={14} />,
   '/blink': <BlinkMark width={14} height={14} />,
   '/speech': <SpeechMark size={14} />,
 }
@@ -192,7 +190,7 @@ export function SiteFooter({ current, className }: SiteFooterProps) {
               <LatticesMark size={22} />
               <span>lattices</span>
             </a>
-            <p>The programmable workspace for macOS. Free, open source, and local first.</p>
+            <p>The programmable workspace for macOS and Linux. Free, open source, and local first.</p>
           </div>
           {footerColumns.map((column) => (
             <div className="site-footer-col" key={column.title}>
@@ -221,7 +219,7 @@ export function SiteFooter({ current, className }: SiteFooterProps) {
             Built by{' '}
             <a href="https://github.com/arach" target="_blank" rel="noopener noreferrer">@arach</a>
             <span aria-hidden="true"> · </span>
-            macOS only. tmux optional.
+            macOS and Linux. tmux optional.
           </p>
           <p>
             <a href={licenseUrl} target="_blank" rel="noopener noreferrer">MIT licensed</a>
@@ -328,15 +326,22 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     }
   }, [open, onClose])
 
-  if (!open) return null
-
   return (
     <div
       className="search-overlay"
+      style={open ? undefined : { display: 'none' }}
       role="dialog"
       aria-modal="true"
       aria-label="Search documentation"
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+        // Pagefind links use the site's client router, so the header stays
+        // mounted after navigation. Dismiss the overlay for that navigation.
+        if (
+          event.target instanceof Element && event.target.closest('a[href]') &&
+          !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
+        ) onClose()
+      }}
     >
       <div className="search-panel" ref={panelRef}>
         <div className="search-panel-header">

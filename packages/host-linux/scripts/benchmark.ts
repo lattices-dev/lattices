@@ -1,16 +1,21 @@
 // Read-only end-to-end burst: a test instance, never the everyday :9399 host.
 // Run on each revision: bun packages/host-linux/scripts/benchmark.ts [port]
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { privateToken, privateWebSocket } from "../src/private-ipc.ts";
 import { capabilities, refreshCapabilities, registerEndpoints } from "../src/endpoints.ts";
 import { Router } from "../src/router.ts";
 import { serve } from "../src/server.ts";
 
-const port = Number(process.argv[2] ?? 19499);
-if (port === 9399) throw new Error("Refusing to benchmark the everyday host port");
+const runtime = mkdtempSync(join(tmpdir(), "lattices-benchmark-"));
+const socketPath = join(runtime, "lattices.sock");
+const tokenFile = join(runtime, "lattices.token");
 await refreshCapabilities();
 const router = new Router(() => capabilities);
 registerEndpoints(router, { bindHost: "127.0.0.1", startedAt: Date.now(), clientCount: () => 1 });
-const server = serve({ hosts: ["127.0.0.1"], port, policy: { allowUsers: [], allowTags: [] }, router, pairing: null, log: () => {} });
-const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+const server = serve({ socketPath, tokenFile, router, log: () => {} });
+const ws = privateWebSocket(socketPath, "/", { host: "localhost", "x-lattices-token": privateToken(tokenFile) });
 const waiting = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
 ws.onmessage = ({ data }) => {
   const reply = JSON.parse(String(data));
@@ -41,8 +46,9 @@ try {
     }
     results.push({ method: "windows.list", calls: 100, queriesPerCall: 4, concurrency, rounds: 5, samplesMs: samples.map((n) => Number(n.toFixed(2))), medianMs: Number([...samples].sort((a,b) => a-b)[2].toFixed(2)) });
   }
-  console.log(JSON.stringify({ bun: Bun.version, port, results }, null, 2));
+  console.log(JSON.stringify({ bun: Bun.version, transport: "unix", results }, null, 2));
 } finally {
   ws.close();
   server.stop();
+  rmSync(runtime, { recursive: true, force: true });
 }

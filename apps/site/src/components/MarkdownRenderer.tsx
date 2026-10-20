@@ -1,3 +1,4 @@
+import { MacRuntimeDiagram, LinuxRuntimeDiagram } from './RuntimeBoundaryDiagram'
 import { isValidElement, useEffect, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
@@ -12,6 +13,8 @@ import TestResults from './blog/TestResults'
 import TurnPipeline from './blog/TurnPipeline'
 
 const embeddedComponents = {
+  MacRuntimeDiagram,
+  LinuxRuntimeDiagram,
   ArchDiagram,
   ContextExplorer,
   LatencyJourney,

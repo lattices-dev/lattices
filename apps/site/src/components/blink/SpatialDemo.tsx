@@ -203,8 +203,8 @@ export default function SpatialDemo() {
             <button
               type="button"
               onClick={toggleBlink}
-              title="Blink all / none — Control Option Shift Command B"
-              aria-label="Blink all panels, Control Option Shift Command B"
+              title="Show or hide all — Control Option Shift Command B"
+              aria-label="Show or hide all panels, Control Option Shift Command B"
               aria-pressed={allHidden}
               className={allHidden ? demoBtnOn : demoBtn}
             >
@@ -335,7 +335,7 @@ export default function SpatialDemo() {
         {/* bottom-left readout */}
         <div className="absolute bottom-2 left-3 text-[9px] text-faintx pointer-events-none">
           panels: {notes.filter((n) => !n.hidden).length}/{notes.length}
-          {allHidden && <span className="text-acc"> · blinked out — {HYPER_GLYPH}B to recall</span>}
+          {allHidden && <span className="text-acc"> · all hidden — {HYPER_GLYPH}B to recall</span>}
         </div>
         <div className="absolute bottom-2 right-3 text-[9px] text-faintx pointer-events-none hidden sm:block">
           drag panels · state persists (x, y, w, h)

@@ -1,4 +1,6 @@
 import { BrowserTimeoutError, CDPSession, deadlineFetchJson, withDeadline, checkDeadline, boundedWait, deadlineSleep, remainingTimeout } from "./transport.ts";
+import { localHTTPGet } from "../../../../packages/desktop-client/local-http.ts";
+import { localEndpoint } from "../../../../packages/desktop-client/local-ipc.ts";
 
 import { mkdir } from "node:fs/promises";
 import {
@@ -137,8 +139,6 @@ const CONSOLE_WAIT_MS = 10_000;
 const shutdownBudgetMs = Math.max(500, Number(process.env.ACTION_BROWSER_SHUTDOWN_TIMEOUT_MS ?? "4000") || 4_000);
 const chromeAppName = process.env.ACTION_BROWSER_CHROME_APP ?? "Google Chrome";
 const chromeBaseURL = `http://127.0.0.1:${debugPort}`;
-const companionBridgeHealthURL = process.env.ACTION_CHROME_COMPANION_HEALTH_URL
-  ?? "http://127.0.0.1:4321/health";
 const textDecoder = new TextDecoder();
 let currentTargetId: string | undefined;
 /**
@@ -937,7 +937,7 @@ async function companionStatus(): Promise<JsonObject> {
   const manifestPath = join(dist, "manifest.json");
   let bridge: JsonObject = { ok: false, connected: false };
   try {
-    bridge = await deadlineFetchJson<JsonObject>(companionBridgeHealthURL);
+    bridge = await localHTTPGet<JsonObject>("action-chrome", "/health", remainingTimeout(3000));
   } catch (error) {
     bridge = {
       ok: false,
@@ -973,7 +973,7 @@ async function companionStatus(): Promise<JsonObject> {
     companionDist: dist,
     companionDistExists: distExists,
     companionManifestExists: existsSync(manifestPath),
-    bridgeHealthUrl: companionBridgeHealthURL,
+    bridgeSocketPath: localEndpoint("action-chrome").socketPath,
     bridge,
     extensionTargets,
     extensionIds,
@@ -1006,7 +1006,6 @@ async function ensureChrome(background = true): Promise<void> {
     "--args",
     `--user-data-dir=${profileDir}`,
     `--remote-debugging-port=${debugPort}`,
-    "--remote-allow-origins=*",
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-background-timer-throttling",

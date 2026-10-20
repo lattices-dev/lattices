@@ -5,7 +5,7 @@ import XCTest
 final class SpeechSocketIntegrationTests: XCTestCase {
     @MainActor
     func testSpeechRequestsAndEventsRequireCapability() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = URL(fileURLWithPath: "/private/tmp", isDirectory: true).appendingPathComponent(UUID().uuidString)
         let capabilityURL = directory.appendingPathComponent("capability")
         let api = SpeechApi()
         let queue = SpeechQueue(synthesizer: FakeSpeechSynthesizer(), player: FakeSpeechPlayer())
@@ -35,9 +35,11 @@ final class SpeechSocketIntegrationTests: XCTestCase {
             authorized.cancel(with: .normalClosure, reason: nil)
         }
         let payload = "{\"id\":\"check\",\"method\":\"speech.status\",\"params\":null}"
-        try await anonymous.send(.string(payload))
-        let denied = try await receive(anonymous)
-        XCTAssertNotNil(denied["error"] as? String)
+        do {
+            try await anonymous.send(.string(payload))
+            _ = try await receive(anonymous)
+            XCTFail("Anonymous connection must be rejected before WebSocket upgrade")
+        } catch { /* HTTP upgrade was rejected. */ }
         try await authorized.send(.string(payload))
         let accepted = try await receive(authorized)
         XCTAssertNil(accepted["error"] as? String)
@@ -47,8 +49,6 @@ final class SpeechSocketIntegrationTests: XCTestCase {
         server.broadcast(DaemonEvent(event: "test.marker", data: .object([:])))
         let privateEvent = try await receive(authorized)
         XCTAssertEqual(privateEvent["event"] as? String, "speech.changed")
-        let publicEvent = try await receive(anonymous)
-        XCTAssertEqual(publicEvent["event"] as? String, "test.marker")
         _ = try await receive(authorized) // Consume its public marker as well.
 
         // Concurrent producers must not interleave frame bytes, including large

@@ -1,3 +1,5 @@
+import { docsProduct } from '../lib/docs-catalog'
+
 export interface ProductLink {
   href: string
   title: string
@@ -9,7 +11,7 @@ export const productLinks: ProductLink[] = [
   {
     href: '/',
     title: 'Lattices',
-    description: 'The programmable workspace for macOS',
+    description: 'The programmable workspace for macOS and Linux',
     meta: 'Core app + API',
   },
   {
@@ -19,8 +21,8 @@ export const productLinks: ProductLink[] = [
     meta: 'macOS app',
   },
   {
-    href: '/blink',
-    title: 'Blink',
+    href: docsProduct('blink').home,
+    title: docsProduct('blink').title,
     description: 'Spatial notes that live on your desktop',
     meta: 'macOS app',
   },

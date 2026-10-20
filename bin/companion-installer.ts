@@ -6,9 +6,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, mkdtemp, lstat, rm, open, statfs } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { companionDistribution, fetchCompanionRelease } from './companion-release';
+import { companionAppNames, companionDistribution, companionInstallIdentity, fetchCompanionRelease } from './companion-release';
 import type { CompanionRelease, CompanionReleaseProduct } from './companion-release';
 import { installCompanion } from './companion-install';
 import type { CompanionInstallOperations } from './companion-install';
@@ -31,6 +31,21 @@ async function exists(path: string): Promise<boolean> {
 }
 async function plist(app: string, key: string): Promise<string> {
   return command('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, join(app, 'Contents/Info.plist')]);
+}
+
+/** Release tags and asset names may straddle a rename; accept one known basename,
+ * then require the unchanged signed identity in verifyCompanionBundle. */
+export async function findCompanionBundle(mount: string, product: CompanionReleaseProduct): Promise<string> {
+  const candidates: string[] = [];
+  for (const name of companionAppNames(product)) {
+    const path = join(mount, name);
+    if (await exists(path)) candidates.push(path);
+  }
+  if (candidates.length !== 1) throw new Error('The release must contain exactly one supported app bundle.');
+  const candidate = candidates[0]!;
+  const info = await lstat(candidate);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('The downloaded app is not a regular bundle directory.');
+  return candidate;
 }
 
 export async function verifyCompanionBundle(app: string, release: CompanionRelease, signal?: AbortSignal): Promise<void> {
@@ -102,12 +117,11 @@ export async function runCompanionInstaller(product: CompanionReleaseProduct, si
   if (process.platform !== 'darwin') throw new Error('Companion installation requires macOS.');
   const applications = join(homedir(), 'Applications');
   await mkdir(applications, { recursive: true });
-  const appName = companionDistribution.products[product].asset.replace(/\.dmg$/, '.app');
-  const destination = join(applications, appName);
+  const appNames = companionAppNames(product);
   const findInstalled = async (bundleID: string) => {
     signal?.throwIfAborted();
     const indexed = await command('/usr/bin/mdfind', [`kMDItemCFBundleIdentifier == '${bundleID}'`], signal);
-    const candidates = [destination, join('/Applications', appName), ...indexed.split('\n').filter(Boolean)];
+    const candidates = [...appNames.flatMap(name => [join(applications, name), join('/Applications', name)]), ...indexed.split('\n').filter(Boolean)];
     for (const candidate of candidates) {
       try {
         const info = await lstat(candidate);
@@ -119,7 +133,7 @@ export async function runCompanionInstaller(product: CompanionReleaseProduct, si
       } catch { /* Removed or invalid candidate; keep discovering. */ }
     }
   };
-  const unlock = await acquireCompanionLock(join(applications, `.lattices-install-${product}.lock`));
+  const unlock = await acquireCompanionLock(join(applications, `.lattices-install-${companionInstallIdentity(product)}.lock`));
   try {
     const existing = await findInstalled(companionDistribution.products[product].bundleID);
     if (existing) return { status: 'already-installed' as const, path: existing, cleanupErrors: [] as string[] };
@@ -139,14 +153,17 @@ export async function runCompanionInstaller(product: CompanionReleaseProduct, si
         return mount;
       },
       stageExpectedApp: async (mount, staging, release, signal) => {
-        const source = join(mount, appName);
+        const source = await findCompanionBundle(mount, release.product);
         await verifyCompanionBundle(source, release, signal);
-        const staged = join(staging, appName);
+        const staged = join(staging, basename(source));
         await command('/usr/bin/ditto', ['--rsrc', '--extattr', source, staged], signal);
         await quarantine(staged); return staged;
       },
       verify: verifyCompanionBundle,
       commitExclusive: async app => {
+        const appName = basename(app);
+        if (!appNames.includes(appName)) throw new Error('Unsupported staged app bundle.');
+        const destination = join(applications, appName);
         if (await exists(destination)) throw new Error(`An app already exists at ${destination}; it was not replaced.`);
         await commitCompanionExclusive(app, destination);
         return destination;
@@ -177,7 +194,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         console.log('Companion installer runtime verified: kernel lock and exclusive commit.');
       } finally { await unlock(); }
     } finally { await rm(temporary, { recursive: true, force: true }); }
-  } else if (product !== 'blink' && product !== 'action' && product !== 'speech') { console.error('Usage: companion-installer.ts blink|action|speech'); process.exitCode = 1; }
+  } else if (product !== 'canvas' && product !== 'blink' && product !== 'action' && product !== 'speech') { console.error('Usage: companion-installer.ts canvas|blink|action|speech'); process.exitCode = 1; }
   else {
     const abort = new AbortController();
     process.once('SIGINT', () => abort.abort()); process.once('SIGTERM', () => abort.abort());

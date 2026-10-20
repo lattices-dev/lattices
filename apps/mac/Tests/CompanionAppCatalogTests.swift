@@ -14,6 +14,13 @@ final class CompanionAppCatalogTests: XCTestCase {
         }
         XCTAssertEqual(CompanionAppAction.get.menuTitle, "Install")
     }
+    func testCanvasUsesExistingBlinkIdentity() {
+        let canvas = CompanionAppCatalog.product(id: .blink)
+        XCTAssertEqual(canvas.displayName, "Canvas")
+        XCTAssertEqual(canvas.productPageURL?.absoluteString, "https://lattices.dev/canvas")
+        XCTAssertEqual(canvas.bundleIdentifier, "dev.arach.blink")
+        XCTAssertEqual(canvas.id.rawValue, "blink")
+    }
     func testEveryInstalledCompanionOffersOpen() {
         for product in CompanionAppCatalog.firstParty {
             XCTAssertEqual(CompanionAppCatalog.action(for: product,

@@ -1,7 +1,7 @@
 ---
 name: lattices
 description: Drive a macOS developer workspace through Lattices. Use when tiling or placing windows, launching tmux sessions, searching screen text or OCR, switching workspace layers, focusing apps, or calling the local Lattices daemon API.
-compatibility: Requires macOS with the Lattices menu bar app running (ws://127.0.0.1:9399).
+compatibility: Requires macOS with a running Lattices menu bar app and a matching CLI build.
 metadata:
   author: arach
   homepage: https://lattices.dev
@@ -9,9 +9,13 @@ metadata:
 
 # Lattices
 
-Lattices is a macOS workspace manager. The menu bar app hosts a local daemon at
-`ws://127.0.0.1:9399`. Agents drive it with the `lats` CLI. Older installs only
+Lattices is a macOS workspace manager. The menu bar app hosts a local daemon.
+Agents drive it with the `lats` CLI. Older installs only
 have the long name: if `lats` is not found, run the same command as `lattices`.
+
+Lattices 0.15.0 uses `~/.lattices/run/lattices.sock` and `lattices.token`.
+The matching 0.15.0 CLI finds the socket and sends the token. Upgrade the app
+and CLI together; older TCP clients need migration.
 
 When this skill is invoked, run the command. Summarize the result. Do not
 narrate the plan first. Spoken commands belong to the `speech` skill. Native

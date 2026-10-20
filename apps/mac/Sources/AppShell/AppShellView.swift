@@ -217,7 +217,7 @@ struct AppShellView: View {
             VStack(spacing: 0) {
                 SidebarDaemonStatus(
                     isListening: daemon.isListening,
-                    port: LatticesLocalEndpoints.agentAPIPort,
+                    port: daemon.listeningPort,
                     isCompact: sidebarCompact,
                     labelWidth: CGFloat(sidebarLabelWidth)
                 )
@@ -488,7 +488,7 @@ private struct SidebarDaemonStatus: View {
                 Text("Daemon")
                     .font(Typo.body(12))
                     .foregroundColor(Palette.textDim)
-                Text(verbatim: ":\(port)")
+                Text(verbatim: port == 0 ? "Private IPC" : ":\(port)")
                     .font(Typo.mono(11))
                     .foregroundColor(Palette.textMuted)
             }
@@ -500,8 +500,8 @@ private struct SidebarDaemonStatus: View {
             .opacity(isCompact ? 0 : 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(isListening ? "Daemon listening on port \(port)" : "Daemon offline")
-        .help(isListening ? "Daemon listening on :\(port)" : "Daemon offline")
+        .accessibilityLabel(isListening ? (port == 0 ? "Daemon listening on private IPC" : "Daemon listening on port \(port)") : "Daemon offline")
+        .help(isListening ? (port == 0 ? "Authenticated private local socket" : "Daemon listening on :\(port)") : "Daemon offline")
     }
 }
 

@@ -109,6 +109,11 @@ enum ProcessQuery {
     /// Avoids Process/NSTask's waitUntilExit() which deadlocks on macOS 26
     /// when called from GUI apps (CFRunLoop issue).
     static func shell(_ args: [String]) -> String {
+        guard !args.isEmpty else { return "" }
+        var attributes: posix_spawnattr_t?
+        guard posix_spawnattr_init(&attributes) == 0 else { return "" }
+        defer { posix_spawnattr_destroy(&attributes) }
+        guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { return "" }
         // Set up stdout pipe
         var pipeFds: [Int32] = [0, 0]
         guard pipe(&pipeFds) == 0 else { return "" }
@@ -128,7 +133,7 @@ enum ProcessQuery {
 
         var pid: pid_t = 0
         let spawnResult = cPath.withCString { path in
-            posix_spawn(&pid, path, &fileActions, nil, cArgs, environ)
+            posix_spawn(&pid, path, &fileActions, &attributes, cArgs, environ)
         }
         posix_spawn_file_actions_destroy(&fileActions)
 
@@ -163,6 +168,10 @@ enum ProcessQuery {
     /// Returns true when the process exits with status 0.
     static func run(_ args: [String]) -> Bool {
         guard !args.isEmpty else { return false }
+        var attributes: posix_spawnattr_t?
+        guard posix_spawnattr_init(&attributes) == 0 else { return false }
+        defer { posix_spawnattr_destroy(&attributes) }
+        guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else { return false }
 
         var fileActions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&fileActions)
@@ -175,7 +184,7 @@ enum ProcessQuery {
 
         var pid: pid_t = 0
         let spawnResult = cPath.withCString { path in
-            posix_spawn(&pid, path, &fileActions, nil, cArgs, environ)
+            posix_spawn(&pid, path, &fileActions, &attributes, cArgs, environ)
         }
         posix_spawn_file_actions_destroy(&fileActions)
 

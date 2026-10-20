@@ -1,4 +1,5 @@
 import dbus from "dbus-next";
+import { daemonCall } from "../../../desktop-client/daemon-client.ts";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -12,20 +13,10 @@ const WATCHER = "org.kde.StatusNotifierWatcher";
 const SYSTEMD = "org.freedesktop.systemd1";
 
 async function hostRunning(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = new WebSocket("ws://127.0.0.1:9399");
-    const finish = (running: boolean) => { clearTimeout(timer); socket.close(); resolve(running); };
-    const timer = setTimeout(() => finish(false), 700);
-    socket.onopen = () => socket.send(JSON.stringify({ id: "tray-health", method: "daemon.status" }));
-    socket.onmessage = (event) => {
-      try {
-        const reply = JSON.parse(String(event.data));
-        if (reply.id === "tray-health") finish(!reply.error && reply.result?.platform === "linux");
-      } catch { finish(false); }
-    };
-    socket.onerror = () => finish(false);
-    socket.onclose = () => { clearTimeout(timer); resolve(false); };
-  });
+  try {
+    const result = await daemonCall("daemon.status", null, 700) as { platform?: string };
+    return result.platform === "linux";
+  } catch { return false; }
 }
 
 async function paired(): Promise<boolean | null> {

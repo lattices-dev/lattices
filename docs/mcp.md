@@ -1,4 +1,8 @@
-# The Lattices MCP
+---
+title: MCP
+description: The lats mcp server, its browser and hosts toolsets, and how agent harnesses register it
+order: 8
+---
 
 One MCP server ships with the `lattices` package. Agent config names the binary,
 never a path:
@@ -9,6 +13,19 @@ never a path:
 
 That is the whole point of this document. Everything else is detail.
 
+## Current toolsets
+
+| Toolset | Tools | Does the work | Product docs |
+|---------|-------|---------------|--------------|
+| `browser` | `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_console`, `browser_close`, `browser_profiles`, `browser_use_profile`, `browser_profile_info`, `browser_import_cookies`, `browser_companion_status` | Action Browser code inside the `lattices` package, driving Action-owned Chrome over CDP | [Action browser](/action/docs/browser) |
+| `hosts` | `hosts_list`, `host_describe`, `host_windows`, `host_screenshot`, `host_read`, `host_place`, `host_focus`, `host_act`, `host_call` | The Lattices daemon or a `lattices-host` on port 9399 | [Agent API](/lattices/docs/api) |
+
+`lats mcp` is a Lattices entry point. The `browser` toolset is Action Browser
+code, so its workflow and profile rules belong to Action. Action.app also has
+its own MCP server for private layers and native observe and act, started with
+`lats action mcp`. That server is separate from `lats mcp`. See
+[Action browser](/action/docs/browser) for which one to use.
+
 ## Why a subcommand and not a plugin path
 
 Before this, Action Browser was addressed as if it were an independent product
@@ -17,7 +34,7 @@ assumption, and each one broke differently:
 
 | Harness | What it pointed at | Failure mode |
 |---|---|---|
-| Claude Code | marketplace `action` → `installLocation: /Users/art/dev/action` | Directory moved into `lattices/products/action`. The tools were simply **absent** — no error, nothing in `/mcp`. |
+| Claude Code | marketplace `action` → `installLocation: /Users/art/dev/action` | Directory moved into `lattices/products/action`. The tools were simply **absent**: no error, nothing in `/mcp`. |
 | Claude Code (after the first fix) | `.../plugins/cache/action/action-browser/0.3.0/` | A version-pinned copy. The next version bump orphans it. |
 | Codex | `.../products/action/plugins/action-browser/scripts/...` | A checkout path. The next repo move breaks it. |
 
@@ -25,7 +42,7 @@ Each of those is the same bug wearing a different hat: **the address of the tool
 was a location instead of a name.**
 
 A subcommand fixes it because resolution follows the installed binary. If
-`lattices` is on `PATH`, `lattices mcp` is correct — whether that is a global
+`lattices` is on `PATH`, `lattices mcp` is correct, whether that is a global
 `bun install -g @lattices/lattices`, a `bun link` from a checkout, or a future
 Homebrew formula. Moving the repo, bumping the version, and reinstalling all
 become no-ops for agent config.
@@ -89,12 +106,15 @@ bin/mcp/
       navigation.ts
       viewport.ts
       transport.ts
+      ...
+    hosts/               # Lattices hosts over the daemon protocol
+      index.ts
 ```
 
 The server lives under `bin/` because that is what the npm package actually
 ships. `package.json#files` lists `bin`; it does not list `products`. A design
 that left the server under `products/action/plugins/` and imported it would
-typecheck locally and be missing from every real install — so the code moves
+typecheck locally and be missing from every real install, so the code moves
 rather than being referenced across the boundary. The root `tsconfig.json`
 already covers `bin/**/*.ts`, so the browser server is now typechecked by
 `bun run check:types`, which it was not before.
@@ -136,7 +156,7 @@ mcp__plugin_action-browser_action-browser__browser_open   →   mcp__lattices__b
 ```
 
 No instruction anywhere refers to the prefixed form, so nothing needs aliasing.
-Future toolsets follow the same convention — a short verb-ish prefix per domain
+Future toolsets follow the same convention: a short verb-ish prefix per domain
 (`browser_*`, and later `window_*`, `session_*`) rather than a product name.
 
 ## Lifecycle guarantees
@@ -179,7 +199,7 @@ two separate Chrome-owning processes is a lifecycle problem, not a cosmetic one.
 - The load-bearing part (tools) is addressed by name and cannot be broken by
   moving the repo.
 - The nice-to-have part (skill prose) is still installed the plugin way, and if
-  *that* ever breaks the failure is an agent with slightly less guidance — not an
+  *that* ever breaks the failure is an agent with slightly less guidance, not an
   agent with no browser.
 
 That asymmetry is the whole design. The 2026-09-10 outage was bad specifically
@@ -199,7 +219,7 @@ claude plugin marketplace add lattices-dev/lattices
 claude plugin install action-browser@lattices --scope user
 ```
 
-Codex — replace the `[mcp_servers.action-browser]` block in `~/.codex/config.toml`:
+Codex: replace the `[mcp_servers.action-browser]` block in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.lattices]
