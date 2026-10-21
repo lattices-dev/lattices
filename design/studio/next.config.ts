@@ -11,6 +11,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig: NextConfig = {
   turbopack: { root: path.resolve(here, "../../..") },
   transpilePackages: ["hudsonkit", "studio"],
+  // Next 16 serves dev chunks and HMR to localhost only. Without this, a page
+  // opened at 127.0.0.1:3050 renders but never hydrates, so no control works.
+  allowedDevOrigins: ["127.0.0.1"],
 };
 
 export default nextConfig;

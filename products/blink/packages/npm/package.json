@@ -1,20 +1,24 @@
 {
   "name": "@arach/blink",
-  "version": "2.2.0",
-  "description": "Spatial notes for macOS — native floating panels and an agent-first CLI over local Markdown.",
-  "homepage": "https://lattices.dev/blink",
+  "version": "2.3.0",
+  "description": "Canvas spatial notes for macOS — native floating panels and a compatible blink CLI over local Markdown.",
+  "homepage": "https://lattices.dev/canvas",
   "bugs": {
-    "url": "https://github.com/arach/lattices/issues"
+    "url": "https://github.com/lattices-dev/lattices/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arach/lattices.git",
+    "url": "git+https://github.com/lattices-dev/lattices.git",
     "directory": "products/blink/packages/npm"
   },
   "license": "MIT",
   "type": "module",
-  "os": ["darwin"],
-  "cpu": ["arm64"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -23,6 +27,8 @@
     "provenance": true
   },
   "bin": {
+    "canvas": "bin/blink.mjs",
+    "canvas-app": "bin/blink-app.mjs",
     "blink": "bin/blink.mjs",
     "blink-app": "bin/blink-app.mjs"
   },
@@ -32,6 +38,7 @@
     "README.md"
   ],
   "keywords": [
+    "canvas",
     "blink",
     "notes",
     "macos",
@@ -47,6 +54,7 @@
     "floating-notes"
   ],
   "scripts": {
-    "prepack": "bash ../../tools/release/build-cli.sh"
+    "prepack": "bash ../../tools/release/build-cli.sh",
+    "test": "node --test test/*.test.mjs"
   }
 }

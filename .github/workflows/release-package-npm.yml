@@ -114,10 +114,11 @@ jobs:
             trap 'hdiutil detach "$mount_dir" >/dev/null 2>&1 || true' EXIT
             gh release download "v$version" --dir "$assets" --pattern Lattices.dmg --pattern release-manifest.json
             python3 - "$assets" "$version" <<'PY'
-          import hashlib, json, pathlib, sys
+          import hashlib, json, pathlib, subprocess, sys
           assets = pathlib.Path(sys.argv[1])
           manifest = json.loads((assets / 'release-manifest.json').read_text())
           assert manifest['version'] == sys.argv[2], 'Release version mismatch'
+          assert manifest['sourceCommit'] == subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'App and CLI source revision mismatch'
           assert manifest['tier'] == 'free', 'Public packages require the free tier'
           assert manifest['notarization'] == 'Accepted', 'Release was not notarized'
           assert hashlib.sha256((assets / 'Lattices.dmg').read_bytes()).hexdigest() == manifest['assets']['Lattices.dmg'], 'DMG hash mismatch'

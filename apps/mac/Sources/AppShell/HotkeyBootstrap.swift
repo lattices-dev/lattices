@@ -40,6 +40,7 @@ enum HotkeyBootstrap {
             UnifiedCommandBarWindow.shared.toggle(mode: .search)
         }
         store.register(action: .focusMode) { FocusModeController.shared.toggle() }
+        store.register(action: .stageMode) { StageModeController.shared.toggle() }
         store.register(action: .activityLog) {
             DiagnosticLog.shared.info("Hotkey: activityLog triggered")
             ScreenMapWindowController.shared.showPage(.activity)

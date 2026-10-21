@@ -97,12 +97,12 @@ struct CompanionSettingsPane: View {
                         .frame(width: 30, height: 30)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(prefs.companionBridgeEnabled ? "Secure local bridge" : "Local bridge off")
+                        Text(prefs.companionBridgeEnabled ? "Private local bridge" : "Local bridge off")
                             .font(Typo.mono(12))
                             .foregroundColor(Palette.text)
                         Text(prefs.companionBridgeEnabled
-                            ? "Bonjour discovery with explicit Mac approval, signed requests, encrypted payloads, and capability grants."
-                            : "The companion bridge is not listening or advertising on the local network until you turn it on.")
+                            ? "Local communication uses a private socket. Remote companions connect through a separately started gateway."
+                            : "Enable the private local bridge to allow companion requests through the gateway.")
                             .font(Typo.caption(10))
                             .foregroundColor(Palette.textMuted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -129,8 +129,8 @@ struct CompanionSettingsPane: View {
                         value: prefs.companionBridgeEnabled ? "enabled" : "off"
                     )
                     companionBridgeFact(
-                        label: "Port",
-                        value: String(LatticesCompanionBridgeServer.defaultPort)
+                        label: "Transport",
+                        value: "private IPC"
                     )
                     companionBridgeFact(
                         label: "Protocol",
@@ -139,10 +139,10 @@ struct CompanionSettingsPane: View {
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Enable deep link")
+                    Text("Remote gateway")
                         .font(Typo.mono(10))
                         .foregroundColor(Palette.textDim)
-                    Text("lattices://companion/enable")
+                    Text("lats gateway start --tailnet")
                         .font(Typo.monoBold(12))
                         .foregroundColor(Palette.text)
                         .textSelection(.enabled)

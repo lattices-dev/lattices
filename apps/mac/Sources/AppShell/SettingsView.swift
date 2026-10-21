@@ -749,6 +749,37 @@ struct SettingsContentView: View {
                             SettingsSwitch(isOn: $prefs.spaceSwitchGlideEnabled)
                         }
 
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            settingsPrefRow(
+                                "Desktop shimmer",
+                                caption: "A faint passing light when you switch desktops. Changes apply on the next switch; zero turns it off."
+                            ) {
+                                Text(prefs.spaceSwitchShimmerIntensity == 0 ? "Off" : "\(Int((prefs.spaceSwitchShimmerIntensity * 100).rounded()))%")
+                                    .font(Typo.mono(11))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                            Slider(value: $prefs.spaceSwitchShimmerIntensity, in: 0...1, step: 0.05)
+                                .controlSize(.small)
+                                .tint(Palette.running)
+                                .accessibilityLabel("Desktop shimmer intensity")
+                                .accessibilityValue(prefs.spaceSwitchShimmerIntensity == 0 ? "Off" : "\(Int((prefs.spaceSwitchShimmerIntensity * 100).rounded())) percent")
+                            HStack {
+                                Text("Off")
+                                Spacer()
+                                Button("Subtle") {
+                                    prefs.spaceSwitchShimmerIntensity = Preferences.defaultSpaceSwitchShimmerIntensity
+                                }
+                                .buttonStyle(.link)
+                                .help("Reset shimmer intensity to 15%")
+                                Spacer()
+                                Text("Original strength")
+                            }
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                        }
+
                         if !permChecker.accessibility {
                             cardDivider
 

@@ -397,10 +397,26 @@ final class SpaceFilmstripTests: XCTestCase {
         host.wantsLayer = true
         let wash = SpaceSwitchWash()
         XCTAssertEqual(wash.liveBandCount, 0)
-        for _ in 0..<20 { wash.pass(direction: 1, in: host) }
-        wash.pass(direction: -1, in: host)
-        XCTAssertLessThanOrEqual(wash.liveBandCount, 3)
-        XCTAssertLessThanOrEqual(host.layer?.sublayers?.count ?? 0, 3)
+        wash.pass(direction: 1, in: host, intensity: 0.15, now: 1)
+        let band = host.layer?.sublayers?.first
+        let initialPosition = band?.position
+        // Repeats and reversals must not overlap or restart a light pass.
+        for index in 1...20 {
+            wash.pass(direction: index.isMultiple(of: 2) ? 1 : -1, in: host,
+                      intensity: 0.15, now: 1 + Double(index) * 0.02)
+        }
+        XCTAssertEqual(wash.liveBandCount, 1)
+        XCTAssertEqual(host.layer?.sublayers?.count, 1)
+        XCTAssertEqual(band?.position, initialPosition)
+        let group = band?.animation(forKey: "pass") as? CAAnimationGroup
+        let glow = group?.animations?.last as? CAKeyframeAnimation
+        XCTAssertEqual((glow?.values?[1] as? NSNumber)?.doubleValue ?? -1, 0.12, accuracy: 0.001)
+        // The next pass picks up intensity live; zero removes active light.
+        wash.pass(direction: -1, in: host, intensity: 1, now: 2)
+        XCTAssertNotEqual(band?.position, initialPosition)
+        wash.pass(direction: 1, in: host, intensity: 0, now: 2.1)
+        XCTAssertEqual(wash.liveBandCount, 0)
+        XCTAssertEqual(host.layer?.sublayers?.count ?? 0, 0)
         wash.release()
         XCTAssertEqual(wash.liveBandCount, 0)
         XCTAssertEqual(host.layer?.sublayers?.count ?? 0, 0)

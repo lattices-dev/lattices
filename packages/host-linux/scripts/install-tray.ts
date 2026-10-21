@@ -3,15 +3,12 @@ import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { renderServiceUnit } from "../src/service-units.ts";
+export { unitArgument } from "../src/service-units.ts";
 import { changeUnit, managerCall, withUserBus } from "../src/systemd.ts";
 
 // systemd links rendered units from this checkout. It owns the user unit
 // symlinks; the installer never edits Omarchy or Hyprland config.
-export function unitArgument(value: string): string {
-  if (/[\r\n\0]/.test(value)) throw new Error("Invalid service path");
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%").replaceAll("$", () => "$$")}"`;
-}
-
 async function install() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const rendered = join(root, ".systemd");
@@ -28,8 +25,9 @@ async function install() {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const template = await readFile(join(root, "systemd", unit), "utf8");
-    const command = `${unitArgument(process.execPath)} ${unitArgument(join(root, "src/main.ts"))}${unit === "lattices-tray.service" ? " tray" : " --quiet"}`;
-    await writeFile(path, template.replace(/^ExecStart=.*$/m, () => `ExecStart=${command}`), { mode: 0o644 });
+    await writeFile(path, renderServiceUnit(template, unit === "lattices-tray.service" ? "tray" : "host", {
+      bun: process.execPath, entry: join(root, "src/main.ts"),
+    }), { mode: 0o644 });
     paths.push(path);
   }
   await withUserBus(async (bus) => {

@@ -9,7 +9,11 @@ actor SpeechCompanionConnection {
     static let capabilityURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Speech/RPC/capability")
     static let tokenHeader = "x-lattices-speech-token"
-    private let endpoint: URL
+    private let endpoint: URL?
+    private let socketPath: String
+    private var unixSocket: SpeechUnixWebSocket?
+    private var unixGeneration: UUID?
+    private var unixConnecting: Task<Void, Error>?
     private let tokenFile: URL
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
@@ -18,8 +22,9 @@ actor SpeechCompanionConnection {
     private let response: (DaemonResponse) -> Void
     private let event: (DaemonEvent) -> Void
 
-    init(endpoint: URL = LatticesLocalEndpoints.speechCompanionURL, tokenFile: URL = SpeechCompanionConnection.capabilityURL, response: @escaping (DaemonResponse) -> Void, event: @escaping (DaemonEvent) -> Void) {
-        self.endpoint = endpoint; self.tokenFile = tokenFile
+    init(endpoint: URL? = nil, socketPath: String = LatticesLocalEndpoints.speechCompanionSocketPath, tokenFile: URL? = nil, response: @escaping (DaemonResponse) -> Void, event: @escaping (DaemonEvent) -> Void) {
+        self.endpoint = endpoint; self.socketPath = socketPath
+        self.tokenFile = tokenFile ?? (endpoint == nil ? LatticesLocalEndpoints.speechCompanionTokenURL : Self.capabilityURL)
         self.response = response; self.event = event
     }
     nonisolated static func authorizes(handshake: String, tokenFile: URL = capabilityURL) -> Bool {
@@ -43,11 +48,30 @@ actor SpeechCompanionConnection {
             response(DaemonResponse(id: request.id, result: nil, error: "Duplicate in-flight request id")); return
         }
         pending.insert(request.id)
+        if endpoint == nil {
+            var generation = unixGeneration
+            do {
+                if unixSocket == nil {
+                    let next = UUID(); generation = next; unixGeneration = next
+                    let connection = SpeechUnixWebSocket(path: socketPath, tokenFile: tokenFile,
+                        receive: { [weak self] data in Task { await self?.receiveUnix(data, generation: next) } },
+                        failed: { [weak self] in Task { await self?.failedUnix(generation: next) } })
+                    unixSocket = connection
+                    unixConnecting = Task { try await connection.connect() }
+                }
+                try await unixConnecting?.value
+                guard let connection = unixSocket, generation == unixGeneration else { return }
+                unixConnecting = nil
+                let data = try JSONEncoder().encode(request)
+                try await connection.send(data)
+            } catch { if let generation { failedUnix(generation: generation) } }
+            return
+        }
         var sendingConnection: URLSessionWebSocketTask?
         do {
             if socket == nil {
                 let token = try String(contentsOf: tokenFile, encoding: .utf8)
-                var urlRequest = URLRequest(url: endpoint)
+                var urlRequest = URLRequest(url: endpoint!)
                 urlRequest.setValue(token, forHTTPHeaderField: Self.tokenHeader)
                 let configuration = URLSessionConfiguration.ephemeral
                 configuration.timeoutIntervalForRequest = 15
@@ -69,14 +93,25 @@ actor SpeechCompanionConnection {
             try await sendingConnection?.send(.string(String(decoding: data, as: UTF8.self)))
         } catch { failed(for: sendingConnection) }
     }
-    private func receive(_ message: URLSessionWebSocketTask.Message, from connection: URLSessionWebSocketTask) {
-        guard socket === connection else { return }
-        let data: Data
-        switch message { case .data(let bytes): data = bytes; case .string(let text): data = Data(text.utf8); @unknown default: return }
+    private func receiveUnix(_ data: Data, generation: UUID) {
+        guard unixGeneration == generation else { return }
+        decode(data)
+    }
+    private func failedUnix(generation: UUID) {
+        guard unixGeneration == generation else { return }
+        failed()
+    }
+    private func decode(_ data: Data) {
         if let result = try? JSONDecoder().decode(DaemonResponse.self, from: data) {
             guard pending.remove(result.id) != nil else { return }
             response(result)
         } else if let update = try? JSONDecoder().decode(DaemonEvent.self, from: data) { event(update) }
+    }
+    private func receive(_ message: URLSessionWebSocketTask.Message, from connection: URLSessionWebSocketTask) {
+        guard socket === connection else { return }
+        let data: Data
+        switch message { case .data(let bytes): data = bytes; case .string(let text): data = Data(text.utf8); @unknown default: return }
+        decode(data)
     }
     private func failed(for connection: URLSessionWebSocketTask? = nil) {
         if let connection, socket !== connection { return }
@@ -90,7 +125,7 @@ actor SpeechCompanionConnection {
     /// Ends this caller's playback lease by closing its helper socket. In-flight
     /// requests fail instead of hanging; queued speech stays with the helper.
     func release() -> Bool {
-        let hadSocket = socket != nil
+        let hadSocket = socket != nil || unixSocket != nil
         let ids = pending
         close()
         for id in ids { response(DaemonResponse(id: id, result: nil, error: "voice.release closed the Voice connection before this request finished")) }
@@ -101,6 +136,9 @@ actor SpeechCompanionConnection {
     func testLateFailure(from connection: URLSessionWebSocketTask) { failed(for: connection) }
     #endif
     func close() {
+        unixGeneration = nil
+        unixConnecting?.cancel(); unixConnecting = nil
+        unixSocket?.close(); unixSocket = nil
         receiver?.cancel(); receiver = nil
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
         session?.invalidateAndCancel(); session = nil

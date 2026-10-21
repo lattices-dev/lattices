@@ -20,7 +20,7 @@ enum BlinkIcon {
             return true
         }
         image.isTemplate = !armed
-        image.accessibilityDescription = armed ? "Blink, capture open" : "Blink"
+        image.accessibilityDescription = armed ? "Canvas, capture open" : "Canvas"
         return image
     }
 

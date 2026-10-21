@@ -1,14 +1,16 @@
 import { test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { VirtualSpace } from "../src/virtual-space.ts";
 import { Router } from "../src/router.ts";
 import { serve } from "../src/server.ts";
+import { privateToken, privateWebSocket } from "../src/private-ipc.ts";
+import type { DaemonEndpoint } from "../../desktop-client/local-ipc.ts";
 import { daemonCallTo } from "../../../bin/daemon-client.ts";
 
-async function fixture(action:(v:VirtualSpace,endpoint:{host:string;port:number})=>Promise<void>) {
+async function fixture(action:(v:VirtualSpace,endpoint:DaemonEndpoint)=>Promise<void>) {
   const root=mkdtempSync("/tmp/lats-caller-");
   const worker=join(root,"worker.ts");
   expect(resolve(worker).startsWith(root+"/")).toBe(true);
@@ -34,13 +36,14 @@ async function fixture(action:(v:VirtualSpace,endpoint:{host:string;port:number}
   const router=new Router(()=>new Set());
   for(const method of ["computer.observe","computer.click","computer.typeText"])router.register({method,access:method==="computer.observe"?"read":"mutate",description:"fixture",returns:"",handler:p=>v.perform(method,p) as any});
   router.register({method:"host.describe",access:"read",description:"fixture",returns:"",handler:()=>({hostname:"fixture",capabilities:[],methods:[],displays:[]})});
-  const server=serve({hosts:["127.0.0.1"],port:0,policy:{allowUsers:[],allowTags:[]},router,pairing:null,log:()=>{}});
-  try {await v.start({}); await action(v,{host:"127.0.0.1",port:server.ports[0]!});}
+  const endpoint:DaemonEndpoint={host:"localhost",port:0,socketPath:join(root,"lattices.sock"),tokenFile:join(root,"lattices.token")};
+  const server=serve({...endpoint,socketPath:endpoint.socketPath!,tokenFile:endpoint.tokenFile!,router,log:()=>{}});
+  try {await v.start({}); await action(v,endpoint);}
   finally {server.stop();await v.stop();rmSync(root,{recursive:true,force:true});}
 }
 
 test("actual app backend 5s caller deadline cancels queued click behind 6.2s observe; data-path type also cancels; retry once",()=>fixture(async(v,endpoint)=>{
-  const backend=spawn(process.execPath,[resolve(import.meta.dir,"../../../apps/linux/backend.ts")],{env:{...process.env,LATTICES_LINUX_PORT:String(endpoint.port)},stdio:["pipe","pipe","pipe"]});
+  const backend=spawn(process.execPath,[resolve(import.meta.dir,"../../../apps/linux/backend.ts")],{env:{...process.env,LATTICES_RUNTIME_DIR:dirname(endpoint.socketPath!)},stdio:["pipe","pipe","pipe"]});
   const messages:any[]=[];
   const lines=createInterface({input:backend.stdout!});
   lines.on("line",line=>messages.push(JSON.parse(line)));
@@ -76,7 +79,7 @@ test("started action deadline reports uncertain outcome, never safe cancellation
 test("raw/data-path websocket disconnect cancels queued input before its longer wire deadline",()=>fixture(async(v,endpoint)=>{
   const observing=daemonCallTo(endpoint,"computer.observe",{space:"virtual",delay:400},2000);
   await Bun.sleep(20);
-  const socket=new WebSocket("ws://127.0.0.1:"+endpoint.port);
+  const socket=privateWebSocket(endpoint.socketPath!,"/",{host:"localhost","x-lattices-token":privateToken(endpoint.tokenFile!)});
   await new Promise<void>((r,j)=>{socket.onopen=()=>r();socket.onerror=()=>j(Error("connect"))});
   socket.send(JSON.stringify({id:"gone",method:"computer.click",deadline:Date.now()+2000,params:{space:"virtual",treatment:"execute"}}));
   await Bun.sleep(30);socket.close();
@@ -87,15 +90,19 @@ test("raw/data-path websocket disconnect cancels queued input before its longer 
 test("published SDK transport carries caller deadline to queued virtual input",()=>fixture(async(v,endpoint)=>{
   const path=resolve(import.meta.dir,"../../npm/sdk/cua.mjs");
   const source=readFileSync(path,"utf8");
-  expect(source).toContain('const DAEMON_PORT = 9399;');
-  // Redirect only the fixed SDK port to our ephemeral fixture; no real daemon.
-  const isolated=source.replace('const DAEMON_PORT = 9399;','const DAEMON_PORT = '+endpoint.port+';');
-  const sdk=await import("data:text/javascript;base64,"+Buffer.from(isolated).toString("base64"));
+  expect(source).toContain("LATTICES_RUNTIME_DIR");
+  // Source import keeps SDK relative dependencies intact; explicit runtime dir
+  // isolates this fixture from every installed product.
+  const previous=process.env.LATTICES_RUNTIME_DIR;
+  process.env.LATTICES_RUNTIME_DIR=dirname(endpoint.socketPath!);
+  try {
+  const sdk=await import(path);
   const observing=daemonCallTo(endpoint,"computer.observe",{space:"virtual",delay:400},2000);
   await Bun.sleep(20);
   await expect(sdk.daemonCall("computer.click",{space:"virtual",treatment:"execute"},50)).rejects.toThrow("cancelled before starting");
   await observing;
   expect((await v.status() as any).inputs).toBe(0);
+  } finally { if(previous===undefined)delete process.env.LATTICES_RUNTIME_DIR;else process.env.LATTICES_RUNTIME_DIR=previous; }
 }));
 
 test("unconfirmed client transport timeout and early close are uncertain, not retry-safe errors",async()=>{
@@ -113,7 +120,7 @@ test("unconfirmed client transport timeout and early close are uncertain, not re
 },4000);
 
 test("raw clients without a caller deadline cannot queue virtual mutations",()=>fixture(async(v,endpoint)=>{
-  const socket=new WebSocket("ws://127.0.0.1:"+endpoint.port);
+  const socket=privateWebSocket(endpoint.socketPath!,"/",{host:"localhost","x-lattices-token":privateToken(endpoint.tokenFile!)});
   await new Promise<void>((r,j)=>{socket.onopen=()=>r();socket.onerror=()=>j(Error("connect"))});
   const response=new Promise<any>(r=>socket.onmessage=e=>r(JSON.parse(String(e.data))));
   socket.send(JSON.stringify({id:"unsafe",method:"computer.click",params:{space:"virtual",treatment:"execute"}}));

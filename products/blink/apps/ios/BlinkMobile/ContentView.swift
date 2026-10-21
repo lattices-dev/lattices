@@ -95,15 +95,18 @@ struct ContentView: View {
                 NavigationSplitView {
                     adaptiveSidebar
                 } detail: {
-                    if let selection,
-                       let note = model.notes.first(where: { $0.id == selection }) {
-                        NoteDetailView(
-                            note: note,
-                            index: detailIndex(for: note)
-                        )
-                    } else {
-                        detailPlaceholder
+                    Group {
+                        if let selection,
+                           let note = model.notes.first(where: { $0.id == selection }) {
+                            NoteDetailView(
+                                note: note,
+                                index: detailIndex(for: note)
+                            )
+                        } else {
+                            detailPlaceholder
+                        }
                     }
+                    .sampleNotesBanner(isPresented: model.isShowingSamples, onExit: model.exitSampleNotes)
                 }
             }
         }
@@ -111,6 +114,14 @@ struct ContentView: View {
         .toolbarBackground(BlinkMobileTheme.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .background(BlinkBackdrop())
+        .onChange(of: model.isShowingSamples) { _, _ in
+            selection = nil
+            selectedLogIndex = nil
+            workspace = .all
+            query = ""
+            compactSearchActive = false
+            compactSearchFocused = false
+        }
         .onChange(of: selection) { _, selectedID in
             guard let selectedID else {
                 selectedLogIndex = nil
@@ -123,7 +134,7 @@ struct ContentView: View {
             BlinkMobileSettingsView(model: model)
         }
         .alert(
-            "Blink couldn't finish that",
+            "Canvas couldn't finish that",
             isPresented: Binding(
                 get: { model.presentedError != nil },
                 set: { if !$0 { model.presentedError = nil } }
@@ -162,6 +173,7 @@ struct ContentView: View {
             }
         }
         .background(BlinkBackdrop())
+        .sampleNotesBanner(isPresented: model.isShowingSamples, onExit: model.exitSampleNotes)
         .navigationTitle(workspace.title)
         .navigationBarTitleDisplayMode(.large)
         .toolbar { toolbarContent }
@@ -382,6 +394,9 @@ struct ContentView: View {
                 }
             }
                 .buttonStyle(.borderedProminent)
+            Button("Try sample notes", action: model.showSampleNotes)
+                .buttonStyle(.bordered)
+                .disabled(!model.canShowSampleNotes)
         }
         .padding(.horizontal, 24)
     }
@@ -430,7 +445,7 @@ struct ContentView: View {
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
-            if model.connectionState.host != nil {
+            if model.connectionState.host != nil && !model.isShowingSamples {
                 Button {
                     Task { await model.refresh() }
                 } label: {
@@ -1034,7 +1049,14 @@ struct ConnectionView: View {
 
     var body: some View {
         List {
-            if let host = model.connectionState.host {
+            if model.isShowingSamples {
+                Section {
+                    Label("Sample Notes", systemImage: "doc.text")
+                    Text("Exit samples to connect to your Mac. Your existing connection and saved notes are unchanged.")
+                        .foregroundStyle(BlinkMobileTheme.secondaryInk)
+                }
+                .listRowBackground(BlinkMobileTheme.surface)
+            } else if let host = model.connectionState.host {
                 Section("Mac") {
                     Label(host.name, systemImage: "desktopcomputer")
                     LabeledContent("Transport", value: "Local network")
@@ -1060,6 +1082,10 @@ struct ConnectionView: View {
         .background(BlinkBackdrop())
         .navigationTitle("Connection")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { model.startDiscovery() }
+        .onChange(of: model.isShowingSamples) { _, isShowingSamples in
+            if !isShowingSamples { model.startDiscovery() }
+        }
         .toolbarBackground(BlinkMobileTheme.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .alert(
@@ -1089,7 +1115,7 @@ struct ConnectionView: View {
             case .searching:
                 HStack(spacing: 12) {
                     ProgressView()
-                    Text("Looking for Blink on your network…")
+                    Text("Looking for Canvas on your network…")
                         .foregroundStyle(BlinkMobileTheme.secondaryInk)
                 }
             case .found:
@@ -1137,7 +1163,7 @@ struct ConnectionView: View {
         } header: {
             Text("Nearby Macs")
         } footer: {
-            Text("Open Blink on your Mac. Both devices must be on the same network.")
+            Text("On your Mac, open the Canvas menu and choose Mobile Access → Enable Mobile Access. Both devices must be on the same network.")
         }
         .listRowBackground(BlinkMobileTheme.surface)
     }

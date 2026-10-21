@@ -1338,6 +1338,90 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "stage.status",
+            description: "Check whether Stage is active",
+            access: .read,
+            params: [],
+            returns: .custom("Object with active state and member count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.enter",
+            description: "Enter Stage for the windows on the display you are using",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok, active, and count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    StageModeController.shared.enter()
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["ok": .bool(active), "active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.exit",
+            description: "Exit Stage and restore the windows",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok and active state"),
+            handler: { _ in
+                Self.runOnMain { StageModeController.shared.exit() }
+                return .object(["ok": .bool(true), "active": .bool(false)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.toggle",
+            description: "Toggle Stage for the windows on the display you are using",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok, active, and count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    StageModeController.shared.toggle()
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["ok": .bool(true), "active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.cycle",
+            description: "Move Stage to the next or previous window in the set",
+            access: .mutate,
+            params: [
+                Param(name: "by", type: "int", required: false, description: "Steps to move. Defaults to 1. Negative moves backward."),
+            ],
+            returns: .custom("Object with ok and active state"),
+            handler: { params in
+                let by = params?["by"]?.intValue ?? 1
+                var active = false
+                Self.runOnMain {
+                    StageModeController.shared.cycle(by: by)
+                    active = StageModeController.shared.isActive
+                }
+                return .object(["ok": .bool(active), "active": .bool(active)])
+            }
+        ))
+
+        api.register(Endpoint(
             method: "daemon.status",
             description: "Get daemon status including uptime and counts",
             access: .read,
@@ -3448,15 +3532,15 @@ final class LatticesApi {
                     "runtimeAvailable": .bool(runtime != nil),
                     "runtimeHost": .string(runtime?.source ?? "none"),
                     "service": .string("hudson-voice"),
-                    "transport": .string("ws+json-rpc"),
+                    "transport": .string(runtime?.endpoint.socketPath == nil ? "ws+json-rpc" : "unix+ws+json-rpc"),
                     "capabilities": .array(capabilities),
                     "endpoint": runtime.map { .string($0.endpoint.url.absoluteString) } ?? .null,
-                    "port": runtime.map { .int(Int($0.endpoint.port)) } ?? .null,
+                    "port": runtime.map { $0.endpoint.socketPath == nil ? JSON.int(Int($0.endpoint.port)) : JSON.null } ?? .null,
                     "pid": runtime?.pid.map { .int($0) } ?? .null,
                     "capabilityPath": runtime?.capabilityPath.map { .string($0) } ?? .null,
                     "requiresAuth": .bool(runtime?.authToken != nil),
                     "runtimeError": .null,
-                    "note": .string("Lattices hosts authenticated Vox transcription (and TTS when available) via HudsonVoice on the local voice port."),
+                    "note": .string("Lattices hosts authenticated Vox transcription (and TTS when available) via HudsonVoice over private local IPC."),
                 ])
                 #else
                 return .object([
@@ -3565,10 +3649,10 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "settings.spaceBezel.get",
-            description: "Return the space-switch bezel placement",
+            description: "Return the space-switch bezel placement and desktop shimmer intensity",
             access: .read,
             params: [],
-            returns: .custom("Object with position and supported options"),
+            returns: .custom("Object with position, supported options, and shimmerIntensity (0–1; zero is off)"),
             handler: { _ in
                 Self.spaceBezelSettingsResponse()
             }
@@ -3576,10 +3660,11 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "settings.spaceBezel.set",
-            description: "Update space-switch bezel placement (Ctrl+arrow confirmation tray)",
+            description: "Update space-switch bezel placement and desktop shimmer intensity without restarting",
             access: .mutate,
             params: [
                 Param(name: "position", type: "string", required: false, description: "Bezel placement: top, bottom, center, or travelEdge (docks at the screen edge the desktop moves toward)"),
+                Param(name: "shimmerIntensity", type: "double", required: false, description: "Passing light strength from 0 (off) to 1 (original strength). Default is 0.15. Applies on the next switch."),
             ],
             returns: .custom("Updated space bezel settings"),
             handler: { params in
@@ -3639,13 +3724,13 @@ final class LatticesApi {
             access: .mutate,
             params: [
                 Param(name: "host", type: "string", required: true, description: "Name, e.g. archie"),
-                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:5287)"),
+                Param(name: "address", type: "string", required: false, description: "Bridge host:port (default <host>:9399)"),
                 Param(name: "side", type: "string", required: false, description: "Side of this Mac's screens the host sits on: left, right, top, bottom (default right)"),
             ],
             returns: .custom("Object with 'pairing' and 'code'"),
             handler: { params in
                 guard let name = params?["host"]?.stringValue, !name.isEmpty else { throw RouterError.custom("host is required") }
-                let address = params?["address"]?.stringValue ?? "\(name):5287"
+                let address = params?["address"]?.stringValue ?? "\(name):9399"
                 guard let side = VisitTrust.Side(rawValue: params?["side"]?.stringValue ?? "right") else {
                     throw RouterError.custom("side: expected left, right, top or bottom")
                 }
@@ -4583,6 +4668,7 @@ private extension LatticesApi {
         return .object([
             "ok": .bool(true),
             "position": .string(prefs.spaceSwitchBezelPosition.rawValue),
+            "shimmerIntensity": .double(prefs.spaceSwitchShimmerIntensity),
             "positionOptions": .array(SpaceSwitchBezelPosition.allCases.map { position in
                 .object([
                     "id": .string(position.rawValue),
@@ -4593,14 +4679,25 @@ private extension LatticesApi {
     }
 
     static func updateSpaceBezelSettings(_ params: JSON?) throws -> JSON {
-        guard let raw = params?["position"]?.stringValue, !raw.isEmpty else {
-            return spaceBezelSettingsResponse()
+        var position: SpaceSwitchBezelPosition?
+        if let raw = params?["position"]?.stringValue, !raw.isEmpty {
+            guard let parsed = SpaceSwitchBezelPosition(rawValue: raw) else {
+                let options = SpaceSwitchBezelPosition.allCases.map(\.rawValue).joined(separator: ", ")
+                throw RouterError.custom("Unsupported bezel position: \(raw). Use \(options).")
+            }
+            position = parsed
         }
-        guard let parsed = SpaceSwitchBezelPosition(rawValue: raw) else {
-            let options = SpaceSwitchBezelPosition.allCases.map(\.rawValue).joined(separator: ", ")
-            throw RouterError.custom("Unsupported bezel position: \(raw). Use \(options).")
+        var intensity: Double?
+        if let value = params?["shimmerIntensity"] {
+            guard let parsed = value.numericDouble, parsed.isFinite, (0...1).contains(parsed) else {
+                throw RouterError.custom("shimmerIntensity must be a number from 0 (off) to 1 (original strength).")
+            }
+            intensity = parsed
         }
-        let apply = { Preferences.shared.spaceSwitchBezelPosition = parsed }
+        let apply = {
+            if let position { Preferences.shared.spaceSwitchBezelPosition = position }
+            if let intensity { Preferences.shared.spaceSwitchShimmerIntensity = intensity }
+        }
         if Thread.isMainThread {
             apply()
         } else {

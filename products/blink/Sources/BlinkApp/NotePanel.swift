@@ -1643,12 +1643,12 @@ private struct AppVersionLabel: View {
     let version: String
 
     var body: some View {
-        Text("blink v\(version)")
+        Text("Canvas v\(version)")
             .font(.system(size: 8.5, weight: .medium, design: .monospaced))
             .foregroundStyle(Color.primary.opacity(0.34))
             .lineLimit(1)
             .frame(height: 18)
-            .help("Blink \(version)")
+            .help("Canvas \(version)")
     }
 }
 

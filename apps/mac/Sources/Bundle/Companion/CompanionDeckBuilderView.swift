@@ -3,9 +3,7 @@ import WebKit
 import AppKit
 import Foundation
 
-/// Embeds the bundled web deck builder served by the companion bridge process.
-/// Next/Bun are build-time tools only; the shipped editor is static content on
-/// the same local server as the companion API.
+/// Embeds the bundled static deck editor without a network listener.
 ///
 /// Bridge: the builder posts every layout change to
 /// `window.webkit.messageHandlers.deck` as `{ type: "deck-change", decks }`.
@@ -14,7 +12,6 @@ import Foundation
 struct CompanionDeckBuilderView: NSViewRepresentable {
     var layout: LatticesCompanionCockpitLayout
     var onChange: (LatticesCompanionCockpitLayout) -> Void = { _ in }
-    var url = URL(string: "http://127.0.0.1:\(LatticesCompanionBridgeServer.defaultPort)/deck-builder")!
 
     func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
 
@@ -31,6 +28,7 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
             ))
         }
         config.userContentController = controller
+        config.setURLSchemeHandler(CompanionDeckBundleHandler(), forURLScheme: CompanionDeckTransport.scheme)
 
         let web = WKWebView(frame: .zero, configuration: config)
         // Dark, non-white background so entering the page doesn't flash white
@@ -43,15 +41,22 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
         }
         web.navigationDelegate = context.coordinator
         context.coordinator.web = web
-        web.load(URLRequest(url: url))
+        web.load(URLRequest(url: CompanionDeckTransport.indexURL))
         return web
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 
+    static func dismantleNSView(_ web: WKWebView, coordinator: Coordinator) {
+        web.stopLoading()
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "deck")
+        web.navigationDelegate = nil
+    }
+
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         let onChange: (LatticesCompanionCockpitLayout) -> Void
         weak var web: WKWebView?
+        private var showingError = false
 
         init(onChange: @escaping (LatticesCompanionCockpitLayout) -> Void) {
             self.onChange = onChange
@@ -61,20 +66,29 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
             _ controller: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "deck" else { return }
+            guard message.name == "deck", message.frameInfo.isMainFrame,
+                  let url = message.frameInfo.request.url, CompanionDeckTransport.isDocument(url) else { return }
             guard
                 let dict = message.body as? [String: Any],
                 dict["type"] as? String == "deck-change",
                 let decks = dict["decks"],
-                let data = try? JSONSerialization.data(withJSONObject: decks)
+                let data = try? JSONSerialization.data(withJSONObject: decks), data.count <= 1_048_576
             else { return }
             persistCompanionDeckDraft(data)
             guard let layout = CompanionDeckBuilderView.liveLayout(from: data) else { return }
             onChange(layout)
         }
 
-        // If the bridge is disabled or the bundle is incomplete, show a useful
-        // local hint instead of WebKit's blank error page.
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            guard action.targetFrame?.isMainFrame == true,
+                  let url = action.request.url, CompanionDeckTransport.isDocument(url) else {
+                decisionHandler(.cancel); return
+            }
+            decisionHandler(.allow)
+        }
+
+        // An incomplete bundle should show a useful local hint.
         func webView(
             _ webView: WKWebView,
             didFail navigation: WKNavigation!,
@@ -88,19 +102,75 @@ struct CompanionDeckBuilderView: NSViewRepresentable {
         ) { showUnavailable(in: webView) }
 
         private func showUnavailable(in webView: WKWebView) {
+            guard !showingError else { return }
+            showingError = true
             let html = """
             <html><body style="margin:0;background:#060607;color:#71716c;\
             font-family:ui-monospace,Menlo,monospace;font-size:12px;\
             display:flex;align-items:center;justify-content:center;height:100vh">\
-            embedded deck builder unavailable — enable the Companion Bridge and restart Lattices</body></html>
+            embedded deck builder unavailable — reinstall the current Lattices app</body></html>
             """
-            webView.loadHTMLString(html, baseURL: nil)
+            webView.loadHTMLString(html, baseURL: CompanionDeckTransport.indexURL)
         }
     }
 
     static func importedLayout(fromBuilderDraft data: Data) -> LatticesCompanionCockpitLayout? {
         liveLayout(from: data)
     }
+}
+
+/// Only this bundled document may call the native persistence bridge.
+enum CompanionDeckTransport {
+    static let scheme = "lattices-deck"
+    static let host = "bundle"
+    static let indexURL = URL(string: "\(scheme)://\(host)/deck-builder")!
+    static func isLocal(_ url: URL) -> Bool {
+        url.scheme == scheme && url.host == host && url.user == nil && url.password == nil && url.port == nil
+    }
+    static func isDocument(_ url: URL) -> Bool {
+        isLocal(url) && ["/deck-builder", "/index.html"].contains(url.path)
+    }
+}
+
+final class CompanionDeckBundleHandler: NSObject, WKURLSchemeHandler {
+    private let roots: [URL]
+    init(roots: [URL] = LatticesCompanionBridgeServer.deckBuilderResourceRoots()) {
+        self.roots = roots.map { $0.standardizedFileURL.resolvingSymlinksInPath() }
+    }
+
+    func file(for url: URL) throws -> URL {
+        guard CompanionDeckTransport.isLocal(url), !url.path.contains("\0"), !url.path.contains("\\"),
+              CompanionDeckTransport.isDocument(url) || url.path.hasPrefix("/_next/static/") else {
+            throw URLError(.noPermissionsToReadFile)
+        }
+        let path = CompanionDeckTransport.isDocument(url) ? "index.html" : String(url.path.dropFirst())
+        for root in roots {
+            let file = root.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
+            guard file.path.hasPrefix(root.path + "/"),
+                  (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            return file
+        }
+        throw URLError(.fileDoesNotExist)
+    }
+
+    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        do {
+            guard let url = task.request.url, task.request.httpMethod == "GET" else { throw URLError(.unsupportedURL) }
+            let file = try file(for: url)
+            let data = try Data(contentsOf: file)
+            let types = ["html": "text/html", "js": "text/javascript", "mjs": "text/javascript", "css": "text/css",
+                         "json": "application/json", "map": "application/json", "svg": "image/svg+xml",
+                         "woff": "font/woff", "woff2": "font/woff2", "png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"]
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [
+                "Content-Type": types[file.pathExtension.lowercased()] ?? "application/octet-stream",
+                "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+                "X-Content-Type-Options": "nosniff"
+            ])!
+            task.didReceive(response); task.didReceive(data); task.didFinish()
+        } catch { task.didFailWithError(error) }
+    }
+    // Reads complete synchronously, so there is no pending work to cancel.
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
 extension CompanionDeckBuilderView {

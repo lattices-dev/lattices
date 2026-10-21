@@ -2,24 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>method</key>
-	<string>app-store-connect</string>
 	<key>destination</key>
 	<string>export</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>dev.arach.blink.mobile</key>
+		<string>Canvas Mobile App Store 20261019</string>
+	</dict>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
 	<key>signingStyle</key>
 	<string>manual</string>
 	<key>teamID</key>
 	<string>2U83JFPW66</string>
-	<key>signingCertificate</key>
-	<string>iPhone Distribution</string>
-	<key>provisioningProfiles</key>
-	<dict>
-		<key>dev.arach.blink.mobile</key>
-		<string>Blink Mobile App Store 2</string>
-	</dict>
 	<key>uploadSymbols</key>
 	<true/>
-	<key>manageAppVersionAndBuildNumber</key>
-	<false/>
 </dict>
 </plist>

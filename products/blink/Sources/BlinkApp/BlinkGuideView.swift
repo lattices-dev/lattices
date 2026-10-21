@@ -24,7 +24,7 @@ struct BlinkGuideView: View {
         }
         var subtitle: String {
             switch self {
-            case .basics: "How Blink fits together"
+            case .basics: "How Canvas fits together"
             case .shortcuts: "Keys grouped by scope"
             }
         }
@@ -56,7 +56,7 @@ struct BlinkGuideView: View {
         .background(BlinkDiscoveryBackdrop(palette: palette))
         .preferredColorScheme(appearance.scheme == .dark ? .dark : .light)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Blink Help and Shortcuts")
+        .accessibilityLabel("Canvas Help and Shortcuts")
     }
 
     private var navigator: some View {
@@ -70,7 +70,7 @@ struct BlinkGuideView: View {
                         .background(palette.accentSoft)
                         .clipShape(RoundedRectangle(cornerRadius: HudRadius.standard))
 
-                    Text("BLINK HELP")
+                    Text("CANVAS HELP")
                         .font(HudFont.mono(HudTextSize.xs, weight: .semibold))
                         .tracking(HudTracking.wider)
                         .foregroundStyle(palette.ink)
@@ -130,7 +130,7 @@ struct BlinkGuideView: View {
                     .foregroundStyle(palette.dim)
             }
             .padding(HudSpacing.xxl)
-            .accessibilityLabel("Shortcuts update with Blink configuration")
+            .accessibilityLabel("Shortcuts update with Canvas configuration")
         }
         .background(palette.chrome.opacity(0.96))
     }
@@ -149,7 +149,7 @@ struct BlinkGuideView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: HudSpacing.huge) {
                 pageHeader(
-                    title: "How Blink Works",
+                    title: "How Canvas Works",
                     subtitle: "The note is the window, and the desktop is the workspace."
                 )
 
@@ -181,7 +181,7 @@ struct BlinkGuideView: View {
                 id: "recall",
                 symbolName: "arrow.uturn.forward",
                 title: "Recall",
-                detail: "Reopening a note focuses the same panel, and Blink restores its position on this Mac."
+                detail: "Reopening a note focuses the same panel, and Canvas restores its position on this Mac."
             ),
         ]
     }
@@ -206,7 +206,7 @@ struct BlinkGuideView: View {
                 id: "settings",
                 symbolName: "gearshape",
                 title: "Settings — configure",
-                detail: "Change Blink's behavior and appearance. Controls stay open while you tune them.",
+                detail: "Change Canvas's behavior and appearance. Controls stay open while you tune them.",
                 shortcut: shortcut(for: .openSettings)
             ),
         ]
@@ -274,7 +274,7 @@ struct BlinkGuideView: View {
             LazyVStack(alignment: .leading, spacing: HudSpacing.huge) {
                 pageHeader(
                     title: "All Shortcuts",
-                    subtitle: "Keys are grouped by where Blink listens for them."
+                    subtitle: "Keys are grouped by where Canvas listens for them."
                 )
 
                 ForEach(BlinkActivityScope.allCases) { scope in
@@ -489,7 +489,7 @@ private struct GuideShortcut: Identifiable {
             scope: .editor,
             keys: "⌘S",
             title: "Save now",
-            detail: "Flush the current edit immediately; Blink also saves as you type."
+            detail: "Flush the current edit immediately; Canvas also saves as you type."
         ),
     ]
 }

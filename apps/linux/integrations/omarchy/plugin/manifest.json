@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "lattices.gestures",
+  "name": "Lattices Gesture Trail",
+  "version": "0.2.0",
+  "author": "arach",
+  "description": "A calligraphic pen stroke with a fine taper and quiet gesture feedback.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "pen/PenService.qml"
+  }
+}

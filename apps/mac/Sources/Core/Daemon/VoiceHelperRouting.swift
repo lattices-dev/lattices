@@ -123,7 +123,7 @@ enum VoiceHelperRouting {
     static func registerSchema(on api: LatticesApi) {
         func forwarded(_ method: String) -> (JSON?) throws -> JSON {
             { _ in
-                throw RouterError.custom("\(method) is served by the Voice helper through the daemon socket (ws://127.0.0.1:9399)")
+                throw RouterError.custom("\(method) is served by the Voice helper through the authenticated private daemon socket")
             }
         }
         let jobId = Param(name: "id", type: "string", required: false, description: "Job id; must match the active job when supplied")

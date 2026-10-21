@@ -9,14 +9,14 @@ import Foundation
 @main
 struct BlinkCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "blink",
-        abstract: "Blink notes from the command line.",
+        commandName: "canvas",
+        abstract: "Canvas notes from the command line.",
         discussion: """
-        Operates on the same files as the app: $BLINK_HOME/Notes when set, \
+        Operates on the same files as the app: $CANVAS_HOME/Notes, then $BLINK_HOME/Notes when set, \
         else ~/Library/Application Support/Blink/Notes. Every command takes \
-        --json for structured output.
+        --json for structured output. The blink command remains a compatibility alias.
         """,
-        version: "2.2.0",
+        version: "2.3.0",
         subcommands: [
             Ls.self, Cat.self, New.self, Present.self, Append.self, Type.self, Write.self,
             Search.self, Rm.self, PathCommand.self, WorkspaceCommand.self, DeskCommand.self,

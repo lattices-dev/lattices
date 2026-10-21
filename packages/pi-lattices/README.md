@@ -1,13 +1,13 @@
 # @arach/pi-lattices
 
 Pi extension that exposes the local Lattices macOS daemon as typed `lattices_*`
-tools. It wraps Lattices' existing WebSocket API at `ws://127.0.0.1:9399`; it
-does **not** bundle `cua-driver`, replace the Lattices daemon, or silently
-enable browser automation.
+tools. It wraps Lattices' existing API. Version 0.2.0 uses private IPC with Lattices 0.15.1. It
+does **not** bundle `cua-driver`, replace the Lattices daemon, or silently enable
+browser automation.
 
 ## Requirements
 
-- macOS with Lattices installed from this repo.
+- macOS with the extension and Lattices app built from matching source.
 - The Lattices menu bar app running so the daemon is available:
 
 ```bash
@@ -117,14 +117,24 @@ Finder with `capture: false`; it does not launch or focus Finder because the
 
 ## Configuration
 
-By default the extension connects to `ws://127.0.0.1:9399`. For tests or custom
-setups, override with environment variables before starting Pi:
+Version 0.2.0 finds `~/.lattices/run/lattices.sock` and its private token by
+default. Use Lattices 0.15.1 and extension 0.2.0, with no host or port overrides for normal local use.
+
+Set a request timeout before starting Pi if needed:
 
 ```bash
-export LATTICES_DAEMON_HOST=127.0.0.1
-export LATTICES_DAEMON_PORT=9399
 export LATTICES_DAEMON_TIMEOUT_MS=3000
 ```
+
+For local TCP compatibility, enable `LATTICES_ALLOW_LOOPBACK_TCP=1` in both the
+app and Pi environment. Explicit host/port overrides receive no local token
+without that flag, even when a loopback address could be an SSH tunnel. Do not
+enable compatibility for a tunnel; non-loopback targets never receive local
+tokens.
+
+The Pi extension does not sign remote gateway requests. An explicit remote
+host/port cannot use a paired gateway on its own. Use the paired Lattices CLI
+or native app for remote access.
 
 ## CUA implementation status
 

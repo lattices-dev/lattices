@@ -79,7 +79,15 @@ final class SpeechAppDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationWillTerminate(_ notification: Notification) { SpeechServer.shared.stop() }
 }
-enum SpeechEndpoints { static let rpcPort: UInt16 = 9397 }
+enum SpeechEndpoints {
+    static let rpcPort: UInt16 = 9397
+    static var runtimeDirectory: URL {
+        if let path = ProcessInfo.processInfo.environment["LATTICES_RUNTIME_DIR"], !path.isEmpty { return URL(fileURLWithPath: path, isDirectory: true) }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices/run")
+    }
+    static var socketURL: URL { runtimeDirectory.appendingPathComponent("speech.sock") }
+    static var tokenURL: URL { runtimeDirectory.appendingPathComponent("speech.token") }
+}
 final class DiagnosticLog {
     static let shared = DiagnosticLog()
     private let logger = Logger(subsystem: "dev.lattices.Speech", category: "runtime")

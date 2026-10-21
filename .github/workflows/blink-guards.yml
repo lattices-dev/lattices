@@ -1,4 +1,4 @@
-name: Blink Guards
+name: Canvas Guards
 
 # Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   swift:
-    name: Blink Swift package
+    name: Canvas Swift package
     runs-on: macos-15
     timeout-minutes: 20
     env:
@@ -54,8 +54,12 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Check Blink
-        run: bun run blink:check
+      - name: Check Canvas
+        run: bun run canvas:check
 
-      - name: Build Blink
-        run: bun run blink:build
+      - name: Build Canvas
+        run: bun run canvas:build
+
+      - name: Test npm command and installer compatibility
+        working-directory: products/blink/packages/npm
+        run: node --test test/*.test.mjs

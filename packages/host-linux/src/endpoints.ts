@@ -4,8 +4,8 @@ import * as capture from "./capture.ts";
 import * as desktop from "./desktop.ts";
 import { registerVirtualSpaceEndpoints } from "./virtual-space.ts";
 import { registerLayerEndpoints } from "./layers.ts";
+import { registerSpaceFocus } from "./spaces.ts";
 import * as ownedDisplays from "./displays.ts";
-
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
@@ -412,6 +412,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     returns: "Array of Display",
     handler: async () => asJson((await desktop.snapshot()).displays),
   });
+  registerSpaceFocus(router, { snapshot: desktop.snapshot, apply: hypr.apply });
 
   const displayById = async (name: string) => (await desktop.snapshot()).displays.find((d) => d.displayId === name) ?? null;
 

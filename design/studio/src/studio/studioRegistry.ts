@@ -114,6 +114,22 @@ const studioPages: readonly LatticesPage[] = [
     ],
   },
   {
+    href: "/studio/studies/stage",
+    label: "Stage — what appears over the desktop",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb:
+      "Hyper+X. The grid, the engaged window, who joins, the island, the suggestion card and the space switcher, drawn on one fake desktop. Each choice shows what ships today next to one other behavior.",
+    // The study's own files, so /studio/live follows them. The Swift it draws:
+    // apps/mac/Sources/Core/Desktop/StageLayout.swift, Overlays/StageModeController.swift.
+    source: [
+      "design/studio/src/studio/studies/Stage.tsx",
+      "design/studio/src/studio/studies/stage/layout.ts",
+      "design/studio/src/studio/studies/stage/desktop.tsx",
+    ],
+  },
+  {
     href: "/studio/studies/space-bezel",
     label: "Space bezel — lattice mark variants",
     bucket: "studies",

@@ -6,7 +6,8 @@ final class LatticesCompanionBridgeServer: NSObject {
     static let shared = LatticesCompanionBridgeServer()
 
     static let bonjourType = "_lattices-companion._tcp."
-    static let defaultPort: UInt16 = 5287
+    /// Remote access is owned by the separate opt-in gateway.
+    static let defaultPort: UInt16 = 9399
     static let protocolVersion = "1"
     static let maxBodyBytes = 512 * 1024
 
@@ -23,77 +24,61 @@ final class LatticesCompanionBridgeServer: NSObject {
 
     private var serverFd: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    private var service: NetService?
+    private var endpointLease: PrivateLocalEndpoint?
+    private var token = ""
+    private var generation = UUID()
+    private let socketPath: String
+    private let tokenURL: URL
+    private let requestQueue = DispatchQueue(label: "lattices.companion.admission", attributes: .concurrent)
+    private let requestSlots = DispatchSemaphore(value: 16)
 
-    private override init() {
+    init(socketPath: String = LatticesLocalEndpoints.companionSocketPath, tokenURL: URL = LatticesLocalEndpoints.companionTokenURL) {
+        self.socketPath = socketPath
+        self.tokenURL = tokenURL
         super.init()
     }
 
-    func start() {
+    func start() { queue.sync { startOnQueue() } }
+
+    private func startOnQueue() {
         guard acceptSource == nil else { return }
-
         let diag = DiagnosticLog.shared
-        serverFd = socket(AF_INET, SOCK_STREAM, 0)
-        guard serverFd >= 0 else {
-            diag.error("CompanionBridge: socket() failed — errno \(errno)")
+        do {
+            let lease = try PrivateLocalEndpoint(socketPath: socketPath, tokenURL: tokenURL)
+            serverFd = socket(AF_UNIX, SOCK_STREAM, 0)
+            guard serverFd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+            guard PrivateLocalEndpoint.preventInheritance(serverFd) else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+            try lease.bindSocket(serverFd, path: socketPath)
+            token = try lease.publishToken(at: tokenURL)
+            guard listen(serverFd, 8) == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+            endpointLease = lease
+        } catch {
+            if serverFd >= 0 { close(serverFd); serverFd = -1 }
+            token = ""
+            diag.error("CompanionBridge: private endpoint unavailable — \(error.localizedDescription)")
             return
         }
-
-        var yes: Int32 = 1
-        setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
-
-        var addr = sockaddr_in()
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = Self.defaultPort.bigEndian
-        addr.sin_addr.s_addr = INADDR_ANY.bigEndian
-
-        let bindResult = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.bind(serverFd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard bindResult == 0 else {
-            diag.error("CompanionBridge: bind() failed — errno \(errno)")
-            close(serverFd)
-            serverFd = -1
-            return
-        }
-
-        guard listen(serverFd, 8) == 0 else {
-            diag.error("CompanionBridge: listen() failed — errno \(errno)")
-            close(serverFd)
-            serverFd = -1
-            return
-        }
-
         let flags = fcntl(serverFd, F_GETFL)
         _ = fcntl(serverFd, F_SETFL, flags | O_NONBLOCK)
-
         let source = DispatchSource.makeReadSource(fileDescriptor: serverFd, queue: queue)
-        source.setEventHandler { [weak self] in
-            self?.acceptConnection()
-        }
-        source.setCancelHandler { [weak self] in
-            guard let self else { return }
-            if self.serverFd >= 0 {
-                close(self.serverFd)
-                self.serverFd = -1
-            }
-        }
+        source.setEventHandler { [weak self] in self?.acceptConnection() }
+        let listeningFD = serverFd
+        source.setCancelHandler { close(listeningFD) }
         source.resume()
         acceptSource = source
-
-        publishBonjour()
-        diag.success("CompanionBridge: listening on http://0.0.0.0:\(Self.defaultPort)")
+        diag.success("CompanionBridge: private endpoint ready at \(socketPath)")
     }
 
     func stop() {
         MacVisitHost.disconnect()
-        acceptSource?.cancel()
-        acceptSource = nil
-        service?.stop()
-        service = nil
+        queue.sync {
+            generation = UUID()
+            acceptSource?.cancel()
+            acceptSource = nil
+            serverFd = -1
+            endpointLease = nil
+            token = ""
+        }
     }
 }
 
@@ -121,30 +106,10 @@ private extension LatticesCompanionBridgeServer {
         let capabilities: [String]
     }
 
-    func publishBonjour() {
-        let advertisedName = Host.current().localizedName ?? "Lattices Companion"
-        let service = NetService(
-            domain: "local.",
-            type: Self.bonjourType,
-            name: advertisedName,
-            port: Int32(Self.defaultPort)
-        )
-        service.includesPeerToPeer = true
-        service.setTXTRecord(NetService.data(fromTXTRecord: [
-            "v": Data(Self.protocolVersion.utf8),
-            "mode": Data("local-network-secure".utf8),
-            "fp": Data(LatticesCompanionSecurityCoordinator.shared.bridgeFingerprint.utf8),
-            "sec": Data("signed,encrypted".utf8),
-            "cap": Data(DeckBridgeCapability.defaultCompanionCapabilities.joined(separator: ",").utf8),
-        ]))
-        service.publish()
-        self.service = service
-    }
-
     func acceptConnection() {
         while true {
-            var clientAddr = sockaddr_in()
-            var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            var clientAddr = sockaddr_storage()
+            var addrLen = socklen_t(MemoryLayout<sockaddr_storage>.size)
 
             let clientFd = withUnsafeMutablePointer(to: &clientAddr) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -159,6 +124,9 @@ private extension LatticesCompanionBridgeServer {
                 return
             }
 
+            guard PrivateLocalEndpoint.preventInheritance(clientFd), PrivateLocalEndpoint.sameUser(clientFd), requestSlots.wait(timeout: .now()) == .success else {
+                close(clientFd); continue
+            }
             // A companion can hang up before its reply is written. On Darwin,
             // writing to that socket would otherwise raise SIGPIPE and
             // terminate the app.
@@ -167,11 +135,26 @@ private extension LatticesCompanionBridgeServer {
 
             let clientFlags = fcntl(clientFd, F_GETFL)
             if clientFlags >= 0 {
-                _ = fcntl(clientFd, F_SETFL, clientFlags & ~O_NONBLOCK)
+                _ = fcntl(clientFd, F_SETFL, clientFlags | O_NONBLOCK)
             }
 
-            queue.async { [weak self] in
-                self?.handleClient(fd: clientFd)
+            let acceptedGeneration = generation
+            let admissionToken = token
+            requestQueue.async { [weak self] in
+                guard let self else { close(clientFd); return }
+                defer { self.requestSlots.signal() }
+                guard let request = self.readRequest(from: clientFd) else {
+                    self.sendError(status: 400, message: "Invalid HTTP request", to: clientFd)
+                    close(clientFd); return
+                }
+                guard LocalHTTPAdmission.allows(request.headers, token: admissionToken) else {
+                    self.sendError(status: 403, message: "Local authentication required", to: clientFd)
+                    close(clientFd); return
+                }
+                self.queue.async {
+                    guard self.serverFd >= 0, self.generation == acceptedGeneration else { close(clientFd); return }
+                    self.handleClient(fd: clientFd, request: request)
+                }
             }
         }
     }
@@ -183,14 +166,9 @@ private extension LatticesCompanionBridgeServer {
         case handedOff
     }
 
-    func handleClient(fd: Int32) {
+    func handleClient(fd: Int32, request: HTTPRequest) {
         var ownsSocket = true
         defer { if ownsSocket { close(fd) } }
-
-        guard let request = readRequest(from: fd) else {
-            sendError(status: 400, message: "Invalid HTTP request", to: fd)
-            return
-        }
 
         do {
             if try route(request, to: fd) == .handedOff {
@@ -236,7 +214,7 @@ private extension LatticesCompanionBridgeServer {
                 port: Self.defaultPort,
                 protocolVersion: Self.protocolVersion,
                 version: LatticesRuntime.appVersion,
-                mode: "local-network-secure",
+                mode: "private-gateway",
                 bridgePublicKey: LatticesCompanionSecurityCoordinator.shared.bridgePublicKeyBase64,
                 bridgeFingerprint: LatticesCompanionSecurityCoordinator.shared.bridgeFingerprint,
                 requestSigningRequired: security.requestSigningRequired,
@@ -386,21 +364,18 @@ private extension LatticesCompanionBridgeServer {
         var buffer = Data()
         let deadline = DispatchTime.now().uptimeNanoseconds + 2_000_000_000
         let delimiterCRLF = Data([13, 10, 13, 10])
-        let delimiterLF = Data([10, 10])
 
-        var headerRange = buffer.range(of: delimiterCRLF) ?? buffer.range(of: delimiterLF)
+        var headerRange = buffer.range(of: delimiterCRLF)
         while headerRange == nil {
             guard let count = readChunk(from: fd, deadline: deadline, into: &buffer) else {
                 return nil
             }
             guard count > 0 else { return nil }
-            if buffer.count > 128 * 1024 {
-                return nil
-            }
-            headerRange = buffer.range(of: delimiterCRLF) ?? buffer.range(of: delimiterLF)
+            headerRange = buffer.range(of: delimiterCRLF)
+            if headerRange == nil && buffer.count > 8192 { return nil }
         }
 
-        guard let headerRange else { return nil }
+        guard let headerRange, headerRange.lowerBound <= 8192 else { return nil }
         let headerData = buffer.subdata(in: 0..<headerRange.lowerBound)
         guard let headerText = String(data: headerData, encoding: .utf8) else {
             return nil
@@ -411,22 +386,26 @@ private extension LatticesCompanionBridgeServer {
             .components(separatedBy: "\n")
         guard let requestLine = lines.first else { return nil }
         let requestParts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
-        guard requestParts.count >= 2 else { return nil }
+        guard requestParts.count == 3, requestParts[2] == "HTTP/1.1", ["GET", "POST"].contains(requestParts[0]) else { return nil }
 
         let method = String(requestParts[0]).uppercased()
         let rawPath = String(requestParts[1])
-        let path = rawPath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? rawPath
+        guard rawPath.hasPrefix("/"), !rawPath.contains("?"), !rawPath.contains("#") else { return nil }
+        let path = rawPath
 
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
-            guard let separator = line.firstIndex(of: ":") else { continue }
-            let name = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let separator = line.firstIndex(of: ":"), !line.hasPrefix(" "), !line.hasPrefix("\t") else { return nil }
+            let name = line[..<separator].lowercased()
+            guard !name.isEmpty, headers[name] == nil else { return nil }
             let value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
             headers[name] = value
         }
 
-        let contentLength = Int(headers["content-length"] ?? "") ?? 0
-        guard contentLength <= Self.maxBodyBytes else { return nil }
+        guard headers["transfer-encoding"] == nil else { return nil }
+        let rawLength = headers["content-length"] ?? "0"
+        guard !rawLength.isEmpty, rawLength.utf8.allSatisfy({ (48...57).contains($0) }),
+              let contentLength = Int(rawLength), contentLength <= Self.maxBodyBytes else { return nil }
         var body = Data(buffer[headerRange.upperBound...])
         while body.count < contentLength {
             guard let count = readChunk(
@@ -455,6 +434,7 @@ private extension LatticesCompanionBridgeServer {
         var chunk = [UInt8](repeating: 0, count: chunkSize)
 
         while true {
+            guard DispatchTime.now().uptimeNanoseconds < deadline else { return nil }
             let count = Darwin.read(fd, &chunk, chunk.count)
             if count > 0 {
                 buffer.append(contentsOf: chunk[..<count])
@@ -540,8 +520,14 @@ private extension LatticesCompanionBridgeServer {
         data.withUnsafeBytes { rawBuffer in
             guard var pointer = rawBuffer.bindMemory(to: UInt8.self).baseAddress else { return }
             var remaining = data.count
+            let deadline = Date().addingTimeInterval(2)
             while remaining > 0 {
                 let written = write(fd, pointer, remaining)
+                if written < 0 && errno == EINTR { continue }
+                if written < 0 && [EAGAIN, EWOULDBLOCK].contains(errno), Date() < deadline {
+                    var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                    _ = poll(&descriptor, 1, 20); continue
+                }
                 guard written > 0 else { return }
                 remaining -= written
                 pointer = pointer.advanced(by: written)

@@ -26,7 +26,7 @@ final class DeckStore: ObservableObject {
     @Published var selectedPageID = "voice"
     @Published var selectedCockpitPageID = "main"
     @Published var manualHost = ""
-    @Published var manualPort = "5287"
+    @Published var manualPort = "9399"
     @Published var errorMessage: String?
     @Published var isLoading = false
 
@@ -896,7 +896,7 @@ extension DeckStore {
         store.activeEndpoint = BridgeEndpoint(
             name: name,
             host: "preview-\(index).local",
-            port: 5287,
+            port: 9399,
             source: "Preview"
         )
 

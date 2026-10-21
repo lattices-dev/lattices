@@ -3,7 +3,7 @@ import PackageDescription
 import Foundation
 let env = ProcessInfo.processInfo.environment
 let hudson: Package.Dependency = env["SPEECH_HUDSON_PATH"].map { .package(name: "hudson", path: $0) }
-    ?? .package(url: "git@github.com:arach/hudson.git", branch: "main")
+    ?? .package(url: "git@github.com:arach/hudson.git", revision: "d7647584f85ad2227ed2acc83a6ffcbef6f527df")
 let package = Package(name: "Voice", platforms: [.macOS(.v26)],
     products: [.executable(name: "Voice", targets: ["SpeechAppRuntime"])],
     dependencies: [

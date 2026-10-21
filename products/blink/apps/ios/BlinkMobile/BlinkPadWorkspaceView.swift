@@ -27,43 +27,51 @@ struct BlinkPadWorkspaceView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .trailing) {
-                BlinkPadDesktopBackdrop()
+        VStack(spacing: 0) {
+            topBar
 
-                VStack(spacing: 0) {
-                    topBar
+            if model.isShowingSamples {
+                BlinkSampleNotesBanner(onExit: model.exitSampleNotes)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 10)
+            }
 
-                    if let lastSyncedAt = model.lastSyncedAt {
-                        BlinkPadStatusStrip(
-                            state: model.connectionState,
-                            lastSyncedAt: lastSyncedAt,
-                            isSyncing: model.isSyncing,
-                            issueCount: model.snapshot?.issues.count ?? 0,
-                            noteCount: scopedNoteCount
-                        )
-                        .padding(.horizontal, 24)
-                        .padding(.top, 10)
+            GeometryReader { geometry in
+                ZStack(alignment: .trailing) {
+                    VStack(spacing: 0) {
+                        if let lastSyncedAt = model.lastSyncedAt {
+                            BlinkPadStatusStrip(
+                                state: model.connectionState,
+                                lastSyncedAt: lastSyncedAt,
+                                isSyncing: model.isSyncing,
+                                issueCount: model.snapshot?.issues.count ?? 0,
+                                noteCount: scopedNoteCount
+                            )
+                            .padding(.horizontal, 24)
+                            .padding(.top, 10)
+                        }
+
+                        board
                     }
 
-                    board
-                }
-
-                if let selectedNote {
-                    BlinkPadReader(
-                        note: selectedNote,
-                        index: model.notes.firstIndex(where: { $0.id == selectedNote.id }).map { $0 + 1 } ?? 1,
-                        onClose: { selection = nil }
-                    )
-                    .frame(
-                        width: min(540, max(430, geometry.size.width * 0.48)),
-                        height: min(720, geometry.size.height - 48)
-                    )
-                    .padding(24)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    if let selectedNote {
+                        BlinkPadReader(
+                            note: selectedNote,
+                            index: model.notes.firstIndex(where: { $0.id == selectedNote.id }).map { $0 + 1 } ?? 1,
+                            onClose: { selection = nil }
+                        )
+                        .frame(
+                            width: min(540, max(430, geometry.size.width * 0.48)),
+                            height: min(720, geometry.size.height - 48)
+                        )
+                        .padding(24)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
             }
         }
+        .background(BlinkPadDesktopBackdrop())
         .tint(BlinkMobileTheme.signal)
         .animation(
             reduceMotion ? nil : .snappy(duration: 0.28, extraBounce: 0),
@@ -116,7 +124,7 @@ struct BlinkPadWorkspaceView: View {
             )
             .frame(minWidth: 220, idealWidth: 280, maxWidth: 340)
 
-            if model.connectionState.host != nil {
+            if model.connectionState.host != nil && !model.isShowingSamples {
                 Button {
                     Task { await model.refresh() }
                 } label: {
@@ -270,6 +278,9 @@ struct BlinkPadWorkspaceView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                Button("Try sample notes", action: model.showSampleNotes)
+                    .buttonStyle(.bordered)
+                    .disabled(!model.canShowSampleNotes)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

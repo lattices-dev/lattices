@@ -1,20 +1,31 @@
-# Blink configuration — agent-first
+# Canvas configuration
 
-Blink's behavior and theme live in one human/agent-editable JSON file:
+Canvas's behavior and theme live in one JSON file:
 
 ```
 ~/Library/Application Support/Blink/config.json
 ```
 
-**Any process may edit this file.** Blink watches it and hot-applies changes to
-every open panel within a second — no restart, no IPC, no permission dance.
-That's the agent surface: read the file, write the file, done.
+Canvas watches this file and applies valid changes to open panels without a
+restart. The default path is unchanged from Blink.
+
+Current source builds use the first nonempty `CANVAS_HOME`, then `BLINK_HOME`,
+to override the file-backed root. Empty values are ignored. The selected root
+contains `config.json`, `Notes`, and `attachments`; use the same root for app and
+CLI. These overrides do not redirect `UserDefaults`, and either disables mobile
+sharing. Existing releases recognize `BLINK_HOME` only.
+
+Examples use the current `canvas` command. The compatible `blink` command and
+published package name `@arach/blink` remain supported. The rename does not
+change config keys, `blink.*` frontmatter, attachment URLs, or settings keys;
+`hotkeys.blink` still controls showing and hiding all notes.
 
 Rules:
 - Every field is optional. Missing fields use the defaults below. `{}` is a valid config.
-- Invalid JSON never breaks the app: Blink keeps the last good config and logs
-  `[BLINK] config invalid — keeping last good`.
-- Write atomically (write temp + rename, or your editor's normal save) — Blink
+- Invalid JSON never breaks the app: Canvas keeps the last good config and logs
+  `[BLINK] config invalid — keeping last good`. An invalid file found at startup
+  stays untouched; the app uses defaults with mobile access off.
+- Write atomically (write temp + rename, or your editor's normal save) — Canvas
   watches the directory, so atomic replaces are picked up fine.
 - The settings window is a *view* over this file; edits there round-trip through it.
 
@@ -25,9 +36,10 @@ Rules:
   "appearance": "auto",         // app-wide light/dark: "auto" (follow macOS) | "light" | "dark"
                                 // "auto" tracks the system live; menubar → Appearance overrides it
   "behavior": {
+    "mobileAccess": false,     // new installs default off; see upgrade policy below
     "restoreSession": true,     // reopen last session's panels at launch
     "defaultMode": "read",      // "read" | "edit" — mode for notes with no remembered mode
-    "launchAtLogin": false      // register Blink as a login item (SMAppService)
+    "launchAtLogin": false      // register Canvas as a login item (SMAppService)
   },
   "hotkeys": {
     // Chord strings: modifiers joined by "+", ending in one key.
@@ -54,7 +66,7 @@ Rules:
     "defaultWidth": 420,        // size for panels opening for the first time
     "defaultHeight": 340,
     "background": null,         // optional CSS color; null keeps the glass sheet transparent
-    "mark": null,               // optional identity mark from $BLINK_HOME/attachments
+    "mark": null,               // optional identity mark from <home>/attachments
     "chrome": "rail"            // where the ✕ and mode toggle live:
                                 // "rail"   — a detached strip above the note, off the page.
                                 //            Shown on hover (or pinned with hotkeys.toggleChrome);
@@ -80,7 +92,7 @@ Rules:
   "motion": {                   // Arrival: every show/hide is choreographed
     "entrance": "shimmer",      // "shimmer" | "drop" | "draw" | "none" — how a note lands
     "durationMs": 260,          // base duration for one panel's entrance
-    "staggerMs": 40,            // per-panel delay in group reveals (session restore, the blink)
+    "staggerMs": 40,            // per-panel delay in group reveals (session restore, show all notes)
     "enabled": true             // master switch — false = instant show/hide (today's behavior)
   },
   "physics": {                  // panel physics: how a note behaves under the hand
@@ -118,6 +130,19 @@ Rules:
 }
 ```
 
+### Mobile access
+
+`behavior.mobileAccess` controls the encrypted LAN peer host. Explicit `true`
+and `false` are preserved. For a config that predates this key, Canvas retains
+access only when it can read a valid, nonempty Keychain approval list. Missing
+or malformed trust data and Keychain read failures leave access off. A custom
+home never reads the production trust list and never starts the peer host.
+
+This compatibility check does not rewrite an existing config or preferences.
+A later settings save writes the effective Boolean explicitly. An explicit
+`null` or non-Boolean value is invalid; it cannot inherit permission from
+stored approvals. Pairing approval and per-request authorization still apply.
+
 ## How it applies
 
 - `panel.*` and `focus.*` are native (NSVisualEffectView material, tint layers,
@@ -150,19 +175,19 @@ change the reading size and ⌘0 resets it to `reader.fontSize`.
   sheet and editor are ready. Closing is a short fade. Reduced Motion skips
   the rise and the stream. The sheet uses a fixed paper/ink palette (light or
   dark with the app's appearance), not the note glass or `editor` colors.
-- Blink becomes the active app while the reader is up, and the column is an
+- Canvas becomes the active app while the reader is up, and the column is an
   ordinary resizable window, so window-manager placement (Lattices tiling
   shortcuts, Rectangle, and the like) moves and sizes it. The placed frame is
   remembered and reused while it sits on the screen the reader opens on.
   Closing returns focus to the app the text came from.
 - The selection comes from Accessibility (`AXSelectedText`) when the app
-  exposes it. Terminals mostly don't, so Blink presses the app's own ⌘C menu
+  exposes it. Terminals mostly don't, so Canvas presses the app's own ⌘C menu
   item through Accessibility (posting ⌘C once the hotkey's modifiers lift
   only for apps without one), reads the pasteboard, and restores its previous
   contents. If Copy leaves the pasteboard untouched — Ghostty with
   `copy-on-select` already put the selection there — the current clipboard is
   used. All of this needs Accessibility permission; until it is granted,
-  Blink prompts and shows the current clipboard instead.
+  Canvas prompts and shows the current clipboard instead.
 - Terminal text is cleaned before rendering: ANSI escapes, TUI box frames, and
   Claude Code's `⏺`/`⎿` markers are stripped, the common indent removed, and
   lines the program hard-wrapped are rejoined. Box-drawn tables are kept as
@@ -226,13 +251,13 @@ substitute your own colors, faces, and mark):
 ```
 
 `panel.mark`, `styles.<name>.mark`, and a workspace brand's `mark` are relative
-paths under `$BLINK_HOME/attachments` (or the default Blink attachments
-directory). The mark appears at 20px in a 24pt top-left chrome cell and yields
+paths under `<home>/attachments`, using the root described above (default:
+`~/Library/Application Support/Blink/attachments`). The mark appears at 20px in a 24pt top-left chrome cell and yields
 that position to the close control on hover. Marked themes receive a compact
 content gutter so the identity never overlaps the first heading or editor
 source. Keeping it in the treatment instead of the markdown body preserves the
 note as portable, presentation-free Markdown. Absolute paths and paths escaping
-the attachments directory are ignored — `blink workspace brand … --install-mark`
+the attachments directory are ignored — `canvas workspace brand … --install-mark`
 copies an asset into bounds for you.
 
 Treatments are partial overlays. In addition to the original
@@ -268,7 +293,7 @@ frontmatter key, so note markdown never carries a color, face, or asset path.
 `style` names an entry in `styles` to use as a base; `brand` is a treatment
 overlaid on top of it, so several workspaces can share one house style and tint
 it differently. Both are optional — a workspace with neither is unbranded, and
-its notes render with Blink's defaults.
+its notes render with Canvas's defaults.
 
 A note's look resolves least-specific first, so **later wins**:
 
@@ -278,7 +303,7 @@ config defaults ← workspaces[blink.workspace].brand ← styles[blink.style] �
 
 Unknown workspace and style names contribute nothing rather than failing, so a
 note whose workspace was forgotten still opens — just unbranded. Agents should
-drive this through `blink workspace` (see `docs/workspaces.md`) rather than
+drive this through `canvas workspace` (see `docs/workspaces.md`) rather than
 hand-editing, because the CLI writes only the `workspaces` key and leaves every
 other config key byte-for-byte intact.
 
@@ -305,7 +330,7 @@ Where the choreography shows up:
 - **Opening a note** (new note, popover, focusing) plays one entrance.
 - **Session restore** staggers the reopened panels `staggerMs` apart,
   left-to-right by on-screen position, so the desk assembles.
-- **The blink** (Hyper+B): the reveal staggers panels in from their screen-edge
+- **Show or hide all notes** (Hyper+B): the reveal staggers panels in from their screen-edge
   direction; the hide is one synchronized exhale (all panels fade + drift
   outward together, then vanish). The state flips instantly regardless — the
   motion is garnish, and rapid toggles never leave a panel half-faded. Pending
@@ -332,13 +357,13 @@ edge):
   the fold.
 
 Geometry is persisted only when a panel is at rest — never mid-glide — and
-always as the UNSHADED frame, so a note that was shaded when Blink quit still
+always as the UNSHADED frame, so a note that was shaded when Canvas quit still
 relaunches full-size. The shaded state itself is session-only.
 
 ## What does NOT live here
 
 - Notes themselves: `~/Library/Application Support/Blink/Notes/*.md` (frontmattered
-  markdown). Agents may write their own frontmatter keys into a note — Blink preserves
+  markdown). Agents may write their own frontmatter keys into a note — Canvas preserves
   unknown keys verbatim through every save, and merges on-disk metadata (tags, pinned,
   foreign keys) before each content save, so editing a note's frontmatter while it's
   open in a panel is safe.
@@ -347,4 +372,4 @@ relaunches full-size. The shaded state itself is session-only.
 
 ### Companion menu icon
 
-`behavior.alwaysShowMenuBarIcon` defaults to `false`: Blink hides its menu icon while Lattices is running and restores it when Lattices exits. Set it to `true` to keep a separate Blink icon. This setting hot-applies and is also available in Settings. Reopening Blink from Finder or Lattices Apps opens Settings even when the icon is hidden. It does not change notes or launch-at-login behavior.
+`behavior.alwaysShowMenuBarIcon` defaults to `false`: Canvas hides its menu icon while Lattices is running and restores it when Lattices exits. Set it to `true` to keep a separate Canvas icon. This setting hot-applies and is also available in Settings. Reopening Canvas from Finder or Lattices Apps opens Settings even when the icon is hidden. It does not change notes or launch-at-login behavior.

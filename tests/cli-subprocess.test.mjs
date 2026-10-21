@@ -31,7 +31,9 @@ function fixture(t) {
   return { root, directory };
 }
 
-test("Action reads a version from an app path containing shell syntax", (t) => {
+test("Action reads a version from an app path containing shell syntax", {
+  skip: process.platform !== "darwin" ? "requires macOS PlistBuddy" : false,
+}, (t) => {
   const { directory } = fixture(t);
   const app = join(directory, "Action.app");
   fs.mkdirSync(join(app, "Contents"), { recursive: true });
@@ -104,4 +106,15 @@ test("tmux receives the target as one literal argument for attach and switch", (
     attach(target);
     assert.deepEqual(received, ["tmux", inside ? "switch-client" : "attach", "-t", target]);
   }
+});
+
+test("gateway dispatch keeps the Bun executable found by the GUI launcher", (t) => {
+  const found = spawnSync("which", ["bun"], { encoding: "utf8" });
+  if (found.status !== 0) { t.skip("Bun is unavailable"); return; }
+  const result = spawnSync(fs.realpathSync(new URL("../bin/lattices", import.meta.url)), ["gateway", "--help"], {
+    encoding: "utf8", timeout: 10_000,
+    env: { ...process.env, PATH: "/usr/bin:/bin", LATTICES_BUN_BIN: found.stdout.trim() },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /gateway.*tailnet/s);
 });

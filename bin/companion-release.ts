@@ -1,7 +1,7 @@
 import { distribution } from './distribution';
 
 /** Product-scoped release policy shared by companion installer entry points. */
-export type CompanionReleaseProduct = 'blink' | 'action' | 'speech';
+export type CompanionReleaseProduct = 'canvas' | 'blink' | 'action' | 'speech';
 
 export const companionDistribution = {
   releasesAPI: distribution.releasesAPI,
@@ -9,11 +9,33 @@ export const companionDistribution = {
   downloadPrefix: `/${distribution.repository}/releases/download/`,
   legacyDownloadPrefix: `/${distribution.legacyRepository}/releases/download/`,
   products: {
+    canvas: { tagPrefix: 'canvas-v', asset: 'Canvas.dmg', bundleID: 'dev.arach.blink' },
     blink: { tagPrefix: 'blink-v', asset: 'Blink.dmg', bundleID: 'dev.arach.blink' },
     action: { tagPrefix: 'action-v', asset: 'Action.dmg', bundleID: 'dev.lattices.Action' },
     speech: { tagPrefix: 'speech-v', asset: 'Speech.dmg', bundleID: 'dev.lattices.Speech' },
   },
 } as const;
+
+/** Canvas retains Blink's install lock and bundle identity during the rename. */
+export function companionInstallIdentity(product: CompanionReleaseProduct): Exclude<CompanionReleaseProduct, 'canvas'> {
+  return product === 'canvas' ? 'blink' : product;
+}
+
+function releasePolicies(product: CompanionReleaseProduct) {
+  return companionInstallIdentity(product) === 'blink'
+    ? [companionDistribution.products.canvas, companionDistribution.products.blink]
+    : [companionDistribution.products[product]];
+}
+
+export function companionAppNames(product: CompanionReleaseProduct): string[] {
+  return releasePolicies(product).map(policy => policy.asset.replace(/\.dmg$/, '.app'));
+}
+
+export function companionReleaseAppName(release: CompanionRelease): string {
+  const policy = releasePolicies(release.product).find(policy => release.tag === `${policy.tagPrefix}${release.version}`);
+  if (!policy) throw new Error('The release has no supported app bundle contract.');
+  return policy.asset.replace(/\.dmg$/, '.app');
+}
 
 export interface CompanionRelease {
   product: CompanionReleaseProduct;
@@ -42,14 +64,18 @@ export function selectCompanionRelease(
   product: CompanionReleaseProduct,
   releases: readonly unknown[],
 ): CompanionRelease | undefined {
-  const policy = companionDistribution.products[product];
+  const policies = releasePolicies(product);
   let selected: CompanionRelease | undefined;
   let selectedVersion = [-1, -1, -1];
+  let selectedPriority = Infinity;
   for (const raw of releases) {
     const release = record(raw);
     if (!release || release.draft !== false || release.prerelease !== false) continue;
     const tag = release.tag_name;
-    if (typeof tag !== 'string' || !tag.startsWith(policy.tagPrefix)) continue;
+    if (typeof tag !== 'string') continue;
+    const priority = policies.findIndex(policy => tag.startsWith(policy.tagPrefix));
+    const policy = policies[priority];
+    if (!policy) continue;
     const version = tag.slice(policy.tagPrefix.length);
     const parts = versionParts(version);
     if (!parts || !Array.isArray(release.assets)) continue;
@@ -66,9 +92,10 @@ export function selectCompanionRelease(
     if (url.origin !== companionDistribution.downloadOrigin || url.username || url.password
         || !expectedPaths.includes(url.pathname) || url.search || url.hash) continue;
     const comparison = parts.reduce((result, part, i) => result || Math.sign(part - selectedVersion[i]!), 0);
-    if (comparison <= 0) continue;
+    if (comparison < 0 || (comparison === 0 && priority >= selectedPriority)) continue;
     selected = { product, version, tag, assetURL: url.href, size: asset.size, bundleID: policy.bundleID };
     selectedVersion = parts;
+    selectedPriority = priority;
   }
   return selected;
 }

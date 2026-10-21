@@ -1,6 +1,6 @@
 /** Real DMG acceptance probe. Writes only to an operation-owned temporary root;
  * never discovers, opens, replaces, or quits an installed application.
- * Usage: bun tests/companion-artifact-install.ts <blink|action|speech> <version> <dmg>
+ * Usage: bun tests/companion-artifact-install.ts <canvas|blink|action|speech> <version> <dmg>
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, stat } from 'node:fs/promises';
@@ -12,7 +12,7 @@ import { commitCompanionExclusive } from '../bin/companion-commit';
 import { companionDistribution, type CompanionReleaseProduct } from '../bin/companion-release';
 
 const [product, version, input] = process.argv.slice(2);
-if (!['blink', 'action', 'speech'].includes(product!) || !version || !input) {
+if (!['canvas', 'blink', 'action', 'speech'].includes(product!) || !version || !input) {
   throw new Error('Expected product, version and local DMG path.');
 }
 const policy = companionDistribution.products[product as CompanionReleaseProduct];

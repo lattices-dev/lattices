@@ -1,19 +1,23 @@
 import Foundation
 
-/// Loopback endpoints owned by the Lattices menu bar process.
-///
-/// These ports are **deterministic and Lattices-owned**. They are not discovered
-/// at random and should not depend on an external daemon for normal operation.
-///
-/// | Service            | Port | WebSocket                         | Lifecycle                         |
-/// |--------------------|------|-----------------------------------|-----------------------------------|
-/// | Agent API / daemon | 9399 | `ws://127.0.0.1:9399`             | `DaemonServer` at app boot        |
-/// | Voice runtime      | 9398 | `ws://127.0.0.1:9398`             | `LatticesVoiceRuntime` at app boot|
-///
-/// Documented for agents and humans in `docs/voice.md`, `docs/app.md`, and
-/// `docs/api.md`. Prefer these constants over magic numbers elsewhere in the app.
+/// Per-user runtime endpoints. Normal local traffic uses private Unix sockets;
+/// numeric ports are retained only for explicit compatibility or gateway use.
 enum LatticesLocalEndpoints {
-    /// Loopback bind host for all Lattices-local services.
+    static var runtimeDirectory: URL {
+        if let path = ProcessInfo.processInfo.environment["LATTICES_RUNTIME_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices/run", isDirectory: true)
+    }
+    static var agentSocketPath: String { runtimeDirectory.appendingPathComponent("lattices.sock").path }
+    static var agentTokenURL: URL { runtimeDirectory.appendingPathComponent("lattices.token") }
+    static var speechCompanionSocketPath: String { runtimeDirectory.appendingPathComponent("speech.sock").path }
+    static var speechCompanionTokenURL: URL { runtimeDirectory.appendingPathComponent("speech.token") }
+    static var companionSocketPath: String { runtimeDirectory.appendingPathComponent("companion.sock").path }
+    static var companionTokenURL: URL { runtimeDirectory.appendingPathComponent("companion.token") }
+    static var voiceSocketPath: String { runtimeDirectory.appendingPathComponent("voice.sock").path }
+    static var voiceTokenURL: URL { runtimeDirectory.appendingPathComponent("voice.token") }
+    /// Loopback bind host for explicit compatibility mode.
     static let loopbackHost = "127.0.0.1"
 
     /// Separate Speech app, owned by its own process.

@@ -1,10 +1,10 @@
 import Foundation
 import CommonCrypto
+import Darwin
 
 // MARK: - POSIX WebSocket Server
-// NWListener is broken on macOS 26 (Tahoe) — EINVAL on any listener creation.
-// Minimal POSIX-socket WebSocket server on SpeechEndpoints.rpcPort
-// (ws://127.0.0.1:9399).
+// Authenticated WebSocket RPC over a private Unix socket.
+// TCP is a deliberate compatibility opt-in, never the default transport.
 
 final class SpeechServer: ObservableObject {
     static let shared = SpeechServer()
@@ -12,13 +12,18 @@ final class SpeechServer: ObservableObject {
     @Published var clientCount: Int = 0
     @Published var isListening: Bool = false
 
-    private let port: UInt16
+    private let port: UInt16?
+    private let socketURL: URL
+    private let tokenURL: URL
+    private var boundSocketIdentity: (dev_t, ino_t)?
     private let api: SpeechApi
     private let speechQueue: SpeechQueue
     private let capabilityURL: URL
     private(set) var listeningPort: UInt16 = 0
 
-    init(port: UInt16 = SpeechEndpoints.rpcPort,
+    init(port: UInt16? = nil,
+         socketURL: URL = SpeechEndpoints.socketURL,
+         tokenURL: URL? = nil,
          capabilityURL: URL = SpeechRPCCapability.fileURL,
          api: SpeechApi = .shared,
          speechQueue: SpeechQueue = .shared) {
@@ -26,9 +31,12 @@ final class SpeechServer: ObservableObject {
         self.api = api
         self.port = port
         self.capabilityURL = capabilityURL
+        self.socketURL = socketURL
+        self.tokenURL = tokenURL ?? (port == nil ? SpeechEndpoints.tokenURL : capabilityURL.deletingLastPathComponent().appendingPathComponent("speech.token"))
     }
 
     private var serverFd: Int32 = -1
+    private var lockFD: Int32 = -1
     private var clients: [UUID: WebSocketClient] = [:]
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "lattices.daemon", qos: .userInitiated)
@@ -44,104 +52,111 @@ final class SpeechServer: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var speechCapability: SpeechRPCCapability?
+    private var transportCapability: SpeechRPCCapability?
+    private var extraTCPSource: DispatchSourceRead?
     private var acceptSource: DispatchSourceRead?
 
     func start() {
         let diag = DiagnosticLog.shared
         guard serverFd < 0 else { return }
 
-        // 1. Create TCP socket
-        serverFd = socket(AF_INET, SOCK_STREAM, 0)
-        guard serverFd >= 0 else {
-            diag.error("SpeechServer: socket() failed — errno \(errno)")
-            return
-        }
-
-        // SO_REUSEADDR so we can restart quickly
-        var yes: Int32 = 1
-        setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
-
-        // 2. Bind to Lattices agent API port (well-known: 9399)
-        var addr = sockaddr_in()
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = port.bigEndian
-        addr.sin_addr.s_addr = UInt32(0x7f000001).bigEndian // 127.0.0.1
-
-        let bindResult = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(serverFd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard bindResult == 0 else {
-            diag.error("SpeechServer: bind() failed — errno \(errno)")
-            close(serverFd)
-            serverFd = -1
-            return
-        }
-
-        // 3. Listen
-        guard listen(serverFd, 8) == 0 else {
-            diag.error("SpeechServer: listen() failed — errno \(errno)")
-            close(serverFd)
-            serverFd = -1
-            return
-        }
-
-        var boundAddress = sockaddr_in()
-        var boundLength = socklen_t(MemoryLayout<sockaddr_in>.size)
-        withUnsafeMutablePointer(to: &boundAddress) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                _ = getsockname(serverFd, $0, &boundLength)
-            }
-        }
-        listeningPort = UInt16(bigEndian: boundAddress.sin_port)
-
         do {
+            // Fail closed before opening either listener if private state is unsafe.
+            if port == nil {
+                try SpeechPrivateIPC.prepareDirectory(socketURL.deletingLastPathComponent())
+                lockFD = try SpeechPrivateIPC.acquireLock(socketURL)
+                // Check for another live helper before rotating its capabilities.
+                try SpeechPrivateIPC.removeStaleSocket(socketURL)
+            }
             speechCapability = try SpeechRPCCapability(url: capabilityURL)
+            transportCapability = try SpeechRPCCapability(url: tokenURL, header: "x-lattices-token")
+            serverFd = try makeListener(tcpPort: port)
+            acceptSource = acceptSource(for: serverFd, isUnix: port == nil)
+            if port == nil, ProcessInfo.processInfo.environment["LATTICES_SPEECH_TCP"] == "1" {
+                let tcp = try makeListener(tcpPort: SpeechEndpoints.rpcPort)
+                extraTCPSource = acceptSource(for: tcp, isUnix: false)
+            }
+            DispatchQueue.main.async { self.isListening = true }
+            diag.info(port == nil ? "Speech server listening on private IPC" : "Speech compatibility server listening on loopback")
         } catch {
-            diag.error("SpeechServer: speech capability unavailable; speech RPC disabled")
+            diag.error("SpeechServer: private listener unavailable: \(error.localizedDescription)")
+            stop()
         }
+    }
 
-        // Non-blocking
-        let flags = fcntl(serverFd, F_GETFL)
-        _ = fcntl(serverFd, F_SETFL, flags | O_NONBLOCK)
+    private func makeListener(tcpPort: UInt16?) throws -> Int32 {
+        let fd = socket(tcpPort == nil ? AF_UNIX : AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw POSIXError(.EIO) }
+        do {
+            guard fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 else { throw POSIXError(.EIO) }
+            if let tcpPort {
+                var yes: Int32 = 1
+                guard setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size)) == 0 else { throw POSIXError(.EIO) }
+                var addr = sockaddr_in()
+                addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+                addr.sin_family = sa_family_t(AF_INET)
+                addr.sin_port = tcpPort.bigEndian
+                addr.sin_addr.s_addr = UInt32(0x7f000001).bigEndian
+                let result = withUnsafePointer(to: &addr) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+                }
+                guard result == 0 else { throw POSIXError(.EADDRINUSE) }
+                var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+                withUnsafeMutablePointer(to: &addr) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = getsockname(fd, $0, &length) }
+                }
+                listeningPort = UInt16(bigEndian: addr.sin_port)
+            } else {
+                try SpeechPrivateIPC.removeStaleSocket(socketURL)
+                var addr = sockaddr_un()
+                addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+                addr.sun_family = sa_family_t(AF_UNIX)
+                guard socketURL.path.utf8.count < MemoryLayout.size(ofValue: addr.sun_path) else { throw POSIXError(.ENAMETOOLONG) }
+                withUnsafeMutableBytes(of: &addr.sun_path) { dest in socketURL.path.utf8CString.withUnsafeBytes { dest.copyBytes(from: $0) } }
+                let result = withUnsafePointer(to: &addr) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+                }
+                guard result == 0 else { throw POSIXError(.EADDRINUSE) }
+                var info = stat()
+                guard chmod(socketURL.path, 0o600) == 0, lstat(socketURL.path, &info) == 0,
+                      info.st_uid == geteuid(), info.st_mode & S_IFMT == S_IFSOCK,
+                      info.st_mode & 0o777 == 0o600 else { throw POSIXError(.EACCES) }
+                boundSocketIdentity = (info.st_dev, info.st_ino)
+            }
+            guard listen(fd, 16) == 0, fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == 0 else { throw POSIXError(.EIO) }
+            return fd
+        } catch { close(fd); throw error }
+    }
 
-        // 4. GCD dispatch source for accepting connections
-        let source = DispatchSource.makeReadSource(fileDescriptor: serverFd, queue: queue)
-        source.setEventHandler { [weak self] in self?.acceptConnection() }
-        let listeningFd = serverFd
-        source.setCancelHandler { close(listeningFd) }
+    private func acceptSource(for fd: Int32, isUnix: Bool) -> DispatchSourceRead {
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        source.setEventHandler { [weak self] in self?.acceptConnection(listener: fd, isUnix: isUnix) }
+        source.setCancelHandler { close(fd) }
         source.resume()
-        acceptSource = source
-
-        DispatchQueue.main.async { self.isListening = true }
-        diag.info("Speech server listening on port \(listeningPort)")
-
-
+        return source
     }
 
     func stop() {
-        speechCapability?.remove()
-        speechCapability = nil
-        acceptSource?.cancel()
-        acceptSource = nil
-        serverFd = -1
-        listeningPort = 0
-        lock.lock()
-        for (_, client) in clients {
-            if let source = client.readSource {
-                source.cancel() // Its cancel handler owns closing the descriptor.
-            } else {
-                close(client.fd)
-            }
+        queue.sync {
+            acceptSource?.cancel(); acceptSource = nil
+            extraTCPSource?.cancel(); extraTCPSource = nil
+            serverFd = -1
+            listeningPort = 0
+            lock.lock()
+            let snapshot = Array(clients.values)
+            clients.removeAll()
+            lock.unlock()
+            for client in snapshot { client.handshakeTimeout?.cancel(); client.readSource?.cancel() }
         }
-        clients.removeAll()
-        lock.unlock()
-        DispatchQueue.main.async {
-            self.clientCount = 0
-            self.isListening = false
+        if let identity = boundSocketIdentity {
+            var info = stat()
+            if lstat(socketURL.path, &info) == 0, info.st_dev == identity.0, info.st_ino == identity.1 { unlink(socketURL.path) }
+            boundSocketIdentity = nil
         }
+        speechCapability?.remove(); speechCapability = nil
+        transportCapability?.remove(); transportCapability = nil
+        if lockFD >= 0 { flock(lockFD, LOCK_UN); close(lockFD); lockFD = -1 }
+        DispatchQueue.main.async { self.clientCount = 0; self.isListening = false }
     }
 
     func broadcast(_ event: DaemonEvent) {
@@ -151,109 +166,93 @@ final class SpeechServer: ObservableObject {
         let snapshot = clients
         lock.unlock()
         for (_, client) in snapshot {
-            if event.event.hasPrefix("speech."), !client.speechAuthorized { continue }
+            if !client.speechAuthorized { continue }
             sendWebSocketText(text, to: client)
         }
     }
 
     // MARK: - Accept
 
-    private func acceptConnection() {
-        var clientAddr = sockaddr_in()
-        var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-        let clientFd = withUnsafeMutablePointer(to: &clientAddr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                accept(serverFd, $0, &addrLen)
-            }
-        }
+    private func acceptConnection(listener: Int32, isUnix: Bool) {
+        let clientFd = accept(listener, nil, nil)
         guard clientFd >= 0 else { return }
-
-        // A client can disconnect immediately after a large response. On Darwin,
-        // writing to that socket can otherwise raise SIGPIPE and terminate the app.
-        var noSigPipe: Int32 = 1
-        setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
-
-        let id = UUID()
-        let client = WebSocketClient(id: id, fd: clientFd)
-
-        // Read the HTTP upgrade request
-        queue.async { [weak self] in
-            self?.performHandshake(client: client)
-        }
+        lock.lock(); let atLimit = clients.count >= 64; lock.unlock()
+        guard !atLimit, !isUnix || SpeechPrivateIPC.sameUserPeer(clientFd) else { close(clientFd); return }
+        var yes: Int32 = 1
+        let flags = fcntl(clientFd, F_GETFL)
+        guard fcntl(clientFd, F_SETFD, FD_CLOEXEC) == 0,
+              flags >= 0, fcntl(clientFd, F_SETFL, flags | O_NONBLOCK) == 0,
+              setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size)) == 0 else { close(clientFd); return }
+        let client = WebSocketClient(id: UUID(), fd: clientFd)
+        client.isUnix = isUnix
+        lock.lock(); clients[client.id] = client; lock.unlock()
+        // Incremental nonblocking handshake: one idle peer cannot stall other clients.
+        readLoop(client: client)
+        let timeout = DispatchSource.makeTimerSource(queue: queue)
+        timeout.schedule(deadline: .now() + 3)
+        timeout.setEventHandler { [weak client] in client?.readSource?.cancel() }
+        client.handshakeTimeout = timeout
+        timeout.resume()
     }
 
-    // MARK: - WebSocket Handshake
-
-    private func performHandshake(client: WebSocketClient) {
-        let diag = DiagnosticLog.shared
-
-        // Ensure blocking mode for handshake read
-        let curFlags = fcntl(client.fd, F_GETFL)
-        if curFlags & O_NONBLOCK != 0 {
-            _ = fcntl(client.fd, F_SETFL, curFlags & ~O_NONBLOCK)
+    private func performHandshake(client: WebSocketClient) -> Bool {
+        guard let end = (client.buffer.count >= 4 ? (0...(client.buffer.count - 4)).first(where: { Array(client.buffer[$0..<($0 + 4)]) == [13, 10, 13, 10] }) : nil) else {
+            if client.buffer.count > 8192 { client.readSource?.cancel() }
+            return false
         }
-
-        // Read HTTP request (up to 4KB)
-        var buf = [UInt8](repeating: 0, count: 4096)
-        let n = read(client.fd, &buf, buf.count)
-        guard n > 0 else {
-            close(client.fd)
-            return
+        let headerLength = end + 4
+        guard headerLength <= 8192, let request = String(bytes: client.buffer.prefix(headerLength), encoding: .utf8) else { client.readSource?.cancel(); return false }
+        let lines = request.components(separatedBy: "\r\n")
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() where !line.isEmpty {
+            let pair = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard pair.count == 2 else { client.readSource?.cancel(); return false }
+            let name = String(pair[0]).lowercased()
+            guard !name.isEmpty, name == name.trimmingCharacters(in: .whitespaces), headers[name] == nil else { client.readSource?.cancel(); return false }
+            headers[name] = pair[1].trimmingCharacters(in: .whitespaces)
         }
-
-        let request = String(bytes: buf[..<n], encoding: .utf8) ?? ""
-
-        client.speechAuthorized = speechCapability?.authorizes(handshake: request) ?? false
-
-        // Extract Sec-WebSocket-Key
-        guard let keyLine = request.split(separator: "\r\n").first(where: {
-            $0.lowercased().hasPrefix("sec-websocket-key:")
-        }) else {
-            close(client.fd)
-            return
+        let hosts: Set<String> = client.isUnix ? ["localhost", "127.0.0.1"] : ["localhost:\(listeningPort)", "127.0.0.1:\(listeningPort)"]
+        let authorized = transportCapability?.authorizes(handshake: request) == true || speechCapability?.authorizes(handshake: request) == true
+        guard lines.first == "GET / HTTP/1.1", headers["origin"] == nil,
+              let host = headers["host"], hosts.contains(host.lowercased()),
+              headers["upgrade"]?.lowercased() == "websocket",
+              headers["connection"]?.lowercased().split(separator: ",").contains(where: { $0.trimmingCharacters(in: .whitespaces) == "upgrade" }) == true,
+              headers["sec-websocket-version"] == "13", authorized,
+              let key = headers["sec-websocket-key"], Data(base64Encoded: key)?.count == 16 else {
+            let denied = Array("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".utf8)
+            _ = denied.withUnsafeBytes { write(client.fd, $0.baseAddress!, $0.count) }
+            client.readSource?.cancel()
+            return false
         }
-        let key = keyLine.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces)
-
-        // Compute accept key: Base64(SHA1(key + magic))
-        let magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        let combined = key + magic
-        let acceptKey = sha1Base64(combined)
-
-        // Send HTTP 101 response
-        let response = "HTTP/1.1 101 Switching Protocols\r\n" +
-            "Upgrade: websocket\r\n" +
-            "Connection: Upgrade\r\n" +
-            "Sec-WebSocket-Accept: \(acceptKey)\r\n\r\n"
-        let responseBytes = Array(response.utf8)
-        responseBytes.withUnsafeBufferPointer { ptr in
-            _ = write(client.fd, ptr.baseAddress!, ptr.count)
-        }
-
-        // Register client
-        lock.lock()
-        clients[client.id] = client
-        let count = clients.count
-        lock.unlock()
+        let acceptKey = sha1Base64(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+        let response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(acceptKey)\r\n\r\n"
+        client.buffer.removeFirst(headerLength)
+        client.speechAuthorized = true
+        client.handshakeTimeout?.cancel(); client.handshakeTimeout = nil
+        client.pendingOutput.append(contentsOf: response.utf8)
+        flushOutput(client)
+        lock.lock(); let count = clients.values.filter(\.speechAuthorized).count; lock.unlock()
         DispatchQueue.main.async { self.clientCount = count }
-        diag.info("SpeechServer: client connected (\(count) total)")
-
-        // Start read loop
-        readLoop(client: client)
+        return true
     }
 
     // MARK: - WebSocket Frame I/O
 
     private func readLoop(client: WebSocketClient) {
-        // Make non-blocking and use a dispatch source
-        let flags = fcntl(client.fd, F_GETFL)
-        _ = fcntl(client.fd, F_SETFL, flags | O_NONBLOCK)
-
         let source = DispatchSource.makeReadSource(fileDescriptor: client.fd, queue: queue)
         client.readSource = source
         source.setEventHandler { [weak self] in
             self?.readFrame(client: client)
         }
+        let speechQueue = self.speechQueue
         source.setCancelHandler { [weak self] in
+            // Descriptor cleanup must survive the server being released after stop().
+            client.handshakeTimeout?.cancel(); client.handshakeTimeout = nil
+            client.writeSource?.cancel(); client.writeSource = nil
+            client.readSource = nil
+            client.pendingOutput.removeAll()
+            close(client.fd)
+            Task { @MainActor in speechQueue.releaseExternalPlayback(owner: client.id) }
             self?.removeClient(client)
         }
         source.resume()
@@ -263,14 +262,17 @@ final class SpeechServer: ObservableObject {
         // Read available data into client buffer
         var buf = [UInt8](repeating: 0, count: 65536)
         let n = read(client.fd, &buf, buf.count)
+        if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) { return }
         if n <= 0 {
             client.readSource?.cancel()
             return
         }
         client.buffer.append(contentsOf: buf[..<n])
 
-        // Process complete frames
-        while let frame = parseFrame(&client.buffer) {
+        if !client.speechAuthorized, !performHandshake(client: client) { return }
+        guard client.buffer.count <= 1_048_590 else { client.readSource?.cancel(); return }
+        // Validate lengths as UInt64 before any Int conversion or allocation.
+        do { while let frame = try parseFrame(&client.buffer) {
             switch frame.opcode {
             case 0x1: // Text
                 if let text = String(bytes: frame.payload, encoding: .utf8),
@@ -289,7 +291,7 @@ final class SpeechServer: ObservableObject {
             default:
                 break
             }
-        }
+        } } catch { client.readSource?.cancel() }
     }
 
     private struct WSFrame {
@@ -297,13 +299,15 @@ final class SpeechServer: ObservableObject {
         let payload: [UInt8]
     }
 
-    private func parseFrame(_ buffer: inout [UInt8]) -> WSFrame? {
+    private func parseFrame(_ buffer: inout [UInt8]) throws -> WSFrame? {
         guard buffer.count >= 2 else { return nil }
 
         let byte0 = buffer[0]
         let byte1 = buffer[1]
         let opcode = byte0 & 0x0F
         let masked = (byte1 & 0x80) != 0
+        guard byte0 & 0x80 != 0, byte0 & 0x70 == 0, masked,
+              [UInt8(1), 8, 9, 10].contains(opcode) else { throw POSIXError(.EPROTO) }
         var payloadLen = UInt64(byte1 & 0x7F)
         var offset = 2
 
@@ -318,6 +322,7 @@ final class SpeechServer: ObservableObject {
             offset = 10
         }
 
+        guard payloadLen <= 1_048_576, opcode < 8 || payloadLen <= 125 else { throw POSIXError(.EMSGSIZE) }
         let maskSize = masked ? 4 : 0
         let totalNeeded = offset + maskSize + Int(payloadLen)
         guard buffer.count >= totalNeeded else { return nil }
@@ -413,7 +418,7 @@ final class SpeechServer: ObservableObject {
             return
         }
 
-        if request.method.hasPrefix("speech."), !client.speechAuthorized {
+        if !client.speechAuthorized {
             sendResponse(DaemonResponse(id: request.id, result: nil, error: "Speech access requires the local capability"), to: client)
             return
         }
@@ -462,12 +467,6 @@ final class SpeechServer: ObservableObject {
     // MARK: - Client Management
 
     private func removeClient(_ client: WebSocketClient) {
-        let speechQueue = self.speechQueue
-        Task { @MainActor in speechQueue.releaseExternalPlayback(owner: client.id) }
-        client.writeSource?.cancel()
-        client.writeSource = nil
-        client.pendingOutput.removeAll()
-        close(client.fd)
         lock.lock()
         clients.removeValue(forKey: client.id)
         let count = clients.count
@@ -496,6 +495,8 @@ final class WebSocketClient {
     let id: UUID
     let fd: Int32
     var speechAuthorized = false
+    var isUnix = false
+    var handshakeTimeout: DispatchSourceTimer?
     var buffer: [UInt8] = []
     var readSource: DispatchSourceRead?
     var writeSource: DispatchSourceWrite?

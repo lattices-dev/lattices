@@ -8,11 +8,11 @@ public enum BlinkSnapshotCacheError: Error, LocalizedError, Equatable, Sendable 
     public var errorDescription: String? {
         switch self {
         case .decodingFailed(let detail):
-            return "Blink's offline notes could not be decoded: \(detail)"
+            return "Canvas's offline notes could not be decoded: \(detail)"
         case .encodingFailed(let detail):
-            return "Blink's offline notes could not be encoded: \(detail)"
+            return "Canvas's offline notes could not be encoded: \(detail)"
         case .persistenceFailed(let detail):
-            return "Blink's offline notes could not be stored safely: \(detail)"
+            return "Canvas's offline notes could not be stored safely: \(detail)"
         }
     }
 }

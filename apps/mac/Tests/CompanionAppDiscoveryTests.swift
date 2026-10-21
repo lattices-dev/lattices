@@ -72,6 +72,17 @@ final class CompanionAppDiscoveryTests: XCTestCase {
         )
     }
 
+    func testCanvasFilenameResolvesByExistingBlinkIdentity() throws {
+        let canvasURL = try makeAppBundle(
+            at: userApps.appendingPathComponent("Canvas.app"),
+            bundleIdentifier: CompanionBundleIdentifiers.blink
+        )
+        XCTAssertEqual(
+            makeDiscovery().installState(for: CompanionAppCatalog.product(id: .blink)),
+            .installed(url: canvasURL)
+        )
+    }
+
     func testWrongBundleIdentityIsNotInstalled() throws {
         let decoy = try makeAppBundle(
             at: userApps.appendingPathComponent("Blink.app"),
@@ -344,7 +355,7 @@ final class CompanionAppDiscoveryTests: XCTestCase {
         let root = NSMenu()
         controller.attach(to: root)
         let apps = try XCTUnwrap(root.items.first { $0.title == CompanionAppsMenu.title }?.submenu)
-        XCTAssertEqual(apps.item(at: 0)?.title, "Blink")
+        XCTAssertEqual(apps.item(at: 0)?.title, "Canvas")
         XCTAssertEqual(apps.item(at: 0)?.submenu?.item(at: 0)?.title, "Install")
         XCTAssertEqual(apps.item(at: 1)?.submenu?.item(at: 0)?.title, "Install")
         XCTAssertEqual(

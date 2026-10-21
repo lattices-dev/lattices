@@ -1,0 +1,141 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Layout Suggestions</title>
+<style>
+:root{--ink:16,21,24;--coral:#ef6a47;}
+*{box-sizing:border-box;margin:0}
+body{background:#1b1f22;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;padding:24px;display:flex;flex-direction:column;gap:24px;-webkit-font-smoothing:antialiased}
+.frame{display:inline-block;width:max-content}
+/* desk crop: top edge of the 3440×1440 Dell, menu bar auto-hidden, 1pt = 1px */
+.desk{position:relative;overflow:hidden;background:linear-gradient(180deg,#3a4247 0%,#2c3337 100%)}
+.desk .bezel{position:absolute;left:0;right:0;top:0;height:0;border-top:1px solid rgba(0,0,0,.6)}
+.win{position:absolute;top:22px;height:400px;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.win .bar{height:28px;border-bottom:1px solid rgba(0,0,0,.08)}
+.win.light{background:#f4f4f2}.win.light .bar{background:#e6e6e3}
+.win.dark{background:#16191c}.win.dark .bar{background:#202428;border-bottom-color:rgba(255,255,255,.05)}
+.lines{padding:12px 14px;display:flex;flex-direction:column;gap:7px}
+.lines i{display:block;height:6px;border-radius:3px;background:rgba(0,0,0,.09)}
+.dark .lines i{background:rgba(255,255,255,.08)}
+.cap{background:#0d1012;color:rgba(255,255,255,.58);font:11px/1 ui-monospace,"SF Mono",Menlo,monospace;padding:9px 12px;letter-spacing:.01em}
+.cap b{color:rgba(255,255,255,.9);font-weight:500;margin-right:8px}
+.cap .no{color:var(--coral)}
+
+/* Stage pill — as shipped: 24 tall, pad 11, dot 6, gap 7, 12pt medium white 94%, ink 86%, 1pt white 12% stroke */
+.pill{position:absolute;top:6px;left:50%;transform:translateX(-50%);height:24px;padding:0 11px;border-radius:12px;display:flex;align-items:center;gap:7px;
+  background:rgba(var(--ink),.86);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);color:rgba(255,255,255,.94);font-size:12px;font-weight:500;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:3px;background:var(--coral)}
+
+/* Suggestion card — 300×130, same anchor */
+.card{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:300px;height:130px;border-radius:12px;
+  background:rgba(var(--ink),.86);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 10px 28px rgba(0,0,0,.28);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#fff;overflow:hidden}
+.card .label{position:absolute;left:14px;top:13px;font-size:13px;font-weight:400;color:rgba(255,255,255,.92);letter-spacing:-.005em;white-space:nowrap}
+.card .label span{color:rgba(255,255,255,.5)}
+.map{position:absolute;left:14px;top:40px;width:168px;height:70px;border-radius:4px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+.tile{position:absolute;border-radius:2.5px;background:rgba(255,255,255,.09);box-shadow:inset 0 0 0 1px rgba(255,255,255,.24);
+  font-size:9.5px;font-weight:500;color:rgba(255,255,255,.78);padding:4px 5px;line-height:1;letter-spacing:.01em}
+.btns{position:absolute;right:14px;top:46px;width:90px;display:flex;flex-direction:column;gap:8px}
+.btn{height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500}
+.btn.primary{background:rgba(255,255,255,.92);color:#101518}
+.btn.ghost{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);color:rgba(255,255,255,.72)}
+/* decision line: drains toward the left as the offer times out */
+.track{position:absolute;left:14px;right:14px;bottom:8px;height:2px;border-radius:1px;background:rgba(255,255,255,.07)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:var(--coral)}
+
+/* annotations */
+.ann{position:absolute;background:rgba(13,16,18,.92);padding:4px 6px;border-radius:4px;font:10px/1.25 ui-monospace,"SF Mono",Menlo,monospace;color:rgba(255,255,255,.72);white-space:nowrap}
+.hit{position:absolute;border:1px dashed rgba(239,106,71,.9);border-radius:8px}
+.ghostpill{position:absolute;top:6px;left:50%;transform:translateX(-50%);border:1px dashed rgba(255,255,255,.75);border-radius:12px}
+.anchor{position:absolute;top:6px;height:0;border-top:1px dashed rgba(255,255,255,.55)}
+.x{position:absolute;top:0;width:0;height:6px;border-left:1px solid rgba(255,255,255,.6)}
+</style></head><body>
+
+<template id="bg">
+  <div class="bezel"></div>
+  <div class="win light" style="left:-40px;width:330px"><div class="bar"></div><div class="lines"><i style="width:70%"></i><i style="width:85%"></i><i style="width:55%"></i><i style="width:78%"></i><i style="width:62%"></i><i style="width:80%"></i></div></div>
+  <div class="win dark" style="left:298px;width:420px"><div class="bar"></div><div class="lines"><i style="width:40%"></i><i style="width:66%"></i><i style="width:52%"></i><i style="width:74%"></i><i style="width:35%"></i><i style="width:60%"></i></div></div>
+</template>
+
+<template id="card4">
+  <div class="card">
+    <div class="label">Tile 4 windows <span>·</span> 2×2</div>
+    <div class="map">
+      <div class="tile" style="left:3px;top:3px;width:79px;height:30px">fab</div>
+      <div class="tile" style="left:86px;top:3px;width:79px;height:30px">lattices</div>
+      <div class="tile" style="left:3px;top:37px;width:79px;height:30px">talkie</div>
+      <div class="tile" style="left:86px;top:37px;width:79px;height:30px">grok</div>
+    </div>
+    <div class="btns"><div class="btn primary">Tile</div><div class="btn ghost">Not now</div></div>
+    <div class="track"><i style="width:100%"></i></div>
+  </div>
+</template>
+
+<!-- 1 -->
+<div class="frame" id="f1">
+  <div class="desk" style="width:360px;height:72px" data-bg></div>
+  <div class="cap"><b>1</b>Stage on · pill only</div>
+</div>
+
+<!-- 2 -->
+<div class="frame" id="f2">
+  <div class="desk" style="width:640px;height:176px" data-bg data-card4></div>
+  <div class="cap"><b>2</b>Stage off · suggestion card · decision line full</div>
+</div>
+
+<!-- 2b -->
+<div class="frame" id="f2b">
+  <div class="desk" style="width:640px;height:176px" data-bg data-card4>
+    <div class="hit" style="left:366px;top:49px;width:94px;height:32px"></div>
+    <div class="hit" style="left:366px;top:85px;width:94px;height:32px"></div>
+    <div class="ann" style="left:470px;top:58px">hit areas</div>
+    <div class="ann" style="left:470px;top:72px;color:rgba(255,255,255,.5)">(+2pt slop)</div>
+    <div class="ann" style="left:16px;top:56px;text-align:right;color:rgba(255,255,255,.62)">rest of card<br>clicks pass through<br>to the window below</div>
+  </div>
+  <div class="cap"><b>2b</b>Same card · only Tile and Not now take clicks</div>
+</div>
+
+<!-- 3 -->
+<div class="frame" id="f3">
+  <div class="desk" style="width:640px;height:176px" data-bg data-card4 data-drain="12"></div>
+  <div class="cap"><b>3</b>Last moment · decision line drained to 12% · dismisses at 0</div>
+</div>
+
+<!-- 4 -->
+<div class="frame" id="f4">
+  <div class="desk" style="width:640px;height:176px" data-bg>
+    <div class="card">
+      <div class="label">Center talkie <span>·</span> ⅔ width</div>
+      <div class="map">
+        <div class="tile" style="left:29px;top:3px;width:110px;height:64px">talkie</div>
+      </div>
+      <div class="btns"><div class="btn primary">Tile</div><div class="btn ghost">Not now</div></div>
+      <div class="track"><i style="width:100%"></i></div>
+    </div>
+  </div>
+  <div class="cap"><b>4</b>One-window suggestion · same card, same map</div>
+</div>
+
+<!-- 5 -->
+<div class="frame" id="f5">
+  <div class="desk" style="width:640px;height:176px" data-bg data-card4>
+    <div class="pill" id="p5">Stage</div>
+    <div class="anchor" style="left:0;width:166px"></div>
+    <div class="anchor" style="left:474px;width:166px"></div>
+    <div class="x" style="left:150px"></div>
+    <div class="ann" style="left:12px;top:14px">one anchor<br>top centre, 6pt<br>under visible frame</div>
+    <div class="ann" style="left:478px;top:14px;color:var(--coral)">pill sits on<br>the card's label</div>
+  </div>
+  <div class="cap"><b class="no">5 · rejected</b>Stage on + card at once · both claim the same spot, so one covers the other</div>
+</div>
+
+<script>
+const bg=document.getElementById('bg').innerHTML, c4=document.getElementById('card4').innerHTML;
+document.querySelectorAll('[data-bg]').forEach(d=>{
+  const w=d.offsetWidth, own=d.innerHTML;
+  // centre the backdrop windows under the crop so the card straddles light + dark
+  const off=(w-640)/2;
+  d.innerHTML='<div style="position:absolute;inset:0;transform:translateX('+off+'px)">'+bg+'</div>'+(d.hasAttribute('data-card4')?c4:'')+own;
+  if(d.dataset.drain) d.querySelector('.track i').style.width=d.dataset.drain+'%';
+});
+document.querySelector('#f1 .desk').insertAdjacentHTML('beforeend','<div class="pill">Stage</div>');
+</script>
+</body></html>

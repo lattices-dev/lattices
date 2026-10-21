@@ -23,9 +23,10 @@ import {
   timingSafeEqual,
   type KeyObject,
 } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, ftruncateSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { privateDirectory } from "../private-ipc.ts";
 
 export const CAPABILITIES = {
   deckRead: "deck.read",
@@ -202,14 +203,29 @@ export function grantedCapabilities(requested: string[] | undefined): string[] {
 // ── Persistent state ──────────────────────────────────────────────────
 
 function writePrivate(path: string, data: string) {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(path, data, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  privateDirectory(dirname(path));
+  const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+  try {
+    validatePrivateFile(fd, path);
+    ftruncateSync(fd, 0);
+    writeFileSync(fd, data);
+  } finally { closeSync(fd); }
+}
+
+function validatePrivateFile(fd: number, path: string) {
+  const stat = fstatSync(fd);
+  if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid?.() || (stat.mode & 0o077)) throw new Error(`Unsafe pairing state: ${path}`);
+}
+
+function readPrivate(path: string): string {
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try { validatePrivateFile(fd, path); return readFileSync(fd, "utf8"); }
+  finally { closeSync(fd); }
 }
 
 export function loadOrCreateBridgeKey(path = join(STATE_DIR, "bridge-key.json")): KeyObject {
   if (existsSync(path)) {
-    const jwk = JSON.parse(readFileSync(path, "utf8"));
+    const jwk = JSON.parse(readPrivate(path));
     return createPrivateKey({ key: jwk, format: "jwk" });
   }
   const { privateKey } = generateKeyPairSync("x25519");
@@ -246,7 +262,7 @@ export class BridgeSecurity {
     this.devicesPath = options.devicesPath ?? join(STATE_DIR, "bridge-devices.json");
     this.now = options.now ?? (() => new Date());
     if (existsSync(this.devicesPath)) {
-      for (const d of JSON.parse(readFileSync(this.devicesPath, "utf8")) as TrustedDevice[]) this.devices.set(d.id, d);
+      for (const d of JSON.parse(readPrivate(this.devicesPath)) as TrustedDevice[]) this.devices.set(d.id, d);
     }
   }
 

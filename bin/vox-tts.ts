@@ -4,7 +4,9 @@
  * Speaks through the embedded Lattices voice runtime (Kokoro via mlx-audio by default).
  */
 
-import { existsSync, readFileSync } from "fs";
+import { constants, closeSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { daemonCallTo, type DaemonEndpoint } from "../packages/desktop-client/daemon-client.ts";
+import { readLocalToken, validateLocalSocket } from "../packages/desktop-client/local-ipc.ts";
 import { homedir } from "os";
 import { join } from "path";
 import { spawn } from "child_process";
@@ -19,6 +21,9 @@ const DEFAULT_CAPABILITY_PATH = join(
 );
 
 type Capability = {
+  transport?: string;
+  socketPath?: string;
+  tokenPath?: string;
   webSocketUrl?: string;
   host?: string;
   port?: number;
@@ -28,48 +33,39 @@ type Capability = {
 type VoxRuntime = {
   capability: Capability;
   wsUrl: string;
-  authToken: string;
+  endpoint: DaemonEndpoint;
 };
 
 let cachedRuntime: VoxRuntime | null | undefined;
-let requestCounter = 0;
 
 function resolveCapabilityPath(): string {
   return process.env.LATTICES_VOICE_CAPABILITY?.trim() || DEFAULT_CAPABILITY_PATH;
 }
 
 function loadCapability(): Capability | null {
-  const path = resolveCapabilityPath();
-  if (!existsSync(path)) return null;
+  let fd: number | undefined;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Capability;
-  } catch {
-    return null;
-  }
+    fd = openSync(resolveCapabilityPath(), constants.O_RDONLY | constants.O_NOFOLLOW);
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.nlink !== 1 || (info.mode & 0o077) !== 0
+      || info.uid !== process.getuid?.() || info.size > 65_536) return null;
+    return JSON.parse(readFileSync(fd, "utf8")) as Capability;
+  } catch { return null; }
+  finally { if (fd !== undefined) closeSync(fd); }
 }
 
 export function resolveVoxRuntime(): VoxRuntime | null {
   if (cachedRuntime !== undefined) return cachedRuntime;
-
   const capability = loadCapability();
-  if (!capability) {
-    cachedRuntime = null;
-    return null;
+  if (capability?.transport !== "unix+ws+json-rpc" || !capability.socketPath?.startsWith("/") || !capability.tokenPath?.startsWith("/")) {
+    cachedRuntime = null; return null;
   }
-
-  const wsUrl =
-    capability.webSocketUrl?.trim() ||
-    (capability.host && capability.port
-      ? `ws://${capability.host}:${capability.port}`
-      : process.env.LATTICES_VOICE_WS_URL?.trim() || "ws://127.0.0.1:9398");
-
-  const authToken = capability.authToken?.trim() || process.env.VOX_AUTH_TOKEN?.trim() || "";
-  if (!authToken) {
-    cachedRuntime = null;
-    return null;
-  }
-
-  cachedRuntime = { capability, wsUrl, authToken };
+  try {
+    validateLocalSocket(capability.socketPath);
+    readLocalToken(capability.tokenPath);
+  } catch { cachedRuntime = null; return null; }
+  const endpoint = { host: "localhost", port: 0, socketPath: capability.socketPath, tokenFile: capability.tokenPath };
+  cachedRuntime = { capability, wsUrl: `unix:${capability.socketPath}`, endpoint };
   return cachedRuntime;
 }
 
@@ -102,59 +98,7 @@ async function voxRpc(
   params: Record<string, unknown>,
   timeoutMs = 120_000
 ): Promise<Record<string, unknown>> {
-  const id = `handsoff-${++requestCounter}`;
-  const ws = new WebSocket(runtime.wsUrl);
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      try {
-        ws.close();
-      } catch {}
-      reject(new Error(`Vox ${method} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    const cleanup = () => clearTimeout(timer);
-
-    ws.addEventListener("open", () => {
-      ws.send(
-        JSON.stringify({
-          id,
-          method,
-          authToken: runtime.authToken,
-          params: {
-            clientId: "handsoff-worker",
-            ...params,
-          },
-        })
-      );
-    });
-
-    ws.addEventListener("message", (event) => {
-      let payload: any;
-      try {
-        payload = JSON.parse(String(event.data));
-      } catch {
-        return;
-      }
-      if (payload.id !== id) return;
-
-      cleanup();
-      try {
-        ws.close();
-      } catch {}
-
-      if (payload.error) {
-        reject(new Error(String(payload.error)));
-        return;
-      }
-      resolve((payload.result ?? {}) as Record<string, unknown>);
-    });
-
-    ws.addEventListener("error", () => {
-      cleanup();
-      reject(new Error(`Could not connect to Hudson voice runtime at ${runtime.wsUrl}`));
-    });
-  });
+  return await daemonCallTo(runtime.endpoint, method, { clientId: "handsoff-worker", ...params }, timeoutMs) as Record<string, unknown>;
 }
 
 export async function synthesizeWithVox(

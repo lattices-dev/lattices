@@ -1,17 +1,34 @@
 import Foundation
 
-/// Canonical locations for Blink's on-disk world, shared by the app and the
-/// `blink` CLI so the two can never disagree about where notes live.
+/// Canonical locations for Canvas, shared by the app and both CLI names.
 ///
-/// `BLINK_HOME` in the environment overrides the root — that's how tests and
-/// agents sandbox a complete Blink (notes + config) without touching the real one.
+/// Keep the original storage directory and socket name so upgrading never
+/// separates existing notes, settings, attachments, or compatible clients.
 public enum BlinkPaths {
-    /// The Blink home directory: `~/Library/Application Support/Blink`,
-    /// or `$BLINK_HOME` when set.
+    /// `CANVAS_HOME` takes precedence over the compatible `BLINK_HOME` override.
+    /// Empty values are treated as unset by both the app and CLI.
+    public static func homeOverride(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        for key in ["CANVAS_HOME", "BLINK_HOME"] {
+            if let value = environment[key], !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    /// Scratch homes must never start the normal paired-device sync host.
+    public static func hasHomeOverride(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        homeOverride(environment: environment) != nil
+    }
+
+    /// The existing home directory: `~/Library/Application Support/Blink`,
+    /// or `$CANVAS_HOME` / `$BLINK_HOME` when set. No migration is needed.
     public static func home(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
-        if let override = environment["BLINK_HOME"], !override.isEmpty {
+        if let override = homeOverride(environment: environment) {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)
         }
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

@@ -241,7 +241,7 @@ final class CapsLockHIDTransportController {
     }
 
     private func read(_ device: Device) -> [HIDKeyboardModifierMapping]? {
-        let result = run(["property", "--matching", device.selector, "--get", "UserKeyMapping"])
+        let result = Self.runCommand(["property", "--matching", device.selector, "--get", "UserKeyMapping"])
         guard result.status == 0 else { return nil }
         return CapsLockHIDMapping.parse(result.output, registryID: device.id)
     }
@@ -250,21 +250,27 @@ final class CapsLockHIDTransportController {
         let rows = mappings.map { ["HIDKeyboardModifierMappingSrc": $0.src, "HIDKeyboardModifierMappingDst": $0.dst] }
         guard let data = try? JSONSerialization.data(withJSONObject: ["UserKeyMapping": rows]),
               let payload = String(data: data, encoding: .utf8) else { return false }
-        return run(["property", "--matching", device.selector, "--set", payload]).status == 0
+        return Self.runCommand(["property", "--matching", device.selector, "--set", payload]).status == 0
     }
 
-    private func run(_ arguments: [String]) -> (status: Int32, output: String) {
+    static func runCommand(_ arguments: [String], executableURL: URL = URL(fileURLWithPath: "/usr/bin/hidutil")) -> (status: Int32, output: String) {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/hidutil")
+        process.executableURL = executableURL
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
+        // DispatchQueue.sync can execute this worker on the main thread. A
+        // Process.waitUntilExit() there pumps the main run loop, allowing a
+        // preferences callback to re-enter disable() while worker is owned.
+        // Wait for the termination handler without servicing that run loop.
+        let terminated = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in terminated.signal() }
         do { try process.run() } catch { return (-1, error.localizedDescription) }
         // Drain before waiting: a large output must not fill the pipe and
         // deadlock the child. This work is confined to the HID utility queue.
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        terminated.wait()
         return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 }

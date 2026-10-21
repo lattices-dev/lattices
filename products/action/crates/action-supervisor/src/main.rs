@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::os::unix::net::UnixStream;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,7 +14,6 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_HOST: &str = "127.0.0.1";
-const DEFAULT_PORT: u16 = 4_320;
 const RESTART_MIN_DELAY: Duration = Duration::from_secs(1);
 const RESTART_MAX_DELAY: Duration = Duration::from_secs(30);
 const START_TIMEOUT: Duration = Duration::from_secs(15);
@@ -33,6 +32,8 @@ const OPTIONAL_ENV_KEYS: &[&str] = &[
     "MOONDREAM_PYTHON",
     "ACTION_COMPANION_MAX_WORKERS",
     "ACTION_COMPANION_PORT",
+    "ACTION_COMPANION_ALLOW_TCP",
+    "LATTICES_RUNTIME_DIR",
 ];
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -119,7 +120,6 @@ struct Config {
     bun_executable: String,
     bun_resolution_error: Option<String>,
     companion_host: String,
-    companion_port: u16,
     companion_url: String,
     companion_socket_path: PathBuf,
 }
@@ -158,10 +158,6 @@ impl Config {
             Err(error) => (String::new(), Some(error)),
         };
         let companion_host = env_nonempty("ACTION_COMPANION_HOST").unwrap_or_else(|| DEFAULT_HOST.to_string());
-        let companion_port = env_nonempty("ACTION_COMPANION_PORT")
-            .and_then(|value| value.parse::<u16>().ok())
-            .unwrap_or(DEFAULT_PORT);
-        let companion_url = format!("http://{companion_host}:{companion_port}");
         let companion_socket_path = PathBuf::from(
             env_nonempty("ACTION_COMPANION_SOCKET_PATH").unwrap_or_else(|| {
                 runtime_directory
@@ -170,6 +166,7 @@ impl Config {
                     .to_string()
             }),
         );
+        let companion_url = format!("unix:{}", companion_socket_path.display());
 
         Ok(Self {
             label: label.clone(),
@@ -187,7 +184,6 @@ impl Config {
             bun_executable,
             bun_resolution_error,
             companion_host,
-            companion_port,
             companion_url,
             companion_socket_path,
         })
@@ -326,7 +322,6 @@ fn spawn_companion_process(config: &Config) -> Result<Child, String> {
         .env("ACTION_SUPPORT_DIRECTORY", config.support_directory.to_string_lossy().to_string())
         .env("ACTION_COMPANION_SOCKET_PATH", config.companion_socket_path.to_string_lossy().to_string())
         .env("ACTION_COMPANION_HOST", &config.companion_host)
-        .env("ACTION_COMPANION_PORT", config.companion_port.to_string())
         .env("ACTION_COMPANION_PARENT_PID", std::process::id().to_string())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -454,20 +449,7 @@ fn fetch_health(config: &Config) -> HealthStatus {
             health.transport = Some("unix_socket".to_string());
             health
         }
-        Err(socket_error) => match fetch_tcp_health(config) {
-            Ok(mut health) => {
-                health.transport = Some("http".to_string());
-                health
-            }
-            Err(http_error) => HealthStatus {
-                reachable: false,
-                ok: false,
-                transport: None,
-                status_code: None,
-                body: None,
-                error: Some(format!("{socket_error}; http fallback: {http_error}")),
-            },
-        },
+        Err(error) => HealthStatus { reachable: false, ok: false, transport: None, status_code: None, body: None, error: Some(error) },
     }
 }
 
@@ -478,15 +460,23 @@ fn fetch_unix_health(socket_path: &Path) -> Result<HealthStatus, String> {
     fetch_http_health(&mut stream, "localhost")
 }
 
-fn fetch_tcp_health(config: &Config) -> Result<HealthStatus, String> {
-    let mut stream = TcpStream::connect((&config.companion_host[..], config.companion_port)).map_err(|error| error.to_string())?;
-    stream.set_read_timeout(Some(Duration::from_secs(1))).map_err(|error| error.to_string())?;
-    stream.set_write_timeout(Some(Duration::from_secs(1))).map_err(|error| error.to_string())?;
-    fetch_http_health(&mut stream, &config.companion_host)
-}
+#[cfg(target_os = "macos")]
+fn no_follow_flag() -> i32 { 0x100 }
+#[cfg(not(target_os = "macos"))]
+fn no_follow_flag() -> i32 { 0x20000 }
 
 fn fetch_http_health<T: Read + Write>(stream: &mut T, host: &str) -> Result<HealthStatus, String> {
-    let request = format!("GET /health HTTP/1.1\r\nHost: {host}\r\nAccept: application/json\r\nConnection: close\r\n\r\n");
+    let token_dir = env_nonempty("LATTICES_RUNTIME_DIR").map(PathBuf::from).unwrap_or(home_dir()?.join(".lattices/run"));
+    let directory = fs::symlink_metadata(&token_dir).map_err(|error| error.to_string())?;
+    if !directory.is_dir() || directory.uid() != user_id()? || directory.mode() & 0o077 != 0 { return Err("Companion IPC directory must be private and user-owned".to_string()); }
+    let token_path = token_dir.join("action-companion.token");
+    let mut file = fs::OpenOptions::new().read(true).custom_flags(no_follow_flag()).open(token_path).map_err(|error| error.to_string())?;
+    let meta = file.metadata().map_err(|error| error.to_string())?;
+    if !meta.is_file() || meta.nlink() != 1 || meta.uid() != user_id()? || meta.mode() & 0o777 != 0o600 || meta.len() > 1024 { return Err("Companion token must be private and user-owned".to_string()); }
+    let mut token = String::new(); file.read_to_string(&mut token).map_err(|error| error.to_string())?;
+    let token = token.trim();
+    if token.len() != 64 || !token.chars().all(|c| c.is_ascii_hexdigit()) { return Err("Invalid companion token".to_string()); }
+    let request = format!("GET /health HTTP/1.1\r\nHost: {host}\r\nx-lattices-token: {token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).map_err(|error| error.to_string())?;
     let mut response = String::new();
     stream.read_to_string(&mut response).map_err(|error| error.to_string())?;
@@ -625,7 +615,6 @@ fn render_launch_agent_plist(config: &Config) -> String {
         ("ACTION_SUPPORT_DIRECTORY", config.support_directory.to_string_lossy().to_string()),
         ("ACTION_COMPANION_SOCKET_PATH", config.companion_socket_path.to_string_lossy().to_string()),
         ("ACTION_COMPANION_HOST", config.companion_host.clone()),
-        ("ACTION_COMPANION_PORT", config.companion_port.to_string()),
         ("HOME", home_dir().map(|path| path.to_string_lossy().to_string()).unwrap_or_default()),
         ("PATH", launch_agent_path_env()),
     ];

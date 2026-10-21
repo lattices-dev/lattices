@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { VirtualSpace } from "../src/virtual-space.ts";
+import { VirtualSpace } from "../../../packages/host-linux/src/virtual-space.ts";
 if (process.argv[2] === "__virtual-space-worker") {
-  await (await import("../src/virtual-space-worker.ts")).runVirtualSpaceWorker();
+  await (await import("../../../packages/host-linux/src/virtual-space-worker.ts")).runVirtualSpaceWorker();
 } else {
   const root=mkdtempSync("/tmp/lats-qml-");
   const artifacts=process.env.LATTICES_ACCEPTANCE_ARTIFACTS;
@@ -17,7 +17,8 @@ if (process.argv[2] === "__virtual-space-worker") {
   };
   const before=await physical();
   try {
-    const ui=join(root,"ui"); cpSync(resolve(import.meta.dir,"../../../apps/linux"),ui,{recursive:true});
+    const ui=join(root,"apps/linux"); cpSync(resolve(import.meta.dir,".."),ui,{recursive:true});
+    cpSync(resolve(import.meta.dir,"../../../packages/desktop-client"),join(root,"packages/desktop-client"),{recursive:true});
     const shell=join(ui,"shell.qml"); let qml=readFileSync(shell,"utf8");
     qml=qml.slice(0,qml.lastIndexOf("}"))+`
       Timer {

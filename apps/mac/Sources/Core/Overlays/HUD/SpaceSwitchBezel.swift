@@ -49,6 +49,7 @@ final class SpaceSwitchBezel {
     private var previewBounds: CGRect = .zero
     private var pendingInventory: [WindowEntry]?
     private var refreshQueued = false
+    private let overlaySpace = SpaceSwitchOverlaySpace()
 
     private init() {
         EventBus.shared.subscribe { [weak self] event in
@@ -439,7 +440,7 @@ final class SpaceSwitchBezel {
             filmstrip.select(target, animated: !reduceMotion)
         }
         if let zoomed { filmstrip.setZoomed(zoomed, reduceMotion: reduceMotion) }
-        if revealing, !scrubbing, direction != 0, !reduceMotion, SpaceSwitchWash.isEnabled, let washHost {
+        if revealing, !scrubbing, direction != 0, !reduceMotion, let washHost {
             wash.pass(direction: direction < 0 ? -1 : 1, in: washHost)
         }
         if !holding { armDismissal() }
@@ -457,6 +458,7 @@ final class SpaceSwitchBezel {
             backdrop.alphaValue = 1
             backdrop.orderFrontRegardless()
         }
+        if revealing { overlaySpace.attach([panel, backdrop].compactMap { $0 }) }
         let orderedAt = CACurrentMediaTime()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -595,7 +597,7 @@ final class SpaceSwitchBezel {
     private func armDismissal() {
         dismissTimer?.invalidate()
         let mine = generation
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 1.1, repeats: false) { [weak self] _ in
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: false) { [weak self] _ in
             guard let self, self.generation == mine else { return }
             self.dismiss()
         }
@@ -736,47 +738,101 @@ final class SpaceSwitchBezel {
     }
 }
 
+/// A private overlay Space has no desktop transition transform. Merely marking
+/// an NSPanel as all-Spaces still lets the Dock briefly translate its surface
+/// with the departing desktop. Only the confirmation strip and backdrop live
+/// here; user windows and the interactive canvas keep their normal membership.
+/// Main-thread only. WindowServer releases the owned Space with the connection.
+private final class SpaceSwitchOverlaySpace {
+    private typealias Connection = @convention(c) () -> Int32
+    private typealias Create = @convention(c) (Int32, Int32, Int32) -> Int32
+    private typealias SetLevel = @convention(c) (Int32, Int32, Int32) -> Int32
+    private typealias Show = @convention(c) (Int32, CFArray) -> Void
+    private typealias Attach = @convention(c) (Int32, Int32, CFArray, Int32) -> Void
+    private typealias Membership = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
+    private typealias Destroy = @convention(c) (Int32, Int32) -> Int32
+
+    private let handle = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+    private var space: Int32 = 0
+    private var connection: Int32 = 0
+
+    private func function<T>(_ name: String, as type: T.Type) -> T? {
+        guard let handle, let symbol = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(symbol, to: type)
+    }
+
+    func attach(_ panels: [NSPanel]) {
+        let pending = panels
+        guard !pending.isEmpty,
+              let main = function("SLSMainConnectionID", as: Connection.self),
+              let create = function("SLSSpaceCreate", as: Create.self),
+              let level = function("SLSSpaceSetAbsoluteLevel", as: SetLevel.self),
+              let show = function("SLSShowSpaces", as: Show.self),
+              let add = function("SLSSpaceAddWindowsAndRemoveFromSpaces", as: Attach.self),
+              let destroy = function("SLSSpaceDestroy", as: Destroy.self),
+              let membership = function("SLSCopySpacesForWindows", as: Membership.self) else { return }
+        if space == 0 {
+            connection = main()
+            let created = create(connection, 1, 0)
+            guard created > 0 else { return }
+            guard level(connection, created, 0) == 0 else {
+                _ = destroy(connection, created)
+                return
+            }
+            show(connection, [NSNumber(value: created)] as CFArray)
+            space = created
+        }
+        // Remove automatic desktop membership before assigning the overlay
+        // Space. The normal all-Spaces behavior remains the runtime fallback.
+        for panel in pending { panel.collectionBehavior.remove(.canJoinAllSpaces) }
+        let windows = pending.map { NSNumber(value: $0.windowNumber) } as CFArray
+        add(connection, space, windows, 7)
+        for panel in pending {
+            // Show/attach are void APIs. Verify actual membership rather than
+            // interpreting an undefined return register as a success code.
+            let ids = membership(connection, 0xffff, [NSNumber(value: panel.windowNumber)] as CFArray)?
+                .takeRetainedValue() as? [NSNumber] ?? []
+            if !ids.contains(NSNumber(value: space)) {
+                panel.collectionBehavior.insert(.canJoinAllSpaces)
+            }
+        }
+    }
+
+    deinit {
+        if space != 0, let destroy = function("SLSSpaceDestroy", as: Destroy.self) {
+            _ = destroy(connection, space)
+        }
+        if let handle { dlclose(handle) }
+    }
+}
+
 // MARK: - Passing light
 
 /// A barely luminous band that crosses the backdrop in the direction of
 /// travel, from the "Passing light" study. It is the only full-screen motion:
-/// tray, focus frame and desktop stay put. Held keys soften the pass so the
-/// screen never strobes. Three retained bands rotate so a new pass never cuts
-/// one off mid-screen; the oldest has faded out by the time it is reused.
-/// Bands are made on first pass and released with the gesture.
+/// tray, focus frame and desktop stay put. One band completes before another
+/// can start, so repeated switches never stack brightness or restart the flash.
+/// Strength is read on each switch; zero releases the band entirely.
 /// Main-thread only.
 final class SpaceSwitchWash {
     static let duration: CFTimeInterval = 0.48
-    /// A press inside this window of the last pass reads as a held key.
-    static let heldInterval: CFTimeInterval = 0.18
     static let peak: Float = 0.8
-    static let heldPeak: Float = 0.3
-    private static let bandCount = 3
-
-    /// On unless `spaceSwitchKeys.passingLight` is set false.
-    static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: "spaceSwitchKeys.passingLight") as? Bool ?? true
-    }
 
     private var bands: [CAGradientLayer] = []
-    private var next = 0
-    private var lastPass: CFTimeInterval = 0
-    private var lastDirection = 0
+    private var lastPass: CFTimeInterval?
 
-    func pass(direction: Int, in view: NSView) {
+    func pass(direction: Int, in view: NSView,
+              intensity: Double = Preferences.shared.spaceSwitchShimmerIntensity,
+              now: CFTimeInterval = CACurrentMediaTime()) {
+        guard intensity.isFinite, intensity > 0 else { release(); return }
         guard let host = view.layer, view.bounds.width > 0 else { return }
-        let now = CACurrentMediaTime()
-        let held = now - lastPass < Self.heldInterval
-        // Repeats faster than a switch can land keep the band already
-        // travelling instead of relaunching one from the edge.
-        if direction == lastDirection, now - lastPass < Self.heldInterval / 3 { return }
-        lastPass = now
-        lastDirection = direction
+        let localTime = host.convertTime(now, from: nil)
+        if let lastPass, localTime - lastPass < Self.duration { return }
+        lastPass = localTime
         if bands.isEmpty {
-            bands = (0..<Self.bandCount).map { _ in Self.makeBand() }
+            bands = [Self.makeBand()]
         }
-        let band = bands[next]
-        next = (next + 1) % bands.count
+        let band = bands[0]
         if band.superlayer !== host { host.addSublayer(band) }
 
         let size = view.bounds.size
@@ -797,7 +853,7 @@ final class SpaceSwitchWash {
         travel.toValue = end
         travel.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
         let glow = CAKeyframeAnimation(keyPath: "opacity")
-        glow.values = [0, held ? Self.heldPeak : Self.peak, 0]
+        glow.values = [0, Self.peak * Float(min(1, intensity)), 0]
         glow.keyTimes = [0, 0.15, 1]
         let group = CAAnimationGroup()
         group.animations = [travel, glow]
@@ -810,9 +866,7 @@ final class SpaceSwitchWash {
     func release() {
         bands.forEach { $0.removeAllAnimations(); $0.removeFromSuperlayer() }
         bands.removeAll()
-        next = 0
-        lastPass = 0
-        lastDirection = 0
+        lastPass = nil
     }
 
     var liveBandCount: Int { bands.count }

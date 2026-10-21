@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fetchCompanionRelease, selectCompanionRelease } from '../bin/companion-release';
+import { companionAppNames, companionInstallIdentity, companionReleaseAppName, fetchCompanionRelease, selectCompanionRelease } from '../bin/companion-release';
 
 function release(tag = 'blink-v2.0.0', asset = 'Blink.dmg', repository = 'lattices-dev/lattices') {
   return { tag_name: tag, draft: false, prerelease: false, assets: [{
@@ -9,6 +9,34 @@ function release(tag = 'blink-v2.0.0', asset = 'Blink.dmg', repository = 'lattic
 }
 
 describe('companion release policy', () => {
+  test('Canvas and Blink select the same newest release and share installation identity', () => {
+    for (const product of ['canvas', 'blink'] as const) {
+      const newer = release('canvas-v2.1.0', 'Canvas.dmg');
+      expect(selectCompanionRelease(product, [release(), newer])?.tag).toBe('canvas-v2.1.0');
+      expect(selectCompanionRelease(product, [newer, release('blink-v2.2.0')])?.tag).toBe('blink-v2.2.0');
+      const canonical = release('canvas-v2.0.0', 'Canvas.dmg');
+      for (const entries of [[canonical, release()], [release(), canonical]]) {
+        const selected = selectCompanionRelease(product, entries)!;
+        expect(selected.tag).toBe('canvas-v2.0.0');
+        expect(selected.bundleID).toBe('dev.arach.blink');
+        expect(companionReleaseAppName(selected)).toBe('Canvas.app');
+      }
+      expect(companionReleaseAppName(selectCompanionRelease(product, [release()])!)).toBe('Blink.app');
+      expect(companionAppNames(product)).toEqual(['Canvas.app', 'Blink.app']);
+      expect(companionInstallIdentity(product)).toBe('blink');
+    }
+  });
+  test('Canvas requires exact tag-to-primary-asset contracts without an ambiguous fallback', () => {
+    for (const entry of [release('canvas-v2.0.0', 'Blink.dmg'), release('blink-v2.0.0', 'Canvas.dmg')]) {
+      expect(selectCompanionRelease('canvas', [entry])).toBeUndefined();
+      expect(selectCompanionRelease('blink', [entry])).toBeUndefined();
+    }
+    const entry = release('canvas-v2.0.0', 'Canvas.dmg');
+    entry.assets.push(...release('canvas-v2.0.0', 'Blink.dmg').assets);
+    expect(selectCompanionRelease('canvas', [entry])?.tag).toBe('canvas-v2.0.0');
+    entry.assets.push(entry.assets[0]!);
+    expect(selectCompanionRelease('canvas', [entry])).toBeUndefined();
+  });
   test('accepts exact release assets before and after the repository transfer', () => {
     for (const repository of ['arach/lattices', 'lattices-dev/lattices']) {
       expect(selectCompanionRelease('blink', [release('blink-v2.0.0', 'Blink.dmg', repository)])?.version).toBe('2.0.0');

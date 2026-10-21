@@ -1335,6 +1335,11 @@ sources at an app-owned folder such as `~/Library/Application Support/...`.
 | `deck.snapshot` | read | Current companion deck runtime snapshot |
 | `deck.perform` | write | Perform a companion deck action |
 | `solo.status` | read | Check whether Focus Mode is active |
+| `stage.status` | read | Check whether Stage is active |
+| `stage.enter` | write | Enter Stage for the windows on this display |
+| `stage.exit` | write | Exit Stage and restore the windows |
+| `stage.toggle` | write | Toggle Stage |
+| `stage.cycle` | write | Move Stage to another window in the set |
 | `solo.enter` | write | Spotlight the frontmost window |
 | `solo.exit` | write | Exit Focus Mode and restore the window |
 | `solo.toggle` | write | Toggle Focus Mode for the frontmost window |
@@ -1409,6 +1414,25 @@ lats call solo.exit
 Each method returns the resulting `active` state. Mutating methods also return
 `ok`; `solo.enter` returns `ok: false` when there is no eligible frontmost
 window.
+
+#### `stage.status`, `stage.enter`, `stage.exit`, `stage.toggle`, `stage.cycle`
+
+Stage is on or off. The windows on the display you are using decide the grid:
+one window takes the stage, and more windows fill the grid around it. A window
+that appears while Stage is on joins the grid. The window you are in grows to
+40% of the display width and comes forward. The others stay in their cells,
+slightly smaller. Clicking another window in the set, or `stage.cycle`, moves
+the stage. Escape and `stage.exit` put every window back where it was when it
+joined. Hyper+X toggles it. Control-Option-Tab moves through the set while it
+is on.
+
+```bash
+lats call stage.enter
+lats call stage.cycle '{"by":-1}'
+lats call stage.exit
+```
+
+`stage.enter` turns Stage on whatever the window count is. `stage.cycle` takes `by` (default `1`).
 
 #### `daemon.status`
 

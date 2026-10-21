@@ -1,5 +1,6 @@
 import AppKit
 import BlinkCore
+import BlinkPeer
 import Foundation
 import HudsonObservability
 
@@ -8,6 +9,7 @@ import HudsonObservability
 /// file; missing fields fall back to defaults. Schema: docs/config.md.
 struct BlinkConfig: Codable, Equatable {
     struct Behavior: Codable, Equatable {
+        var mobileAccess: Bool = false
         var restoreSession: Bool = true
         var defaultMode: String = "read"
         var launchAtLogin: Bool = false
@@ -16,6 +18,9 @@ struct BlinkConfig: Codable, Equatable {
         init() {}
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            mobileAccess = c.contains(.mobileAccess)
+                ? try c.decode(Bool.self, forKey: .mobileAccess)
+                : false
             restoreSession = try c.decodeIfPresent(Bool.self, forKey: .restoreSession) ?? true
             defaultMode = try c.decodeIfPresent(String.self, forKey: .defaultMode) ?? "read"
             launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
@@ -520,6 +525,10 @@ final class BlinkConfigStore: ObservableObject {
 
         if let loaded = Self.load(from: fileURL) {
             config = loaded
+        } else if FileManager.default.fileExists(atPath: fileURL.path) {
+            // An invalid or unreadable config is not a new install. Do not
+            // replace it or infer permission from a malformed explicit value.
+            log.error("[BLINK] config invalid — preserving existing file", metadata: ["path": displayPath])
         } else {
             // Bootstrap: migrate the two legacy UserDefaults keys, then the
             // file is the source of truth forever after.
@@ -531,6 +540,7 @@ final class BlinkConfigStore: ObservableObject {
             if let mode = defaults.string(forKey: ConfigKeys.defaultMode) {
                 bootstrap.behavior.defaultMode = mode
             }
+            bootstrap.behavior.mobileAccess = Self.mobileAccessEnabled(configuration: nil)
             config = bootstrap
             save()
             log.info("[BLINK] config bootstrapped", metadata: ["path": displayPath])
@@ -561,7 +571,16 @@ final class BlinkConfigStore: ObservableObject {
 
     private static func load(from url: URL) -> BlinkConfig? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(BlinkConfig.self, from: data)
+        guard var loaded = try? JSONDecoder().decode(BlinkConfig.self, from: data) else { return nil }
+        loaded.behavior.mobileAccess = mobileAccessEnabled(configuration: data)
+        return loaded
+    }
+
+    private static func mobileAccessEnabled(configuration: Data?) -> Bool {
+        BlinkPeerTrustStore.mobileAccessEnabled(
+            configuration: configuration,
+            hasHomeOverride: BlinkPaths.hasHomeOverride()
+        )
     }
 
     private func save() {

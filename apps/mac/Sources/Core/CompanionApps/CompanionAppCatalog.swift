@@ -41,7 +41,7 @@ struct CompanionProduct: Equatable {
 }
 
 enum CompanionProductPages {
-    static let blink = URL(string: "https://lattices.dev/blink")!
+    static let blink = URL(string: "https://lattices.dev/canvas")!
     static let action = URL(string: "https://lattices.dev/action")!
 }
 
@@ -74,7 +74,7 @@ enum CompanionAppCatalog {
     static let firstParty: [CompanionProduct] = [
         CompanionProduct(
             id: .blink,
-            displayName: "Blink",
+            displayName: "Canvas",
             bundleIdentifier: CompanionBundleIdentifiers.blink,
             productPageURL: CompanionProductPages.blink,
             distribution: .standaloneApp

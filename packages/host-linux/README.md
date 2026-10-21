@@ -99,6 +99,18 @@ Wayland environment variables are available.
 
 ## Omarchy tray
 
+### Workspace navigation
+
+`lats spaces` lists the displays and their spaces. `lats space next`, `prev`,
+`previous`, or a positive workspace id calls `spaces.focus`. Relative switches
+use Hyprland’s existing-workspace traversal; `previous` returns to the former
+workspace. A numeric id can create an empty workspace. `--dry-run` returns a
+plan without switching, and `--json` returns the receipt.
+
+The RPC accepts `{ workspace: <id | "e+1" | "e-1" | "previous">, dryRun?: true }`.
+It requires act scope for remote clients and never accepts arbitrary dispatcher
+text. Invalid targets fail before contacting the compositor.
+
 The tray is a small StatusNotifierItem and dbusmenu on the session D-Bus.
 Omarchy's existing Quickshell tray renders it (inside the tray drawer unless
 you pin it). Nothing is installed into `/usr/share/omarchy`, and no shell or
@@ -145,6 +157,10 @@ bun packages/host-linux/src/main.ts mouse-home
 lattices-host mouse-home                 # if the package's bin is on PATH
 lats --host archie call mouse.home       # when this host version is running
 ```
+
+From the command line it first ends any visiting cursor on every host running
+on this machine (see `docs/visit.md`), and reports that as `visits` in its
+receipt. The `mouse.home` RPC leaves visits alone.
 
 The target is the focused real
 monitor, otherwise the first real monitor, excluding LATS/headless/virtual,
@@ -355,6 +371,11 @@ and previews it without switching the physical desktop. Its worker has a private
 Wayland socket, runtime directory, D-Bus session and persistent virtual pointer.
 No physical display or input device is attached. Wayland apps still run as the current
 user and share its filesystem; this is a separate desktop session.
+
+`lats app preview show|hide|toggle` controls a separate, watch-only floating
+viewer (also available through **Agent view** in the sidebar). These commands
+change local viewing only; they do not start, stop or send input to the virtual
+desktop. The same virtual session remains available while the viewer is hidden.
 
 Install `sway`, `grim`, `wtype` and `dbus-run-session`. OCR also needs `tesseract`.
 For a portable development runtime, `LATTICES_VIRTUAL_SWAY` names the Sway binary

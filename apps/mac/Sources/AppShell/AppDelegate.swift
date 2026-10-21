@@ -175,6 +175,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SpaceZoomInput.terminate()
         LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
+        StageModeController.shared.resetForTermination()
         removeSystemInputBoundaryObservers()
         SecureEventInputMonitor.shared.stop()
         SpaceSwitchInterceptor.shared.stop()

@@ -63,7 +63,7 @@ final class BlinkCommandPaletteController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.contentViewController = host
         panel.setContentSize(contentSize)
-        panel.title = "Blink Commands"
+        panel.title = "Canvas Commands"
         panel.titleVisibility = .hidden
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -246,7 +246,7 @@ private struct BlinkCommandPaletteView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Blink commands")
+        .accessibilityLabel("Canvas commands")
     }
 
     private var liveStrip: some View {
@@ -257,7 +257,7 @@ private struct BlinkCommandPaletteView: View {
                 .shadow(color: palette.live.opacity(0.7), radius: 4)
                 .accessibilityHidden(true)
 
-            Text("BLINK · COMMANDS")
+            Text("CANVAS · COMMANDS")
                 .font(HudFont.mono(HudTextSize.micro, weight: .semibold))
                 .tracking(HudTracking.widest)
                 .foregroundStyle(palette.accent)
@@ -270,7 +270,7 @@ private struct BlinkCommandPaletteView: View {
         .frame(height: 30)
         .background(palette.accentSoft)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Blink command palette")
+        .accessibilityLabel("Canvas command palette")
     }
 
     private var searchField: some View {

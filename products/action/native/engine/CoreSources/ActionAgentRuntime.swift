@@ -67,6 +67,7 @@ actor ActionAgentPeerRegistry {
 final class ActionAgentRuntimeServer: @unchecked Sendable {
     private static let protocolVersion = "2"
     private let listener: NWListener
+    private let socketLease: ActionPrivateSocketLease?
     private let queue = DispatchQueue(label: "dev.action.agent.listener")
     private let runtimeState = ActionAgentRuntimeState()
     private let driveStore: ActionDriveLeaseStore
@@ -89,13 +90,20 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         let driveStore = ActionDriveLeaseStore(sessionArchive: ActionSessionArchive())
         self.driveStore = driveStore
         self.workspaceDragFileOperation = ActionWorkspaceDragFileOperation(driveStore: driveStore)
-        self.authentication = try ActionAgentAuthentication.create()
+        let authentication = try ActionAgentAuthentication.create()
+        self.authentication = authentication
         self.requestScheduler = ActionAgentRequestScheduler(
             responseQueue: DispatchQueue(label: "dev.action.agent.responses")
         )
         let tcpOptions = NWProtocolTCP.Options()
         let websocketOptions = NWProtocolWebSocket.Options()
         websocketOptions.autoReplyPing = true
+        websocketOptions.maximumMessageSize = 1_048_576
+        let tcp = ActionPrivateIPC.usesTCP
+        websocketOptions.setClientRequestHandler(queue) { _, headers in
+            let allowed = ActionPrivateIPC.authorize(headers: headers, authentication: authentication, port: tcp ? port : nil)
+            return .init(status: allowed ? .accept : .reject, subprotocol: nil)
+        }
 
         let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.defaultProtocolStack.applicationProtocols.insert(websocketOptions, at: 0)
@@ -105,10 +113,13 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             throw NSError(domain: "ActionAgent", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid port \(port)"])
         }
 
-        guard let loopbackAddress = IPv4Address(ActionAgentDefaults.host) else {
-            throw NSError(domain: "ActionAgent", code: 31, userInfo: [NSLocalizedDescriptionKey: "Invalid loopback address"])
+        if tcp {
+            parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: endpointPort)
+            socketLease = nil
+        } else {
+            socketLease = try ActionPrivateSocketLease(path: ActionPrivateIPC.socketPath)
+            parameters.requiredLocalEndpoint = .unix(path: ActionPrivateIPC.socketPath)
         }
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(loopbackAddress), port: endpointPort)
         listener = try NWListener(using: parameters)
     }
 
@@ -118,7 +129,10 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             switch state {
             case .ready:
                 let port = self.listener.port?.rawValue ?? 0
-                print("ActionAgent listening on ws://\(ActionAgentDefaults.host):\(port)")
+                if let lease = self.socketLease {
+                    guard chmod(lease.path, 0o600) == 0 else { self.listener.cancel(); return }
+                    print("ActionAgent listening on unix:\(lease.path)")
+                } else { print("ActionAgent listening on ws://\(ActionAgentDefaults.host):\(port)") }
             case .failed(let error):
                 FileHandle.standardError.write(Data("ActionAgent listener failed: \(error.localizedDescription)\n".utf8))
                 exit(1)
@@ -141,6 +155,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
     }
 
     private func handle(connection: NWConnection) {
+        guard activeConnections.count < 64 else { connection.cancel(); return }
         let identifier = ObjectIdentifier(connection)
         let ownerID = UUID().uuidString
         activeConnections[identifier] = connection
@@ -162,6 +177,9 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             }
         }
 
+        queue.asyncAfter(deadline: .now() + 5) {
+            if connection.state != .ready { connection.cancel() }
+        }
         connection.start(queue: queue)
         receiveNextMessage(on: connection, ownerID: ownerID)
     }
@@ -688,7 +706,7 @@ enum ActionAgentAuthenticationError: LocalizedError {
         case .protocolVersionRequired(let version):
             return "Privileged Action methods require protocolVersion \(version)"
         case .invalidToken:
-            return "Privileged Action methods require the current user-only capability token"
+            return "Action requires the current user-only capability token"
         }
     }
 }
@@ -698,16 +716,9 @@ struct ActionAgentAuthentication: Sendable {
     let tokenFile: URL
 
     static func create(
-        rootURL: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Action/runtime/agent", isDirectory: true)
+        rootURL: URL = ActionPrivateIPC.directory
     ) throws -> ActionAgentAuthentication {
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: rootURL.path)
-        let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-            + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let tokenFile = rootURL.appendingPathComponent("capability-token")
-        try Data((token + "\n").utf8).write(to: tokenFile, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenFile.path)
+        let (token, tokenFile) = try ActionPrivateIPC.createToken(in: rootURL)
         return ActionAgentAuthentication(token: token, tokenFile: tokenFile)
     }
 

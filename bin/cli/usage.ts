@@ -24,7 +24,10 @@ Workspace:
 Common commands:
   lats start        Start or reattach this directory's workspace
   lats init         Create a .lattices.json for this project
-  lats app          Launch the menu bar app
+  lats app          Launch the ${process.platform === "linux" ? "Linux desktop window" : "menu bar app"}
+  lats hints        Linux and Omarchy keyboard hints
+  lats spaces       List desktop spaces
+  lats doctor       Check host health
   lats ls           List active sessions
   lats help         Show the full command reference
 `);
@@ -56,7 +59,8 @@ Machines and displays:
   lats display assignments  Apps macOS holds to one desktop (Dock › Assign To)
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
-  lats --host <name> pair Pair with a lattices-host (approve on the host)
+  lats --host <name> pair [--read-only | --drive]  Pair with a gateway (approve on the host)
+  lats --host <name> pair --grant <product:method>  Request exact permissions (repeatable)
   lats mouse              Find mouse — sonar pulse at cursor position
   lats mouse summon       Summon mouse to screen center
   lats mouse home         End visit, cursor to the main display
@@ -90,9 +94,12 @@ Usage:
   lats search <q> --deep  Deep search: index + live terminal inspection
   lats search <q> --wid   Print matching window IDs only (pipeable)
   lats search <q> --json  JSON output
-  lats place <query> [pos]  Deep search + focus + tile (default: bottom-right)
+  lats place <query> [pos] [--dry-run] [--json]  Search + focus + tile; default: bottom-right
   lats focus <session>    Raise a session's window
   lats windows [--json]   List all desktop windows (daemon required)
+  lats spaces [--json]    List spaces and current space on each display
+  lats space next|prev|previous|<id> [--dry-run] [--json]
+                         Navigate spaces through the Linux host
   lats map [--display n]  Render displays and visible windows as an ASCII map
   lats map --json         Return the structured display/window map for agents
   lats sessions [--json]  List active sessions via daemon
@@ -121,6 +128,7 @@ Usage:
   lats window move <wid> --display <n> [--placement <slot>]
                          Move a window to another display, keeping its
                          normalized frame or snapping to a slot (daemon required)
+  lats window focus <wid> [--dry-run] [--json]  Focus one exact window
   lats window place <wid> <slot> [--display <n>]
                          Snap a window into a named or grid placement slot
   lats distribute [app] [region]   Smart-grid visible windows or just one app (daemon required)
@@ -169,17 +177,19 @@ Usage:
   lats mcp --list         List MCP toolsets and their tools
   lats mcp --print-config <harness>  Print the agent config snippet
   lats daemon status      Show daemon status
+  lats doctor [--json]    Check host connection, desktop capabilities and events
   lats logs [limit]       Show activity log entries (aliases: log, activity, diag)
   lats update             Update lattices (CLI + app), keep startup, relaunch
-  lats app                Launch the menu bar companion app
-  lats app update         Swap in the latest app release only (not the CLI)
-  lats app build          Rebuild the menu bar app
-  lats app restart        Rebuild and relaunch the menu bar app
-  lats app quit           Stop the menu bar app
+  lats hints [--json|--open]  Linux and Omarchy hints (offline text, data, or app page)
+  lats app                Launch the ${process.platform === "linux" ? "Linux desktop window" : "menu bar companion app"}
+${process.platform === "linux" ? "  lats app overview|mission|console  Open Flight Deck, Mission Control or Operator Console\n  lats app status [--json]  Read app state\n  lats app quit|restart     Close/reopen the window; host and tray stay running" : "  lats app update         Swap in the latest app release only (not the CLI)\n  lats app build          Rebuild the menu bar app\n  lats app restart        Rebuild and relaunch the menu bar app\n  lats app quit           Stop the menu bar app"}
   lats action             Action product status (install, agent, checkout)
+  lats canvas <cmd>       Forward to the installed Canvas CLI (alias: lats blink)
   lats action install     Download the latest Action.app release to /Applications
   lats action launch      Open Action.app (--launch with install)
-  lats action call <m>    Raw Action agent call (ws://127.0.0.1:4319)
+  lats gateway start --tailnet  Enable the separate remote gateway
+  lats gateway clients          Review remote clients and grants
+  lats action call <m>    Raw Action agent call over private IPC
   lats action <cmd>       Forward to the Action CLI (monorepo checkout)
   lats help               Show this help
 
