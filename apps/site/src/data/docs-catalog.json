@@ -77,6 +77,44 @@
       "ownership": "lattices"
     },
     {
+      "id": "lattices:what-is-lattices",
+      "product": "lattices",
+      "slug": "what-is-lattices",
+      "source": "docs/what-is-lattices.md",
+      "title": "What Lattices is",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/what-is-lattices",
+      "aliases": [
+        "/docs/what-is-lattices"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/what-is-lattices.md",
+        "/agent/raw/docs/what-is-lattices.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:getting-started",
+      "product": "lattices",
+      "slug": "getting-started",
+      "source": "docs/getting-started.md",
+      "title": "Getting started",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/getting-started",
+      "aliases": [
+        "/docs/getting-started"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/getting-started.md",
+        "/agent/raw/docs/getting-started.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
       "id": "lattices:quickstart",
       "product": "lattices",
       "slug": "quickstart",
@@ -130,6 +168,120 @@
       "rawAliases": [
         "/docs/markdown/concepts.md",
         "/agent/raw/docs/concepts.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-sessions",
+      "product": "lattices",
+      "slug": "guide-sessions",
+      "source": "docs/guide-sessions.md",
+      "title": "Sessions",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-sessions",
+      "aliases": [
+        "/docs/guide-sessions"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-sessions.md",
+        "/agent/raw/docs/guide-sessions.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-tiling",
+      "product": "lattices",
+      "slug": "guide-tiling",
+      "source": "docs/guide-tiling.md",
+      "title": "Tiling and placement",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-tiling",
+      "aliases": [
+        "/docs/guide-tiling"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-tiling.md",
+        "/agent/raw/docs/guide-tiling.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-search",
+      "product": "lattices",
+      "slug": "guide-search",
+      "source": "docs/guide-search.md",
+      "title": "Finding windows",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-search",
+      "aliases": [
+        "/docs/guide-search"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-search.md",
+        "/agent/raw/docs/guide-search.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-layers",
+      "product": "lattices",
+      "slug": "guide-layers",
+      "source": "docs/guide-layers.md",
+      "title": "Layers",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-layers",
+      "aliases": [
+        "/docs/guide-layers"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-layers.md",
+        "/agent/raw/docs/guide-layers.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-machines",
+      "product": "lattices",
+      "slug": "guide-machines",
+      "source": "docs/guide-machines.md",
+      "title": "Working across machines",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-machines",
+      "aliases": [
+        "/docs/guide-machines"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-machines.md",
+        "/agent/raw/docs/guide-machines.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-agents",
+      "product": "lattices",
+      "slug": "guide-agents",
+      "source": "docs/guide-agents.md",
+      "title": "Lattices for AI agents",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-agents",
+      "aliases": [
+        "/docs/guide-agents"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-agents.md",
+        "/agent/raw/docs/guide-agents.md"
       ],
       "ownership": "lattices"
     },
