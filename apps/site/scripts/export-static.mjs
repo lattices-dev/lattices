@@ -1,7 +1,12 @@
+import { MacRuntimeDiagram, LinuxRuntimeDiagram } from '../src/components/RuntimeBoundaryDiagram.tsx'
+import { publishedDocs, docsHome, docsProduct, isCurrentDoc, docEditUrl, rewriteDocLinks } from '../src/lib/docs-catalog.ts'
+import { DocsSidebar, DocPager } from '../src/components/DocsNavigation.tsx'
+import { splitFrontmatter } from '../src/lib/frontmatter.ts'
 import actionDownload from '../src/action-download.json' with { type: 'json' }
 import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { marked } from 'marked'
+import GithubSlugger from 'github-slugger'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
@@ -17,7 +22,7 @@ import { writeAgentArtifacts } from './agent-docs.mjs'
 import { copyActionReferences } from './action-docs.mjs'
 import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
-import { stripMdxImports } from '../src/lib/markdown.ts'
+import { stripMdxImports, stripMarkdown } from '../src/lib/markdown.ts'
 import LandingPage from '../src/components/LandingPage.tsx'
 import ConceptExperimentPage from '../src/components/ConceptExperimentPage.tsx'
 import ActionPage from '../src/components/ActionPage.tsx'
@@ -26,12 +31,12 @@ import SpeechPage from '../src/components/SpeechPage.tsx'
 import LearnPage from '../src/components/LearnPage.tsx'
 import { learningRoutes } from '../src/lib/learning.ts'
 import ProductsPage from '../src/components/ProductsPage.tsx'
-import FamilyPage from '../src/components/FamilyPage.tsx'
 import BrandPage from '../src/components/BrandPage.tsx'
-import { SiteFooter } from '../src/components/SiteChrome.tsx'
+import { SiteFooter, SiteHeader } from '../src/components/SiteChrome.tsx'
 import { routeBrand, routeOgImage } from '../src/lib/brand.ts'
-import { clampMeta, navBlurb, rewriteDocMarkdown } from '../src/seo/describe.ts'
+import { clampMeta, rewriteDocMarkdown } from '../src/seo/describe.ts'
 import { articleJsonLd, routeJsonLd } from '../src/seo/jsonld.ts'
+import { docHeadLinks, docJsonLd, sourceDate } from '../src/seo/docs.ts'
 import { absoluteUrl, routeMeta, SITE_ORIGIN as SITE_URL } from '../src/seo/routes.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
@@ -47,7 +52,7 @@ function recordSitemap(path, { priority = '0.7', lastmod } = {}) {
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
 const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/blink-v2.1.0/Blink.dmg'
+const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/Canvas.dmg'
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -64,20 +69,23 @@ const highlighter = await createHighlighterCore({
   engine: createJavaScriptRegexEngine(),
 })
 
+const headingSlugs = new GithubSlugger()
+
 marked.use({
-  mangle: false,
-  headerIds: true,
   renderer: createRenderer(),
 })
 
-const docs = await readEntries(join(repoRoot, 'docs'), ['.md'])
+const docs = await Promise.all(publishedDocs.map(async (entry) => {
+  const parsed = splitFrontmatter(await readFile(join(repoRoot, entry.source), 'utf8'))
+  return { ...entry, ...parsed }
+}))
 const posts = (await readEntries(join(siteDir, 'content', 'blog'), ['.md', '.mdx']))
   .filter((post) => !post.data.draft)
   .sort((left, right) => new Date(right.data.date).getTime() - new Date(left.data.date).getTime())
 
 const docUpdated = await getLastUpdatedBatch(
   repoRoot,
-  docs.map((doc) => ({ slug: doc.slug, path: join('docs', `${doc.slug}.md`) })),
+  docs.map((doc) => ({ slug: doc.id, path: doc.source })),
 )
 const postUpdated = await getLastUpdatedBatch(
   repoRoot,
@@ -94,29 +102,35 @@ await writeStaticRoute('/action', renderActionPage())
 await copyActionDocs()
 await patchActionAgentsHead()
 await writeActionDownloadRedirect()
-await writeStaticRoute('/blink', renderToString(createElement(BlinkPage)))
+const canvasHtml = renderToString(createElement(BlinkPage))
+await writeStaticRoute(docsProduct('blink').home, canvasHtml)
+await writeStaticRoute('/blink', canvasHtml.replaceAll('data-pagefind-body', 'data-pagefind-ignore'))
 await writeStaticRoute('/speech', renderToString(createElement(SpeechPage)))
 await writeStaticRoute('/products', renderToString(createElement(ProductsPage)))
-await writeStaticRoute('/family', renderToString(createElement(FamilyPage)))
+await writeStaticRoute('/family', renderToString(createElement(ProductsPage)))
 await writeStaticRoute('/brand', renderToString(createElement(BrandPage)))
 await copyBlinkDocs()
 await writeBlinkDownloadRedirect()
 
-const overview = docs.find((doc) => doc.slug === 'overview') || docs[0]
-const overviewPage = docPage(overview)
-await writeRoute('/docs', `${overviewPage.title} — Lattices Docs`, overviewPage.description, overviewPage.html, {
-  canonicalPath: `/docs/${overview.slug}`,
-  sitemap: false,
-  ogImage: routeOgImage('/docs'),
-})
-
 for (const doc of docs) {
-  const page = doc.slug === overview.slug ? overviewPage : docPage(doc)
-  await writeRoute(`/docs/${doc.slug}`, `${page.title} — Lattices Docs`, page.description, page.html, {
+  const page = docPage(doc)
+  const title = `${page.title} — ${docsProduct(doc.product).title} Docs`
+  const options = {
     priority: '0.7',
-    lastmod: docUpdated[doc.slug] || doc.data.date || undefined,
-    ogImage: routeOgImage(`/docs/${doc.slug}`),
-  })
+    lastmod: docUpdated[doc.id] || doc.data.date || undefined,
+    noindex: !isCurrentDoc(doc),
+    ogImage: routeOgImage(doc.canonicalPath),
+    jsonLd: docJsonLd(doc, { title: page.title, description: page.description, updatedAt: docUpdated[doc.id] }),
+    discoveryLinks: docHeadLinks({ ...doc, title: page.title }),
+  }
+  await writeRoute(doc.canonicalPath, title, page.description, page.html, options)
+  for (const alias of doc.aliases) {
+    // GitHub Pages has no server redirect rules. Full content remains readable
+    // without JS; canonicals and Pagefind exclusions prevent duplicate indexing.
+    await writeRoute(alias, title, page.description, page.html.replaceAll('data-pagefind-body', 'data-pagefind-ignore'), {
+      ...options, canonicalPath: doc.canonicalPath, sitemap: false,
+    })
+  }
 }
 
 await writeStaticRoute('/blog', renderBlogIndex(posts))
@@ -162,10 +176,10 @@ await writeFile(
       repo: { url: repoInfo.repoUrl, branch: repoInfo.branch },
       docs: Object.fromEntries(
         docs.map((doc) => [
-          doc.slug,
+          doc.id,
           {
-            updatedAt: docUpdated[doc.slug] || null,
-            editUrl: repoInfo.editDocUrl(doc.slug),
+            updatedAt: docUpdated[doc.id] || null,
+            editUrl: docEditUrl(doc),
           },
         ]),
       ),
@@ -191,8 +205,6 @@ await writeNotFound()
 
 async function writeSitemap() {
   // Copied agent docs keep the URL their own canonical and the site footer already use.
-  recordSitemap('/action/agents/', { priority: '0.7' })
-  recordSitemap('/blink/agents.md', { priority: '0.7' })
   const urls = sitemapUrls
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -291,7 +303,10 @@ async function writeRoute(route, title, description, appHtml, options = {}) {
   const ogImage = options.ogImage || routeOgImage(canonicalPath)
   const ogImageUrl = `${SITE_URL}${ogImage}`
   const canonical = absoluteUrl(canonicalPath)
-  const jsonLdTag = options.jsonLd ? `<script type="application/ld+json">${options.jsonLd}</script>` : ''
+  const jsonLdTag = options.jsonLd ? `<script type="application/ld+json" data-route-metadata>${options.jsonLd}</script>` : ''
+  const discoveryTags = (options.discoveryLinks || []).map((link) =>
+    `<link rel="${link.rel}" type="${escapeHtml(link.type)}" href="${escapeHtml(link.href)}" title="${escapeHtml(link.title)}" data-route-metadata />`,
+  ).join('\n    ')
   const robotsTag = options.noindex ? '<meta name="robots" content="noindex" />' : ''
   const rssTag = route === '/' || route === '/blog'
     ? '<link rel="alternate" type="application/rss+xml" title="lattices blog" href="/rss.xml" />'
@@ -350,7 +365,7 @@ async function writeRoute(route, title, description, appHtml, options = {}) {
       /<link rel="alternate" type="application\/rss\+xml".*?\/>/,
       rssTag,
     )
-    .replace('</head>', `    ${robotsTag}\n    ${jsonLdTag}\n  </head>`)
+    .replace('</head>', `    ${robotsTag}\n    ${jsonLdTag}\n    ${discoveryTags}\n  </head>`)
     .replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
 
   if (options.sitemap !== false && !options.noindex && canonicalPath === route) {
@@ -487,29 +502,37 @@ function renderFooter(current) {
 
 function docPage(doc) {
   const explicitTitle = typeof doc.data.title === 'string' ? doc.data.title : ''
-  const { content, components } = prepareMarkdown(doc.content)
+  const { content, components } = prepareMarkdown(rewriteDocLinks(doc.content, doc.source))
   const rewritten = rewriteDocMarkdown(content, explicitTitle || undefined)
   const title = explicitTitle || rewritten.firstH1 || titleFromSlug(doc.slug)
   const description = clampMeta(
-    (typeof doc.data.description === 'string' && doc.data.description) || navBlurb(doc.slug) || rewritten.summary || 'Lattices documentation',
+    (typeof doc.data.description === 'string' && doc.data.description) || rewritten.summary || 'Lattices documentation',
   )
+  headingSlugs.reset()
   const rendered = demoteHtmlH1(substituteMdxComponents(marked.parse(rewritten.markdown), components))
-  const updated = docUpdated[doc.slug]
+  const updated = sourceDate(docUpdated[doc.id])
   const html = `
-    <main class="docs-shell" data-pagefind-body>
-      <article class="docs-article">
+    <div class="docs-page">
+    ${renderToString(createElement(SiteHeader, { docsProductId: doc.product }))}
+    <main class="docs-shell" ${isCurrentDoc(doc) ? 'data-pagefind-body' : 'data-pagefind-ignore'}>
+      <aside class="docs-sidebar" data-pagefind-ignore>${renderToString(createElement(DocsSidebar, { product: doc.product, currentSlug: doc.slug }))}</aside>
+      <article class="docs-article" aria-labelledby="doc-title">
         <header class="docs-article-header">
-          <h1>${escapeHtml(title)}</h1>
+          <a class="docs-product-home" href="${docsHome(doc.product)}">${docsProduct(doc.product).title} documentation</a>
+          <h1 id="doc-title">${escapeHtml(title)}</h1>
           ${description ? `<p>${escapeHtml(description)}</p>` : ''}
           <div class="docs-meta">
-            ${updated ? `<span>Updated ${formatDate(updated)}</span>` : ''}
-            <a href="${repoInfo.editDocUrl(doc.slug)}" target="_blank" rel="noopener noreferrer">Edit on GitHub →</a>
+            ${updated ? `<span>Updated <time datetime="${escapeHtml(updated)}">${formatDate(updated)}</time></span>` : ''}
+            <a href="${docEditUrl(doc)}" target="_blank" rel="noopener noreferrer">Edit on GitHub →</a>
           </div>
         </header>
+        ${!isCurrentDoc(doc) ? `<p class="docs-status-notice">Archived ${doc.kind}. This document records a proposal or past work and is not current product guidance. <a href="${docsHome(doc.product)}">Read the current ${docsProduct(doc.product).title} docs.</a></p>` : ''}
         <div class="markdown-body">${rendered}</div>
+        ${renderToString(createElement(DocPager, { product: doc.product, currentSlug: doc.slug }))}
       </article>
     </main>
-    ${renderFooter(`/docs/${doc.slug}`)}
+    ${renderFooter(doc.canonicalPath)}
+    </div>
   `
   return { title, description, html }
 }
@@ -529,7 +552,7 @@ function renderBlogIndex(items) {
       <header class="blog-index-head">
         <p class="products-kicker">Lattices blog</p>
         <h1>Notes on workspaces, agents, and the Mac.</h1>
-        <p>Short posts about what we are building across Lattices, Action, Blink, and Speech.</p>
+        <p>Short posts about what we are building across Lattices, Action, Canvas, and Speech.</p>
       </header>
       <div class="blog-list">
         ${items.map((post) => `
@@ -551,6 +574,7 @@ function renderBlogIndex(items) {
 
 function renderPost(post) {
   const { content, components } = prepareMarkdown(post.content)
+  headingSlugs.reset()
   const rendered = demoteHtmlH1(substituteMdxComponents(marked.parse(content), components))
   const updated = postUpdated[post.slug]
   const index = posts.findIndex((p) => p.slug === post.slug)
@@ -585,49 +609,8 @@ function substituteMdxComponents(html, components) {
   if (components.length === 0) return html
   return html.replace(/<!--LATTICES-MDX-(\d+)-->/g, (_, index) => {
     const name = components[Number(index)]
-    return name ? renderMdxComponent(name) : ''
+    return name === 'MacRuntimeDiagram' ? renderToString(createElement(MacRuntimeDiagram)) : name === 'LinuxRuntimeDiagram' ? renderToString(createElement(LinuxRuntimeDiagram)) : name ? renderMdxComponent(name) : ''
   })
-}
-
-function splitFrontmatter(raw) {
-  const normalized = raw.replace(/\r\n/g, '\n')
-  if (!normalized.startsWith('---\n')) return { data: {}, content: normalized.trim() }
-
-  const end = normalized.indexOf('\n---', 4)
-  if (end === -1) return { data: {}, content: normalized.trim() }
-
-  return {
-    data: parseFrontmatter(normalized.slice(4, end)),
-    content: normalized.slice(end + 4).trim(),
-  }
-}
-
-function parseFrontmatter(block) {
-  const data = {}
-  for (const line of block.split('\n')) {
-    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
-    if (!match) continue
-    data[match[1]] = parseValue(match[2])
-  }
-  return data
-}
-
-function parseValue(raw) {
-  const value = raw.trim()
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value)
-  if (value.startsWith('[') && value.endsWith(']')) {
-    return value.slice(1, -1).split(',').map((part) => stripQuotes(part.trim())).filter(Boolean)
-  }
-  return stripQuotes(value)
-}
-
-function stripQuotes(value) {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1)
-  }
-  return value
 }
 
 function prepareMarkdown(content) {
@@ -640,7 +623,7 @@ function prepareMarkdown(content) {
   // marked.parse(), the static export substitutes those markers with the
   // rendered static HTML.
   const components = []
-  prepared = prepared.replace(/<(StatsRow|LatencyJourney|TurnPipeline|ArchDiagram|ContextExplorer|TestResults)\s*\/>/g, (_, name) => {
+  prepared = prepared.replace(/<(MacRuntimeDiagram|LinuxRuntimeDiagram|StatsRow|LatencyJourney|TurnPipeline|ArchDiagram|ContextExplorer|TestResults)\s*\/>/g, (_, name) => {
     const index = components.length
     components.push(name)
     return `<!--LATTICES-MDX-${index}-->`
@@ -695,23 +678,24 @@ async function copyBlinkDocs() {
 }
 
 async function writeBlinkDownloadRedirect() {
-  const route = '/blink/download'
-  const filePath = join(distDir, route.slice(1), 'index.html')
+  const product = docsProduct('blink')
+  const route = `${product.home}/download`
   const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <meta name="description" content="Download Blink for macOS. This page finds the latest Blink release and starts the download." />
+    <meta name="description" content="Download ${product.title} for macOS. The current release installs Canvas.app." />
     <link rel="canonical" href="${SITE_URL}${route}" />
     <link rel="icon" type="image/svg+xml" href="${routeBrand(route).icon}" />
-    <title>Download Blink for macOS — Lattices</title>
+    <title>Download ${product.title} for macOS — Lattices</title>
   </head>
   <body>
-    <h1>Download Blink for macOS</h1>
-    <p id="download-status">Finding the latest Blink release…</p>
-    <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Blink release manually</a>.</p>
+    <h1>Download ${product.title} for macOS</h1>
+    <p>Canvas 2.3.0 installs Canvas.app. Existing Blink notes and settings stay in place.</p>
+    <p id="download-status">Finding the latest Canvas release…</p>
+    <p><a id="download-link" href="${escapeHtml(BLINK_LEGACY_DOWNLOAD_URL)}">Download the current Canvas release manually</a>.</p>
     <script>
       const releasesUrl = ${JSON.stringify(BLINK_RELEASES_API_URL)}
       const legacyUrl = ${JSON.stringify(BLINK_LEGACY_DOWNLOAD_URL)}
@@ -730,21 +714,21 @@ async function writeBlinkDownloadRedirect() {
             !candidate.draft &&
             !candidate.prerelease &&
             typeof candidate.tag_name === 'string' &&
-            candidate.tag_name.startsWith('blink-v')
+            candidate.tag_name.startsWith('canvas-v')
           )
-          const asset = release?.assets?.find((candidate) => candidate.name === 'Blink.dmg')
+          const asset = release?.assets?.find((candidate) => candidate.name === 'Canvas.dmg')
 
           if (asset?.browser_download_url) {
             link.href = asset.browser_download_url
-            link.textContent = 'Download Blink manually'
+            link.textContent = 'Download Canvas manually'
             window.location.replace(asset.browser_download_url)
             return
           }
         } catch (error) {
-          console.warn('Could not resolve the latest monorepo Blink release', error)
+          console.warn('Could not resolve the latest monorepo Canvas release', error)
         }
 
-        status.textContent = 'Starting the current Blink download…'
+        status.textContent = 'Starting the current Canvas download…'
         window.location.replace(legacyUrl)
       }
 
@@ -753,8 +737,11 @@ async function writeBlinkDownloadRedirect() {
   </body>
 </html>
 `
-  await mkdir(dirname(filePath), { recursive: true })
-  await writeFile(filePath, html)
+  for (const path of [route, '/blink/download']) {
+    const filePath = join(distDir, path.slice(1), 'index.html')
+    await mkdir(dirname(filePath), { recursive: true })
+    await writeFile(filePath, html)
+  }
 }
 
 function titleFromSlug(slug) {
@@ -783,6 +770,11 @@ function escapeHtml(value) {
 
 function createRenderer() {
   const renderer = new marked.Renderer()
+
+  renderer.heading = function (token) {
+    const id = headingSlugs.slug(stripMarkdown(token.text))
+    return `<h${token.depth} id="${escapeHtml(id)}">${this.parser.parseInline(token.tokens)}</h${token.depth}>\n`
+  }
 
   renderer.code = (token) => {
     const language = normalizeLanguage(token.lang)

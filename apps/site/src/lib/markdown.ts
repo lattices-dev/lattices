@@ -1,3 +1,5 @@
+import GithubSlugger from 'github-slugger'
+
 export interface Heading {
   depth: number
   id: string
@@ -5,6 +7,8 @@ export interface Heading {
 }
 
 const MDX_COMPONENTS = [
+  'MacRuntimeDiagram',
+  'LinuxRuntimeDiagram',
   'StatsRow',
   'LatencyJourney',
   'TurnPipeline',
@@ -48,34 +52,33 @@ export function prepareMarkdown(content: string): string {
 }
 
 export function extractHeadings(content: string): Heading[] {
-  return content
-    .split('\n')
-    .map((line) => line.match(/^(#{2,3})\s+(.+)$/))
-    .filter((match): match is RegExpMatchArray => Boolean(match))
-    .map((match) => {
-      const text = stripMarkdown(match[2])
-      return {
-        depth: match[1].length,
-        id: slugify(text),
-        text,
-      }
-    })
+  const slugs = new GithubSlugger()
+  const headings: Heading[] = []
+  let fence: string | null = null
+  for (const line of content.split('\n')) {
+    const marker = line.match(/^\s*(`{3,}|~{3,})/)?.[1]
+    if (marker) {
+      if (!fence) fence = marker
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null
+      continue
+    }
+    if (fence) continue
+    const match = line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?$/)
+    if (!match) continue
+    const text = stripMarkdown(match[2])
+    const id = slugs.slug(text)
+    if (match[1].length === 2 || match[1].length === 3) {
+      headings.push({ depth: match[1].length, id, text })
+    }
+  }
+  return headings
 }
 
-export function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[`*_~[\]()]/g, '')
-    .replace(/&/g, 'and')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-function stripMarkdown(value: string): string {
+export function stripMarkdown(value: string): string {
   return value
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[*_~]/g, '')
+    .replace(/<[^>]*>/g, '')
     .trim()
 }

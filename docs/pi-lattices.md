@@ -6,7 +6,8 @@ strictly-prefixed `lattices_*` tools on Pi session start.
 
 The extension preserves the Lattices runtime model:
 
-- It calls the existing macOS-native daemon at `ws://127.0.0.1:9399`.
+- It calls the existing macOS-native daemon. Lattices 0.15.1 uses
+  private IPC by default. Install the compatible extension from this checkout.
 - It does not bundle or route through `cua-driver`.
 - Run-backed computer-use tools keep Lattices `treatment` semantics.
 - Mutation wrappers prefer `treatment: "stage"` unless the caller explicitly
@@ -33,6 +34,22 @@ Start Lattices before using the tools:
 ```bash
 lats app
 ```
+
+## Private connection
+
+Use the extension and app from matching source. The extension finds
+`~/.lattices/run/lattices.sock` and its private token; no host or port setting
+is needed. Use the compatible extension from this checkout with Lattices 0.15.1.
+
+An explicit `LATTICES_DAEMON_HOST` or `LATTICES_DAEMON_PORT` selects TCP. The
+extension sends no local token to that target unless
+`LATTICES_ALLOW_LOOPBACK_TCP=1` is also set and the target is loopback. Enable
+that flag in the app too if you need its compatibility listener. An SSH tunnel
+on `127.0.0.1` is still a network target, so do not enable compatibility for it.
+
+The Pi extension does not sign remote gateway requests. A remote host/port
+override alone cannot use a paired gateway; use the paired Lattices CLI or
+native app for that path.
 
 ## High-value tools
 

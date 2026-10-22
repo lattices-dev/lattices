@@ -2,12 +2,12 @@ import { MockTitleBar, Reveal, SectionHeader } from './shared'
 
 const DOCS = [
   {
-    href: '/blink/llms.txt',
+    href: '/canvas/llms.txt',
     label: 'llms.txt',
     detail: 'product map + canonical links',
   },
   {
-    href: '/blink/agents.md',
+    href: '/canvas/AGENTS.md',
     label: 'agents.md',
     detail: 'complete operating contract',
   },
@@ -21,7 +21,7 @@ const DOCS = [
 const CONTRACT = [
   {
     term: 'Use the CLI',
-    detail: 'Prefer blink over GUI automation. It handles slugs, atomic writes, stdin, and structured output.',
+    detail: 'Prefer canvas over GUI automation. It handles slugs, atomic writes, stdin, and structured output.',
   },
   {
     term: 'Files are truth',
@@ -33,7 +33,7 @@ const CONTRACT = [
   },
   {
     term: 'App optional',
-    detail: 'Writes still land while Blink is closed. The app reconciles them when it is running or next opens.',
+    detail: 'Writes still land while the app is closed. The app reconciles them when it is running or next opens.',
   },
   {
     term: 'Configure by file',
@@ -52,7 +52,7 @@ export default function AgentGuide() {
               The whole operating contract, <span className="text-acc">without the GUI.</span>
             </>
           }
-          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. These are the stable entry points an agent can discover and act on."
+          sub="Install once, use predictable verbs, and drop to plain Markdown whenever the abstraction gets in the way. Canvas 2.3.0 installs Canvas.app and the canvas CLI. The blink command remains an alias; existing note paths stay unchanged."
         />
 
         <Reveal>
@@ -95,10 +95,10 @@ export default function AgentGuide() {
               <div className="p-4 md:p-5">
                 <pre className="whitespace-pre-wrap break-words text-[11.5px] leading-[1.9] text-dimx">
                   <code>{`npm install -g @arach/blink
-blink app install
-blink app open
+canvas app install
+canvas app open
 
-blink present q3-plan $'# Q3 plan\\n\\nShip it.' \\
+canvas present q3-plan $'# Q3 plan\\n\\nShip it.' \\
   --slot 6 --style focus --json`}</code>
                 </pre>
               </div>

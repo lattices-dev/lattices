@@ -1,6 +1,6 @@
 ---
-title: Voice Commands
-description: Natural language voice control for window management
+title: Voice
+description: Voice commands for window management and the lats voice reference, including speech output forwarded to Speech
 order: 7
 ---
 
@@ -9,29 +9,40 @@ to open the voice command window, hold **Option** to speak, release to
 stop. Lattices transcribes your speech via its **embedded Hudson Voice /
 Vox runtime**, matches it to an intent, and executes it.
 
+The `voice` domain has two directions with two owners:
+
+| Direction | Verbs | Owner | Transport |
+|-----------|-------|-------|------|
+| Input: voice commands | `voice.listen`, `voice.stopListening`, `voice.simulate`, `voice.status` | Lattices menu bar app | `lattices.sock`, `voice.sock` |
+| Output: spoken text | `voice.say`, `voice.stop`, `voice.pause`, `voice.resume`, `voice.skip`, `voice.seek`, `voice.list`, `voice.select`, `voice.lease`, `voice.release` | Speech (`Voice.app`), reached through the Lattices daemon | `lattices.sock`, `speech.sock` |
+
+This page is the reference for both directions of `lats voice`. Speech output
+itself (providers, queue and playback rules, the direct `speech.*` API) is
+documented in the [Speech docs](/speech/docs/overview).
+
 ## Embedded voice runtime
 
 Lattices **hosts** the voice engine inside the menu bar process. You do not
 need a separate `voxd` for normal use. On app boot, Lattices starts an
 in-process live-session server and tears it down on quit.
 
-| Service | Port | Endpoint | Owner |
-|---------|------|----------|--------|
-| Agent API / daemon | **9399** | `ws://127.0.0.1:9399` | `DaemonServer` |
-| Voice runtime | **9398** | `ws://127.0.0.1:9398` | `LatticesVoiceRuntime` |
+Lattices 0.15.1 and Speech 0.3.0 use private local connections. Install the
+Lattices app and CLI at the same version.
 
-These ports are **deterministic** and Lattices-owned (`LatticesLocalEndpoints`
-in the app). The `939x` loopback family is the self-describing local contract:
+### Private connection
 
-- **9399** — agent RPC (existing)
-- **9398** — voice live session (transcription)
+| Service | Endpoint |
+|---------|-----------------------|
+| Agent API / daemon | `~/.lattices/run/lattices.sock` |
+| Voice runtime | `~/.lattices/run/voice.sock` |
+| Speech's `Voice.app` | `~/.lattices/run/speech.sock` |
 
-Capability file (auth token + pid + port) lives at:
-
+The voice runtime uses Vox's private transport: a Unix socket that accepts only
+same-user peers and requires the `x-lattices-token` header on the WebSocket
+upgrade. Hudson Voice connects with the token for you. The capability file at
 `~/Library/Application Support/Lattices/Voice/hudson-voice-runtime.json`
-
-Override the voice port only for tests/dev with `LATTICES_VOICE_PORT`
-(or legacy `HUDSON_VOICE_VOX_PORT`).
+points at the socket. These sockets are local only;
+remote voice input is not exposed through the tailnet gateway.
 
 ## Quick start
 
@@ -39,13 +50,14 @@ Override the voice port only for tests/dev with `LATTICES_VOICE_PORT`
 2. Optionally connect a voice provider in **Settings > Voice** for provider-backed interpretation and speech services
 3. Press **Hyper+D** to open the voice command window
 4. Hold **Option** and speak a command
-5. Release **Option** — Lattices transcribes and executes
+5. Release **Option**. Lattices transcribes and executes
 
 ## Voice API
 
 The `voice` domain covers listening and speaking. The daemon serves
-listening. The Voice helper (Lattices › Apps) speaks; the daemon forwards
-those calls to it.
+listening. Speech's `Voice.app` speaks: the daemon renames each output verb
+to its `speech.*` method and forwards it to `Voice.app` through `speech.sock`. Install
+or open `Voice.app` from the Lattices menu under **Apps**.
 
 | Verb | CLI | Does |
 |------|-----|------|
@@ -56,7 +68,7 @@ those calls to it.
 | `voice.seek`     | `lats voice seek <seconds>` | Seek the current job. |
 | `voice.list`     | `lats voice list` | List voices. |
 | `voice.select`     | `lats voice select <voice>` | Choose the default voice for a provider. |
-| `voice.lease` / `voice.release` | — | Hold the speaker so other agents do not talk over you. A lease also ends when the connection closes. |
+| `voice.lease` / `voice.release` | none | Hold the speaker so other agents do not talk over you. A lease also ends when the connection closes. |
 | `voice.listen`     | `lats voice listen` | Start voice capture. |
 | `voice.stopListening`     | `lats voice stopListening` | Stop voice capture and run the transcript. |
 | `voice.simulate`     | `lats voice simulate "text"` | Parse and run a command as if spoken. |
@@ -82,7 +94,7 @@ sends each `speech.changed` event again as `voice.changed`.
 | Key | Action |
 |-----|--------|
 | **Hyper+D** | Open/close voice command window |
-| **⌥ (hold)** | Push-to-talk — hold to record, release to stop |
+| **⌥ (hold)** | Push-to-talk: hold to record, release to stop |
 | **Tab** | Arm/disarm the mic |
 | **Escape** | Cancel recording or dismiss window |
 
@@ -99,7 +111,7 @@ Find windows by app name, title, content, or category.
 "Where is my editor?"      → expands to VS Code, Cursor, Xcode, etc.
 ```
 
-Category synonyms are built in — saying "terminals", "browsers", "editors",
+Category synonyms are built in. Saying "terminals", "browsers", "editors",
 "chat", "music", "mail", or "notes" automatically expands to search for
 the actual app names.
 
@@ -230,18 +242,18 @@ The voice command window has four sections:
 
 Voice search uses the same backend as `lats search`:
 
-1. **Quick search** — window titles, app names, session tags (instant)
-2. **Complete search** — adds terminal cwd/processes + OCR content
-3. **Synonym expansion** — category terms like "terminals" expand to
+1. **Quick search**: window titles, app names, session tags (instant)
+2. **Complete search**: adds terminal cwd/processes + OCR content
+3. **Synonym expansion**: category terms like "terminals" expand to
    actual app names before searching
-4. **Query cleanup** — strips natural language qualifiers ("and sort by...",
+4. **Query cleanup**: strips natural language qualifiers ("and sort by...",
    "please", "for me") before searching
 
 ## Processing resilience
 
-- **15-second timeout** — if processing doesn't complete, returns to idle
-- **Cancellation on dismiss** — closing the window cancels in-flight work
-- **Double-execution prevention** — streaming and stop callbacks can't
+- **15-second timeout**: if processing doesn't complete, returns to idle
+- **Cancellation on dismiss**: closing the window cancels in-flight work
+- **Double-execution prevention**: streaming and stop callbacks can't
   both fire the intent
 
 ## Advisor learning
@@ -274,9 +286,13 @@ mappings and phrase pattern improvements.
 
 ## Requirements
 
-- **Vox** — provides microphone access and
-  speech-to-text transcription
-- **Voice provider** — enables provider-backed AI suggestions from
+- **Embedded voice runtime**: the in-process Vox runtime on `voice.sock` provides
+  speech-to-text. It ships inside builds that include Hudson Voice; no
+  separate `voxd` install is needed
+- **Microphone** permission: for voice capture
+- **Voice provider**: enables provider-backed AI suggestions from
   **Settings > Voice** (optional, voice commands still work without it)
-- **Accessibility** permission — for window tiling and focus
-- **Screen Recording** permission — for window discovery
+- **Accessibility** permission: for window tiling and focus
+- **Screen Recording** permission: for window discovery
+- **Speech (`Voice.app`)**: only for the output verbs such as `lats voice say`.
+  See [Speech quickstart](/speech/docs/quickstart)

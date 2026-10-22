@@ -1,4 +1,4 @@
-import { absoluteUrl, SITE_ORIGIN, type RouteMeta, type SoftwareFacts } from './routes'
+import { absoluteUrl, routeMeta, SITE_ORIGIN, type RouteMeta, type SoftwareFacts } from './routes'
 
 const organizationId = `${SITE_ORIGIN}/#organization`
 
@@ -30,7 +30,12 @@ function softwareNode(facts: SoftwareFacts, route: Pick<RouteMeta, 'path' | 'des
 }
 
 export function routeJsonLd(route: RouteMeta, ogImage: string): string | null {
-  if (route.jsonLd === 'none' || route.canonicalPath) return null
+  // Aliases describe the canonical product rather than invent a second identity.
+  if (route.canonicalPath) {
+    const canonical = routeMeta(route.canonicalPath)
+    return canonical && !canonical.canonicalPath ? routeJsonLd(canonical, ogImage) : null
+  }
+  if (route.jsonLd === 'none') return null
 
   if (route.jsonLd === 'home' && route.software) {
     return serialize({

@@ -27,7 +27,7 @@
 
 ## Meet the family
 
-Four apps, one repository. Open a product below for its README, installation steps, and source. Speech lives in `products/voice`, where the app is called **Voice**.
+Open a product below for its README, installation steps, and source. Speech lives in `products/voice`, where the app is called **Voice**.
 
 <table>
 <tr>
@@ -48,11 +48,11 @@ Four apps, one repository. Open a product below for its README, installation ste
 </tr>
 <tr>
 <td width="50%" valign="top">
-  <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/blink.png" width="48" height="48" alt="Blink icon"></a>
-  <h3><a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">Blink</a></h3>
+  <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/blink.png" width="48" height="48" alt="Canvas icon"></a>
+  <h3><a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">Canvas</a></h3>
   <p><strong>Keep a thought where you need it.</strong></p>
   <p>Write and arrange notes in floating windows. Leave context beside the work it belongs to.</p>
-  <p><a href="https://lattices.dev/blink">Make room for your notes →</a> · <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">README &amp; source</a></p>
+  <p><a href="https://lattices.dev/canvas">Make room for your notes →</a> · <a href="https://github.com/lattices-dev/lattices/tree/main/products/blink">README &amp; source</a></p>
 </td>
 <td width="50%" valign="top">
   <a href="https://github.com/lattices-dev/lattices/tree/main/products/voice"><img src="https://raw.githubusercontent.com/lattices-dev/.github/main/profile/assets/speech.png" width="48" height="48" alt="Speech icon"></a>

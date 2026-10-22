@@ -68,7 +68,7 @@ export async function copyActionReferences({ repoRoot, distDir }) {
   <title>Action for agents — current documentation</title>
   <meta name="description" content="Authoritative Action agent instructions, runtime setup, and private-layer requirements.">
   <link rel="canonical" href="https://lattices.dev/action/agents/">
-  <link rel="alternate" type="text/plain" href="/action/llms.txt" title="Agent documentation index">
+  <link rel="describedby" type="text/plain" href="/action/docs/llms.txt" title="Agent documentation index">
   <style>body{max-width:48rem;margin:4rem auto;padding:0 1.5rem;font:18px/1.6 system-ui,sans-serif;color:#20282b;background:#faf5eb}a{color:#175c6b}li{margin:.6rem 0}pre{overflow-x:auto;padding:1rem;background:#f3ebdd;font-size:14px}h3{margin-bottom:.5rem}:focus-visible{outline:2px solid #175c6b;outline-offset:4px}</style>
 </head>
 <body>

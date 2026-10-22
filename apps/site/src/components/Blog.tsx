@@ -13,7 +13,7 @@ export function BlogIndex() {
           <p className="products-kicker">Lattices blog</p>
           <h1>Notes on workspaces, agents, and the Mac.</h1>
           <p>
-            Short posts about what we are building across Lattices, Action, Blink,
+            Short posts about what we are building across Lattices, Action, Canvas,
             and Speech.
           </p>
         </header>

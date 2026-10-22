@@ -4,9 +4,9 @@ description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
-The lattices menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`
-(agent API). The same process also hosts the voice live-session runtime on
-`ws://127.0.0.1:9398` (see [Voice](/docs/voice) — deterministic Lattices ports).
+Lattices 0.15.1 serves its agent API over authenticated WebSocket on
+`~/.lattices/run/lattices.sock`. The same app hosts voice input on
+`~/.lattices/run/voice.sock` (see [Voice](/lattices/docs/voice)).
 ~120 RPC methods and real-time events. Prefer `desktop.snapshot` when you
 need to know what is in front of the user, and `lats map` when you want
 that same state drawn as ASCII.
@@ -34,16 +34,42 @@ const windows = await daemonCall('windows.list')
 console.log(windows) // [{ wid, app, title, frame, ... }, ...]
 ```
 
-Or from any language — it's a standard WebSocket:
+From another language, use a WebSocket client that supports Unix sockets and
+the authentication headers below.
 
-```bash
-# Plain websocat example
-echo '{"id":"1","method":"daemon.status"}' | websocat ws://127.0.0.1:9399
-```
+### Private connection
+
+Install the Lattices app and CLI at version 0.15.1 together. Older clients
+that connect directly to TCP must migrate to the private transport.
+
+- The daemon listens on a private Unix socket, `~/.lattices/run/lattices.sock`,
+  and writes a capability token to `~/.lattices/run/lattices.token`. The
+  directory is mode `0700`; both files are mode `0600`.
+- Directory and token permissions restrict local access to the same user.
+  The macOS server also checks the peer's user ID. The WebSocket upgrade must
+  use `Host: localhost`, carry the token in `x-lattices-token`, and send no
+  `Origin` header.
+- `lats` and `daemonCall()` find the socket and token for you. Code above keeps
+  working. A plain `websocat ws://127.0.0.1:9399` does not: no TCP port is
+  open by default. The macOS app can enable loopback TCP with
+  `LATTICES_ALLOW_LOOPBACK_TCP=1`; that port still requires the token. The
+  Linux host has no TCP compatibility listener.
+- The shared client sends local tokens over private IPC by default. An explicit
+  TCP target, including a loopback address that could be an SSH tunnel, receives
+  no local token unless loopback compatibility is explicitly enabled.
+  The CLI and Pi client require `LATTICES_ALLOW_LOOPBACK_TCP=1`; programmatic
+  `daemonCallTo()` callers can deliberately supply `tokenFile` for a loopback
+  endpoint. Non-loopback targets never receive local tokens.
+- Remote clients reach a host only through the opt-in tailnet gateway, after a
+  person on that host approves the pairing. See
+  [Remote hosts](#remote-hosts).
+
+See [Private IPC and the gateway](/lattices/docs/concepts#private-ipc-and-the-gateway)
+for every product's socket.
 
 ## Wire protocol
 
-lattices uses a JSON-RPC-style protocol over WebSocket on port **9399**.
+lattices uses a JSON-RPC-style protocol over authenticated WebSocket on the private socket.
 
 ### Request
 
@@ -118,7 +144,8 @@ answers `Unknown method`.
 ### Connection lifecycle
 
 - The server starts when the menu bar app launches and stops when it quits.
-- Connections are plain WebSocket. No handshake, no auth, no heartbeat.
+- Every connection requires the local token at the WebSocket handshake; see
+  [Private connection](#private-connection).
 - The Node.js `daemonCall()` client opens a fresh connection per call and
   closes it when the response arrives. For event subscriptions, hold the
   connection open (see [Reactive event pattern](#agent-integration)).
@@ -128,10 +155,43 @@ answers `Unknown method`.
 
 ### Remote hosts
 
-A Linux machine running `lattices-host` ([LAT-013](proposals/LAT-013-linux-host.md))
-serves the same protocol on its tailnet address, port 9399. Point a client at it
-with `LATTICES_DAEMON_HOST` (and `LATTICES_DAEMON_PORT`), or `lats --host <name>`.
-Call `host.describe` first: it lists the host's platform, capabilities and methods.
+In 0.15.1, neither the macOS app nor `lattices-host` opens a remote listener.
+Remote access uses the separate gateway, which the host user starts explicitly:
+
+```bash
+# On the host
+lats gateway start --tailnet
+
+# On the client: request access, then wait for approval on the host
+lats --host HOST pair --read-only
+# Or request exactly these methods instead of the read-only scope:
+lats --host HOST pair --grant lattices:windows.list --grant speech:speech.enqueue
+
+# On the host: check the fingerprint and grants, then approve
+lats gateway clients
+lats gateway approve CLIENT_ID
+```
+
+The gateway binds only the host's Tailscale address, on port 9399 by default.
+Core method names do not change. Methods of other products go through
+`gateway.call` with `{ "product": "speech", "method": "speech.enqueue", "params": { "text": "Build finished" } }`.
+Each grant names one exact `product:method`, and only reviewed methods can be
+granted. Re-pairing with the same client key adds approved grants to the existing
+set. To reduce access, revoke the client and pair again. `--grant` cannot be
+combined with `--read-only` or `--drive`. Clients paired directly with a host before this
+change must pair again with the gateway.
+
+The native Machines/Hosts view reuses this CLI gateway pairing and signs its
+requests. Pairing a companion device alone does not authorize remote host
+status or screens. The Pi extension and Swift SDK do not add gateway signatures
+to explicit remote endpoints; a host or URL override alone is not a paired
+gateway client.
+
+Remote core event subscriptions are limited to `windows.changed`,
+`spaces.changed`, `layers.changed` and `host.healthChanged`. A client needs
+`lattices:events.subscribe` and the corresponding read grant (`windows.list`,
+`spaces.list`, `layers.list` or `daemon.status`). Unsubscribing requires
+`lattices:events.unsubscribe`. Other event streams stay local.
 
 ## Node.js client
 
@@ -2679,7 +2739,8 @@ project knows how to control the workspace:
 ## Workspace Control
 
 This project uses lattices for workspace management. The daemon API
-is available at ws://127.0.0.1:9399.
+uses authenticated WebSocket over ~/.lattices/run/lattices.sock.
+Use the matching 0.15.1 CLI or daemonCall client for discovery and authentication.
 
 ### Search (find windows)
 - Search by content: `daemonCall('windows.search', { query: 'myproject' })`
@@ -2730,8 +2791,16 @@ Subscribe to events to react to workspace changes:
 
 ```js
 import WebSocket from 'ws'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
-const ws = new WebSocket('ws://127.0.0.1:9399')
+const runtime = process.env.LATTICES_RUNTIME_DIR || join(homedir(), '.lattices/run')
+const token = readFileSync(join(runtime, 'lattices.token'), 'utf8').trim()
+const ws = new WebSocket('ws://localhost', {
+  socketPath: join(runtime, 'lattices.sock'),
+  headers: { Host: 'localhost', 'x-lattices-token': token },
+})
 
 ws.on('message', (raw) => {
   const msg = JSON.parse(raw)

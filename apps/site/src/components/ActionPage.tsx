@@ -66,7 +66,7 @@ export default function ActionPage() {
   return (
     <div className="action-page">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(actionSchema()).replace(/</g, "\\u003c") }} />
-      <link rel="alternate" type="text/plain" href="/action/llms.txt" title="Action agent documentation" />
+      <link rel="describedby" type="text/plain" href="/action/docs/llms.txt" title="Action agent documentation" />
       <link rel="describedby" type="application/json" href="/action/agent.json" />
       <iframe ref={downloadFrame} title="Action download" hidden />
       {downloadStatus !== "idle" && (
@@ -98,7 +98,7 @@ export default function ActionPage() {
           <div className="nav-links">
             <ProductsMenu />
             <a href="/" className="nav-link action-nav-optional">Lattices</a>
-            <a href="/action/agents/" data-router="reload" className="nav-link action-nav-optional">For agents</a>
+            <a href="/action/docs" className="nav-link action-nav-optional">Docs</a>
             <a href={sourceUrl} className="nav-link action-nav-source">Source</a>
             <ThemeToggle
               theme={theme}
@@ -145,8 +145,8 @@ export default function ActionPage() {
         <section id="architecture" className="action-architecture" aria-labelledby="action-architecture-title">
           <div className="action-architecture-copy">
             <h2 id="action-architecture-title">
-              <span>One local path from</span>
-              <span>intent to evidence.</span>
+              <span>Local control</span>
+              <span>and capture.</span>
             </h2>
             <p>
               An agent or operator calls the local Action runtime, which owns the session, targets, and orchestration. ActionAgent bridges those requests into native macOS work.
@@ -160,7 +160,7 @@ export default function ActionPage() {
 
         <section className="action-purpose" aria-labelledby="action-purpose-title">
           <div className="action-section-heading">
-            <p className="action-kicker">One family, two focused products</p>
+            <p className="action-kicker">Product boundaries</p>
             <h2 id="action-purpose-title">Action and Lattices.</h2>
           </div>
           <div className="action-product-boundary">

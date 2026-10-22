@@ -1,4 +1,8 @@
-# Agent layer
+---
+title: Agent layer
+description: Work an app or Action-owned browser on a prepared private virtual display
+order: 6
+---
 
 Action's agent layer attaches an app or Action-owned browser to a prepared,
 persistent virtual monitor. The monitor and each task have separate lifetimes.
@@ -116,7 +120,7 @@ ordinary task must not silently resize or recreate the monitor.
 Once prepared, `layer open` attaches a task without connecting another display.
 `layer close` restores that task's windows and leaves the monitor connected.
 When the user wants to disconnect the monitor, use `lats action layer release`;
-it first closes the task, then releases the persistent display. Release can
+it refuses while a task is active, so close the task first with `layer close`. Release can
 also change the desktop topology. A restart, crashed monitor owner, or missing
 monitor requires explicit preparation again, not automatic recovery during
 the next task.
@@ -230,8 +234,9 @@ the lease it created. A supplied lease remains the caller's responsibility.
 Do not begin a second drive for the layer or use a desktop snapshot as its
 coordinate reference. If setup fails, MCP attempts to close the layer it created
 and reports any unconfirmed cleanup. Inspect `layer_status` before retrying.
-Check `layer_status` before the first open too: opening replaces an existing
-layer. Do not replace another caller's layer without user authority.
+Check `layer_status` before the first open too: opening fails while the
+workspace already has an active task. Close it explicitly first, and do not
+close another caller's task without user authority.
 
 For native apps, open `{ bundleId: "com.apple.calculator", width: 1280,
 height: 800, pip: true }`. Select `windowId` or `windowTitle` to borrow only
@@ -299,7 +304,7 @@ into a claim that ordinary tasks never connect or disconnect a display.
 - Adopts windows the subject opens while the layer is up, such as a `cmd+n` window, a pop-up, or an `open-app` with `input.url`. They move onto the layer as they appear, cascaded. A layer that borrowed one window by `windowId` or `windowTitle` adopts nothing more.
 - Shows the PiP viewer unless `pip` is `false`.
 - Writes a state file: display id, global bounds (top-left origin, points), PiP state, and the moved windows with their original frames.
-- Keeps one layer at a time. Opening a second layer closes the first, so its windows go back before the new app moves.
+- Keeps one task per workspace. Opening while a task is active fails; close the task first.
 
 ## Primitives
 

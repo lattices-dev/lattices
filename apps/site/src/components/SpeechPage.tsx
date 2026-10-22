@@ -83,7 +83,7 @@ export default function SpeechPage() {
             </p>
             <div className="family-hero-actions">
               <a href={downloadUrl}>Download Speech</a>
-              <a href={sourceUrl}>Read the source</a>
+              <a href="/speech/docs">Read the docs</a>
             </div>
             <p className="speech-platform-note">macOS 26+ · Apple silicon · signed + notarized</p>
           </div>
@@ -292,7 +292,7 @@ export default function SpeechPage() {
           <nav aria-label="Lattices products">
             <a href="/">Lattices</a>
             <a href="/action">Action</a>
-            <a href="/blink">Blink</a>
+            <a href="/canvas">Canvas</a>
             <a href="/family">Family</a>
           </nav>
         </section>

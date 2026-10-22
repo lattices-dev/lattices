@@ -18,6 +18,7 @@ const kindRank = {
 const primaryDocReadOrder = [
   'overview',
   'quickstart',
+  'install-linux',
   'concepts',
   'config',
   'app',
@@ -186,10 +187,29 @@ export async function writeAgentArtifacts(options = {}) {
     await writeArtifact(`docs/prompts/${prompt.promptId}.md`, prompt.rawMarkdown)
   }
 
+  // Keep the legacy raw URLs and explicit prompt registries above. The product
+  // catalog then replaces automatic context with current, product-owned guides.
+  // This also covers callers such as the Dewey adapter and `bun run agent-docs`.
+  let productArtifacts = null
+  if (options.productArtifacts !== false) {
+    let catalog
+    try {
+      catalog = JSON.parse(await readFile(join(resolved.siteDir, 'src/data/docs-catalog.json'), 'utf8'))
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+    if (catalog) {
+      const { writeProductAgentArtifacts } = await import('./product-agent-artifacts.mjs')
+      productArtifacts = await writeProductAgentArtifacts({ ...resolved, catalog })
+      artifacts.push(...productArtifacts.artifacts)
+    }
+  }
+
   return {
     docs: docs.length,
     prompts: prompts.length,
-    artifacts,
+    ...(productArtifacts ? { products: productArtifacts.products, currentDocs: productArtifacts.currentDocs, archivedDocs: productArtifacts.archivedDocs } : {}),
+    artifacts: [...new Set(artifacts)],
   }
 }
 
@@ -563,16 +583,25 @@ function stripQuotes(value) {
 
 function extractHeadings(content) {
   const headings = []
-  const pattern = /^(#{1,6})\s+(.+)$/gm
-  let match = pattern.exec(content)
-
-  while (match) {
+  let fence = null
+  for (const line of content.split('\n')) {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/)
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && /^[ \t]*$/.test(marker[2])) fence = null
+      continue
+    }
+    if (marker && (marker[1][0] === '~' || !marker[2].includes('`'))) {
+      fence = marker[1]
+      continue
+    }
+    const match = line.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/)
+    if (!match) continue
+    const text = cleanInlineMarkdown((match[2] || '').replace(/[ \t]+#+[ \t]*$/, ''))
     headings.push({
       depth: match[1].length,
-      text: cleanInlineMarkdown(match[2]),
-      anchor: slugify(cleanInlineMarkdown(match[2])),
+      text,
+      anchor: slugify(text),
     })
-    match = pattern.exec(content)
   }
 
   return headings
@@ -592,7 +621,7 @@ function extractDescription(content) {
 }
 
 function normalizeMarkdownTitle(doc) {
-  const hasH1 = /^#\s+/m.test(doc.content)
+  const hasH1 = (doc.headings || extractHeadings(doc.content)).some((heading) => heading.depth === 1)
   if (hasH1) return doc.content.trim()
   return `# ${doc.title}\n\n${doc.content.trim()}`
 }

@@ -57,6 +57,23 @@ The package includes the Mac app. `lats app` launches it; bare `lats` shows work
 
 The [setup guide](https://lattices.dev/docs/quickstart) covers login startup, permissions, and other installation options.
 
+### Linux (Hyprland and Omarchy)
+
+Install the Linux app, CLI, host and tray from a terminal inside Hyprland:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh | bash
+```
+
+On Arch/Omarchy, the installer installs missing dependencies, enables the user
+services, verifies host health and opens the app. From a checkout, use
+`bash install.sh`. Add `--gestures` for Forward-button gestures, or
+`--wheel-gestures` to also reserve wheel-click. `--no-start` prepares the files
+without starting services.
+
+See [Install on Linux](docs/install-linux.md) for requirements, updates and
+recovery. The published npm app package remains macOS-only.
+
 ## Find a project window and bring it beside you
 
 With a terminal open in your project, replace `tideline` with its directory name:
@@ -99,7 +116,7 @@ const windows = await daemonCall('windows.search', { query: 'api' })
 console.log(windows)
 ```
 
-The app hosts the API at `ws://127.0.0.1:9399`. It is local-only and has no authentication; any process on your Mac can connect. Read the [API reference](https://lattices.dev/docs/api) and [agent guide](https://lattices.dev/docs/agents) for methods, events, and permissions.
+Lattices 0.15.1 hosts the API at `~/.lattices/run/lattices.sock` and requires a local token before the WebSocket upgrade. Install the matching 0.15.1 CLI and app together. Versions before 0.15.1 use `ws://127.0.0.1:9399`; clients that connect directly to that port must migrate. Read the [API reference](https://lattices.dev/lattices/docs/api) and [agent guide](https://lattices.dev/lattices/docs/agents) for the transport that matches your build.
 
 You can also expose the CLI as a stdio MCP server:
 
@@ -186,10 +203,10 @@ Each product has its own app, README, and source directory. Start here:
 | --- | --- |
 | **[Lattices](https://lattices.dev)** | A programmable workspace: windows, projects, screen search, and terminals. |
 | **[Action](https://github.com/lattices-dev/lattices/blob/main/products/action/README.md)** | Computer use for agents: observe apps, operate browser surfaces, and record what happened. |
-| **[Blink](https://github.com/lattices-dev/lattices/blob/main/products/blink/README.md)** | Spatial notes: editable notes that live in floating windows on your desktop. |
+| **[Canvas](https://github.com/lattices-dev/lattices/blob/main/products/blink/README.md)** | Spatial notes: editable notes that live in floating windows on your desktop. |
 | **[Speech / Voice](https://github.com/lattices-dev/lattices/blob/main/products/voice/README.md)** | Spoken agent output with queued playback and a readalong HUD. |
 
-Action, Blink, and Voice have independent installation and runtime lifecycles. Their source lives together under [`products/`](https://github.com/lattices-dev/lattices/tree/main/products). [Explore the family](https://lattices.dev/family).
+Action, Canvas, and Voice have independent installation and runtime lifecycles. Their source lives together under [`products/`](https://github.com/lattices-dev/lattices/tree/main/products). [Explore the family](https://lattices.dev/family).
 
 ## Other machines
 
@@ -202,7 +219,7 @@ These instructions target the repository source, which can be ahead of the npm r
 
 ## Linux host
 
-The [Linux host](https://github.com/lattices-dev/lattices/blob/main/packages/host-linux/README.md) exposes a Hyprland desktop to other Lattices machines over Tailscale. A Mac can inspect, place, and visit its windows through the same API envelope (`{id, method, params}`). The host listens on its tailnet IPv4 address and `127.0.0.1`, port 9399. Non-loopback clients must pair; loopback is trusted. The visit bridge uses port 5287.
+The [Linux host](https://github.com/lattices-dev/lattices/blob/main/packages/host-linux/README.md) exposes a Hyprland desktop through the same API envelope (`{id, method, params}`). Version 0.15.1 keeps the host and visit bridge on local Unix sockets. Remote access requires the separate gateway: run `lats gateway start --tailnet` on the Linux host, then approve paired clients and their grants. The gateway uses port 9399 for both RPC and visit traffic. Older builds listen directly on port 9399 and use port 5287 for visits; use matching host and client builds.
 
 Install Bun and Tailscale, then run these commands inside a Hyprland session. Visiting also requires Quickshell for the cursor overlay and `wtype` for keyboard input.
 
@@ -238,7 +255,7 @@ Open **Workspace → Machines** to arrange this Mac's displays and paired machin
 A visit lends this Mac's mouse and keyboard to a paired machine. Pair the visit bridge, choose an edge, then arm crossing:
 
 ```sh
-lats visit pair archie               # bridge defaults to archie:5287; approve there
+lats visit pair archie               # source build uses gateway archie:9399; approve there
 lats visit side archie left
 lats visit on
 lats visit archie                    # enter immediately

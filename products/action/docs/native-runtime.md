@@ -1,9 +1,13 @@
-# Native Runtime
+---
+title: Native runtime
+description: How Action.app and the Action agent split native responsibilities
+order: 7
+---
 
 This page describes the runtime split that currently makes `action` behave like
 a real macOS app instead of a command wrapper pretending to be one.
 
-## The Split
+## The split
 
 There are two native roles:
 
@@ -20,9 +24,13 @@ Owns:
 
 Main file:
 
-- [ActionHostMain.swift](native/engine/Sources/ActionHostMain.swift)
+- [ActionHostMain.swift](../native/engine/Sources/ActionHostMain.swift)
 
-## Local Agent Runtime
+## Local agent runtime
+
+`Action.app` starts the agent as a child helper,
+`Contents/Helpers/ActionAgent.app`, on `ws://127.0.0.1:4319`. The helper exits
+with its parent.
 
 Owns:
 
@@ -33,11 +41,11 @@ Owns:
 
 Main files:
 
-- [ActionAgentRuntime.swift](native/engine/CoreSources/ActionAgentRuntime.swift)
-- [ActionAgentClient.swift](native/engine/CoreSources/ActionAgentClient.swift)
-- [ActionAgentCommandBridge.swift](native/engine/Sources/ActionAgentCommandBridge.swift)
+- [ActionAgentRuntime.swift](../native/engine/CoreSources/ActionAgentRuntime.swift)
+- [ActionAgentClient.swift](../native/engine/CoreSources/ActionAgentClient.swift)
+- [ActionAgentCommandBridge.swift](../native/engine/Sources/ActionAgentCommandBridge.swift)
 
-## Why This Exists
+## Why this exists
 
 Two important failures pushed the design here:
 
@@ -46,7 +54,7 @@ Two important failures pushed the design here:
 WebKit behaved unreliably when UI modes were entered through the wrong runtime
 path. The fix was to let AppKit own the UI lifecycle cleanly.
 
-### 2. ScreenCaptureKit Recording
+### 2. ScreenCaptureKit recording
 
 Recording was not reliable when attempted inside the wrong lifecycle context.
 The stable path now launches a fresh `Action.app` instance in `recording-probe`
@@ -56,7 +64,7 @@ The lesson is simple:
 
 **AppKit-dependent work should run inside a real app lifecycle.**
 
-## Current Execution Flow
+## Current execution flow
 
 For normal operator usage:
 
@@ -73,7 +81,7 @@ For recording:
 4. probe performs the actual `ScreenCaptureKit` recording
 5. artifacts and finished markers are written
 
-## Important Boundaries
+## Important boundaries
 
 Keep these rules intact:
 
@@ -87,7 +95,7 @@ Keep these rules intact:
 Use `lats action capabilities` and the active MCP `capabilities` / `tools/list`
 for build provenance and routing. Check host quarantine before opening a private
 display. Native support, runtime health, and version strings do not establish
-physical desktop preservation. See [Agent layer](agent-layer.md).
+physical desktop preservation. See [Agent layer](/action/docs/agent-layer).
 
 `native:doctor` builds and signs. Run it on an authorized development host.
 On an installation target, preserve the installed bundle and rollback; deploy
@@ -111,7 +119,7 @@ The extracted archive contains sibling `bin/` and `products/` directories.
 Set `ACTION_ROOT=<extract>/products/action`, not the extraction root, and keep
 `bin/host-pairing.ts` in place; the runtime imports that canonical dependency.
 
-## Scripts And Helpers
+## Scripts and helpers
 
 Call native work through package.json scripts from `products/action`:
 
@@ -125,7 +133,7 @@ bun run native:test:screenshot
 bun run native:test:record
 ```
 
-The scripts wrap helpers in [native/engine/scripts](native/engine/scripts). The most important wrappers are:
+The scripts wrap helpers in [native/engine/scripts](../native/engine/scripts). The most important wrappers are:
 
 - `build-app.sh`
 - `doctor.sh`

@@ -12,23 +12,26 @@ export interface RouteBrand {
   ogImage: string
 }
 
-const productSections: readonly string[] = ['action', 'blink', 'speech']
+// Canvas retains the existing artwork filenames during the public rename.
+const productSections: Readonly<Record<string, BrandSlug>> = {
+  action: 'action', canvas: 'blink', blink: 'blink', speech: 'speech',
+}
 
 const ogImageOverrides: Readonly<Record<string, string>> = {
-  '/docs/api': '/og-api.png',
-  '/docs/config': '/og-cli.png',
+  '/lattices/docs/api': '/og-api.png',
+  '/lattices/docs/config': '/og-cli.png',
 }
 
 export function routeBrand(path: string): RouteBrand {
   const section = path.split('/')[1] ?? ''
-  const slug = (productSections.includes(section) ? section : 'lattices') as BrandSlug
+  const slug = productSections[section] ?? 'lattices'
 
   if (slug === 'lattices') {
     return {
       slug,
       icon: '/favicon.svg',
       touchIcon: '/brand/lattices/lattices-touch-icon.png',
-      ogImage: section === 'docs' ? '/og-docs.png' : '/og.png',
+      ogImage: section === 'docs' || path.startsWith('/lattices/docs') ? '/og-docs.png' : '/og.png',
     }
   }
 

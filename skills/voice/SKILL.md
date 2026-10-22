@@ -1,17 +1,17 @@
 ---
 name: voice
 description: The Lattices voice domain. Use when speaking out loud to the user (voice.say, stop, list, select), simulating a voice command, listing voice intents, checking the voice runtime, or turning spoken window management into the same canonical mutations as the lattices skill.
-compatibility: Requires macOS with the Lattices menu bar app running. Voice live session is ws://127.0.0.1:9398.
+compatibility: Requires macOS with a running Lattices menu bar app and matching CLI. Speaking also requires Voice.app.
 metadata:
   author: arach
-  homepage: https://lattices.dev/docs/voice
+  homepage: https://lattices.dev/lattices/docs/voice
 ---
 
 # Voice
 
 The `voice` domain covers both directions. Listening (spoken commands) runs in
-the Lattices daemon. Speaking runs in the Voice helper, which is embedded in
-Lattices.app.
+the Lattices daemon. Speaking runs in the separate Voice.app helper, which can
+be bundled with Lattices or installed independently.
 
 Lattices hosts an in-process voice runtime. Spoken commands are another client of the
 same execution layer as the CLI and daemon. Spoken commands must resolve
@@ -27,14 +27,18 @@ and the result. Do not invent intent names or slot values.
 lats voice status
 ```
 
-If the daemon is down, start it with `lats app`. Voice lives on
-`ws://127.0.0.1:9398`. The agent API stays on `9399`.
+If the daemon is down, start it with `lats app`. Lattices 0.15.1 uses
+`voice.sock` and `lattices.sock` under `~/.lattices/run`; Speech 0.3.0 uses
+`speech.sock`. Each service requires its matching token. Install Lattices app
+and CLI 0.15.1 together. The CLI handles discovery and authentication.
 
 Capability file:
 
 `~/Library/Application Support/Lattices/Voice/hudson-voice-runtime.json`
 
-Override the voice port only for tests with `LATTICES_VOICE_PORT`.
+Override the voice port only for compatibility tests with
+`LATTICES_VOICE_PORT`. Version 0.15.1 opens a voice TCP listener only
+with the explicit `LATTICES_VOICE_ALLOW_LEGACY_TCP=1` compatibility setting.
 
 ## Speaking
 
