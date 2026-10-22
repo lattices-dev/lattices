@@ -144,7 +144,7 @@ function screenMapPreview() {
       <div style="display: flex; align-items: center; padding: 6px 14px; border-top: 1px solid rgba(255,255,255,0.04); font-size: 8px; color: rgba(255,255,255,0.2);">
         <div style="display: flex; align-items: center; gap: 5px;">
           <div style="width: 5px; height: 5px; border-radius: 50%; background: #ef6a47;"></div>
-          <span>:9399</span>
+          <span>lattices.sock</span>
         </div>
         <span style="margin-left: auto;">4 pending</span>
       </div>
@@ -240,8 +240,8 @@ function apiPreview() {
   return `
     <div class="mock">
       <div class="chrome">
-        <span class="ws-badge">WS</span>
-        <span class="chrome-title">ws://127.0.0.1:9399</span>
+        <span class="ws-badge">API</span>
+        <span class="chrome-title">~/.lattices/run/lattices.sock</span>
         <span class="chrome-meta"><span class="live"></span>connected</span>
       </div>
       <div class="rpc-log">
@@ -266,7 +266,7 @@ function speechPreview() {
           <div><span>02</span><strong>Download finished</strong><time>00:08</time></div>
           <div><span>03</span><strong>Release notes draft</strong><time>01:42</time></div>
         </div>
-        <div class="speech-foot"><span class="live"></span>ws://127.0.0.1:9397<span class="chrome-meta">2 queued</span></div>
+        <div class="speech-foot"><span class="live"></span>local socket<span class="chrome-meta">2 queued</span></div>
       </div>
       <div class="speech-hud">
         <span class="speech-hud-dot"></span>
@@ -339,10 +339,10 @@ const latticesAccent = ["#ef6a47", "#d4502c"];
 const pages = [
   {
     filename: "og.png",
-    tag: "npm install -g lattices",
+    tag: "npm install -g @lattices/lattices",
     title: "lattices",
     subtitle:
-      "Screen map, window tiling, and workspace management for macOS developers.",
+      "Find any project's windows. Put them in place, for you or your agent.",
     preview: screenMapPreview,
   },
   {
@@ -363,7 +363,7 @@ const pages = [
   },
   {
     filename: "og-api.png",
-    tag: "WebSocket API",
+    tag: "Daemon API",
     title: "lattices api",
     subtitle:
       "RPC API for window tiling, screen maps, terminal discovery, and workspace control.",
