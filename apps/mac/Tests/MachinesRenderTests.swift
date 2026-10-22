@@ -43,13 +43,15 @@ final class ClusterRowsRenderTests: XCTestCase {
         guard let dir = ProcessInfo.processInfo.environment["MACHINES_RENDER_DIR"] else { throw XCTSkip("Opt-in offline render") }
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         for width in [720.0, 1100.0] {
-            let view = VStack(spacing: 0) {
-                MachineRow(name: "archie", address: "100.64.0.1", status: "Reachable", build: "0.13.2 · a1234567 · Behind",
-                    visiting: true, selected: true, canVisit: false, canView: true, select: {}, visit: {}, view: {})
-                MachineRow(name: "arts-mini", address: "arts-mini.local", status: "Unreachable", build: "? · ?",
-                    visiting: false, selected: false, canVisit: true, canView: false, select: {}, visit: {}, view: {})
+            let view = MachineTable {
+                MachineRow(name: "archie", address: "100.64.0.1", platform: "linux", status: "Reachable", build: "0.13.2 · a1234567",
+                    drift: .behind, displays: 1, visiting: true, selected: true, canVisit: false, canView: true, select: {}, visit: {}, view: {})
+                MachineColumn.divider
+                MachineRow(name: "arts-mini", address: "arts-mini", platform: "macos", status: "Unreachable", build: "? · ?",
+                    displays: 2, visiting: false, selected: false, canVisit: true, canView: false, select: {}, visit: {}, view: {})
+                MachineColumn.divider
                 MachineRow(name: "MacBook Air", address: "air.local", status: "Connecting", build: "0.13.3 · abcdef01",
-                    visiting: false, selected: false, canVisit: nil, canView: false, select: {}, visit: {}, view: {})
+                    drift: .different, visiting: false, selected: false, canVisit: nil, canView: false, select: {}, visit: {}, view: {})
             }.padding(16).frame(width: width).foregroundStyle(Palette.text).background(Palette.bg)
                 .buttonStyle(.bordered).controlSize(.small).tint(Palette.textDim).environment(\.colorScheme, .dark)
             let renderer = ImageRenderer(content: view); renderer.scale = 2

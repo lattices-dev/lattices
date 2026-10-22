@@ -126,14 +126,18 @@ struct MachinesPageView: View {
 
     private func machineList(_ machines: [MachineInventory.Machine]) -> some View {
         section("Machines", count: machines.count) {
-            VStack(spacing: 2) {
+            MachineTable {
                 if machines.isEmpty {
-                    Text("No machines").foregroundStyle(Palette.textMuted).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+                    Text("No machines").foregroundStyle(Palette.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(height: MachineRow.height)
                 }
-                ForEach(machines) { machine in
+                ForEach(Array(machines.enumerated()), id: \.element.id) { index, machine in
                     let host = remoteHost(machine)
-                    MachineRow(name: machine.name, address: machine.address, status: status(machine),
-                        build: build(machine).label,
+                    let build = build(machine)
+                    if index > 0 { MachineColumn.divider }
+                    MachineRow(name: machine.name, address: machine.address, platform: host?.platform,
+                        status: status(machine), build: build.identity, drift: build.drift,
+                        displays: host.map(\.monitors.count).flatMap { $0 > 0 ? $0 : nil },
                         visiting: model.visit.visiting == machine.visit?.name && machine.visit != nil,
                         selected: selected?.id == machine.id,
                         canVisit: machine.visit.map { _ in model.visit.visiting == nil },
@@ -279,13 +283,54 @@ private struct MachinePairSheet: View {
     }
 }
 
-/// Two lines at a fixed height: who and where, then state and build. The
-/// Visit slot is reserved on every row so the buttons line up.
+/// Fixed column widths shared by the header and every row.
+enum MachineColumn {
+    static let status: CGFloat = 112
+    static let build: CGFloat = 176
+    static let displays: CGFloat = 64
+    static let actions: CGFloat = 116
+    static var divider: some View { Rectangle().fill(Palette.border).frame(height: Chrome.hairline) }
+}
+
+/// The machines as one framed table: a column header, then rows split by
+/// hairlines. Columns are fixed so every row lines up with the header.
+struct MachineTable<Rows: View>: View {
+    @ViewBuilder let rows: () -> Rows
+    private typealias Column = MachineColumn
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                label("Machine").frame(maxWidth: .infinity, alignment: .leading)
+                label("Status").frame(width: Column.status, alignment: .leading)
+                label("Build").frame(width: Column.build, alignment: .leading)
+                label("Displays").frame(width: Column.displays, alignment: .trailing)
+                Color.clear.frame(width: Column.actions, height: 1)
+            }
+            .padding(.horizontal, 12).frame(height: 28)
+            MachineColumn.divider
+            VStack(spacing: 0, content: rows).padding(4)
+        }
+        .outlinedBox(Palette.surface.opacity(0.6), radius: 8)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text.uppercased()).font(Typo.caption(9)).tracking(0.8).foregroundStyle(Palette.textMuted)
+    }
+}
+
+/// One machine on one line: who and where, state, build, displays, then the
+/// actions. The Visit slot is reserved on every row so the buttons line up.
 struct MachineRow: View {
+    static let height: CGFloat = 46
+
     let name: String
     let address: String
+    var platform: String? = nil
     let status: String
     let build: String
+    var drift: MachineBuild.Drift? = nil
+    var displays: Int? = nil
     let visiting: Bool
     let selected: Bool
     /// Nil when the machine isn't paired for visits.
@@ -296,28 +341,81 @@ struct MachineRow: View {
     let view: () -> Void
     @State private var hovering = false
 
+    private typealias Column = MachineColumn
+
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: select) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 10) {
-                        Text(name).font(Typo.heading(12))
-                        Text(address).font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
-                    }
-                    HStack(spacing: 10) {
-                        Text(visiting ? "Visiting" : status).foregroundStyle(visiting ? Long.coral : Palette.textDim)
-                        Text(build).font(Typo.mono(10)).foregroundStyle(Palette.textMuted)
-                    }
+                HStack(spacing: 12) {
+                    identity.frame(maxWidth: .infinity, alignment: .leading)
+                    state.frame(width: Column.status, alignment: .leading)
+                    buildCell.frame(width: Column.build, alignment: .leading)
+                    Text(displays.map(String.init) ?? "—").font(Typo.mono(11))
+                        .foregroundStyle(displays == nil ? Palette.textMuted : Palette.textDim)
+                        .frame(width: Column.displays, alignment: .trailing)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }.buttonStyle(.plain)
-            Button("Visit", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1).frame(width: 52)
-            Button("View", action: view).disabled(!canView).frame(width: 52)
+            HStack(spacing: 6) {
+                Button("Visit", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1)
+                Button("View", action: view).disabled(!canView)
+            }
+            .frame(width: Column.actions, alignment: .trailing)
         }
         .font(Typo.body(11)).lineLimit(1)
-        .padding(.horizontal, 8).frame(height: 48)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(selected ? Palette.surface : hovering ? Palette.surface.opacity(0.5) : .clear))
+        .padding(.horizontal, 8).frame(height: Self.height)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(selected ? Palette.surfaceHov : hovering ? Palette.surfaceHov.opacity(0.5) : .clear))
         .onHover { hovering = $0 }
+    }
+
+    /// The address only when it says more than the name.
+    private var detail: String {
+        let shown = address.caseInsensitiveCompare(name) == .orderedSame ? nil : address
+        return [platform.map(Self.platformName), shown].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var identity: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(name).font(Typo.heading(12)).foregroundStyle(Palette.text)
+            if !detail.isEmpty {
+                Text(detail).font(Typo.mono(10)).foregroundStyle(Palette.textMuted).truncationMode(.middle)
+            }
+        }
+    }
+
+    private var state: some View {
+        let label = visiting ? "Visiting" : status
+        return HStack(spacing: 6) {
+            Circle().fill(dot).frame(width: 6, height: 6)
+            Text(label).foregroundStyle(visiting ? Long.coral : Palette.textDim)
+        }
+    }
+    /// Hue only where it asks for attention; healthy and pending stay neutral.
+    private var dot: Color {
+        if visiting { return Long.coral }
+        switch status {
+        case "Reachable": return Palette.textDim
+        case "Unreachable": return Palette.kill
+        default: return Palette.textMuted.opacity(0.6)
+        }
+    }
+
+    private var buildCell: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(build).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+            if let drift {
+                Text(drift.rawValue).font(Typo.caption(10))
+                    .foregroundStyle(drift == .behind ? Palette.detach : Palette.textMuted)
+            }
+        }
+    }
+
+    static func platformName(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "macos", "darwin": return "macOS"
+        case "linux": return "Linux"
+        default: return raw
+        }
     }
 }

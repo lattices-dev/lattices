@@ -22,12 +22,19 @@ struct MachineBuild: Equatable {
         }
         return false
     }
-    var label: String {
-        let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let identity = "\(version ?? "?") · \(commit.map { String($0.prefix(8)) } ?? "?")"
-        if Self.behind(version, local: local) { return identity + " · Behind" }
-        if let commit, let current = LatticesRuntime.buildRevision,
-           !commit.hasPrefix(current), !current.hasPrefix(commit) { return identity + " · Different build" }
-        return identity
+    enum Drift: String { case behind = "Behind", different = "Different build" }
+
+    var identity: String {
+        guard version != nil || commit != nil else { return "—" }
+        return "\(version ?? "?") · \(commit.map { String($0.prefix(8)) } ?? "?")"
     }
+    /// How this build differs from the running one, if it does.
+    var drift: Drift? {
+        let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        if Self.behind(version, local: local) { return .behind }
+        if let commit, let current = LatticesRuntime.buildRevision,
+           !commit.hasPrefix(current), !current.hasPrefix(commit) { return .different }
+        return nil
+    }
+    var label: String { drift.map { "\(identity) · \($0.rawValue)" } ?? identity }
 }
