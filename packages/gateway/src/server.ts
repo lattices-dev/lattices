@@ -296,7 +296,7 @@ export function gatewayHandlers(options: GatewayOptions) {
   };
 }
 
-export async function startGateway(config: { address: string; port: number; name: string; dnsName?: string; policy: Policy; stateDir: string; verifiedIPs: string[]; onStop?: () => void }) {
+export async function startGateway(config: { address: string; port: number; name: string; dnsName?: string; policy: Policy; stateDir: string; identityBase?: string; verifiedIPs: string[]; onStop?: () => void }) {
   if (!isTailnetAddress(config.address) || !config.verifiedIPs.includes(config.address)) throw new Error("Gateway must bind this machine's verified Tailscale address");
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("Invalid gateway port");
   const local = localEndpoint("gateway");
@@ -309,7 +309,7 @@ export async function startGateway(config: { address: string; port: number; name
   privateDirectory(config.stateDir);
   const auditPath = join(config.stateDir, "audit.jsonl");
   appendAudit(auditPath, { at: new Date().toISOString(), method: "gateway.start", disposition: "starting" });
-  const pairing = new GatewayPairing(config.name, config.stateDir);
+  const pairing = new GatewayPairing(config.name, config.stateDir, undefined, config.identityBase);
   const host = config.address.includes(":") ? `[${config.address}]` : config.address;
   const allowedHosts = new Set([`${host}:${config.port}`, `${config.name.toLowerCase()}:${config.port}`]);
   if (config.dnsName) allowedHosts.add(`${config.dnsName.toLowerCase()}:${config.port}`);

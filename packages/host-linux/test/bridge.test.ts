@@ -75,6 +75,7 @@ const dir = mkdtempSync(join(tmpdir(), "bridge-test-"));
 const approvals = new PairingApprovals(5_000, false);
 const security = new BridgeSecurity({
   bridgeName: "archie",
+  privateKey: generateKeyPairSync("x25519").privateKey,
   devicesPath: join(dir, "devices.json"),
   approve: (req, kind, additions) => approvals.request(req, kind, additions),
 });

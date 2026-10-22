@@ -3,7 +3,8 @@
 // connection is signed. Mirrors packages/host-linux/src/pairing.ts and the
 // companion scheme in packages/host-linux/src/bridge/security.ts:
 //
-//   - This client has one X25519 key and id, in ~/.lattices/client.json.
+//   - This client signs with the machine's device identity: one X25519 key
+//     and id in ~/.lattices/identity/device.json (device-identity.ts).
 //   - Paired hosts (their public key, fingerprint, granted scope) are kept in
 //     ~/.lattices/paired-hosts.json, keyed by address:port.
 //   - Each WebSocket upgrade carries x-lattices-device-id, -timestamp, -nonce
@@ -11,25 +12,15 @@
 //     shared secret (salt "lattices-bridge-v1", info "signing"), over
 //     "GET\n<path>\n<id>\n<timestamp>\n<nonce>\n<sha256 of empty body>".
 
-import {
-  createHash,
-  createHmac,
-  createPrivateKey,
-  createPublicKey,
-  diffieHellman,
-  generateKeyPairSync,
-  hkdfSync,
-  randomBytes,
-  randomUUID,
-  type KeyObject,
-} from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, hostname, platform } from "node:os";
+import { createHash, createHmac, createPublicKey, diffieHellman, hkdfSync, randomBytes, type KeyObject } from "node:crypto";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { platform } from "node:os";
 import { dirname, join } from "node:path";
+import { LATTICES_DIR, deviceIdentity, fingerprint, identityPath } from "./device-identity.ts";
 
-const STATE_DIR = join(homedir(), ".lattices");
-export const CLIENT_FILE = join(STATE_DIR, "client.json");
-export const PAIRED_HOSTS_FILE = join(STATE_DIR, "paired-hosts.json");
+export { fingerprint };
+export const IDENTITY_FILE = identityPath();
+export const PAIRED_HOSTS_FILE = join(LATTICES_DIR, "paired-hosts.json");
 
 const SALT = Buffer.from("lattices-bridge-v1", "utf8");
 
@@ -67,39 +58,10 @@ export function pairingLabel(entry: PairedHost): string {
   return [base, ...extra.map((s) => `+${s}`), ...missing.map((s) => `-${s}`)].join("");
 }
 
-interface ClientIdentity {
-  id: string;
-  name: string;
-  privateKey: KeyObject;
-  publicKey: string;
-}
-
 function writePrivate(path: string, data: string) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, data, { mode: 0o600 });
   chmodSync(path, 0o600);
-}
-
-function rawPublicKey(key: KeyObject): string {
-  return Buffer.from(key.export({ format: "jwk" }).x as string, "base64url").toString("base64");
-}
-
-export function fingerprint(publicKeyBase64: string): string {
-  const hex = createHash("sha256").update(publicKeyBase64, "utf8").digest("hex");
-  return hex.slice(0, 12).toUpperCase().match(/.{1,4}/g)!.join("-");
-}
-
-export function clientIdentity(path = CLIENT_FILE): ClientIdentity {
-  let stored: { id: string; name: string; privateKey: Record<string, unknown> };
-  if (existsSync(path)) {
-    stored = JSON.parse(readFileSync(path, "utf8"));
-  } else {
-    const { privateKey } = generateKeyPairSync("x25519");
-    stored = { id: randomUUID(), name: hostname().replace(/\.local$/, ""), privateKey: privateKey.export({ format: "jwk" }) as Record<string, unknown> };
-    writePrivate(path, JSON.stringify(stored, null, 2));
-  }
-  const privateKey = createPrivateKey({ key: stored.privateKey as never, format: "jwk" });
-  return { id: stored.id, name: stored.name, privateKey, publicKey: rawPublicKey(createPublicKey(privateKey)) };
 }
 
 function readPairedHosts(path = PAIRED_HOSTS_FILE): Record<string, PairedHost> {
@@ -149,7 +111,7 @@ export function signUpgrade(key: Buffer, path: string, clientID: string, timesta
 export function pairingHeaders(endpoint: { host: string; port: number }, path = "/"): string[] {
   const paired = pairedHost(endpoint);
   if (!paired) return [];
-  const client = clientIdentity();
+  const client = deviceIdentity();
   const timestamp = new Date().toISOString();
   const nonce = randomBytes(16).toString("hex");
   const signature = signUpgrade(signingKey(client.privateKey, paired.hostPublicKey), path, client.id, timestamp, nonce);
@@ -163,7 +125,7 @@ export function pairingHeaders(endpoint: { host: string; port: number }, path = 
 
 /** clients.pair parameters for this machine. */
 export function pairingRequest(scope: "read" | "act" | "drive", scopes: PairingScope[] = []) {
-  const client = clientIdentity();
+  const client = deviceIdentity();
   return {
     params: { clientID: client.id, clientName: client.name, publicKey: client.publicKey, platform: platform(), scope, ...(scopes.length ? { scopes } : {}) },
     fingerprint: fingerprint(client.publicKey),

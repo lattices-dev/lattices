@@ -212,7 +212,8 @@ gateway described in [packages/gateway](../gateway/README.md):
 The gateway stores exact `product:method` grants. Its scopes (`read`,
 `screen`, `act`, `drive`, `shell`) and their shorthands are in the gateway
 README. Its trust records live in `~/.lattices/gateway`. The client side lives
-in `~/.lattices/client.json` (its key and id) and `~/.lattices/paired-hosts.json`
+in the device identity (`~/.lattices/identity/device.json`, see
+`docs/security-identity.md`) and `~/.lattices/paired-hosts.json`
 (each host's public key and the scopes it granted), keyed by `address:port`
 and matched by the host's tailnet name too, so `--host archie` and
 `--host 100.x.y.z` share a pairing. This works the same from macOS or Linux.
@@ -288,9 +289,9 @@ Actions: `layout.placeFrontmost`, `switch.focusItem`, `keys.send`,
 `spaces.focusIndex`, `spaces.focusRelative`, `displays.focus`. Mac-only
 bridge actions (voice, Talkie, layers) answer "Not available on Linux".
 
-The bridge identity and trusted devices live in `~/.lattices/host/`
-(`bridge-key.json`, `bridge-devices.json`, both 0600). `--no-bridge` turns
-it off.
+The bridge serves with the device identity
+(`~/.lattices/identity/device.json`). Its trusted devices live in
+`~/.lattices/host/bridge-devices.json` (0600). `--no-bridge` turns it off.
 
 ## Tests
 

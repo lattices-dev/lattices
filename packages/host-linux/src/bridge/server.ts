@@ -10,7 +10,8 @@ import { hasCommand } from "../exec.ts";
 import { PairingApprovals } from "./approval.ts";
 import * as deck from "./deck.ts";
 import { join } from "node:path";
-import { BridgeSecurity, BridgeSecurityError, CAPABILITIES, DEFAULT_CAPABILITIES, loadOrCreateBridgeKey, type AuthorizedRequest, type PairingRequest } from "./security.ts";
+import { deviceIdentity } from "../../../desktop-client/device-identity.ts";
+import { BridgeSecurity, BridgeSecurityError, CAPABILITIES, DEFAULT_CAPABILITIES, type AuthorizedRequest, type PairingRequest } from "./security.ts";
 import { VisitChannel, Visits } from "./visit-channel.ts";
 import { ENDED_HERE, startVisitControl } from "./visit-control.ts";
 import { QuickshellVisitorOverlay } from "./visitor-overlay.ts";
@@ -65,7 +66,8 @@ export function startBridge(options: BridgeOptions) {
     options.security ??
     new BridgeSecurity({
       bridgeName: name,
-      ...(options.stateDir ? { privateKey: loadOrCreateBridgeKey(join(options.stateDir, "bridge-key.json")), devicesPath: join(options.stateDir, "bridge-devices.json") } : {}),
+      privateKey: deviceIdentity(options.stateDir).privateKey,
+      ...(options.stateDir ? { devicesPath: join(options.stateDir, "bridge-devices.json") } : {}),
       approve: (request, kind, additions) => {
         options.log(`pairing ${kind} from ${request.deviceName} (${request.deviceID}); approve in the notification or with bridge.pairing.approve`);
         return approvals.request(request, kind, additions);

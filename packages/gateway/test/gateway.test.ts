@@ -16,7 +16,7 @@ import { serve } from "../../host-linux/src/server.ts";
 import { daemonCallTo } from "../../desktop-client/daemon-client.ts";
 import { localEndpoint } from "../../desktop-client/local-ipc.ts";
 import { currentRequestContext } from "../../host-linux/src/request-context.ts";
-import { loadOrCreateBridgeKey } from "../../host-linux/src/bridge/security.ts";
+import { loadOrCreateKeyFile } from "../../host-linux/src/bridge/security.ts";
 import { appendAudit } from "../src/audit.ts";
 import { callProduct, canvasSocketPath } from "../src/products.ts";
 
@@ -339,11 +339,11 @@ test("private token and pairing key reject linked files", () => {
     const token = join(root, "token"); privateToken(token);
     linkSync(token, join(root, "linked-token"));
     expect(() => privateToken(token)).toThrow("Unsafe IPC token");
-    const key = join(root, "key.json"); loadOrCreateBridgeKey(key);
+    const key = join(root, "key.json"); loadOrCreateKeyFile(key);
     symlinkSync(key, join(root, "key-link.json"));
-    expect(() => loadOrCreateBridgeKey(join(root, "key-link.json"))).toThrow();
+    expect(() => loadOrCreateKeyFile(join(root, "key-link.json"))).toThrow();
     linkSync(key, join(root, "key-hardlink.json"));
-    expect(() => loadOrCreateBridgeKey(key)).toThrow("Unsafe pairing state");
+    expect(() => loadOrCreateKeyFile(key)).toThrow("Unsafe pairing state");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

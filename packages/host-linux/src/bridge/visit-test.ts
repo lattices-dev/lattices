@@ -1,7 +1,7 @@
-import { createPublicKey, createHash, randomUUID, type KeyObject } from "node:crypto";
+import { createHash, randomUUID, type KeyObject } from "node:crypto";
 import { join } from "node:path";
 import {
-  CAPABILITIES, HEADERS, STATE_DIR, canonicalRequest, deriveKeys, fingerprint, loadOrCreateBridgeKey,
+  CAPABILITIES, HEADERS, STATE_DIR, canonicalRequest, deriveKeys, fingerprint, loadOrCreateKeyFile,
   openVisitFrame, publicKeyFromBase64, rawPublicKey, sealVisitFrame, sign, type PairingResponse,
 } from "./security.ts";
 import type { VisitDown, VisitUp } from "./visit.ts";
@@ -23,7 +23,7 @@ export class VisitTestClient {
   readonly publicKey: string;
   private keys: ReturnType<typeof deriveKeys> | null = null;
   constructor(readonly base: string, private privateKey: KeyObject, readonly name = "visit-test") {
-    this.publicKey = rawPublicKey(createPublicKey(privateKey)).toString("base64");
+    this.publicKey = rawPublicKey(privateKey).toString("base64");
     this.deviceID = `visit-test-${createHash("sha256").update(this.publicKey).digest("hex").slice(0, 20)}`;
   }
 
@@ -138,7 +138,7 @@ export async function runVisitTest(argv: string[]) {
   }
   if (!host) throw new Error("Usage: lattices-host visit-test --host TAILNET_HOST:9399 [--name NAME] [--identity PATH]");
   if (!host.includes(":")) host += ":9399";
-  const client = new VisitTestClient(`http://${host}`, loadOrCreateBridgeKey(identity), name);
+  const client = new VisitTestClient(`http://${host}`, loadOrCreateKeyFile(identity), name);
   await client.pair();
   const visit = await client.connect();
   const stop = () => visit.close();

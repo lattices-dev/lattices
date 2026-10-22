@@ -41,7 +41,7 @@ const sha256 = (file: string) => createHash("sha256").update(readFileSync(file))
 try {
   mkdirSync(stagedActionRoot, { recursive: true });
   const sourceDependencies: Record<string, string> = {};
-  for (const dependency of ["bin/host-pairing.ts", "packages/desktop-client/host-pairing.ts"]) {
+  for (const dependency of ["bin/host-pairing.ts", "packages/desktop-client/host-pairing.ts", "packages/desktop-client/device-identity.ts"]) {
     const source = resolve(root, "../..", dependency);
     const target = join(staging, dependency);
     mkdirSync(dirname(target), { recursive: true });
