@@ -4,9 +4,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import packageInfo from "../package.json";
+// The host ships as part of the lattices release, so it reports the repo's
+// release version (root package.json), not the private workspace package's.
+import { version as releaseVersion } from "../../../package.json";
 
-export const VERSION = packageInfo.version;
+export const VERSION: string = releaseVersion;
 export interface BuildIdentity {
   version: string;
   commit: string | null;
@@ -25,7 +27,7 @@ export function sourceBuildIdentity(root = sourceRoot): BuildIdentity {
   };
   const commit = git("rev-parse", "--verify", "HEAD");
   if (!commit || !/^[0-9a-f]{40,64}$/.test(commit)) return unknown;
-  const status = git("status", "--porcelain", "--untracked-files=normal", "--", "packages/host-linux");
+  const status = git("status", "--porcelain", "--untracked-files=normal", "--", "packages/host-linux", "package.json");
   return { version: VERSION, commit, dirty: status === null ? null : status.length > 0 };
 }
 

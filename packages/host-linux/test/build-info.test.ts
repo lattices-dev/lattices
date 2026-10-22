@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILD_IDENTITY, VERSION, sourceBuildIdentity } from "../src/build-info.ts";
-import packageInfo from "../package.json";
+import releaseInfo from "../../../package.json";
 import { capabilities, registerEndpoints } from "../src/endpoints.ts";
 import { Router } from "../src/router.ts";
 
@@ -14,8 +14,8 @@ function git(root: string, ...args: string[]) {
   return result.stdout.trim();
 }
 
-test("build version comes from package metadata; identity is immutable", () => {
-  expect(VERSION).toBe(packageInfo.version);
+test("build version is the lattices release version; identity is immutable", () => {
+  expect(VERSION).toBe(releaseInfo.version);
   expect(BUILD_IDENTITY.version).toBe(VERSION);
   expect(Object.isFrozen(BUILD_IDENTITY)).toBe(true);
 });
