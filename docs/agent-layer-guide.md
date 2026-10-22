@@ -163,7 +163,7 @@ lats call layers.delete '{"layer":"old-layer"}'
 When a user says something high-level, here's how to think about it:
 
 ### "Make me a coding layer"
-1. Find terminal windows (iTerm2, Terminal, Warp, etc.)
+1. Find terminal windows (iTerm2, Terminal, Ghostty, kitty, Warp, etc.)
 2. Find browser windows with dev-related titles (GitHub, docs, localhost)
 3. Main editor/terminal on `left`, reference material on `right`
 

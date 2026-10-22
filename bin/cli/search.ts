@@ -5,7 +5,7 @@ import { normalizePlacement } from "./window.ts";
 export interface SearchResult {
   score: number;
   window: any;
-  tabs: { tab: number; cwd: string; title: string; hasClaude: boolean; tmuxSession: string }[];
+  tabs: { tab: number; cwd: string; title: string; hasClaude: boolean; tmuxSession: string; attribution?: string }[];
   reasons: string[];
 }
 
@@ -46,6 +46,7 @@ export async function searchWithClient(client: DaemonClient, query: string, opts
     window: w,
     tabs: (w.terminalTabs || []).map((t: any) => ({
       tab: t.tabIndex, cwd: t.cwd, title: t.tabTitle, hasClaude: t.hasClaude, tmuxSession: t.tmuxSession,
+      attribution: t.attribution,
     })),
     reasons: w.matchSources || (w.matchSource ? [w.matchSource] : []),
   }));
@@ -68,7 +69,9 @@ export function printResults(ranked: SearchResult[]): void {
     for (const t of r.tabs) {
       const claude = t.hasClaude ? " \x1b[32m●\x1b[0m" : "";
       const tmux = t.tmuxSession ? ` \x1b[36m[${t.tmuxSession}]\x1b[0m` : "";
-      console.log(`    tab ${t.tab}: ${t.cwd || t.title}${claude}${tmux}`);
+      // An app-level match knows the terminal app, not which of its windows holds the tab.
+      const label = t.attribution === "app" ? "somewhere in this app" : `tab ${t.tab ?? "?"}`;
+      console.log(`    ${label}: ${t.cwd || t.title}${claude}${tmux}`);
     }
     if (w.ocrSnippet) console.log(`    ocr: "${w.ocrSnippet}"`);
   }
@@ -132,8 +135,10 @@ export async function searchCommand(
 
 export async function placeWithClient(client: DaemonClient, query: string, placement: string, dryRun: boolean) {
   const ranked = await searchWithClient(client, query, { sources: ["all"] });
-  if (!ranked.length) return null;
-  const window = ranked[0].window;
+  // A result found only because its app owns a matching TTY names no window; don't move it.
+  const top = ranked.find(r => r.reasons.some(reason => reason !== "terminal-app"));
+  if (!top) return null;
+  const window = top.window;
   if (!dryRun) await client.daemonCall("windows.focus", { wid: window.wid });
   const receipt = await client.daemonCall("windows.place", { wid: window.wid, placement, dryRun }, 3000);
   return { status: dryRun ? "planned" : "ok", window: { wid: window.wid, app: window.app, title: window.title }, placement, receipt };
