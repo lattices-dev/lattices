@@ -21,6 +21,38 @@ enum Terminal: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The terminal a bundle ID belongs to. Warp ships Stable, Preview and
+    /// other channels under `dev.warp.Warp-*`.
+    static func from(bundleId: String) -> Terminal? {
+        if bundleId.hasPrefix("dev.warp.Warp") { return .warp }
+        if bundleId.hasPrefix("com.mitchellh.ghostty") { return .ghostty }
+        return allCases.first { $0.bundleId == bundleId }
+    }
+
+    /// The terminal a CGWindowList owner name belongs to. Owner names are
+    /// the apps' display names, which do not always match our raw values
+    /// ("kitty", "iTerm 2").
+    static func from(windowApp app: String) -> Terminal? {
+        switch app.lowercased() {
+        case "terminal": return .terminal
+        case "iterm2", "iterm 2", "iterm": return .iterm2
+        case "warp", "warppreview", "warp preview": return .warp
+        case "ghostty": return .ghostty
+        case "kitty": return .kitty
+        case "alacritty": return .alacritty
+        default: return nil
+        }
+    }
+
+    /// The terminal whose app bundle holds the executable at the start of a
+    /// process command line, e.g. "/Applications/Ghostty.app/Contents/MacOS/ghostty".
+    static func from(executable args: String) -> Terminal? {
+        guard let marker = args.range(of: ".app/Contents/MacOS/") else { return nil }
+        let bundlePath = args[args.startIndex..<marker.lowerBound]
+        let name = bundlePath.split(separator: "/").last.map(String.init) ?? ""
+        return from(windowApp: name)
+    }
+
     var isInstalled: Bool {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil
     }

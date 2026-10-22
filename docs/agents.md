@@ -37,7 +37,7 @@ family. Skills live under [`skills/`](https://github.com/lattices-dev/lattices/t
 | --- | --- |
 | `lattices` | Workspace control, tiling, sessions, screen text |
 | `action` | Native observe / resolve / act / record |
-| `voice` | The `voice` domain: spoken commands, voice intents, and speech output through Speech |
+| `voice` | The `voice` domain: spoken commands, voice intents, and speech output through the Voice app |
 | `blink` | Spatial notes through the `blink` CLI |
 
 ```bash
@@ -56,7 +56,7 @@ The `browser_*` tools come from `lats mcp`, not from a plugin. The
 Each product owns its own work. [Concepts](/lattices/docs/concepts#where-commands-go)
 lists every `lats` command, the process that receives it, and the product
 that does the work. Product docs: [Action](/action/docs/overview),
-[Canvas](/canvas/docs/overview), [Speech](/speech/docs/overview).
+[Canvas](/canvas/docs/overview), [Voice](/voice/docs/overview).
 
 To install the Action product itself, run `lattices action install`. It
 downloads the latest signed `Action.app` release to `/Applications`.

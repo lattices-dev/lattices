@@ -123,7 +123,7 @@ test('publishes all product skills, exact digests, and an honest documentation-o
     assert.deepEqual(coverage.skills.find((skill) => skill.name === 'voice').products, ['lattices', 'speech'])
     const voice = await readFile(join(data.distDir, '/.well-known/agent-skills/voice/SKILL.md'), 'utf8')
     assert.match(voice, /Lattices owns listening/)
-    assert.match(voice, /Speech owns spoken output/)
+    assert.match(voice, /Voice owns spoken output/)
     assert.match(voice, /lats voice status --json/)
     assert.doesNotMatch(voice, /voice-command-protocol|\/archive\//)
     assert.deepEqual((await readdir(join(data.distDir, '.well-known'))).sort(), ['agent-skills', 'ai-catalog.json'])

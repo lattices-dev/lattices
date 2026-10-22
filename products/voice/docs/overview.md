@@ -1,15 +1,16 @@
 ---
 title: Overview
-description: Speech queues and plays spoken updates from agents and scripts. Its macOS app is Voice.app, a separate process from Lattices.
+description: Voice queues and plays spoken updates from agents and scripts. Its macOS app, Voice.app, is a separate process from Lattices.
 ---
 
-Speech is the Lattices family product for spoken output. Agents and scripts
-send text. Speech queues the text, renders audio, and plays it with an optional
+Voice is the Lattices family product for spoken output. Agents and scripts
+send text. Voice queues the text, renders audio, and plays it with an optional
 readalong HUD. Playback continues after the requesting process disconnects.
 
-The macOS app is named **Voice**. Speech is the public product name.
+Voice is both the product name and the macOS app name. It keeps some
+identifiers from its earlier Speech name. See [Stable identifiers](#stable-identifiers).
 
-## What Speech owns
+## What Voice owns
 
 Voice.app is a menu bar app (`LSUIElement`) with its own process, settings, and
 local RPC server. Voice.app owns:
@@ -32,14 +33,14 @@ Voice.app starts, runs, and quits independently of Lattices.
 - If Voice.app is not running, Lattices speech output requests fail with an
   error. Lattices does not use a fallback voice.
 
-## Speech output and voice input are separate
+## Voice output and Lattices voice input are separate
 
 The family `voice` domain covers two directions. Different processes serve
 each direction.
 
 | Direction | Commands | Process | Address |
 | --- | --- | --- | --- |
-| Output (speaking) | `voice.say`, `voice.stop`, `voice.pause`, `voice.list`, and related verbs | Voice.app (Speech) | `~/.lattices/run/speech.sock` |
+| Output (speaking) | `voice.say`, `voice.stop`, `voice.pause`, `voice.list`, and related verbs | Voice.app | `~/.lattices/run/speech.sock` |
 | Input (listening) | `voice.listen`, `voice.stopListening`, `voice.simulate` | Lattices menu bar app | `~/.lattices/run/voice.sock` |
 | Agent API gateway | All `voice.*` verbs | Lattices core daemon | `~/.lattices/run/lattices.sock` |
 
@@ -52,7 +53,7 @@ For the listening side, see [Lattices voice](/lattices/docs/voice).
 
 ### Private connection
 
-Speech 0.3.0 and Lattices 0.15.1 use private Unix sockets in
+Voice 0.3.0 and Lattices 0.15.1 use private Unix sockets in
 `~/.lattices/run`.
 
 | Direction | Endpoint |
@@ -63,8 +64,8 @@ Speech 0.3.0 and Lattices 0.15.1 use private Unix sockets in
 
 The routing and the independent lifecycles do not change. Voice.app opens
 `127.0.0.1:9397` only when it starts with `LATTICES_SPEECH_TCP=1`. Remote
-machines reach Speech only through the opt-in Lattices tailnet gateway, with an
-approved grant such as `speech:speech.enqueue`. See [API](/speech/docs/api#private-connection).
+machines reach Voice only through the opt-in Lattices tailnet gateway, with an
+approved grant such as `speech:speech.enqueue`. See [API](/voice/docs/api#private-connection).
 
 ## Providers
 
@@ -94,6 +95,6 @@ clients depend on these values, so they do not change:
 
 ## Next steps
 
-- [Quickstart](/speech/docs/quickstart): install Voice.app and speak a first line.
-- [CLI](/speech/docs/cli): the commands that reach Speech and their playback semantics.
-- [API](/speech/docs/api): the direct `speech.*` RPC reference.
+- [Quickstart](/voice/docs/quickstart): install Voice.app and speak a first line.
+- [CLI](/voice/docs/cli): the commands that reach Voice and their playback semantics.
+- [API](/voice/docs/api): the direct `speech.*` RPC reference.

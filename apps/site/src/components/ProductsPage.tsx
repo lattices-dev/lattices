@@ -120,7 +120,7 @@ const products: FamilyProduct[] = [
     docs: '/lattices/docs',
     platform: 'macOS · Linux',
     label: 'Windows and sessions',
-    lede: 'The programmable workspace. Tile windows, switch workspace layers, keep terminal sessions running, and give spoken commands.',
+    lede: "Find any project's windows. Put them in place, for you or your agent. Tile windows, switch workspace layers, keep terminal sessions running, and give voice commands.",
     owns: ['Windows and tiling', 'Spaces and layers', 'tmux sessions', 'Screen text search', 'Voice input'],
     mark: <LatticesMark size={28} />,
     specimen: latticesSpecimen,
@@ -160,12 +160,12 @@ const products: FamilyProduct[] = [
   },
   {
     id: 'speech',
-    name: 'Speech',
-    href: '/speech',
-    docs: '/speech/docs',
+    name: 'Voice',
+    href: '/voice',
+    docs: '/voice/docs',
     platform: 'macOS menu bar',
     label: 'Spoken output',
-    lede: 'A standalone player for queued text. Agents and scripts queue the words; Speech picks the voice and plays them while you keep working.',
+    lede: 'A standalone player for queued text. Agents and scripts queue the words; Voice picks the voice and plays them while you keep working.',
     owns: ['The speech queue', 'Voices', 'Playback controls'],
     mark: <SpeechMark size={28} />,
     specimen: speechSpecimen,
@@ -180,7 +180,7 @@ export default function ProductsPage() {
         <header className="pf-head">
           <h1>Products</h1>
           <p className="pf-intro">
-            Lattices manages windows, workspaces, and terminal sessions. Action observes and controls apps and browsers. Canvas keeps spatial notes on your desktop. Speech plays queued text aloud. Each runs as its own app and has its own docs.
+            Lattices manages windows, workspaces, and terminal sessions. Action observes and controls apps and browsers. Canvas keeps spatial notes on your desktop. Voice plays queued text aloud. Each runs as its own app and has its own docs.
           </p>
           <nav className="pf-index" aria-label="Jump to a product">
             {products.map((product) => (

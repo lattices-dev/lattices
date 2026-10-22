@@ -159,7 +159,7 @@ export default function SiteApp() {
               <a href="/lattices/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
             </li>
             <li>
-              <a href="/products">Products</a> — Lattices, Action, Canvas, and Speech
+              <a href="/products">Products</a> — Lattices, Action, Canvas, and Voice
             </li>
             <li>
               <a href="/lattices/docs/api">Agent API</a> — WebSocket reference for agents and scripts
@@ -211,7 +211,7 @@ function resolveRoute(path: string): Route {
 
   if (path === '/') return { kind: 'home', ...copyFor('/') }
   if (path === '/action') return { kind: 'action', ...copyFor('/action') }
-  if (path === '/speech') return { kind: 'speech', ...copyFor('/speech') }
+  if (path === '/voice' || path === '/speech') return { kind: 'speech', ...copyFor('/voice') }
   if (path === '/linux') return { kind: 'linux', ...copyFor('/linux') }
   if (path === '/products') return { kind: 'products', ...copyFor('/products') }
   if (path === '/family') return { kind: 'products', ...copyFor('/products') }

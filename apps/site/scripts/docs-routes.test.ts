@@ -122,7 +122,7 @@ describe('source-aware documentation links', () => {
   test('resolves same-product and cross-product source links while retaining query and fragment', () => {
     expect(docLink('./api.md#methods', 'products/action/docs/overview.md')).toBe('/action/docs/api#methods')
     expect(docLink('../../../docs/mcp.md?format=html#tools', 'products/action/docs/overview.md')).toBe('/lattices/docs/mcp?format=html#tools')
-    expect(docLink('../products/voice/docs/api.md#protocol', 'docs/overview.md')).toBe('/speech/docs/api#protocol')
+    expect(docLink('../products/voice/docs/api.md#protocol', 'docs/overview.md')).toBe('/voice/docs/api#protocol')
     expect(docLink('./agent-api.md', 'products/blink/docs/overview.md')).toBe('/canvas/docs/markdown/archive/agent-api.md')
     expect(docLink('https://lattices.dev/docs/api#calls', 'products/action/docs/overview.md')).toBe('/lattices/docs/api#calls')
     expect(docLink('/docs/concepts?diagram=1#runtime', 'products/action/docs/overview.md')).toBe('/lattices/docs/concepts?diagram=1#runtime')

@@ -66,12 +66,29 @@ const canvasRoute: RouteMeta = {
   },
 }
 
+// The speech app is Voice; /speech stays as an alias. The download keeps its
+// Speech.dmg release asset.
+const voiceRoute: RouteMeta = {
+  path: '/voice',
+  title: 'Voice — a standalone player from Lattices',
+  description: 'Queue text, choose a voice, and control playback independently.',
+  priority: '0.9',
+  jsonLd: 'software',
+  software: {
+    name: 'Voice',
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'macOS',
+    downloadUrl: speechDownloadUrl,
+    softwareVersion: '0.2.0',
+  },
+}
+
 export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/',
-    title: 'Lattices — the programmable workspace for Mac',
+    title: "Lattices — find any project's windows and put them in place",
     description:
-      'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
+      "Find any project's windows. Put them in place, for you or your agent. A window manager for macOS and Linux that knows about projects, with shortcuts, a CLI and a local API.",
     priority: '1.0',
     jsonLd: 'home',
     software: latticesApp,
@@ -109,20 +126,8 @@ export const staticRoutes: readonly RouteMeta[] = [
   },
   canvasRoute,
   { ...canvasRoute, path: '/blink', canonicalPath: canvas.home, sitemap: false },
-  {
-    path: '/speech',
-    title: 'Speech — a standalone player from Lattices',
-    description: 'Queue text, choose a voice, and control playback independently.',
-    priority: '0.9',
-    jsonLd: 'software',
-    software: {
-      name: 'Speech',
-      applicationCategory: 'ProductivityApplication',
-      operatingSystem: 'macOS',
-      downloadUrl: speechDownloadUrl,
-      softwareVersion: '0.2.0',
-    },
-  },
+  voiceRoute,
+  { ...voiceRoute, path: '/speech', canonicalPath: voiceRoute.path, sitemap: false },
   {
     path: '/linux',
     title: 'Lattices for Linux — the same workspace, on Hyprland',
@@ -141,7 +146,7 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/products',
     title: 'Products — Lattices',
-    description: 'Find each product and its documentation: Lattices, Action, Canvas, and Speech.',
+    description: 'Find each product and its documentation: Lattices, Action, Canvas, and Voice.',
     priority: '0.9',
     jsonLd: 'none',
   },
@@ -158,7 +163,7 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/brand',
     title: 'Brand — Lattices',
-    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Canvas and Speech.',
+    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Canvas and Voice.',
     priority: '0.6',
     jsonLd: 'none',
   },
