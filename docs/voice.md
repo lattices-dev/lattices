@@ -204,10 +204,17 @@ Hands-off voice uses the shared inference wrapper in `bin/infer.ts`.
 By default it chooses the lowest-latency configured provider and, when
 Groq credentials are present, uses `groq/llama-3.1-8b-instant`.
 
-Credentials are read from process env, `.env.local`, `.env`,
-`~/.lattices/inference.json`, then the macOS Keychain.
-For Groq, either `GROQ_API_KEY` or the common typo `GROK_API_KEY` works
-when the key has Groq's `gsk_` prefix.
+Provider keys are read from the process env (`GROQ_API_KEY`,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`,
+`XAI_API_KEY`, `MINIMAX_API_KEY`), then from the macOS Keychain under the
+service `lattices.inference`, one account per provider. Lattices does not
+read `.env` files. Store a key without putting it on a command line:
+
+```bash
+security add-generic-password -U -s lattices.inference -a groq -w
+```
+
+Every variable Lattices reads is declared in `.env.schema`.
 
 Override the voice engine if needed:
 

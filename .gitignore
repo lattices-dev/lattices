@@ -91,3 +91,6 @@ apps/ios/.artifacts/
 .agent/
 .agents/
 .impeccable/
+
+# Declares env vars without values; everything else under .env* stays ignored.
+!.env.schema

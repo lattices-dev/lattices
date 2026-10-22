@@ -112,6 +112,7 @@ final class DaemonServer: ObservableObject {
                 var bound = sockaddr_in(); var length = socklen_t(MemoryLayout<sockaddr_in>.size)
                 withUnsafeMutablePointer(to: &bound) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { _ = getsockname(serverFd, $0, &length) } }
                 listeningPort = UInt16(bigEndian: bound.sin_port)
+                diag.warn("DaemonServer: loopback TCP on port \(listeningPort); any local process can reach it with the token. Unset LATTICES_ALLOW_LOOPBACK_TCP to return to the socket.")
             }
             authToken = try endpointLease!.publishToken(at: tokenURL)
         } catch {
