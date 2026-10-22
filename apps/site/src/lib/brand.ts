@@ -14,7 +14,7 @@ export interface RouteBrand {
 
 // Canvas retains the existing artwork filenames during the public rename.
 const productSections: Readonly<Record<string, BrandSlug>> = {
-  action: 'action', canvas: 'blink', blink: 'blink', speech: 'speech',
+  action: 'action', canvas: 'blink', blink: 'blink', speech: 'speech', voice: 'speech',
 }
 
 const ogImageOverrides: Readonly<Record<string, string>> = {

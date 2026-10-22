@@ -8,7 +8,7 @@ export default function FamilyPage() {
       <main>
         <section className="family-hero" aria-labelledby="family-title">
           <div className="family-hero-copy">
-            <p className="family-kicker">A programmable workspace for macOS</p>
+            <p className="family-kicker">A window manager that knows about projects</p>
             <h1 id="family-title">Shape the desktop around the work.</h1>
             <p>
               Arrange windows, launch the right tools, and return to a complete working
@@ -61,12 +61,12 @@ export default function FamilyPage() {
         />
 
         <CapabilitySection
-          label="Speech"
+          label="Voice"
           kicker="A voice for agents"
           title="Smart voice readouts with HUD readalong if you want it."
-          description="A unified API for agents to say things out loud — a task finishes and its summary is queued and spoken in the background, across every agent you run. Powered by Lattices, it can go further: ambient readouts like your download finished."
-          product="Meet Speech"
-          href="/speech"
+          description="One local API for agents to say things out loud. A task finishes, and its summary is queued and spoken in the background, whichever agent ran it. With Lattices it can also read out events, like a finished download."
+          product="Meet Voice"
+          href="/voice"
           visual={<SpeechVisual />}
         />
 
@@ -79,7 +79,7 @@ export default function FamilyPage() {
             <a href="/">Lattices</a>
             <a href="/action">Action</a>
             <a href="/canvas">Canvas</a>
-            <a href="/speech">Speech</a>
+            <a href="/voice">Voice</a>
           </nav>
         </section>
       </main>

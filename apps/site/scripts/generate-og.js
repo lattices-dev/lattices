@@ -254,13 +254,13 @@ function apiPreview() {
     </div>`;
 }
 
-// The /speech page's two visuals on one desk: the queue window, and the HUD
+// The /voice page's two visuals on one desk: the queue window, and the HUD
 // reading along over the workspace, spoken words lit like the mark's bars.
 function speechPreview() {
   return `
     <div class="speech-desk">
       <div class="speech-window">
-        <div class="chrome">${lights()}<span class="chrome-title">Speech</span><span class="chrome-meta">voice af_heart</span></div>
+        <div class="chrome">${lights()}<span class="chrome-title">Voice</span><span class="chrome-meta">voice af_heart</span></div>
         <div class="speech-queue">
           <div class="is-playing"><span>▶</span><strong>Agent summary — release build</strong><time>02:14</time></div>
           <div><span>02</span><strong>Download finished</strong><time>00:08</time></div>
@@ -390,8 +390,8 @@ const pages = [
   {
     filename: "og-speech.png",
     product: "speech",
-    tag: "lattices.dev/speech",
-    title: "speech",
+    tag: "lattices.dev/voice",
+    title: "voice",
     subtitle:
       "Queue text, choose a voice, and control playback independently.",
     preview: speechPreview,

@@ -10,7 +10,7 @@
         "guide": "/lattices/docs/agents",
         "firstCheck": "lats call api.schema",
         "expect": "The daemon method list. Then read `lats call desktop.snapshot` before you move any window.",
-        "boundary": "Lattices owns windows, tiling, spaces, workspace layers, tmux sessions, screen text, and voice input. Native app control is Action; notes are Canvas; spoken output is Speech."
+        "boundary": "Lattices owns windows, tiling, spaces, workspace layers, tmux sessions, screen text, and voice input. Native app control is Action; notes are Canvas; spoken output is Voice."
       },
       "docsHome": "/lattices/docs"
     },
@@ -42,16 +42,16 @@
     },
     {
       "id": "speech",
-      "title": "Speech",
+      "title": "Voice",
       "description": "Queue text, choose voices, and control playback.",
-      "home": "/speech",
+      "home": "/voice",
       "agent": {
-        "guide": "/speech/docs/agents",
+        "guide": "/voice/docs/agents",
         "firstCheck": "lats voice status --json",
         "expect": "A `helper` section with the Voice.app queue, or an error code with a recovery step. This check makes no sound.",
-        "boundary": "Speech owns spoken output: the queue, voices, and playback. Listening and spoken commands are Lattices voice input."
+        "boundary": "Voice owns spoken output: the queue, voices, and playback. Listening and spoken commands are Lattices voice commands."
       },
-      "docsHome": "/speech/docs"
+      "docsHome": "/voice/docs"
     }
   ],
   "pages": [
@@ -2337,8 +2337,10 @@
       "source": "products/voice/docs/overview.md",
       "title": "Overview",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/overview",
+      "canonicalPath": "/voice/docs/overview",
       "aliases": [
+        "/speech/docs/overview",
+        "/voice/docs",
         "/speech/docs"
       ],
       "navGroup": "Start here",
@@ -2353,8 +2355,10 @@
       "source": "products/voice/docs/quickstart.md",
       "title": "Quickstart",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/quickstart",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/quickstart",
+      "aliases": [
+        "/speech/docs/quickstart"
+      ],
       "navGroup": "Start here",
       "agent": true,
       "rawAliases": [],
@@ -2367,8 +2371,10 @@
       "source": "products/voice/docs/agents.md",
       "title": "For agents",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/agents",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/agents",
+      "aliases": [
+        "/speech/docs/agents"
+      ],
       "navGroup": "Start here",
       "agent": true,
       "rawAliases": [],
@@ -2381,8 +2387,10 @@
       "source": "products/voice/docs/cli.md",
       "title": "CLI reference",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/cli",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/cli",
+      "aliases": [
+        "/speech/docs/cli"
+      ],
       "navGroup": "Reference",
       "agent": true,
       "rawAliases": [],
@@ -2395,8 +2403,10 @@
       "source": "products/voice/docs/api.md",
       "title": "API reference",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/api",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/api",
+      "aliases": [
+        "/speech/docs/api"
+      ],
       "navGroup": "Reference",
       "agent": true,
       "rawAliases": [],

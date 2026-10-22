@@ -171,6 +171,7 @@ const footerMarks: Record<string, ReactNode> = {
   ),
   '/canvas': <BlinkMark width={14} height={14} />,
   '/blink': <BlinkMark width={14} height={14} />,
+  '/voice': <SpeechMark size={14} />,
   '/speech': <SpeechMark size={14} />,
 }
 
@@ -190,7 +191,7 @@ export function SiteFooter({ current, className }: SiteFooterProps) {
               <LatticesMark size={22} />
               <span>lattices</span>
             </a>
-            <p>The programmable workspace for macOS and Linux. Free, open source, and local first.</p>
+            <p>Find any project's windows. Put them in place, for you or your agent. Free, open source, and local first.</p>
           </div>
           {footerColumns.map((column) => (
             <div className="site-footer-col" key={column.title}>
