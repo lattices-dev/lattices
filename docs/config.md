@@ -148,6 +148,7 @@ Run `lats init` in your project directory to generate a starter
 | `lats app update`        | Swap in the latest app release only (not the CLI) |
 | `lats app build`         | Rebuild the menu bar app from source              |
 | `lats app restart`       | Rebuild and relaunch the menu bar app             |
+| `lats app quit`          | Stop the menu bar app                             |
 | `lats layer [name\|slot]` | Switch to a workspace layer by name or pad slot (1-4, 6-9) |
 | `lats windows [--json]`  | List all visible windows                          |
 | [`lats map [--json]`](/docs/workspace-map) | Read-only current-Space terminal/JSON map |
@@ -168,18 +169,9 @@ Run `lats init` in your project directory to generate a starter
 | `lats action install`    | Download the latest Action.app release to /Applications |
 | `lats action launch`     | Open Action.app (`--launch` also works on install) |
 | `lats action quit`       | Quit Action.app                                   |
-| `lats action call <m>`   | Raw Action agent call (ws://127.0.0.1:4319)       |
+| `lats action call <m>`   | Raw Action agent call over its private socket     |
 | `lats action <cmd>`      | Forward to the Action CLI (monorepo checkout)     |
 | `lattices diag [limit]`       | Show recent diagnostic entries                   |
-| `lats app`               | Launch the menu bar companion app                 |
-| `lats app install`       | Register launch-at-login and start now            |
-| `lats app login status`  | Show launch-at-login registration                 |
-| `lats app login disable` | Disable launch-at-login                           |
-| `lats update`            | Update lattices (CLI + app), keep startup, relaunch |
-| `lats app update`        | Swap in the latest app release only (not the CLI) |
-| `lats app build`         | Rebuild the menu bar app from source              |
-| `lats app restart`       | Rebuild and relaunch the menu bar app             |
-| `lats app quit`          | Stop the menu bar app                             |
 | `lats help`              | Show help                                         |
 
 Aliases: `ls`/`list`, `kill`/`rm`, `sync`/`reconcile`,
