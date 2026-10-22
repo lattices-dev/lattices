@@ -538,13 +538,13 @@
       "slug": "cluster-verbs",
       "source": "docs/cluster-verbs.md",
       "title": "Paired hosts",
-      "kind": "guide",
-      "canonicalPath": "/lattices/docs/cluster-verbs",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/cluster-verbs",
       "aliases": [
         "/docs/cluster-verbs"
       ],
-      "navGroup": "Agents and integrations",
-      "agent": true,
+      "navGroup": null,
+      "agent": false,
       "rawAliases": [
         "/docs/markdown/cluster-verbs.md",
         "/agent/raw/docs/cluster-verbs.md"
