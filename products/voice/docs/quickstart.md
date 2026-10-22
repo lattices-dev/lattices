@@ -6,7 +6,7 @@ description: Install Voice.app, confirm that Lattices can reach it, and speak a 
 ## Prerequisites
 
 - macOS 26 or later.
-- Apple silicon, if you use the `kokoro` provider.
+- Apple silicon, if you use the `phonon` provider.
 - The Lattices CLI and menu bar app. See the
   [Lattices quickstart](/lattices/docs/quickstart).
 
@@ -54,20 +54,20 @@ lats voice say "Build finished"
 The command prints the job state and job id, for example `queued <id>`. The
 command returns when Voice.app accepts the job, not when playback ends.
 
-To use the on-device Kokoro provider:
+To use the on-device Phonon provider:
 
 ```sh
-lats voice say "The tests passed" --provider kokoro
+lats voice say "The tests passed" --provider phonon
 ```
 
-The first Kokoro request downloads the model and voice assets. Later requests
-render locally.
+The first Phonon request downloads the model (137 MB) and prepares it for this
+Mac, which takes about 20 seconds. Later requests render locally.
 
 ## Choose a default voice
 
 ```sh
 lats voice list
-lats voice select af_heart --provider kokoro
+lats voice select Maeve --provider phonon
 ```
 
 `select` sets the voice that a provider uses when a request names no voice.

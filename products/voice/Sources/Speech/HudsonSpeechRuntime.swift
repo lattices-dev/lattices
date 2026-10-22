@@ -21,16 +21,16 @@ struct LatticesSpeechCredentialSource: HudTTSCredentialSource {
 final class HudsonSpeechSynthesizer: SpeechSynthesizing {
     private let tts: HudTTS
     private let cache: HudSpeechCache
-    private let kokoro: any SpeechKokoroSynthesizing
+    private let phonon: any SpeechLocalSynthesizing
 
     init(
         tts: HudTTS,
         cache: HudSpeechCache,
-        kokoro: (any SpeechKokoroSynthesizing)? = nil
+        phonon: (any SpeechLocalSynthesizing)? = nil
     ) {
         self.tts = tts
         self.cache = cache
-        self.kokoro = kokoro ?? SpeechKokoro.shared
+        self.phonon = phonon ?? SpeechPhonon.shared
     }
 
     func synthesize(_ request: SpeechSynthesisRequest) async throws -> SpeechAudioPayload {
@@ -43,18 +43,20 @@ final class HudsonSpeechSynthesizer: SpeechSynthesizing {
                 useSpeakerBoost: $0.useSpeakerBoost
             )
         }
+        let local: (any SpeechLocalSynthesizing)? = switch request.provider {
+        case SpeechProviders.phonon: phonon
+        default: nil
+        }
         let defaultVoice = request.provider == SpeechProviders.system
             ? HudSystemSpeechDefaults.defaultVoiceIdentifier
-            : request.provider == SpeechProviders.kokoro
-                ? kokoro.cachedStatus().voiceId
-                : nil
-        // Kokoro renders are cached under the engine's model id. Renders from
+            : local?.cachedStatus().voiceId
+        // Local renders are cached under the engine's model id. Renders from
         // the retired mlx-audio engine, cached without one, never replay.
         var model = request.model
-        if request.provider == SpeechProviders.kokoro,
+        if let local,
            (model ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || model?.lowercased().contains("kokoro") == true {
-            model = kokoro.cachedStatus().modelId
+            || model?.lowercased().contains(request.provider) == true {
+            model = local.cachedStatus().modelId
         }
         let synthesis = HudTTSRequest(
             text: request.text,
@@ -67,9 +69,9 @@ final class HudsonSpeechSynthesizer: SpeechSynthesizing {
         let result = try await cache.synthesize(
             synthesis, providerID: providerID, namespace: "dev.lattices.app.voice",
             policy: request.cachePolicy == .fresh ? .fresh : .reuse
-        ) { [tts, kokoro] input, provider in
-            if provider.rawValue == SpeechProviders.kokoro {
-                return try await kokoro.synthesize(
+        ) { [tts, local] input, provider in
+            if let local {
+                return try await local.synthesize(
                     text: input.text,
                     voice: input.voice,
                     rate: input.rate,
@@ -148,16 +150,16 @@ final class HudsonSpeechPlayerAdapter: SpeechPlaying {
 final class HudsonSpeechVoiceCatalog: SpeechVoiceListing {
     private let credentialSource: LatticesSpeechCredentialSource
     private let adapters: [any HudTTSProviderAdapter]
-    private let kokoro: any SpeechKokoroSynthesizing
+    private let phonon: any SpeechLocalSynthesizing
 
     init(
         credentialSource: LatticesSpeechCredentialSource = LatticesSpeechCredentialSource(),
         adapters: [any HudTTSProviderAdapter] = SpeechProviders.cloudAdapters(),
-        kokoro: (any SpeechKokoroSynthesizing)? = nil
+        phonon: (any SpeechLocalSynthesizing)? = nil
     ) {
         self.credentialSource = credentialSource
         self.adapters = adapters
-        self.kokoro = kokoro ?? SpeechKokoro.shared
+        self.phonon = phonon ?? SpeechPhonon.shared
     }
 
     func voices() -> [SpeechVoiceInfo] {
@@ -184,22 +186,23 @@ final class HudsonSpeechVoiceCatalog: SpeechVoiceListing {
             items.append(contentsOf: marked(elevenLabs))
         }
 
-        if SpeechKokoro.isCompiledIn {
-            let cached = kokoro.cachedVoices()
-            if cached.isEmpty {
-                let status = kokoro.cachedStatus()
-                items.append(contentsOf: marked([SpeechVoiceInfo(
-                    id: status.voiceId,
-                    label: "Kokoro",
-                    provider: SpeechProviders.kokoro,
-                    available: status.available,
-                    isDefault: true
-                )]))
-            } else {
-                items.append(contentsOf: marked(cached))
-            }
+        if SpeechPhonon.isCompiledIn {
+            items.append(contentsOf: localVoices(phonon, label: "Phonon", provider: SpeechProviders.phonon))
         }
         return items
+    }
+
+    private func localVoices(_ engine: any SpeechLocalSynthesizing, label: String, provider: String) -> [SpeechVoiceInfo] {
+        let cached = engine.cachedVoices()
+        guard cached.isEmpty else { return marked(cached) }
+        let status = engine.cachedStatus()
+        return marked([SpeechVoiceInfo(
+            id: status.voiceId,
+            label: label,
+            provider: provider,
+            available: status.available,
+            isDefault: true
+        )])
     }
 
     private func marked(_ voices: [SpeechVoiceInfo]) -> [SpeechVoiceInfo] {

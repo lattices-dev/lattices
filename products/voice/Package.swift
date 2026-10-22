@@ -9,14 +9,14 @@ let package = Package(name: "Voice", platforms: [.macOS(.v26)],
     dependencies: [
         // Build with HUDSONKIT_WITH_VOICE=0, as tools/package.sh does, so Hudson leaves out Vox.
         hudson,
-        // Kokoro runs on the Neural Engine through KokoroAne. Pinned explicitly; keep aligned with Talkie.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
+        // Phonon runs on the Neural Engine through Gradium's Core ML runtime. 0.4.0 is the newest
+        // tag with a published release; the v0.4.1 tag points at a binary that was never uploaded.
+        .package(url: "https://github.com/gradium-ai/xn-ptts.git", exact: "0.4.0"),
     ], targets: [
         .executableTarget(name: "SpeechAppRuntime", dependencies: [
             .product(name: "HudsonUI", package: "hudson"),
             .product(name: "HudsonUIAudio", package: "hudson"),
-            .product(name: "FluidAudio", package: "FluidAudio")], path: "Sources/Speech"),
+            .product(name: "ptts", package: "xn-ptts")], path: "Sources/Speech"),
         .testTarget(name: "SpeechTests", dependencies: [
-            "SpeechAppRuntime",
-            .product(name: "FluidAudio", package: "FluidAudio")], swiftSettings: [.define("SPEECH_FORWARDING_TESTS")])
+            "SpeechAppRuntime"], swiftSettings: [.define("SPEECH_FORWARDING_TESTS")])
     ], swiftLanguageModes: [.v5])
