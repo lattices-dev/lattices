@@ -1,4 +1,4 @@
-<p><a href="../../README.md">← Lattices</a> &nbsp; / &nbsp; Speech</p>
+<p><a href="../../README.md">← Lattices</a> &nbsp; / &nbsp; Voice</p>
 
 <picture>
   <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="assets/readme/hero-mobile-dark.svg">
@@ -9,13 +9,13 @@
 </picture>
 
 <p align="center">
-  <a href="https://lattices.dev/speech">Product page ↗</a> &nbsp; · &nbsp;
+  <a href="https://lattices.dev/voice">Product page ↗</a> &nbsp; · &nbsp;
   <a href="#install-and-run">Get started</a> &nbsp; · &nbsp;
   <a href="../../docs/voice.md">Documentation</a> &nbsp; · &nbsp;
   <a href="../../skills/voice/SKILL.md">Agent skill</a>
 </p>
 
-Speech queues and plays spoken updates from agents and scripts, with an optional readalong HUD. The macOS app is called **Voice**.
+Voice queues and plays spoken updates from agents and scripts, with an optional readalong HUD. Voice is the product and the macOS app.
 
 <table><tr>
 <td width="33%" valign="top"><strong>Persistent queue</strong><br>Playback continues after the requesting agent or script disconnects.</td>
@@ -64,15 +64,15 @@ These addresses describe apps installed from published releases:
 | --- | --- | --- |
 | Agent API, including `voice.*` | `ws://127.0.0.1:9399` | Lattices core |
 | Dictation and live voice sessions | `ws://127.0.0.1:9398` | Lattices core |
-| Speech queue and playback, `speech.*` | `ws://127.0.0.1:9397` | Voice helper |
+| Voice queue and playback, `speech.*` | `ws://127.0.0.1:9397` | Voice helper |
 
 Source builds with the unreleased private IPC changes use `lattices.sock`,
 `voice.sock`, and `speech.sock` under `~/.lattices/run`, respectively. This also
 applies when those builds are installed locally. Use matching app and CLI
-builds. Direct Speech clients send the `speech.token` value as
+builds. Direct Voice clients send the `speech.token` value as
 `x-lattices-token`, with `Host: localhost` and no `Origin` header, over the Unix
 socket. Port 9397 opens only with `LATTICES_SPEECH_TCP=1`. See the
-[source-build API contract](https://lattices.dev/speech/docs/api#source-builds-unreleased).
+[source-build API contract](https://lattices.dev/voice/docs/api#source-builds-unreleased).
 
 For example, `voice.say` forwards to `speech.enqueue`, and `voice.list`
 forwards to `speech.voices`. A successful enqueue returns a job ID and state;
@@ -165,9 +165,9 @@ Voice has no product-local `docs/` directory yet. The current references are:
 - [Agent integration](../../docs/agents.md)
 - [Voice agent skill](../../skills/voice/SKILL.md)
 - [Product development contract](AGENTS.md)
-- [Site page](https://lattices.dev/speech), still published under the Speech name
+- [Site page](https://lattices.dev/voice)
 
 ---
 
 <p align="center">
-<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Speech / Voice</a></p>
+<a href="../../README.md">Lattices</a> · <a href="../action/README.md">Action</a> · <a href="../blink/README.md">Blink</a> · <a href="../voice/README.md">Voice</a></p>

@@ -1,6 +1,6 @@
 # lattices
 
-> macOS developer workspace manager — terminal sessions with a native menu bar app for tiling, navigation, and project management
+> Find any project's windows. Put them in place, for you or your agent. A window manager for macOS and Linux that knows about projects.
 
 ## Documentation
 
@@ -63,6 +63,6 @@ can do, agents and scripts can do too.
 
 ## Overview
 
-lattices is a macOS developer workspace manager. It pairs terminal sessions
+Lattices is a window manager that knows about projects. It pairs terminal sessions
 with a native menu bar app to give you — and your AI coding agents —
 full control over terminal layouts, window tiling, and project navigation.

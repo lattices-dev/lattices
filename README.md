@@ -4,9 +4,8 @@
 
 <h1 align="center">Lattices</h1>
 
-<p align="center"><strong>Workspaces for agents (and you)</strong><br />
-Find the right window. Bring a project back into view.<br />
-Give your agents the same desktop controls you use.</p>
+<p align="center"><strong>Find any project's windows. Put them in place, for you or your agent.</strong><br />
+A window manager that knows about projects.</p>
 
 <p align="center">
   <a href="#get-started"><strong>Get started</strong></a> ·

@@ -4,15 +4,17 @@ description: What Lattices is, what it owns in the product family, and where to 
 order: 0
 ---
 
-Lattices is an agentic window manager. On macOS it is a menu bar app, the
-`lats` CLI and a local agent API. On Linux it is a Bun host, a Quickshell
-desktop app and the same CLI. Lattices gives people and agents one
-programmable model of the desktop: windows, spaces, workspace layers, tmux
-sessions and the text on screen.
+Find any project's windows. Put them in place, for you or your agent.
+
+Lattices is a window manager that knows about projects. On macOS it is a
+menu bar app, the `lats` CLI and a local agent API. On Linux it is a Bun
+host, a Quickshell desktop app and the same CLI. People and agents share one
+model of the desktop: windows, spaces, workspace layers, tmux sessions and,
+when you turn it on, the text on screen.
 
 ## Lattices in the family
 
-Lattices, Action, Canvas and Speech share this website, repository and skills
+Lattices, Action, Canvas and Voice share this website, repository and skills
 catalog. Each product ships its own app and keeps its own lifecycle.
 
 | Product | Use it for | Docs |
@@ -20,10 +22,10 @@ catalog. Each product ships its own app and keeps its own lifecycle.
 | **Lattices** | Window management, tiling, workspace layers, tmux sessions, screen text, voice commands | You are here |
 | **Action** | Native computer use: observe, resolve, act and record, including private agent layers | [Action docs](/action/docs/overview) |
 | **Canvas** | Spatial notes that float on the desktop | [Canvas docs](/canvas/docs/overview) |
-| **Speech** | Spoken output from agents and scripts | [Speech docs](/speech/docs/overview) |
+| **Voice** | Spoken output from agents and scripts | [Voice docs](/voice/docs/overview) |
 
 Some `lats` commands reach another product. For example, `lats action`
-installs and calls Action, and `lats voice say` forwards speech to the Speech
+installs and calls Action, and `lats voice say` forwards speech to the Voice
 app. [Concepts](/lattices/docs/concepts) shows each process, its local socket or network endpoint, and
 where every command goes. The [product map](/products) compares the products.
 
@@ -54,10 +56,11 @@ infrastructure you can observe and control programmatically.
 ### Smart layout manager
 
 A native menu bar app tracks every window across all your monitors. Tile
-with hotkeys, organize into switchable layers, snap to grids. It reads
-your windows too. It extracts text from UI elements every 60 seconds and
-runs Vision OCR on background windows every 2 hours. Everything is
-searchable.
+with hotkeys, organize into switchable layers, snap to grids. It can read
+your windows too. Screen text reading is off by default. When you turn on
+**Search & OCR** in Settings, it extracts text from UI elements every 60
+seconds and runs Vision OCR on background windows every 2 hours, and that
+text becomes searchable.
 
 ### Managed tmux sessions
 

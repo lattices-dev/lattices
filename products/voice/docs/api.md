@@ -13,7 +13,7 @@ verbs to Voice.app.
 | Path | Address | Method names | Use when |
 | --- | --- | --- | --- |
 | Lattices gateway | `~/.lattices/run/lattices.sock` | `voice.*` (or `speech.*`, forwarded unchanged) | You already use the Lattices agent API. |
-| Direct | `~/.lattices/run/speech.sock` | `speech.*` | You need Speech without the Lattices daemon. |
+| Direct | `~/.lattices/run/speech.sock` | `speech.*` | You need Voice without the Lattices daemon. |
 
 Both paths require the capability token.
 
@@ -55,7 +55,7 @@ automatically.
 
 ## Private connection
 
-Speech 0.3.0 and Lattices 0.15.1 use the private sockets below.
+Voice 0.3.0 and Lattices 0.15.1 use the private sockets below.
 Upgrade the app and its clients together.
 
 - Voice.app listens on `~/.lattices/run/speech.sock` and accepts only peers
@@ -67,13 +67,13 @@ Upgrade the app and its clients together.
 - Port 9397 opens only when Voice.app starts with `LATTICES_SPEECH_TCP=1`.
 - The Lattices daemon path moves to `~/.lattices/run/lattices.sock`. `lats`
   finds both sockets and tokens for you.
-- From another machine, Speech is reachable only through the Lattices tailnet
+- From another machine, Voice is reachable only through the Lattices tailnet
   gateway (`lats gateway start --tailnet`). The client pairs with exact grants,
   for example `lats --host HOST pair --grant speech:speech.enqueue`, and a
   person on the host approves the request. The gateway exposes `speech.status`,
   `speech.voices`, `speech.enqueue`, `speech.pause`, `speech.resume`,
   `speech.seek`, `speech.stop`, `speech.next` and `speech.preferredVoice.set`.
-  Speech's native playback reservation and events stay local. The gateway
+  Voice's native playback reservation and events stay local. The gateway
   does not forward core `voice.*` aliases. Remote calls use
   `gateway.call` with `{ "product": "speech", "method": "speech.enqueue", "params": { "text": "…" } }`.
 
@@ -171,7 +171,7 @@ queue changes. The Lattices daemon relays the event under both names:
 
 When the daemon cannot forward a request, it returns an error string that
 starts with a machine code: `helper_not_installed`, `helper_unreachable`, or
-`helper_unauthorized`. See [CLI errors](/speech/docs/cli#errors).
+`helper_unauthorized`. See [CLI errors](/voice/docs/cli#errors).
 
 ## MCP
 
