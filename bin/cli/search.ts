@@ -9,6 +9,9 @@ export interface SearchResult {
   reasons: string[];
 }
 
+/** All search and place need from a daemon client; the MCP passes a bare caller. */
+export type DaemonCaller = Pick<DaemonClient, "daemonCall">;
+
 export interface SearchOptions {
   sources?: string[];
   after?: string;
@@ -17,7 +20,7 @@ export interface SearchOptions {
   mode?: string;
 }
 
-export async function searchWithClient(client: DaemonClient, query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
+export async function searchWithClient(client: DaemonCaller, query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
   const { daemonCall } = client;
   const params: Record<string, any> = { query };
   if (opts.sources) params.sources = opts.sources;
@@ -130,7 +133,7 @@ export async function searchCommand(
   printResults(ranked);
 }
 
-export async function placeWithClient(client: DaemonClient, query: string, placement: string, dryRun: boolean) {
+export async function placeWithClient(client: DaemonCaller, query: string, placement: string, dryRun: boolean) {
   const ranked = await searchWithClient(client, query, { sources: ["all"] });
   if (!ranked.length) return null;
   const window = ranked[0].window;
