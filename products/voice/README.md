@@ -19,13 +19,13 @@ Voice queues and plays spoken updates from agents and scripts, with an optional 
 
 <table><tr>
 <td width="33%" valign="top"><strong>Persistent queue</strong><br>Playback continues after the requesting agent or script disconnects.</td>
-<td width="33%" valign="top"><strong>Voice providers</strong><br>Use system voices, local Kokoro, or configured OpenAI and ElevenLabs providers.</td>
+<td width="33%" valign="top"><strong>Voice providers</strong><br>Use system voices, local Phonon, or configured OpenAI and ElevenLabs providers.</td>
 <td width="33%" valign="top"><strong>Playback controls</strong><br>Pause, resume, seek, or skip queued readouts through the Lattices CLI.</td>
 </tr></table>
 
 ## Install and run
 
-Requires macOS 26+. Kokoro's Neural Engine renderer requires Apple silicon.
+Requires macOS 26+. Phonon's Neural Engine renderer requires Apple silicon.
 Install the Lattices CLI with Bun and start the menu bar app:
 
 ```sh
@@ -43,11 +43,12 @@ With Lattices and Voice running:
 lattices voice status
 lattices voice list
 lattices voice say "Build finished"
-lattices voice say "The tests passed" --provider kokoro
+lattices voice say "The tests passed" --provider phonon
 ```
 
-The default provider is `system`. Kokoro downloads its model and required voice
-assets on first use, then renders locally through FluidAudio's `KokoroAne`.
+The default provider is `system`. Phonon downloads its 137 MB model on first
+use, checks it against a pinned SHA-256, then renders locally on the Neural
+Engine.
 OpenAI and ElevenLabs are also available with credentials configured in Voice
 settings. Credentials stay in the macOS Keychain.
 
@@ -84,7 +85,7 @@ lattices voice resume
 lattices voice seek 5
 lattices voice skip
 lattices voice stop
-lattices voice select af_heart --provider kokoro
+lattices voice select Maeve --provider phonon
 ```
 
 `voice.stop` stops playback and clears the queue. Dictation stays in Lattices:
@@ -111,18 +112,18 @@ Paths below are relative to `products/voice/`.
 
 ```text
 Sources/Speech/       app entry point, settings, HUD, queue, synthesis, RPC
-Tests/SpeechTests/    queue, provider, socket, migration, and Kokoro tests
+Tests/SpeechTests/    queue, provider, socket, migration, and Phonon tests
 tools/package.sh     local app bundle, signing, and optional DMG packaging
 assets/              app icon
-Package.swift        Voice executable and Hudson/FluidAudio dependencies
+Package.swift        Voice executable and Hudson/xn-ptts dependencies
 build.json           build features consumed by the packaging script
 Info.plist           app identity and minimum macOS version
 SOURCE-PROVENANCE.json  imported-source provenance
 ```
 
 `SpeechQueue.swift` owns job state. `HudsonSpeechRuntime.swift` connects the
-queue to Hudson's providers, cache, and audio player. `SpeechKokoroRuntime.swift`
-renders Kokoro in-process on the Neural Engine. `SpeechRpc.swift` defines the
+queue to Hudson's providers, cache, and audio player. `SpeechPhononRuntime.swift`
+renders Phonon in-process on the Neural Engine. `SpeechRpc.swift` defines the
 API, and `DaemonServer.swift` serves authenticated local connections.
 
 <details>
@@ -151,7 +152,7 @@ open products/voice/.artifacts/Voice.app
 
 The packaging script refuses to overwrite an existing artifact. Set
 `SPEECH_ARTIFACT_DIR` to a new output directory for another build. Real-model
-Kokoro tests are opt-in through `VOICE_KOKORO_LIVE=1`; ordinary tests skip those
+Phonon tests are opt-in through `VOICE_PHONON_LIVE=1`; ordinary tests skip those
 downloads and renders.
 
 </details>

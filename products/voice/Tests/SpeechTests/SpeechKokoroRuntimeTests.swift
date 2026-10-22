@@ -1,3 +1,4 @@
+#if canImport(FluidAudio)
 import AVFoundation
 import FluidAudio
 import XCTest
@@ -233,3 +234,4 @@ final class SpeechKokoroRuntimeTests: XCTestCase {
         return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
     }
 }
+#endif

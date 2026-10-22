@@ -119,7 +119,7 @@ final class SpeechVoicePickerTests: XCTestCase {
     }
 
     func testKokoroCatalogUsesProbedVoicesOnly() async {
-        let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+        let kokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
             available: true,
             modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
@@ -132,7 +132,7 @@ final class SpeechVoicePickerTests: XCTestCase {
         let loader = SpeechVoiceCatalogLoader(kokoro: kokoro)
         guard SpeechKokoro.isCompiledIn else {
             let state = await loader.load(provider: "kokoro")
-            XCTAssertEqual(state, .unavailable(SpeechKokoroStatus.compiledOut.detail ?? ""))
+            XCTAssertEqual(state, .unavailable(SpeechLocalStatus.kokoroCompiledOut.detail ?? ""))
             return
         }
         let state = await loader.load(provider: "kokoro")
@@ -164,16 +164,16 @@ final class SpeechVoicePickerTests: XCTestCase {
 }
 
 @MainActor
-private final class FakeSpeechKokoro: SpeechKokoroSynthesizing {
-    var status: SpeechKokoroStatus
+private final class FakeSpeechKokoro: SpeechLocalSynthesizing {
+    var status: SpeechLocalStatus
 
-    init(status: SpeechKokoroStatus) {
+    init(status: SpeechLocalStatus) {
         self.status = status
     }
 
-    func cachedStatus() -> SpeechKokoroStatus { status }
+    func cachedStatus() -> SpeechLocalStatus { status }
     func cachedVoices() -> [SpeechVoiceInfo] { status.voices }
-    func probe() async -> SpeechKokoroStatus { status }
+    func probe() async -> SpeechLocalStatus { status }
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
         throw SpeechQueueError.providerFailed("fake Kokoro has no audio")
     }

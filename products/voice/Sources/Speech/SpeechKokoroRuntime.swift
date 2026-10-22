@@ -1,3 +1,4 @@
+#if canImport(FluidAudio)
 import Foundation
 import FluidAudio
 import HudsonUIAudio
@@ -18,7 +19,7 @@ enum SpeechKokoroRuntime {
         "am_puck", "am_santa",
     ]
     /// Fixed, so probing Kokoro never loads the model or touches the network.
-    static let status = SpeechKokoroStatus(
+    static let status = SpeechLocalStatus(
         available: true, modelId: modelID, voiceId: voiceID, detail: nil,
         voices: voiceIDs.map {
             SpeechVoiceInfo(id: $0, label: $0, provider: SpeechProviders.kokoro,
@@ -282,3 +283,4 @@ enum SpeechKokoroVoicePack {
         return binary
     }
 }
+#endif

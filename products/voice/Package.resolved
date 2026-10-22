@@ -1,5 +1,5 @@
 {
-  "originHash" : "e33dffd62659c2ad0efc2f7d86803ad2bba696b4013c0a616de1e9ca0dedf309",
+  "originHash" : "2c954857ed22237f434776ceaa34b9958b8ab672c977061757ef09aeabda1d53",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -19,11 +19,12 @@
       }
     },
     {
-      "identity" : "vox",
+      "identity" : "xn-ptts",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/arach/vox.git",
+      "location" : "https://github.com/gradium-ai/xn-ptts.git",
       "state" : {
-        "revision" : "df744e5403a265bf411003a4d1b931365d2328de"
+        "revision" : "f07d7952db0c6127d5e4bc3f41c82b3304b6b5aa",
+        "version" : "0.4.0"
       }
     }
   ],

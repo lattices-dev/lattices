@@ -18,9 +18,25 @@ struct SpeechSettingsView: View {
                 playbackRow
                 speechDivider
                 systemRow
+                if SpeechPhonon.isCompiledIn {
+                    speechDivider
+                    SpeechLocalEngineRow(
+                        name: "Phonon",
+                        caption: "Runs on the Neural Engine. Text stays on this Mac. The first use downloads the model (137 MB).",
+                        provider: SpeechProviders.phonon,
+                        engine: SpeechPhonon.shared,
+                        catalog: catalog
+                    )
+                }
                 if SpeechKokoro.isCompiledIn {
                     speechDivider
-                    SpeechKokoroRow(catalog: catalog)
+                    SpeechLocalEngineRow(
+                        name: "Kokoro",
+                        caption: "Runs on the Neural Engine. Text stays on this Mac.",
+                        provider: SpeechProviders.kokoro,
+                        engine: SpeechKokoro.shared,
+                        catalog: catalog
+                    )
                 }
                 speechDivider
                 ForEach(Array(adapters.enumerated()), id: \.offset) { index, adapter in
@@ -52,6 +68,9 @@ struct SpeechSettingsView: View {
             await catalog.refresh(provider: SpeechProviders.openai)
             if SpeechKokoro.isCompiledIn {
                 await catalog.refresh(provider: SpeechProviders.kokoro)
+            }
+            if SpeechPhonon.isCompiledIn {
+                await catalog.refresh(provider: SpeechProviders.phonon)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .speechCredentialsDidChange)) { note in
@@ -96,16 +115,18 @@ struct SpeechSettingsView: View {
     }
 }
 
-private struct SpeechKokoroRow: View {
+private struct SpeechLocalEngineRow: View {
+    let name: String
+    let caption: String
+    let provider: String
+    let engine: any SpeechLocalSynthesizing
     @ObservedObject var catalog: SpeechVoiceCatalogStore
-    @State private var status = SpeechKokoro.shared.cachedStatus()
+    @State private var status: SpeechLocalStatus?
 
     var body: some View {
+        let status = status ?? engine.cachedStatus()
         VStack(alignment: .leading, spacing: 8) {
-            speechPrefRow(
-                "Kokoro",
-                caption: "Runs on the Neural Engine. Text stays on this Mac."
-            ) {
+            speechPrefRow(name, caption: caption) {
                 Text(status.available ? "Ready" : "Unavailable")
                     .font(Typo.caption(11))
                     .foregroundColor(status.available ? Palette.running : Palette.detach)
@@ -120,7 +141,7 @@ private struct SpeechKokoroRow: View {
             }
 
             if status.available {
-                SpeechVoicePickerBlock(provider: SpeechProviders.kokoro, canPreview: true, catalog: catalog)
+                SpeechVoicePickerBlock(provider: provider, canPreview: true, catalog: catalog)
             }
         }
         .task { await refresh() }
@@ -128,8 +149,8 @@ private struct SpeechKokoroRow: View {
 
     @MainActor
     private func refresh() async {
-        status = await SpeechKokoro.shared.probe()
-        await catalog.refresh(provider: SpeechProviders.kokoro)
+        status = await engine.probe()
+        await catalog.refresh(provider: provider)
     }
 }
 
@@ -432,6 +453,7 @@ private struct SpeechVoicePickerBlock: View {
         case SpeechProviders.openai: return "OpenAI"
         case SpeechProviders.elevenlabs: return "ElevenLabs"
         case SpeechProviders.kokoro: return "Kokoro"
+        case SpeechProviders.phonon: return "Phonon"
         default: return provider
         }
     }

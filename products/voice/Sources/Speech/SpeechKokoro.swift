@@ -1,7 +1,7 @@
 import Foundation
 import HudsonUIAudio
 
-struct SpeechKokoroStatus: Equatable, Sendable {
+struct SpeechLocalStatus: Equatable, Sendable {
     var available: Bool
     var modelId: String
     var voiceId: String
@@ -22,7 +22,7 @@ struct SpeechKokoroStatus: Equatable, Sendable {
         self.voices = voices
     }
 
-    static let compiledOut = SpeechKokoroStatus(
+    static let kokoroCompiledOut = SpeechLocalStatus(
         available: false,
         modelId: "FluidInference/kokoro-82m-coreml",
         voiceId: "af_heart",
@@ -31,10 +31,10 @@ struct SpeechKokoroStatus: Equatable, Sendable {
 }
 
 @MainActor
-protocol SpeechKokoroSynthesizing: AnyObject {
-    func cachedStatus() -> SpeechKokoroStatus
+protocol SpeechLocalSynthesizing: AnyObject {
+    func cachedStatus() -> SpeechLocalStatus
     func cachedVoices() -> [SpeechVoiceInfo]
-    func probe() async -> SpeechKokoroStatus
+    func probe() async -> SpeechLocalStatus
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult
 }
 
@@ -48,7 +48,7 @@ enum SpeechKokoro {
     }
 
     @MainActor
-    static var shared: any SpeechKokoroSynthesizing {
+    static var shared: any SpeechLocalSynthesizing {
         #if canImport(FluidAudio)
         LiveSpeechKokoro.shared
         #else
@@ -58,30 +58,30 @@ enum SpeechKokoro {
 }
 
 @MainActor
-final class UnavailableSpeechKokoro: SpeechKokoroSynthesizing {
+final class UnavailableSpeechKokoro: SpeechLocalSynthesizing {
     static let shared = UnavailableSpeechKokoro()
 
-    func cachedStatus() -> SpeechKokoroStatus { .compiledOut }
+    func cachedStatus() -> SpeechLocalStatus { .kokoroCompiledOut }
 
     func cachedVoices() -> [SpeechVoiceInfo] { [] }
 
-    func probe() async -> SpeechKokoroStatus { .compiledOut }
+    func probe() async -> SpeechLocalStatus { .kokoroCompiledOut }
 
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
-        throw SpeechQueueError.providerFailed(SpeechKokoroStatus.compiledOut.detail ?? "Kokoro is unavailable")
+        throw SpeechQueueError.providerFailed(SpeechLocalStatus.kokoroCompiledOut.detail ?? "Kokoro is unavailable")
     }
 }
 
 #if canImport(FluidAudio)
 @MainActor
-final class LiveSpeechKokoro: SpeechKokoroSynthesizing {
+final class LiveSpeechKokoro: SpeechLocalSynthesizing {
     static let shared = LiveSpeechKokoro()
 
-    func cachedStatus() -> SpeechKokoroStatus { SpeechKokoroRuntime.status }
+    func cachedStatus() -> SpeechLocalStatus { SpeechKokoroRuntime.status }
 
     func cachedVoices() -> [SpeechVoiceInfo] { SpeechKokoroRuntime.status.voices }
 
-    func probe() async -> SpeechKokoroStatus { SpeechKokoroRuntime.status }
+    func probe() async -> SpeechLocalStatus { SpeechKokoroRuntime.status }
 
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
         try await SpeechKokoroRuntime.synthesizeKokoro(

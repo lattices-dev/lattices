@@ -20,24 +20,27 @@ enum SpeechVoiceCatalogState: Equatable {
     }
 }
 
-/// Loads picker catalogs from the real system, HudTTS, ElevenLabs and Kokoro
-/// sources. Does not invent display names. OpenAI lists only the HudTTS default.
+/// Loads picker catalogs from the real system, HudTTS, ElevenLabs, Kokoro and
+/// Phonon sources. Does not invent display names. OpenAI lists only the HudTTS default.
 @MainActor
 struct SpeechVoiceCatalogLoader {
     var credentialSource: LatticesSpeechCredentialSource
     var session: URLSession
-    var kokoro: any SpeechKokoroSynthesizing
+    var kokoro: any SpeechLocalSynthesizing
+    var phonon: any SpeechLocalSynthesizing
     var elevenLabsFetch: (String) async throws -> [SpeechVoiceInfo]
 
     init(
         credentialSource: LatticesSpeechCredentialSource = LatticesSpeechCredentialSource(),
         session: URLSession = .shared,
-        kokoro: (any SpeechKokoroSynthesizing)? = nil,
+        kokoro: (any SpeechLocalSynthesizing)? = nil,
+        phonon: (any SpeechLocalSynthesizing)? = nil,
         elevenLabsFetch: ((String) async throws -> [SpeechVoiceInfo])? = nil
     ) {
         self.credentialSource = credentialSource
         self.session = session
         self.kokoro = kokoro ?? SpeechKokoro.shared
+        self.phonon = phonon ?? SpeechPhonon.shared
         self.elevenLabsFetch = elevenLabsFetch ?? { key in
             try await SpeechElevenLabsVoiceCatalog.fetch(apiKey: key, session: session)
         }
@@ -52,7 +55,15 @@ struct SpeechVoiceCatalogLoader {
         case SpeechProviders.elevenlabs:
             return await loadElevenLabs()
         case SpeechProviders.kokoro:
-            return await loadKokoro()
+            guard SpeechKokoro.isCompiledIn else {
+                return .unavailable(SpeechLocalStatus.kokoroCompiledOut.detail ?? "Kokoro is unavailable.")
+            }
+            return await loadLocal(kokoro, name: "Kokoro")
+        case SpeechProviders.phonon:
+            guard SpeechPhonon.isCompiledIn else {
+                return .unavailable(SpeechLocalStatus.phononCompiledOut.detail ?? "Phonon is unavailable.")
+            }
+            return await loadLocal(phonon, name: "Phonon")
         default:
             return .unavailable("Unknown speech provider.")
         }
@@ -125,17 +136,14 @@ struct SpeechVoiceCatalogLoader {
         }
     }
 
-    private func loadKokoro() async -> SpeechVoiceCatalogState {
-        guard SpeechKokoro.isCompiledIn else {
-            return .unavailable(SpeechKokoroStatus.compiledOut.detail ?? "Kokoro is unavailable.")
-        }
-        let status = await kokoro.probe()
+    private func loadLocal(_ engine: any SpeechLocalSynthesizing, name: String) async -> SpeechVoiceCatalogState {
+        let status = await engine.probe()
         guard status.available else {
-            return .unavailable(status.detail ?? "Kokoro is unavailable.")
+            return .unavailable(status.detail ?? "\(name) is unavailable.")
         }
-        let voices = kokoro.cachedVoices()
+        let voices = engine.cachedVoices()
         if voices.isEmpty {
-            return .empty("Kokoro reported no voices.")
+            return .empty("\(name) reported no voices.")
         }
         return .ready(voices)
     }
@@ -225,6 +233,9 @@ final class SpeechVoiceCatalogStore: ObservableObject {
         var providers = [SpeechProviders.system, SpeechProviders.openai, SpeechProviders.elevenlabs]
         if SpeechKokoro.isCompiledIn {
             providers.append(SpeechProviders.kokoro)
+        }
+        if SpeechPhonon.isCompiledIn {
+            providers.append(SpeechProviders.phonon)
         }
         for provider in providers {
             await refresh(provider: provider)

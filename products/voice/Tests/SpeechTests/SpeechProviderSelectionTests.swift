@@ -18,6 +18,7 @@ final class SpeechProviderSelectionTests: XCTestCase {
         XCTAssertEqual(try SpeechProviders.normalize("OpenAI"), "openai")
         XCTAssertEqual(try SpeechProviders.normalize("elevenlabs"), "elevenlabs")
         XCTAssertEqual(try SpeechProviders.normalize("kokoro"), "kokoro")
+        XCTAssertEqual(try SpeechProviders.normalize("Phonon"), "phonon")
         XCTAssertThrowsError(try SpeechProviders.normalize("groq")) { error in
             XCTAssertEqual(error as? SpeechQueueError, .unknownProvider("groq"))
         }
@@ -30,13 +31,13 @@ final class SpeechProviderSelectionTests: XCTestCase {
     }
 
     func testVoiceCatalogOmitsGroqGeminiAndReportsKokoroFromLiveProbeOnly() {
-        let availableKokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+        let availableKokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
             available: true,
             modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
             detail: nil
         ))
-        let unavailableKokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+        let unavailableKokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
             available: false,
             modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
@@ -75,7 +76,7 @@ final class SpeechProviderSelectionTests: XCTestCase {
     }
 
     func testKokoroSynthesisUsesKokoroEngineAndDoesNotFallBack() async throws {
-        let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+        let kokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
             available: true,
             modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
@@ -133,7 +134,7 @@ final class SpeechProviderSelectionTests: XCTestCase {
     }
 
     func testKokoroRequestsAreCachedUnderTheEngineModel() async throws {
-        let kokoro = FakeSpeechKokoro(status: SpeechKokoroStatus(
+        let kokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
             available: true,
             modelId: "FluidInference/kokoro-82m-coreml",
             voiceId: "af_heart",
@@ -185,22 +186,22 @@ final class SpeechProviderSelectionTests: XCTestCase {
 }
 
 @MainActor
-private final class FakeSpeechKokoro: SpeechKokoroSynthesizing {
-    var status: SpeechKokoroStatus
+private final class FakeSpeechKokoro: SpeechLocalSynthesizing {
+    var status: SpeechLocalStatus
     var result: HudTTSResult?
     var error: Error?
     var synthesizeCount = 0
     var lastModel: String?
 
-    init(status: SpeechKokoroStatus) {
+    init(status: SpeechLocalStatus) {
         self.status = status
     }
 
-    func cachedStatus() -> SpeechKokoroStatus { status }
+    func cachedStatus() -> SpeechLocalStatus { status }
 
     func cachedVoices() -> [SpeechVoiceInfo] { status.voices }
 
-    func probe() async -> SpeechKokoroStatus { status }
+    func probe() async -> SpeechLocalStatus { status }
 
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
         synthesizeCount += 1

@@ -72,12 +72,14 @@ approved grant such as `speech:speech.enqueue`. See [API](/voice/docs/api#privat
 | Provider id | Where it runs | Requirement |
 | --- | --- | --- |
 | `system` | macOS system voices | None. This is the default provider. |
-| `kokoro` | On this Mac, on the Apple Neural Engine | Apple silicon. Voice.app downloads the model and voice assets on the first Kokoro request. |
+| `phonon` | On this Mac, on the Apple Neural Engine | Apple silicon. Voice.app downloads the model (137 MB) on the first Phonon request. |
 | `openai` | OpenAI cloud | Credentials in Voice settings |
 | `elevenlabs` | ElevenLabs cloud | Credentials in Voice settings |
 
-Voice.app renders Kokoro in-process through FluidAudio's `KokoroAne`. Kokoro
-does not use Vox or a Python runtime. Voice.app keeps provider credentials in
+Voice.app renders Phonon in-process through Gradium's Phonon 31m, an Apache 2.0
+model with 38 English voices. Phonon does not use Vox or a Python runtime. Its
+speaking rate is fixed, so `rate` does not apply. Current builds leave Kokoro
+out, and a `kokoro` request fails with a message that says so. Voice.app keeps provider credentials in
 the macOS Keychain.
 
 ## Stable identifiers
