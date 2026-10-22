@@ -28,6 +28,7 @@ import ConceptExperimentPage from '../src/components/ConceptExperimentPage.tsx'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
+import LinuxPage from '../src/components/LinuxPage.tsx'
 import LearnPage from '../src/components/LearnPage.tsx'
 import { learningRoutes } from '../src/lib/learning.ts'
 import ProductsPage from '../src/components/ProductsPage.tsx'
@@ -108,6 +109,7 @@ await writeStaticRoute('/blink', canvasHtml.replaceAll('data-pagefind-body', 'da
 const voiceHtml = renderToString(createElement(SpeechPage))
 await writeStaticRoute('/voice', voiceHtml)
 await writeStaticRoute('/speech', voiceHtml.replaceAll('data-pagefind-body', 'data-pagefind-ignore'))
+await writeStaticRoute('/linux', renderToString(createElement(LinuxPage)))
 await writeStaticRoute('/products', renderToString(createElement(ProductsPage)))
 await writeStaticRoute('/family', renderToString(createElement(ProductsPage)))
 await writeStaticRoute('/brand', renderToString(createElement(BrandPage)))

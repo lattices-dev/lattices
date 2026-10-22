@@ -1,7 +1,7 @@
 import { docsHome, docsProduct, type ProductId } from '../lib/docs-catalog'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { footerColumns, licenseUrl } from '../data/footer'
-import { productLinks } from '../data/products'
+import { productLinks, productMenuExtras } from '../data/products'
 import { actionMarkBox } from '../lib/marks'
 import { ActionMark } from './ActionMark'
 import { BlinkMark } from './blink/BlinkMark'
@@ -58,7 +58,7 @@ export function ProductsMenu() {
       </button>
       {open ? (
         <div id="products-menu-panel" className="products-menu-panel" aria-label="Products">
-          {productLinks.map((product) => (
+          {productLinks.flatMap((product) => (productMenuExtras[product.href] ? [product, productMenuExtras[product.href]] : [product])).map((product) => (
             <a
               key={product.href}
               href={product.href}

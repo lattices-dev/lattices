@@ -8,13 +8,10 @@ import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { heroLayer, heroOverlapCount, heroSearchResults, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
 import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday } from "./heroTide";
-import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
+import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion, linuxInstallCommand } from "../seo/routes";
 
 const latticesCliVersion = "0.15.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
-// Public entry point documented in docs/install-linux.md.
-const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";
-const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`;
 
 declare global {
   interface Window {
@@ -978,7 +975,7 @@ export default function App() {
               <li>API driven</li>
               <li>Open source</li>
             </ul>
-            <a href="#linux" className="hero-linux-link">
+            <a href="/linux" className="hero-linux-link">
               Also on Linux, with Hyprland and Omarchy <span aria-hidden="true">&rarr;</span>
             </a>
           </div>
@@ -1283,6 +1280,7 @@ export default function App() {
               <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
             </div>
             <div className="omarchy-links">
+              <a href="/linux">Lattices for Linux <span aria-hidden="true">→</span></a>
               <a href="/lattices/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
               <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
             </div>
