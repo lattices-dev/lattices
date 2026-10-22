@@ -894,6 +894,7 @@ final class LatticesApi {
                         if let title = inst.tabTitle { tab["tabTitle"] = .string(title) }
                         tab["hasClaude"] = .bool(inst.hasClaude)
                         if let session = inst.tmuxSession { tab["tmuxSession"] = .string(session) }
+                        if let attribution = inst.windowAttribution { tab["attribution"] = .string(attribution.rawValue) }
                         if processMatch {
                             let matched = inst.processes.filter {
                                 $0.comm.lowercased().contains(query) || $0.args.lowercased().contains(query)
@@ -930,6 +931,29 @@ final class LatticesApi {
                                     ocrSnippet: nil, tabs: [tabJson],
                                     lastInteraction: desktop.lastInteractionDate(for: wid)
                                 )
+                            }
+                        } else if !inst.windowCandidates.isEmpty {
+                            // The TTY belongs to a terminal app but not to a known
+                            // window of it (Warp, Ghostty without Automation, kitty
+                            // without remote control). Each of the app's windows
+                            // gets a small, uncertain boost, once, with no recency
+                            // boost, so a title or cwd match elsewhere still wins.
+                            for wid in inst.windowCandidates {
+                                if var acc = byWid[wid] {
+                                    if !acc.sources.contains("terminal-app") {
+                                        acc.score += 1
+                                        acc.sources.append("terminal-app")
+                                    }
+                                    acc.tabs.append(tabJson)
+                                    byWid[wid] = acc
+                                } else if let entry = desktop.windows[wid] {
+                                    guard passesTimeFilter(wid: wid, entry: entry) else { continue }
+                                    byWid[wid] = Accum(
+                                        entry: entry, score: 1, sources: ["terminal-app"],
+                                        ocrSnippet: nil, tabs: [tabJson],
+                                        lastInteraction: desktop.lastInteractionDate(for: wid)
+                                    )
+                                }
                             }
                         }
                     }
@@ -5258,6 +5282,10 @@ enum Encoders {
         if let p = inst.tmuxPaneId { obj["tmuxPaneId"] = .string(p) }
         if let w = inst.windowId { obj["windowId"] = .int(Int(w)) }
         if let t = inst.windowTitle { obj["windowTitle"] = .string(t) }
+        if let a = inst.windowAttribution { obj["windowAttribution"] = .string(a.rawValue) }
+        if !inst.windowCandidates.isEmpty {
+            obj["windowCandidates"] = .array(inst.windowCandidates.map { .int(Int($0)) })
+        }
         return .object(obj)
     }
 
