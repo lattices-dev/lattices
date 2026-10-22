@@ -24,7 +24,7 @@ struct MachinesPageView: View {
             VStack(spacing: 0) {
                 Group {
                     if canvasMode == "hosts" {
-                        let bounds = MachineCanvasScene(screens: model.screens, machines: machines, monitors: { MachineCanvasScene.monitors($0) }).bounds
+                        let bounds = MachineCanvasScene(screens: model.shownScreens, machines: machines, monitors: { MachineCanvasScene.monitors($0) }).bounds
                         MachineArrangementCanvas(model: model, machines: machines,
                                                  selection: Binding(get: { selected?.id }, set: { selection = $0 }),
                                                  onlineNames: Set(hosts.hosts.filter { $0.status == .online }.map(\.name)))
@@ -96,7 +96,7 @@ struct MachinesPageView: View {
     // MARK: Desk
 
     private func desk(_ machines: [MachineInventory.Machine]) -> Desk {
-        DeskLayout.stitch(hosts: DeskCanvas.hosts(screens: model.screens, identities: identities,
+        DeskLayout.stitch(hosts: DeskCanvas.hosts(screens: model.shownScreens, identities: identities,
                                                   machines: machines.map { ($0.name, MachineCanvasScene.monitors($0)) }),
                           origins: deskStore.origins)
     }
@@ -190,16 +190,26 @@ struct MachinesPageView: View {
                 ForEach(model.screens, id: \.number) { screen in
                     HStack(spacing: 10) {
                         Text("\(screen.number) · \(screen.name)").frame(maxWidth: .infinity, alignment: .leading)
+                            .foregroundStyle(screen.virtual ? Palette.textDim : Palette.text)
                         Text("\(Int(screen.frame.width)) × \(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                        Button("Bring everything here") { model.perform("bring", displayParams(screen)) }.frame(width: 140)
-                        Button("Make main") { model.perform("main", displayParams(screen)) }
-                            .opacity(screen.main ? 0 : 1).disabled(screen.main || trial.pending)
-                            .frame(width: 80)
-                        Toggle("Elsewhere", isOn: Binding(get: { screen.elsewhere }, set: {
-                            model.perform($0 ? "elsewhere" : "here", displayParams(screen))
-                        })).toggleStyle(.checkbox).frame(width: 90, alignment: .leading)
+                        if screen.virtual {
+                            Text("Virtual").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                                .frame(width: 140 + 80 + 110 + 20, alignment: .leading)
+                        } else {
+                            Button("Bring everything here") { model.perform("bring", displayParams(screen)) }.frame(width: 140)
+                            Button("Make main") { model.perform("main", displayParams(screen)) }
+                                .opacity(screen.main ? 0 : 1).disabled(screen.main || trial.pending)
+                                .frame(width: 80)
+                            DisplayShowingChip(screen: screen, machines: [MonitorInputs.here] + machines.map(\.name)) {
+                                model.show(screen, machine: $0)
+                            }.frame(width: 110, alignment: .leading)
+                        }
                     }
                     .padding(.horizontal, 8).frame(height: 32)
+                }
+                if model.screens.contains(where: \.virtual) {
+                    Toggle("Show virtual displays", isOn: $model.showVirtual)
+                        .toggleStyle(.checkbox).padding(.horizontal, 8).padding(.top, 8)
                 }
                 #if LATTICES_BUNDLE
                 Toggle("Let other machines visit this Mac", isOn: Binding(

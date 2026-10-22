@@ -43,8 +43,8 @@ struct MachineCanvasScene {
             let local = list.reduce(CGRect.null) { $0.union($1.frame.rect) }
             let rect: CGRect?
             if let r = machineDraft[m.id] { rect = r }
-            else if let s = placed.first(where: { $0.screen.elsewhere && $0.screen.machine == m.name }) { rect = s.rect }
             else if let p = placement(m) { rect = CGRect(origin: p.origin, size: local.size) }
+            else if let s = placed.first(where: { $0.screen.elsewhere && $0.screen.machine == m.name }) { rect = s.rect }
             else { rect = nil }
             return (m, list, local, rect)
         }
@@ -91,7 +91,7 @@ struct MachineArrangementCanvas: View {
     @GestureState private var gesturing = false
 
     private var scene: MachineCanvasScene {
-        MachineCanvasScene(screens: model.screens, machines: machines,
+        MachineCanvasScene(screens: model.shownScreens, machines: machines,
                            monitors: { MachineCanvasScene.monitors($0, fixtures: monitorFixtures) },
                            screenDraft: draft, machineDraft: machineDraft)
     }
@@ -175,13 +175,14 @@ struct MachineArrangementCanvas: View {
 
     private func display(_ screen: VisitController.Screen, rect: CGRect, scene: MachineCanvasScene, camera cam: MachineCanvasCamera) -> some View {
         let r = cam.viewportRect(rect)
-        let label = screen.elsewhere ? (screen.machine == nil ? "\(screen.number) · Elsewhere" : "") : (screen.main ? "This Mac" : "Display \(screen.number)")
+        let label = screen.main && !screen.elsewhere ? "This Mac" : screen.name
         let key = inputs.local[screen.displayID]
         let away = inputs.showing(key, machine: MonitorInputs.here) == false
+        let hidden = model.showVirtual ? [] : model.screens.filter(\.virtual)
         return RoundedRectangle(cornerRadius: 5, style: .continuous)
             .fill(MachineTone.tile)
             .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .strokeBorder(MachineTone.tileEdge, style: StrokeStyle(lineWidth: 1, dash: away ? [4, 3] : [])))
+                .strokeBorder(MachineTone.tileEdge, style: StrokeStyle(lineWidth: 1, dash: away || screen.virtual ? [4, 3] : [])))
             .overlay(alignment: .bottomLeading) {
                 if r.width > 70 && r.height > 32 {
                     Text(label).font(Typo.body(11)).foregroundStyle(MachineTone.label).lineLimit(1).padding(6)
@@ -190,9 +191,25 @@ struct MachineArrangementCanvas: View {
             .frame(width: r.width, height: r.height)
             .opacity(screen.elsewhere ? MachineTone.away : 1)
             .overlay(alignment: .topTrailing) {
-                // A display showing another machine gets its chip on that machine's tile.
-                if let key, r.width > 90, r.height > 40, !(screen.elsewhere && screen.machine != nil) {
-                    MonitorInputChip(inputs: inputs, key: key, machine: MonitorInputs.here, machines: assignable).padding(5)
+                if r.width > 90, r.height > 40 {
+                    // DDC says which input is on; otherwise the user does.
+                    if let key, inputs.states[key] != nil {
+                        MonitorInputChip(inputs: inputs, key: key, machine: MonitorInputs.here, machines: assignable).padding(5)
+                    } else if !screen.virtual, !(screen.main && !screen.elsewhere), MonitorIdentity.builtinSize(screen.displayID) == nil {
+                        DisplayShowingChip(screen: screen, machines: assignable) { model.show(screen, machine: $0) }.padding(5)
+                    }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if screen.main, !hidden.isEmpty, r.width > 160, r.height > 40 {
+                    Button { model.showVirtual = true } label: {
+                        Text(hidden.count == 1 ? "+ \(hidden[0].name)" : "+ \(hidden.count) virtual")
+                            .font(Typo.mono(9)).foregroundStyle(Palette.textDim).lineLimit(1)
+                            .padding(.horizontal, 6).frame(height: 18)
+                            .background(Capsule().fill(MachineTone.chip))
+                    }
+                    .buttonStyle(.plain).padding(5)
+                    .help("Virtual displays are hidden; click to show them")
                 }
             }
             .offset(x: r.minX, y: r.minY)
@@ -410,6 +427,39 @@ struct MachineArrangementCanvas: View {
                 .frame(width: 26, height: 26).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(help)
+    }
+}
+
+/// Which machine a display without DDC shows, as the user says: picking another
+/// machine marks it Elsewhere and names it, This Mac brings it back.
+struct DisplayShowingChip: View {
+    let screen: VisitController.Screen
+    let machines: [String]
+    let choose: (String) -> Void
+
+    var body: some View {
+        let current = screen.elsewhere ? screen.machine : MonitorInputs.here
+        let mine = current == MonitorInputs.here
+        Menu {
+            Section("Showing") {
+                ForEach(machines, id: \.self) { machine in
+                    Button { choose(machine) } label: {
+                        if machine == current { Label(MonitorInputChip.title(machine), systemImage: "checkmark") }
+                        else { Text(MonitorInputChip.title(machine)) }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Circle().fill(mine ? Long.coral : Palette.textMuted).frame(width: 5, height: 5)
+                Text(current.map(MonitorInputChip.title) ?? "Elsewhere")
+                    .font(Typo.mono(9)).foregroundStyle(mine ? Palette.text : Palette.textDim).lineLimit(1)
+            }
+            .padding(.horizontal, 6).frame(height: 18)
+            .background(Capsule().fill(MachineTone.chip))
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help("Which machine \(screen.name) is showing")
     }
 }
 

@@ -55,6 +55,8 @@ final class RemoteHostsModel: ObservableObject {
     private var refreshing: Set<String> = []
     private var dirty: Set<String> = []
     private var viewers = 0
+    /// Failed attempts since each host was last online, for the retry backoff.
+    private var retries: [String: Int] = [:]
 
     // MARK: - Lifecycle
 
@@ -70,6 +72,7 @@ final class RemoteHostsModel: ObservableObject {
         for connection in connections.values { connection.cancel() }
         connections.removeAll()
         dirty.removeAll()
+        retries.removeAll()
     }
 
     func reconnect(_ name: String) {
@@ -190,6 +193,7 @@ final class RemoteHostsModel: ObservableObject {
         let connection = RemoteHostConnection(address: host.address, port: host.port)
         connection.onReady = { [weak self] in
             guard let self, self.connections[name] === connection else { return }
+            self.retries[name] = nil
             self.update(name) { $0.status = .online }
             Task {
                 await self.describe(name)
@@ -205,9 +209,22 @@ final class RemoteHostsModel: ObservableObject {
             guard let self, self.connections[name] === connection else { return }
             self.connections.removeValue(forKey: name)
             self.update(name) { $0.status = .offline(reason ?? "Disconnected") }
+            self.retry(name)
         }
         connections[name] = connection
         connection.start()
+    }
+
+    /// A host that restarts or sleeps comes back on its own while the page is
+    /// open: 2 s, then doubling to a minute.
+    private func retry(_ name: String) {
+        let attempt = retries[name, default: 0]
+        retries[name] = attempt + 1
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(min(60, 2 << min(attempt, 5))))
+            guard let self, self.viewers > 0, self.connections[name] == nil else { return }
+            self.connect(name)
+        }
     }
 
     /// One call on a connected host, for actions the page takes on request.

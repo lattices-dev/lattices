@@ -119,6 +119,15 @@ struct MonitorIdentity: Equatable {
                      serial: CGDisplaySerialNumber(id), among: registryAttributes())?.identity?.sized(CGDisplayScreenSize(id))
     }
 
+    /// A display no framebuffer drives, such as Action's agent layer. Not
+    /// decided when the registry reads empty, so a failed walk hides nothing.
+    static func isVirtual(_ id: CGDirectDisplayID) -> Bool {
+        guard CGDisplayIsBuiltin(id) == 0 else { return false }
+        let all = registryAttributes()
+        guard !all.isEmpty else { return false }
+        return !all.contains { $0.vendor == CGDisplayVendorNumber(id) && $0.product == CGDisplayModelNumber(id) }
+    }
+
     /// A built-in panel's size in millimetres; nil for external and virtual displays.
     static func builtinSize(_ id: CGDirectDisplayID) -> CGSize? {
         guard CGDisplayIsBuiltin(id) != 0 else { return nil }
