@@ -21,8 +21,9 @@ LATTICES_DAEMON_HOST=archie lats call capture.still '{"maxWidth":1280}'
 Needs Bun, a Hyprland session, and Tailscale.
 
 ```sh
-bun packages/host-linux/src/main.ts             # tailnet address + 127.0.0.1, port 9399
+bun packages/host-linux/src/main.ts             # private Unix sockets in ~/.lattices/run
 bun packages/host-linux/src/main.ts --describe  # print capabilities and exit
+lats gateway start --tailnet                    # remote access on the tailnet address, port 9399
 ```
 
 Or as a systemd user service: see `systemd/lattices-host.service`.
@@ -77,17 +78,18 @@ one connection, coalescing updates if the reader falls behind. The overlay
 hides immediately at the end and its process stops after one idle minute.
 It does not modify the Omarchy shell or compositor configuration.
 
-To test alongside an existing host, use separate ports and pairing state:
+To test, run the host and its gateway, then point the test client at the
+gateway from a tailnet machine:
 
 ```sh
-bun packages/host-linux/src/main.ts --bind 127.0.0.1 --port 9400 \
-  --bridge-port 5288 --bridge-state-dir /tmp/lattices-visit-bridge
-bun packages/host-linux/src/main.ts visit-test --host 127.0.0.1:5288 \
+bun packages/host-linux/src/main.ts
+lats gateway start --tailnet
+bun packages/host-linux/src/main.ts visit-test --host archie:9399 \
   --identity /tmp/lattices-visit-client.json --name mini
 ```
 
-Approve its printed device ID in the notification or through
-`bridge.pairing.approve` on the test daemon at `127.0.0.1:9400`. The client
+Approve its printed device ID in the notification, or on the host with
+`lats call bridge.pairing.approve '{"deviceID":"…"}'`. The client
 enters on the left and moves in a slow square, with encrypted pings every two
 seconds. It remembers its key at `--identity`, so repeated runs reuse one
 pairing. Without that flag it uses `~/.lattices/host/visit-test-key.json`.
@@ -184,55 +186,36 @@ systemctl --user daemon-reload
 
 ## Who can connect
 
-The host listens only on this machine's tailnet IPv4 address and on loopback.
-Every tailnet connection is checked with `tailscale whois`: by default only
-untagged devices owned by this machine's Tailscale user get in. Widen it with
-`--allow-user <id|login>` or `--allow-tag tag:name`. Loopback is trusted, as
-on the Mac.
+The desktop runtime listens only on private Unix sockets in
+`~/.lattices/run` (`lattices.sock` and `companion.sock`, each with a private
+token). It opens no network port. Remote access is the separate, opt-in
+gateway described in [packages/gateway](../gateway/README.md):
 
-Past whois, a remote client must be **paired** before any method runs; being
-on the tailnet is not enough. This is the companion bridge's scheme (below)
-applied to the daemon socket:
-
-1. From the client: `lats --host archie pair` (or `--read-only`, or `--drive`). The CLI
-   makes an X25519 key and id for this machine and calls `clients.pair`, the
-   only method an unpaired client may call. It prints a code; wait.
-2. On the host, a notification shows the client's name, its tailnet node and
-   the same code: Approve or Deny. Or, on the host itself:
-   `lats call clients.list` then `lats call clients.approve '{"clientID":"…"}'`.
-   Approval is never accepted from a remote connection (`clients.approve`,
-   `clients.deny`, and companion `bridge.pairing.approve` / `deny` are loopback-only), so a client cannot approve itself.
+1. On the host: `lats gateway start --tailnet`. The gateway binds only this
+   machine's verified Tailscale address, port 9399. Every connection is
+   checked with `tailscale whois`: by default only devices owned by this
+   machine's Tailscale user get in. Widen it with `--allow-user <id|login>`
+   or `--allow-tag tag:name`. Loopback gets nothing through the gateway.
+2. From the client: `lats --host archie pair` (or `--read-only`, or
+   `--drive`). The CLI makes an X25519 key and id for this machine and calls
+   `clients.pair`. It prints a code; wait.
+3. On the host: `lats gateway clients`, check the code and the requested
+   grants, then `lats gateway approve <clientID>` or `deny`. Approval runs
+   only over the gateway's local socket, so a client cannot approve itself.
    Undecided requests are denied after two minutes.
-3. Every later connection is signed: the WebSocket upgrade carries
+4. Every later connection is signed: the WebSocket upgrade carries
    `x-lattices-device-id`, `-timestamp`, `-nonce` and `-signature`, an
    HMAC-SHA256 keyed by HKDF-SHA256 over the X25519 shared secret, over
    `GET`, the path, client id, timestamp, nonce and the empty body's hash.
-   Timestamps must be within 2 minutes; a nonce is accepted once. A bad or
-   revoked signature gets a 401/403 before the socket opens.
+   Timestamps must be within 2 minutes; a nonce is accepted once.
 
-Each client has a scope, matching LAT-014's grants:
-
-| Scope | Runs | Granted |
-| --- | --- | --- |
-| `read` | `access: "read"` methods (listed in `api.schema`) | always |
-| `act` | focus, place, move, displays, sessions | by default |
-| `drive` | `computer.*` input, `capture.live` (VNC takes input), `apps.open` (arbitrary command) | only when asked for (`--drive`, or `scope: "drive"`) |
-
-Each scope includes the ones above it. Clients that paired with `mutate`
-before the split are `act`, and a request for `mutate` means `act`. Asking
-for more scope later, such as `drive`, needs a new approval. `clients.list` shows each client's name, node, scope, created
-and last-seen times; `clients.revoke '{"clientID":"…"}'` forgets one and closes
-its open connections.
-
-The host side lives in `~/.lattices/host/` (`daemon-key.json`,
-`daemon-clients.json`, 0600). The client side lives in `~/.lattices/client.json`
-(its key and id) and `~/.lattices/paired-hosts.json` (each host's public key
-and the scope it granted), keyed by `address:port` and matched by the host's
-tailnet name too, so `--host archie` and `--host 100.x.y.z` share a pairing.
-This works the same from macOS or Linux.
-
-`--no-pairing` turns this off for development: whois-admitted clients then get
-full access, as before. Loopback-only methods stay loopback-only.
+The gateway stores exact `product:method` grants. Its scopes (`read`,
+`screen`, `act`, `drive`, `shell`) and their shorthands are in the gateway
+README. Its trust records live in `~/.lattices/gateway`. The client side lives
+in `~/.lattices/client.json` (its key and id) and `~/.lattices/paired-hosts.json`
+(each host's public key and the scopes it granted), keyed by `address:port`
+and matched by the host's tailnet name too, so `--host archie` and
+`--host 100.x.y.z` share a pairing. This works the same from macOS or Linux.
 
 ## What it can do
 
@@ -283,16 +266,17 @@ Events: Hyprland's event socket becomes `windows.changed` and
 ## The iOS companion
 
 lattices-host also speaks the companion bridge the iOS app uses with a Mac
-(port 5287, the same routes and security), so a Linux machine joins the
-phone's fleet without app changes.
+(the same routes and security), so a Linux machine joins the phone's fleet
+without app changes. The bridge listens on private `companion.sock`; the
+gateway relays it on the tailnet.
 
-1. In the app, add a host by address: `archie:5287` over Tailscale, or a LAN
-   IP if you start the host with `--bridge-bind <lan-ip>` (that also
-   advertises it over Bonjour through Avahi).
+1. Start the gateway (`lats gateway start --tailnet`), then add the host in
+   the app by address: `archie:9399` over Tailscale. There is no LAN listener
+   or Bonjour advertisement.
 2. The host shows a notification, "Pair <device>?", with the device's code.
-   Check the code matches the phone and approve. You can also approve from
-   anywhere you can reach the host: `lats --host archie call bridge.status`,
-   then `bridge.pairing.approve '{"deviceID":"..."}'`. Requests nobody
+   Check the code matches the phone and approve. You can also approve on the
+   host: `lats call bridge.status`, then
+   `lats call bridge.pairing.approve '{"deviceID":"..."}'`. Requests nobody
    decides are denied after two minutes.
 3. Every later request is signed and encrypted with keys from that pairing.
    `bridge.devices.revoke` forgets a device.
