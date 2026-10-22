@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import LatticesWorkspaceCore
 
 // MARK: - Data Model
 
@@ -455,7 +456,7 @@ class WorkspaceManager: ObservableObject {
     @Published var config: WorkspaceConfig?
     @Published var activeLayerIndex: Int = 0
     @Published private(set) var layerFocus = LayerFocusState()
-    @Published var isSwitching: Bool = false
+    var isSwitching: Bool { layerOperations.isSwitching }
     @Published var gridPresets: [String: GridPreset] = [:]
     @Published var gridLayouts: [String: LayoutConfig] = [:]
     @Published var snapZonesConfig: SnapZonesConfig = .defaults
@@ -475,8 +476,20 @@ class WorkspaceManager: ObservableObject {
     var classicGathering = false
     private let layerFocusKey = "lattices.isLayerFocusActive"
     private let layerRecoveryKey = "lattices.layerRecoveryRemaining"
+    private let layerRecoveryPersistenceKey = "lattices.layerRecoveryPersistencePending"
     private var layerSpaceObserver: NSObjectProtocol?
     private var layerRecoveryWork: DispatchWorkItem?
+    private(set) lazy var layerOperations = LayerOperationCoordinator(
+        focus: layerFocus,
+        schedule: { delay, action in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+        },
+        didChange: { [weak self] snapshot in
+            guard let self else { return }
+            self.persistLayerFocus(snapshot.focus)
+            self.layerFocus = snapshot.focus
+        }
+    )
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -489,7 +502,8 @@ class WorkspaceManager: ObservableObject {
             // until the first explicit exit, including its hidden-app ledger.
             persistedActive: UserDefaults.standard.object(forKey: layerFocusKey) as? Bool,
             hasRememberedLayer: UserDefaults.standard.object(forKey: activeLayerKey) != nil,
-            pendingRestorationCount: UserDefaults.standard.integer(forKey: layerRecoveryKey)
+            pendingRestorationCount: UserDefaults.standard.integer(forKey: layerRecoveryKey),
+            pendingPersistence: UserDefaults.standard.bool(forKey: layerRecoveryPersistenceKey)
         )
         loadConfig()
         loadGridConfig()
@@ -501,7 +515,7 @@ class WorkspaceManager: ObservableObject {
         }
     }
 
-    var isLayerFocusActive: Bool { layerFocus.isActive }
+    var isLayerFocusActive: Bool { layerOperations.focus.isActive }
     var activeLayerSelection: Int? {
         isLayerFocusActive && layers.indices.contains(activeLayerIndex) ? activeLayerIndex : nil
     }
@@ -515,6 +529,9 @@ class WorkspaceManager: ObservableObject {
     var layerRecoveryMessage: String? {
         let count = layerFocus.pendingRestorationCount
         guard layerFocus.needsRecovery else { return nil }
+        if count == 0 && layerFocus.pendingPersistence {
+            return "Layers off · saving recovery state."
+        }
         return "Layers off · \(count) still waiting to restore. Visit their desktops to finish."
     }
 
@@ -529,41 +546,47 @@ class WorkspaceManager: ObservableObject {
         }
         dispatchPrecondition(condition: .onQueue(.main))
         layerRecoveryWork?.cancel()
-        layerFocus.exit()
-        persistLayerFocus()
-        classicShowing = false
-        isSwitching = false
-        LayerAim.shared.cancel()
-        LayerPreview.shared.dismiss()
-        let outcome = restoreExitedLayerWindows()
-        if showFeedback {
-            LayerBezel.shared.acknowledge(outcome.remainingToRestore == 0
-                ? "Layers off" : "Layers off · \(outcome.remainingToRestore) waiting to restore")
-        }
-        // Apps can take a moment to expose AX windows after being unhidden.
-        scheduleLayerRecovery()
+        let operation = layerOperations.exit()
+        var outcome = LayerStage.Outcome()
+        _ = layerOperations.execute(operation, steps: [
+            { self.classicShowing = false },
+            { LayerAim.shared.cancel() },
+            { LayerPreview.shared.dismiss() },
+            { outcome = self.restoreExitedLayerWindows() },
+            {
+                if showFeedback {
+                    LayerBezel.shared.acknowledge(outcome.persistenceError != nil
+                        ? "Layers off · saving recovery state"
+                        : outcome.remainingToRestore == 0
+                            ? "Layers off" : "Layers off · \(outcome.remainingToRestore) waiting to restore")
+                }
+            },
+            // Apps can expose AX windows a moment after being unhidden.
+            { self.scheduleLayerRecovery() }
+        ])
         return outcome
     }
 
-    private func persistLayerFocus() {
-        UserDefaults.standard.set(layerFocus.isActive, forKey: layerFocusKey)
-        UserDefaults.standard.set(layerFocus.pendingRestorationCount, forKey: layerRecoveryKey)
+    private func persistLayerFocus(_ focus: LayerFocusState) {
+        UserDefaults.standard.set(focus.isActive, forKey: layerFocusKey)
+        UserDefaults.standard.set(focus.pendingRestorationCount, forKey: layerRecoveryKey)
+        UserDefaults.standard.set(focus.pendingPersistence, forKey: layerRecoveryPersistenceKey)
     }
 
     private func restoreExitedLayerWindows() -> LayerStage.Outcome {
-        let generation = layerFocus.generation
+        let generation = layerOperations.focus.generation
         let outcome = LayerStage.shared.showAll()
-        layerFocus.recovered(remaining: outcome.remainingToRestore, generation: generation)
-        persistLayerFocus()
+        layerOperations.recovered(remaining: outcome.remainingToRestore,
+                                  pendingPersistence: outcome.persistenceError != nil, generation: generation)
         return outcome
     }
 
     private func scheduleLayerRecovery() {
-        guard layerFocus.needsRecovery else { return }
+        guard layerOperations.focus.needsRecovery else { return }
         layerRecoveryWork?.cancel()
-        let generation = layerFocus.generation
+        let generation = layerOperations.focus.generation
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.layerFocus.acceptsRecovery(generation) else { return }
+            guard let self, self.layerOperations.focus.acceptsRecovery(generation) else { return }
             _ = self.restoreExitedLayerWindows()
         }
         layerRecoveryWork = work
@@ -844,21 +867,21 @@ class WorkspaceManager: ObservableObject {
 
     /// Launch a mixed group. Project tabs open in the terminal; app/URL tabs
     /// open as native application windows.
-    func launchGroup(_ group: TabGroup, layerGeneration: UInt64? = nil) {
+    func launchGroup(_ group: TabGroup, layerOperation: LayerOperationCoordinator.Token? = nil) {
         let terminal = Preferences.shared.terminal
         let latticesCommand = LatticesRuntime.cliShellCommand
         for (i, tab) in group.tabs.enumerated() {
-            guard !isTabRunning(tab) else { continue }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.4) {
-                if let layerGeneration, !self.layerFocus.acceptsLayerWork(layerGeneration) { return }
+            if let layerOperation, !layerOperations.accepts(layerOperation) { return }
+            let running = isTabRunning(tab)
+            // The tmux query waits for a process and can admit another switch.
+            if let layerOperation, !layerOperations.accepts(layerOperation) { return }
+            guard !running else { continue }
+            scheduleLayerWork(layerOperation, after: Double(i) * 0.4, steps: [{
                 if let path = tab.path {
                     let earlierTerminalTabs = group.tabs[..<i].contains(where: \.isTerminal)
                     if !earlierTerminalTabs {
                         terminal.launch(command: "\(latticesCommand) start", in: path)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            if let layerGeneration, !self.layerFocus.acceptsLayerWork(layerGeneration) { return }
-                            terminal.nameTab(tab.displayLabel)
-                        }
+                        self.scheduleLayerWork(layerOperation, after: 0.3, steps: [{ terminal.nameTab(tab.displayLabel) }])
                     } else {
                         terminal.launchTab(
                             command: "\(latticesCommand) start",
@@ -869,7 +892,16 @@ class WorkspaceManager: ObservableObject {
                 } else {
                     self.launch(tab)
                 }
-            }
+            }])
+        }
+    }
+
+    /// Group launches outside a layer keep their independent lifetime.
+    private func scheduleLayerWork(_ operation: LayerOperationCoordinator.Token?, after delay: Double, steps: [LayerOperationCoordinator.Effect]) {
+        if let operation {
+            layerOperations.schedule(operation, after: delay, steps: steps)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { steps.forEach { $0() } }
         }
     }
 
@@ -946,21 +978,24 @@ class WorkspaceManager: ObservableObject {
     /// `collapseGroup` after a layer launched the group's missing tabs: only
     /// the windows layer `layerId` holds by the group's entry now, on screen
     /// and not tucked. Nothing once another layer is active.
-    private func collapseGroup(_ group: TabGroup, ofLayer layerId: String) {
+    private func collapseGroup(_ group: TabGroup, ofLayer layerId: String, operation: LayerOperationCoordinator.Token) {
+        guard layerOperations.accepts(operation) else { return }
         guard let layer = activeLayer, layer.id == layerId,
               let entry = layer.projects.firstIndex(where: { $0.group == group.id }) else { return }
         let tucked = LayerStage.shared.tucked(layerId)
         let held = membership(of: layer, in: DesktopModel.shared.refreshNow()).members
             .filter { $0.project == entry && $0.entry.isOnScreen && !tucked.contains($0.entry.wid) }
+        guard layerOperations.accepts(operation) else { return }
         let windows = tabOrdered(held.map(\.entry), in: group)
         let selected = selectedTabIndex(in: group)
         let front = group.tabs.indices.contains(selected)
             ? windows.last { LayerMembership.reads(group.tabs[selected], $0) } : nil
-        collapse(group, windows: windows, focusing: front)
+        collapse(group, windows: windows, focusing: front, operation: operation)
     }
 
     /// Stacks `windows` in the group's slot, the last in front, and focuses `front`.
-    private func collapse(_ group: TabGroup, windows: [WindowEntry], focusing front: WindowEntry?) {
+    private func collapse(_ group: TabGroup, windows: [WindowEntry], focusing front: WindowEntry?, operation: LayerOperationCoordinator.Token? = nil) {
+        if let operation, !layerOperations.accepts(operation) { return }
         guard !windows.isEmpty,
               let (placement, targetScreen) = groupPlacement(group) else { return }
 
@@ -968,8 +1003,10 @@ class WorkspaceManager: ObservableObject {
         WindowTiler.batchMoveAndRaiseWindows(
             windows.map { (wid: $0.wid, pid: $0.pid, frame: frame) }
         )
+        if let operation, !layerOperations.accepts(operation) { return }
         expandedGroupIDs.remove(group.id)
 
+        if let operation, !layerOperations.accepts(operation) { return }
         if let front {
             _ = WindowTiler.focusWindow(wid: front.wid, pid: front.pid)
         }
@@ -1130,20 +1167,42 @@ class WorkspaceManager: ObservableObject {
     /// had showing (see `LayerStage`), from a fresh inventory. Staging the
     /// active layer again reconciles it the same way.
     @discardableResult
-    func stageSwitch(to index: Int, in layers: [Layer], persistRebinds: Bool = true) -> LayerStage.Outcome {
+    func stageSwitch(
+        to index: Int,
+        in layers: [Layer],
+        persistRebinds: Bool = true,
+        operation: LayerOperationCoordinator.Token? = nil
+    ) -> LayerStage.Outcome? {
         dispatchPrecondition(condition: .onQueue(.main))
-        let outgoing = isLayerFocusActive && layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
+        let outgoingWasActive = operation?.wasActive ?? isLayerFocusActive
+        let outgoing = outgoingWasActive && layers.indices.contains(activeLayerIndex) ? layers[activeLayerIndex] : nil
         layerRecoveryWork?.cancel()
-        layerFocus.enter()
-        persistLayerFocus()
-        let windows = DesktopModel.shared.refreshNow()
-        let resolution = LayerMembership.resolve(layers, windows: windows, sources: membershipSources)
+        let operation = operation ?? layerOperations.begin()
+        var windows: [WindowEntry] = []
+        var resolution = LayerMembership.Resolution(ids: [])
         var members: [String: Set<UInt32>] = [:]
-        for (layer, held) in zip(layers, resolution.layers) {
-            members[layer.id, default: []].formUnion(held.map(\.entry.wid))
+        var outcome = LayerStage.Outcome()
+        guard layerOperations.execute(operation, steps: [
+            { windows = DesktopModel.shared.refreshNow() },
+            { resolution = LayerMembership.resolve(layers, windows: windows, sources: self.membershipSources) },
+            {
+                for (layer, held) in zip(layers, resolution.layers) {
+                    members[layer.id, default: []].formUnion(held.map(\.entry.wid))
+                }
+                if persistRebinds { self.keepRebinds(resolution, of: layers) }
+            },
+            { outcome = LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows) }
+        ]) else { return nil }
+        if let error = outcome.persistenceError {
+            DiagnosticLog.shared.error("LayerStage: \(error)")
+            LayerBezel.shared.acknowledge(outcome.blockedBeforeEffects
+                ? "Layers unchanged · couldn't save recovery" : "Layer recovery couldn't be saved")
         }
-        if persistRebinds { keepRebinds(resolution, of: layers) }
-        return LayerStage.shared.stage(outgoing: outgoing, incoming: layers[index], members: members, windows: windows)
+        if outcome.blockedBeforeEffects {
+            layerOperations.cancel(operation)
+            scheduleLayerRecovery()
+        }
+        return outcome
     }
 
     // MARK: - Layer Switch
@@ -1162,31 +1221,48 @@ class WorkspaceManager: ObservableObject {
         in layers: [Layer],
         listApps: Bool = true,
         persistRebinds: Bool = true,
-        place: (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
-    ) -> LayerStage.Outcome {
+        operation: LayerOperationCoordinator.Token,
+        place: @escaping (_ held: [LayerMembership.Member], _ pinned: Set<UInt32>, _ tucked: Set<UInt32>) -> Void = { _, _, _ in }
+    ) -> LayerStage.Outcome? {
         dispatchPrecondition(condition: .onQueue(.main))
         let layer = layers[index]
-        noteSwitch(to: index, in: layers)
-        let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds)
+        var switchUndo: LayerUndo?
+        guard layerOperations.execute(operation, steps: [{
+            if operation.wasActive { switchUndo = self.prepareSwitchUndo(to: index, in: layers) }
+        }]),
+              let outcome = stageSwitch(to: index, in: layers, persistRebinds: persistRebinds, operation: operation)
+        else { return nil }
+        guard !outcome.blockedBeforeEffects else { return outcome }
 
-        let windows = DesktopModel.shared.refreshNow()
-        let (held, pinned) = membership(of: layer, in: windows)
-        let tucked = LayerStage.shared.tucked(layer.id)
-        place(held, pinned, tucked)
-        if !arrangeLayer(layer, windows: windows, except: tucked) {
-            raiseWindows(of: layer, held: held.filter { !tucked.contains($0.entry.wid) }, pinned: pinned)
-        }
-
-        activeLayerIndex = index
-        classicShowing = false
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-
-        if listApps {
-            showBezel(for: index, in: layers, windows: windows, outcome: outcome)
-        } else {
-            LayerBezel.shared.show(label: layer.label, index: index, total: layers.count)
-        }
-        EventBus.shared.post(.layerSwitched(index: index))
+        var windows: [WindowEntry] = []
+        var held: [LayerMembership.Member] = []
+        var pinned = Set<UInt32>()
+        var tucked = Set<UInt32>()
+        guard layerOperations.execute(operation, steps: [
+            { windows = DesktopModel.shared.refreshNow() },
+            { (held, pinned) = self.membership(of: layer, in: windows) },
+            { tucked = LayerStage.shared.tucked(layer.id) },
+            { place(held, pinned, tucked) },
+            {
+                let arranged = self.arrangeLayer(layer, windows: windows, except: tucked)
+                guard self.layerOperations.accepts(operation) else { return }
+                if !arranged {
+                    self.raiseWindows(of: layer, held: held.filter { !tucked.contains($0.entry.wid) }, pinned: pinned)
+                }
+            },
+            { self.activeLayerIndex = index },
+            { self.classicShowing = false },
+            { UserDefaults.standard.set(index, forKey: self.activeLayerKey) },
+            { self.recordSwitchUndo(switchUndo) },
+            {
+                if listApps {
+                    self.showBezel(for: index, in: layers, windows: windows, outcome: outcome)
+                } else {
+                    LayerBezel.shared.show(label: layer.label, index: index, total: layers.count)
+                }
+            },
+            { EventBus.shared.post(.layerSwitched(index: index)) }
+        ]) else { return nil }
         return outcome
     }
 
@@ -1210,8 +1286,9 @@ class WorkspaceManager: ObservableObject {
         let diag = DiagnosticLog.shared
         let t = diag.startTimed("focusLayer \(activeLayerIndex)→\(index)")
 
-        switchLayer(to: index, in: layers)
-        if switching {
+        let operation = layerOperations.begin()
+        let outcome = switchLayer(to: index, in: layers, operation: operation)
+        if switching, outcome?.blockedBeforeEffects == false, layerOperations.accepts(operation) {
             HandsOffSession.shared.playCachedCue("Switched.")
         }
 
@@ -1284,55 +1361,54 @@ class WorkspaceManager: ObservableObject {
         let label = launch ? "tileLayer(launch)" : "tileLayer(focus)"
         let overall = diag.startTimed("\(label) \(activeLayerIndex)→\(index)")
 
-        isSwitching = true
+        // Capture ownership before staging or any launch can reenter.
+        let operation = layerOperations.begin(isSwitching: true)
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
         var fallbacks: [TileFallback] = []
         var launchQueue: [TileLaunch] = []
 
-        switchLayer(to: index, in: layers, listApps: !launch) { held, pinned, tucked in
-            let work = self.tileEntries(of: layers[index], index: index, held: held, pinned: pinned, tucked: tucked, launch: launch)
+        guard let outcome = switchLayer(to: index, in: layers, listApps: !launch, operation: operation, place: { held, pinned, tucked in
+            let work = self.tileEntries(of: layers[index], index: index, held: held, pinned: pinned, tucked: tucked, launch: launch, operation: operation)
             fallbacks = work.fallbacks
             launchQueue = work.launches
+        }), !outcome.blockedBeforeEffects, layerOperations.accepts(operation) else {
+            diag.finish(overall)
+            return
         }
-        let generation = layerFocus.generation
 
-        // Phase 3: fallback for running-but-untracked windows
+        // Phase 3: fallback for running-but-untracked windows.
         for (i, fb) in fallbacks.enumerated() {
-            let delay = Double(i) * 0.15 + 0.1
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard self.layerFocus.acceptsLayerWork(generation) else { return }
-                diag.info("  tile fallback: \(fb.session) → \(fb.position.wireValue)")
-                WindowTiler.navigateToWindow(session: fb.session, terminal: terminal)
-                WindowTiler.tile(session: fb.session, terminal: terminal, to: fb.position, on: fb.screen)
-            }
+            layerOperations.schedule(operation, after: Double(i) * 0.15 + 0.1, steps: [
+                {
+                    diag.info("  tile fallback: \(fb.session) → \(fb.position.wireValue)")
+                    WindowTiler.navigateToWindow(session: fb.session, terminal: terminal)
+                },
+                { WindowTiler.tile(session: fb.session, terminal: terminal, to: fb.position, on: fb.screen) }
+            ])
         }
 
-        // Phase 4: staggered tile for newly-launched windows
+        // Phase 4: a launch may itself reenter; placement is a separate step.
         for (i, item) in launchQueue.enumerated() {
-            let delay = Double(i) * 0.15 + 0.2
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard self.layerFocus.acceptsLayerWork(generation) else { return }
-                item.launchAction()
-                if let pos = item.position {
-                    let t = diag.startTimed("tile launched: \(item.session) → \(pos.wireValue)")
-                    WindowTiler.tile(session: item.session, terminal: terminal, to: pos, on: item.screen)
-                    diag.finish(t)
+            layerOperations.schedule(operation, after: Double(i) * 0.15 + 0.2, steps: [
+                item.launchAction,
+                {
+                    if let pos = item.position {
+                        let t = diag.startTimed("tile launched: \(item.session) → \(pos.wireValue)")
+                        WindowTiler.tile(session: item.session, terminal: terminal, to: pos, on: item.screen)
+                        diag.finish(t)
+                    }
                 }
-            }
+            ])
         }
 
         let maxDelay = max(
             fallbacks.isEmpty ? 0.0 : Double(fallbacks.count) * 0.15 + 0.3,
             launchQueue.isEmpty ? 0.0 : Double(launchQueue.count) * 0.15 + 0.5
         )
-        let cleanupDelay = max(0.2, maxDelay)
-        DispatchQueue.main.asyncAfter(deadline: .now() + cleanupDelay) {
-            guard self.layerFocus.acceptsLayerWork(generation) else { return }
+        layerOperations.complete(operation, after: max(0.2, maxDelay), refreshing: {
             scanner.refreshStatus()
-            self.isSwitching = false
-            diag.finish(overall)
-        }
+        }, finished: { diag.finish(overall) })
     }
 
     /// Puts each entry's windows where its `tile` or `display` says, from
@@ -1348,12 +1424,13 @@ class WorkspaceManager: ObservableObject {
         held: [LayerMembership.Member],
         pinned: Set<UInt32>,
         tucked: Set<UInt32>,
-        launch: Bool
+        launch: Bool,
+        operation: LayerOperationCoordinator.Token
     ) -> (fallbacks: [TileFallback], launches: [TileLaunch]) {
         let diag = DiagnosticLog.shared
         let terminal = Preferences.shared.terminal
         let scanner = ProjectScanner.shared
-        let generation = layerFocus.generation
+        guard layerOperations.accepts(operation) else { return ([], []) }
 
         // Tile debug log (written to ~/.lattices/tile-debug.log)
         let debugPath = (FileManager.default.homeDirectoryForCurrentUser.path as NSString).appendingPathComponent(".lattices/tile-debug.log")
@@ -1385,6 +1462,7 @@ class WorkspaceManager: ObservableObject {
         }
 
         for (entryIndex, lp) in targetLayer.projects.enumerated() {
+            guard layerOperations.accepts(operation) else { return ([], []) }
             guard let lpScreen = screen(for: lp.display) else { continue }
 
             if lp.match != nil {
@@ -1398,6 +1476,7 @@ class WorkspaceManager: ObservableObject {
                 let position = lp.tile.flatMap { resolvePlacement($0) }
                 let groupWindows = tabOrdered(showing(entryIndex), in: grp)
                 let groupRunning = isGroupRunning(grp)
+                guard layerOperations.accepts(operation) else { return ([], []) }
 
                 if !groupWindows.isEmpty, let pos = position {
                     let frame = WindowTiler.tileFrame(for: pos, on: lpScreen)
@@ -1405,23 +1484,24 @@ class WorkspaceManager: ObservableObject {
                         (wid: $0.wid, pid: $0.pid, frame: frame)
                     })
                     expandedGroupIDs.remove(grp.id)
-                    if launch, runningTabCount(grp) < grp.tabs.count {
-                        launchGroup(grp, layerGeneration: generation)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            guard self.layerFocus.acceptsLayerWork(generation) else { return }
-                            self.collapseGroup(grp, ofLayer: targetLayer.id)
-                        }
+                    guard layerOperations.accepts(operation) else { return ([], []) }
+                    let needsLaunch = launch && runningTabCount(grp) < grp.tabs.count
+                    guard layerOperations.accepts(operation) else { return ([], []) }
+                    if needsLaunch {
+                        launchGroup(grp, layerOperation: operation)
+                        layerOperations.schedule(operation, after: 2.0, steps: [{
+                            self.collapseGroup(grp, ofLayer: targetLayer.id, operation: operation)
+                        }])
                     }
                 } else if !groupRunning && launch {
                     diag.info("  launch group: \(grp.label)")
                     launchQueue.append(("group:\(grp.id)", nil, lpScreen, { [weak self] in
                         guard let self else { return }
-                        self.launchGroup(grp, layerGeneration: generation)
+                        self.launchGroup(grp, layerOperation: operation)
                         if position != nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                guard self.layerFocus.acceptsLayerWork(generation) else { return }
-                                self.collapseGroup(grp, ofLayer: targetLayer.id)
-                            }
+                            self.layerOperations.schedule(operation, after: 2.0, steps: [{
+                                self.collapseGroup(grp, ofLayer: targetLayer.id, operation: operation)
+                            }])
                         }
                     }))
                 } else if groupWindows.isEmpty {
@@ -1456,12 +1536,15 @@ class WorkspaceManager: ObservableObject {
                     // entry holds once it's up.
                     if let pos = position {
                         let delay = Double(launchQueue.count) * 0.5 + 1.0
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                            guard let self, self.layerFocus.acceptsLayerWork(generation),
-                                  let entry = self.launchedWindow(of: targetLayer, entry: entryIndex) else { return }
-                            let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
-                            WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
-                        }
+                        var launched: WindowEntry?
+                        layerOperations.schedule(operation, after: delay, steps: [
+                            { launched = self.launchedWindow(of: targetLayer, entry: entryIndex) },
+                            {
+                                guard let entry = launched else { return }
+                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                            }
+                        ])
                     }
                 } else {
                     diag.info("  skip (not found): \(appName)")
@@ -1475,6 +1558,7 @@ class WorkspaceManager: ObservableObject {
             let position = lp.tile.flatMap { resolvePlacement($0) }
             // Check scanner first, fall back to direct tmux check for projects without .lattices.json
             let isRunning = project?.isRunning == true || shell([tmuxPath, "has-session", "-t", sessionName]) == 0
+            guard layerOperations.accepts(operation) else { return ([], []) }
 
             if isRunning {
                 let sessionWindow = showing(entryIndex).first { LayerMembership.shows(session: sessionName, $0) }
@@ -1504,6 +1588,7 @@ class WorkspaceManager: ObservableObject {
                     diag.info("  launch (direct): \(sessionName)")
                     terminal.launch(command: "\(LatticesRuntime.cliShellCommand) start", in: path)
                 }
+                guard layerOperations.accepts(operation) else { return ([], []) }
                 launchQueue.append((sessionName, position, lpScreen, {}))
             } else {
                 diag.info("  skip (not running): \(sessionName)")
@@ -1512,6 +1597,7 @@ class WorkspaceManager: ObservableObject {
             // Compose companion windows from project's .lattices.json "windows" array
             let companions = projectWindows(at: path)
             for cw in companions {
+                guard layerOperations.accepts(operation) else { return ([], []) }
                 guard let appName = cw.app else { continue }
                 let cwScreen = screen(for: cw.display ?? lp.display) ?? lpScreen
                 let cwPosition = cw.tile.flatMap { resolvePlacement($0) }
@@ -1536,18 +1622,25 @@ class WorkspaceManager: ObservableObject {
                         let capturedTitle = cw.title
                         let capturedScreen = cwScreen
                         let delay = Double(launchQueue.count) * 0.5 + 1.0
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                            guard let self, self.layerFocus.acceptsLayerWork(generation),
-                                  let entry = self.launchedWindow(of: targetLayer, entry: entryIndex, matching: {
-                                LayerMembership.reads(app: appName, title: capturedTitle, $0)
-                            }) else { return }
-                            let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
-                            WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
-                        }
+                        var launched: WindowEntry?
+                        layerOperations.schedule(operation, after: delay, steps: [
+                            {
+                                launched = self.launchedWindow(of: targetLayer, entry: entryIndex, matching: {
+                                    LayerMembership.reads(app: appName, title: capturedTitle, $0)
+                                })
+                            },
+                            {
+                                guard let entry = launched else { return }
+                                let frame = WindowTiler.tileFrame(for: pos, on: capturedScreen)
+                                WindowTiler.batchMoveAndRaiseWindows([(entry.wid, entry.pid, frame)])
+                            }
+                        ])
                     }
                 }
             }
         }
+
+        guard layerOperations.accepts(operation) else { return ([], []) }
 
         // Write debug log
         debugLines.append("batchMoves=\(batchMoves.count) fallbacks=\(fallbacks.count) launchQueue=\(launchQueue.count)")
@@ -1602,8 +1695,16 @@ class WorkspaceManager: ObservableObject {
             throw EditorBridgeError("stale_plan", "The layer no longer exists.")
         }
         if operation.kind == "gather", operation.mode == "focus" {
-            let outcome = switchLayer(to: index, in: subject.layers, persistRebinds: false)
-            return ["putAway": outcome.parked.union(outcome.hidden).count, "skipped": outcome.missing.count]
+            let token = layerOperations.begin()
+            guard let outcome = switchLayer(to: index, in: subject.layers, persistRebinds: false, operation: token) else {
+                throw EditorBridgeError("stale_plan", "A newer layer operation superseded the gather.")
+            }
+            if outcome.blockedBeforeEffects {
+                throw EditorBridgeError("recovery_write_failed", outcome.persistenceError ?? "Couldn't save layer recovery before gathering windows.")
+            }
+            var result: [String: Any] = ["putAway": outcome.parked.union(outcome.hidden).count, "skipped": outcome.missing.count]
+            if let warning = outcome.persistenceError { result["warning"] = warning }
+            return result
         }
         guard operation.kind == "open", operation.mode == "launch" else {
             throw EditorBridgeError("invalid_request", "Unsupported operation.")

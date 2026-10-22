@@ -3,6 +3,8 @@ import Security
 
 #if LATTICES_VOICE && canImport(HudsonVoice)
 import HudsonVoice
+import HudsonSpeechEngine
+import VoxCore
 import VoxService
 #endif
 
@@ -73,6 +75,12 @@ enum LatticesVoiceRuntime {
         guard Host.shared.isRunning else { return nil }
         return Host.shared.endpointURL
     }
+
+    /// Readiness includes Core ML priming. This only observes the engine; it
+    /// does not change the user's download or warmup policy.
+    static func isTranscriptionModelReady(_ modelID: String?) async -> Bool? {
+        await Host.shared.isTranscriptionModelReady(modelID)
+    }
     #else
     static var isRunning: Bool { false }
     #endif
@@ -96,6 +104,7 @@ private final class Host: @unchecked Sendable {
     private let runtimeCapabilityURL: URL
     private let voxRuntimeURL: URL
     private var runtimeService: VoxRuntimeService?
+    private var asrEngine: EngineManager?
     private var ownsCapability = false
 
     private(set) var isRunning = false
@@ -152,6 +161,7 @@ private final class Host: @unchecked Sendable {
             ownsCapability = true
             try writeRuntimeCapability(authToken: authToken, startedAt: Date())
             runtimeService = service
+            self.asrEngine = asrEngine
             isRunning = true
         } catch {
             service.stop()
@@ -167,8 +177,19 @@ private final class Host: @unchecked Sendable {
 
         runtimeService?.stop()
         runtimeService = nil
+        asrEngine = nil
         removeRuntimeCapability()
         isRunning = false
+    }
+
+    func isTranscriptionModelReady(_ requestedID: String?) async -> Bool? {
+        let engine = lock.withLock { asrEngine }
+        guard let engine else { return nil }
+        let preferences = try? VoxPreferences.load()
+        let modelID = [requestedID, preferences?.speech.preferredTranscriptionModelId]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "parakeet:v3"
+        return await engine.models().first { $0.id == modelID }?.preloaded
     }
 
     private func configureEnvironment(authToken: String) throws {

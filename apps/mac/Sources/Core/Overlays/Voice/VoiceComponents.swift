@@ -69,18 +69,21 @@ final class VoiceCommandState: ObservableObject {
     private var logSnapshot = 0
     private var logObserver: AnyCancellable?
     private var cancelled = false
+    private var requestID = UUID()
 
     func startListening() {
+        guard phase == .idle || phase == .result else { return }
         // Capture runs through AudioLayer; this gate only lets the overlay enter
         // listening once the Vox/HudsonVoice socket is actually reachable.
         cancelled = false
+        requestID = UUID()
         phase = .connecting
         executionResult = "Connecting to voice runtime..."
-        waitForVoiceRuntime(attempts: 0)
+        waitForVoiceRuntime(attempts: 0, requestID: requestID)
     }
 
-    private func waitForVoiceRuntime(attempts: Int) {
-        guard !cancelled else { return }
+    private func waitForVoiceRuntime(attempts: Int, requestID: UUID) {
+        guard !cancelled, self.requestID == requestID else { return }
         guard let provider = AudioLayer.shared.provider else {
             let message = "No voice provider available"
             appendLog(message)
@@ -92,21 +95,21 @@ final class VoiceCommandState: ObservableObject {
         }
 
         guard provider.isAvailable else {
-            retryOrFailVoiceRuntime(provider: provider, attempts: attempts)
+            retryOrFailVoiceRuntime(provider: provider, attempts: attempts, requestID: requestID)
             return
         }
 
         provider.checkHealth { [weak self] ok in
-            guard let self, !self.cancelled else { return }
+            guard let self, !self.cancelled, self.requestID == requestID else { return }
             if ok {
                 self.beginListening()
             } else {
-                self.retryOrFailVoiceRuntime(provider: provider, attempts: attempts)
+                self.retryOrFailVoiceRuntime(provider: provider, attempts: attempts, requestID: requestID)
             }
         }
     }
 
-    private func retryOrFailVoiceRuntime(provider: any AudioProvider, attempts: Int) {
+    private func retryOrFailVoiceRuntime(provider: any AudioProvider, attempts: Int, requestID: UUID) {
         guard attempts < 20 else {
             let message = provider.lastErrorMessage ?? "Voice runtime not running - try again after it starts."
             appendLog(message)
@@ -117,7 +120,7 @@ final class VoiceCommandState: ObservableObject {
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.waitForVoiceRuntime(attempts: attempts + 1)
+            self?.waitForVoiceRuntime(attempts: attempts + 1, requestID: requestID)
         }
     }
 
@@ -158,6 +161,7 @@ final class VoiceCommandState: ObservableObject {
     }
 
     func stopListening() {
+        guard phase == .listening else { return }
         phase = .transcribing
         AudioLayer.shared.stopVoiceCommand()
         observeResult()
@@ -165,16 +169,18 @@ final class VoiceCommandState: ObservableObject {
 
     func cancelListening() {
         cancelled = true
+        requestID = UUID()
         phase = .idle
-        AudioLayer.shared.stopVoiceCommand()
+        AudioLayer.shared.cancelVoiceCommand()
         appendLog("Cancelled")
     }
 
     /// Cancel any in-progress processing (polling loops will check this flag).
     func cancelProcessing() {
         cancelled = true
+        requestID = UUID()
         if phase == .listening || phase == .transcribing || phase == .connecting {
-            AudioLayer.shared.stopVoiceCommand()
+            AudioLayer.shared.cancelVoiceCommand()
             appendLog("Processing cancelled")
             phase = .idle
         }
@@ -214,9 +220,11 @@ final class VoiceCommandState: ObservableObject {
 
     private func pollForAdvisor() {
         let audio = AudioLayer.shared
+        let requestID = requestID
         var checks = 0
 
         func poll() {
+            guard !self.cancelled, self.requestID == requestID else { return }
             if let resp = audio.agentResponse {
                 self.agentResponse = resp
                 return
@@ -263,6 +271,7 @@ final class VoiceCommandState: ObservableObject {
 
     private func observeResult() {
         let audio = AudioLayer.shared
+        let requestID = requestID
         var checks = 0
         let maxChecks = 75  // 15 seconds at 0.2s intervals
 
@@ -291,7 +300,7 @@ final class VoiceCommandState: ObservableObject {
 
         func poll() {
             // Bail if cancelled (e.g. user dismissed or started a new command)
-            guard !self.cancelled else { return }
+            guard !self.cancelled, self.requestID == requestID else { return }
 
             checks += 1
             syncState()
@@ -309,13 +318,16 @@ final class VoiceCommandState: ObservableObject {
             }
 
             // Still working
-            let stillWorking = result == nil
+            let stillWorking = audio.isTranscribing || result == nil
                 || result == "Transcribing..."
                 || result == "thinking..."
                 || result == "searching..."
                 || result == "fixing..."
 
             if stillWorking {
+                // Capture has its own bounded deadline, including model startup.
+                // The action timeout starts after a transcript has arrived.
+                if audio.isTranscribing { checks = 0 }
                 if let result { self.executionResult = result }
                 self.phase = .transcribing
                 if checks < maxChecks {

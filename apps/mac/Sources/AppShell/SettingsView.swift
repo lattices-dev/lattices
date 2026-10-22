@@ -1911,20 +1911,29 @@ struct SettingsContentView: View {
 
     private var voiceModelCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            settingsPrefRow("Provider") {
-                SettingsChoiceBar(
-                    selection: $assistantSession.authProviderID,
-                    options: assistantSession.providerOptions.map { ($0.id, $0.name) }
-                )
+            settingsPrefRow("Command model") {
+                Picker("Command model", selection: $assistantSession.commandModelPreference) {
+                    ForEach(CommandModelPreference.allCases, id: \.rawValue) { preference in
+                        Text(preference.label).tag(preference.rawValue)
+                    }
+                }.labelsHidden().frame(width: 220)
             }
-
-            Text(assistantSession.currentProvider.helpText)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textMuted)
+            Text(assistantSession.commandModelStatus)
+                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-
-            assistantCredentialControls
-            assistantAuthMessage
+            Text("Automatic uses Codex Luna, Claude Code Haiku, then connected Grok or Flash models through Pi, with configured API connections as fallbacks. Clear commands run locally. Your assistant model stays unchanged.")
+                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup("API connection") {
+                settingsPrefRow("Provider") {
+                    SettingsChoiceBar(selection: $assistantSession.authProviderID,
+                        options: assistantSession.providerOptions.map { ($0.id, $0.name) })
+                }
+                Text(assistantSession.currentProvider.helpText)
+                    .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
+                assistantCredentialControls
+                assistantAuthMessage
+            }
         }
     }
 

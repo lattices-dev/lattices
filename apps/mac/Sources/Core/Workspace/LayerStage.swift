@@ -40,6 +40,9 @@ final class LayerStage {
         /// Where it landed, read back after the move. Nil in a ledger from
         /// before it was kept; the park corner stands in.
         var spot: CGPoint? = nil
+        /// Durable intent before AX runs. An interrupted or uncertain move
+        /// keeps its home even when macOS clamps it outside the park corner.
+        var pendingPark: Bool? = nil
     }
 
     /// What a stage did, by window. `summary` is what's logged.
@@ -65,6 +68,8 @@ final class LayerStage {
         var hiddenApps: [String] = []
         var unhiddenApps: [String] = []
         var stillHiddenApps: [String] = []
+        var blockedBeforeEffects = false
+        var persistenceError: String?
 
         var remainingToRestore: Int { stillParked + stillHiddenApps.count }
 
@@ -72,6 +77,7 @@ final class LayerStage {
             "shown \(shown.count), parked \(parked.count), unparked \(unparked.count), stayed \(stayed.count), "
                 + "missing \(missing.count), still parked \(stillParked), rescued \(rescued), "
                 + "hid [\(hiddenApps.joined(separator: ", "))], unhid [\(unhiddenApps.joined(separator: ", "))]"
+                + (persistenceError.map { "; recovery ledger: \($0)" } ?? "")
         }
     }
 
@@ -126,10 +132,10 @@ final class LayerStage {
 
     /// macOS keeps a parked window's top strip on screen; a window this close
     /// to the right edge is still where a switch put it.
-    private static let parkedSlack: CGFloat = 40
+    static let parkedSlack: CGFloat = 40
     /// How far above the bottom edge macOS may pull a parked window's top
     /// to keep its title bar in reach.
-    private static let parkedDrop: CGFloat = 160
+    static let parkedDrop: CGFloat = 160
     /// The size bar of `DesktopModel.isContent`, for the strays
     /// `rescueStrays` reads straight from CG.
     private static let minSide: CGFloat = 120
@@ -143,7 +149,7 @@ final class LayerStage {
     private let statePath: String
     /// Moves on with each stage and Show All; a look scheduled by an earlier
     /// one finds it moved and does nothing.
-    private var generation = 0
+    private var revision = LayerStageRevision()
     /// What the last stage hid or parked, until its look. A hide lands a
     /// moment after it's asked for, and until then the app reads as showing.
     private var settlingPids = Set<Int32>()
@@ -290,17 +296,17 @@ final class LayerStage {
         windows: [WindowEntry]
     ) -> Outcome {
         var outcome = Outcome()
+        lock.lock()
+        defer { lock.unlock() }
+        revision.begin()
         guard let stage = Stage.current() else {
+            scheduleVerifyLocked([])
             DiagnosticLog.shared.info("LayerStage: the main screen isn't showing a desktop — leaving windows alone")
             return outcome
         }
         let live = Self.liveWindows()
 
-        lock.lock()
-        defer {
-            persistLocked()
-            lock.unlock()
-        }
+        let initial = state
         pruneLocked(stage.bounds, live: live)
 
         // 1. What the outgoing layer had showing, beyond every layer's
@@ -337,13 +343,25 @@ final class LayerStage {
             tucked: tucked
         )
         guard !want.isEmpty || plan != Plan() else {
+            do { try Self.write(state, to: statePath) }
+            catch {
+                state = initial
+                outcome.blockedBeforeEffects = true
+                outcome.persistenceError = error.localizedDescription
+            }
+            scheduleVerifyLocked([])
             DiagnosticLog.shared.info("LayerStage: \(outgoing?.id ?? "-") → \(incoming.id): nothing wanted on this desktop — leaving windows alone")
             return outcome
         }
 
-        generation += 1
-        applyLocked(plan, want: want, windows: windows, stage: stage, into: &outcome)
-        state.untucked[incoming.id] = Self.stillUntucked(untucked, claimed: claimed, shown: outcome.shown)
+        applyLocked(plan, initial: initial, want: want, windows: windows, stage: stage, into: &outcome) { next, result in
+            next.untucked[incoming.id] = Self.stillUntucked(untucked, claimed: claimed, shown: result.shown)
+        }
+        guard !outcome.blockedBeforeEffects else {
+            scheduleVerifyLocked([])
+            DiagnosticLog.shared.error("LayerStage: blocked before effects — \(outcome.summary)")
+            return outcome
+        }
         outcome.stillParked = state.parked.count
         DiagnosticLog.shared.info("LayerStage: \(outgoing?.id ?? "-") → \(incoming.id): \(outcome.summary)")
         scheduleVerifyLocked(outcome.parked)
@@ -353,59 +371,32 @@ final class LayerStage {
     /// Run `plan` in its order: unhide and wait, park, restore, hide.
     private func applyLocked(
         _ plan: Plan,
+        initial: State,
         want: Set<UInt32>,
         windows: [WindowEntry],
         stage: Stage,
-        into outcome: inout Outcome
+        into outcome: inout Outcome,
+        finalize: (inout State, Outcome) -> Void
     ) {
-        // 3. Unhide the apps that own a wanted window, and let that land
-        //    before parking their other windows.
-        for pid in plan.unhide {
-            guard let app = NSRunningApplication(processIdentifier: pid) else { continue }
-            app.unhide()
-            outcome.unhiddenApps.append(app.localizedName ?? "pid \(pid)")
-            state.hiddenPids.removeAll { $0 == pid }
-            settlingPids.remove(pid)
-        }
-        outcome.unhidden = plan.unhidden
-        Self.awaitUnhide(Set(plan.unhide))
-
-        // 4. Park what isn't wanted. A window the ledger has keeps its home.
-        if !plan.park.isEmpty {
-            if stage.canPark {
-                let entries = Dictionary(windows.map { ($0.wid, $0) }, uniquingKeysWith: { first, _ in first })
-                let targets = plan.park.compactMap { wid -> ParkedWindow? in
-                    if let known = state.parked.first(where: { $0.wid == wid }) { return known }
-                    return entries[wid].map {
-                        ParkedWindow(wid: $0.wid, pid: $0.pid, app: $0.app, title: $0.title, frame: $0.frame)
-                    }
-                }
-                (outcome.parked, outcome.stayed) = parkLocked(targets, at: stage.parkOrigin)
-            } else {
-                DiagnosticLog.shared.warn("LayerStage: a display sits past the main screen's bottom-right corner — not parking \(plan.park.count) windows")
+        let entries = Dictionary(windows.map { ($0.wid, $0) }, uniquingKeysWith: { first, _ in first })
+        let targets = stage.canPark ? plan.park.compactMap { wid -> ParkedWindow? in
+            if let known = state.parked.first(where: { $0.wid == wid }) { return known }
+            return entries[wid].map {
+                ParkedWindow(wid: $0.wid, pid: $0.pid, app: $0.app, title: $0.title, frame: $0.frame)
             }
+        } : []
+        if !stage.canPark && !plan.park.isEmpty {
+            DiagnosticLog.shared.warn("LayerStage: a display sits past the main screen's bottom-right corner — not parking \(plan.park.count) windows")
         }
-
-        // 5. Bring back what the layer wants from the park corner.
-        let restored = Self.restore(state.parked.filter { plan.restore.contains($0.wid) })
-        state.parked.removeAll { restored.contains($0.wid) }
-        outcome.unparked = restored
-        outcome.missing = Set(plan.restore).subtracting(restored)
-        outcome.shown = want.subtracting(outcome.missing)
-
-        // 6. Hide the apps with nothing wanted. The frontmost goes last, so
-        //    each hide hands focus to an app that's staying.
-        for pid in plan.hide {
-            guard let app = NSRunningApplication(processIdentifier: pid) else { continue }
-            // hide() answers false even when the app goes on to hide, so its
-            // answer can't be the cue to park the windows instead.
-            EditorMutationJournal.hiding(app)
-            app.hide()
-            outcome.hiddenApps.append(app.localizedName ?? "pid \(pid)")
-            if !state.hiddenPids.contains(pid) { state.hiddenPids.append(pid) }
-            settlingPids.insert(pid)
-        }
-        outcome.hidden = plan.hidden
+        let result = LayerStageExecutor.execute(
+            initial: initial, proposed: state, plan: plan, want: want,
+            parking: targets, origin: stage.parkOrigin,
+            owners: entries.mapValues(\.pid), environment: executionEnvironment, finalize: finalize
+        )
+        state = result.state
+        outcome = result.outcome
+        guard !outcome.blockedBeforeEffects else { return }
+        settlingPids.formUnion(plan.hide.filter { state.hiddenPids.contains($0) })
         settlingWids.formUnion(outcome.parked)
         settlingWids.formUnion(plan.hidden)
     }
@@ -413,7 +404,7 @@ final class LayerStage {
     /// One look, `verifyDelay` after a stage: a single deferred call, not a
     /// watch.
     private func scheduleVerifyLocked(_ parked: Set<UInt32>) {
-        let generation = self.generation
+        let generation = revision.value
         let journal = EditorMutationJournal.current
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.verifyDelay) {
             if let journal {
@@ -426,12 +417,12 @@ final class LayerStage {
     /// Park again, once, what came back on screen after `generation`'s stage
     /// parked it, and log what stayed. If a later stage or Show All has run,
     /// the screen is theirs and this does nothing.
-    private func verify(_ generation: Int, parked wids: Set<UInt32>) {
+    private func verify(_ generation: UInt64, parked wids: Set<UInt32>) {
         let live = wids.isEmpty ? nil : Self.liveWindows()
         let main = Stage.mainBounds
         lock.lock()
         defer { lock.unlock() }
-        guard generation == self.generation else { return }
+        guard revision.accepts(generation) else { return }
         settlingPids.removeAll()
         settlingWids.removeAll()
         guard let live else { return }
@@ -470,36 +461,17 @@ final class LayerStage {
     func showAll() -> Outcome {
         let live = Self.liveWindows()
         lock.lock()
-        defer {
-            persistLocked()
-            lock.unlock()
-        }
-        generation += 1
-        var outcome = Outcome()
+        defer { lock.unlock() }
+        revision.begin()
         pruneLocked(Stage.mainBounds, live: live)
         // Hidden apps may expose no AX windows. Unhide first, then restore;
         // keep failed unhides in the ledger so Exit Layers can retry them.
-        var stillHiddenPids: [Int32] = []
-        for pid in state.hiddenPids {
-            guard let app = NSRunningApplication(processIdentifier: pid),
-                  app.isHidden || settlingPids.contains(pid) else { continue }
-            let name = app.localizedName ?? "pid \(pid)"
-            if app.unhide() {
-                outcome.unhiddenApps.append(name)
-            } else {
-                stillHiddenPids.append(pid)
-                outcome.stillHiddenApps.append(name)
-            }
-        }
-        state.hiddenPids = stillHiddenPids
-        let restored = Self.restore(state.parked)
-        outcome.unparked = restored
-        state.parked.removeAll { restored.contains($0.wid) }
-        outcome.stillParked = state.parked.count
+        let result = LayerStageExecutor.recover(state, environment: executionEnvironment)
+        state = result.state
+        var outcome = result.outcome
         let strays = Self.rescueStrays(tracked: Set(state.parked.map(\.wid)))
         outcome.rescued = strays.rescued
         outcome.stillParked += strays.found - strays.rescued
-        state.scenes.removeAll()
         settlingPids.removeAll()
         settlingWids.removeAll()
         DiagnosticLog.shared.info("LayerStage: show all — \(outcome.summary)")
@@ -673,6 +645,9 @@ final class LayerStage {
     /// back by its app. A collapsed window (its app hid) isn't.
     static func isPulledBack(_ window: ParkedWindow, live: [UInt32: LiveWindow], main: CGRect) -> Bool {
         guard let now = live[window.wid], now.pid == window.pid, !isCollapsed(now.frame) else { return false }
+        if window.pendingPark == true {
+            return abs(now.frame.minX - window.frame.x) <= 2 && abs(now.frame.minY - window.frame.y) <= 2
+        }
         return !Stage.isParked(now.frame, spot: window.spot, in: main)
     }
 
@@ -886,45 +861,67 @@ final class LayerStage {
     /// home and leave the ledger.
     private func parkLocked(_ windows: [ParkedWindow], at origin: CGPoint) -> (parked: Set<UInt32>, stayed: Set<UInt32>) {
         guard !windows.isEmpty else { return ([], []) }
-        let known = Set(state.parked.map(\.wid))
-        let fresh = windows.filter { !known.contains($0.wid) }
-        state.parked.append(contentsOf: fresh)
-        persistLocked()
+        let result = LayerStageExecutor.execute(
+            initial: state, proposed: state, plan: Plan(park: windows.map(\.wid)),
+            want: [], parking: windows, origin: origin, environment: executionEnvironment
+        )
+        state = result.state
+        if let error = result.outcome.persistenceError {
+            DiagnosticLog.shared.error("LayerStage: recovery ledger — \(error)")
+        }
+        return (result.outcome.parked, result.outcome.stayed)
+    }
 
-        let homes = Dictionary(state.parked.map { ($0.wid, $0.frame) }, uniquingKeysWith: { first, _ in first })
-        var spots: [UInt32: CGPoint] = [:]
-        var stayed = Set<UInt32>()
+    private var executionEnvironment: LayerStageExecutor.Environment {
+        LayerStageExecutor.Environment(
+            write: { try Self.write($0, to: self.statePath) },
+            unhide: { pid in
+                guard let app = NSRunningApplication(processIdentifier: pid) else { return .unavailable }
+                let name = app.localizedName ?? "pid \(pid)"
+                return app.unhide() ? .succeeded(name) : .failed(name)
+            },
+            waitForUnhide: Self.awaitUnhide,
+            park: Self.performPark,
+            restore: Self.restore,
+            hide: { pid in
+                guard let app = NSRunningApplication(processIdentifier: pid) else { return .unavailable }
+                EditorMutationJournal.hiding(app)
+                // macOS can return false before a hide lands. Durable intent
+                // remains until a later inventory confirms or prunes it.
+                app.hide()
+                return .succeeded(app.localizedName ?? "pid \(pid)")
+            }
+        )
+    }
+
+    private static func performPark(_ windows: [ParkedWindow], at origin: CGPoint) -> LayerStageExecutor.ParkResult {
+        let homes = Dictionary(windows.map { ($0.wid, $0.frame) }, uniquingKeysWith: { first, _ in first })
+        var result = LayerStageExecutor.ParkResult()
         Self.withAXWindows(for: windows.map { (wid: $0.wid, pid: $0.pid) }) { wid, axWindow in
             guard !Self.isMinimized(axWindow) else { return }
             let capture = EditorMutationJournal.begin(wid: wid, ax: axWindow, parked: true)
             if EditorMutationJournal.current != nil && capture == nil { return }
             defer { EditorMutationJournal.end(capture) }
-            var point = origin
-            guard let value = AXValueCreate(.cgPoint, &point),
-                  AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success else { return }
-            // A Cocoa window constrains the move to the screen; it lands in
-            // the corner in full view. Put it back rather than lose it there.
-            guard let landed = Self.position(of: axWindow), landed.x >= origin.x + 1 - Self.parkedSlack else {
-                if let home = homes[wid] {
-                    var back = CGPoint(x: home.x, y: home.y)
-                    if let value = AXValueCreate(.cgPoint, &back) {
-                        AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value)
-                    }
-                }
-                stayed.insert(wid)
-                return
+            guard let home = homes[wid] else { return }
+            let moved = LayerStageExecutor.parkWindow(
+                home: CGPoint(x: home.x, y: home.y), origin: origin,
+                move: { target in
+                    var point = target
+                    guard let value = AXValueCreate(.cgPoint, &point) else { return false }
+                    return AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, value) == .success
+                },
+                position: { Self.position(of: axWindow) }
+            )
+            switch moved {
+            case .parked(let spot): result.spots[wid] = spot
+            case .stayed: result.stayed.insert(wid)
+            case .uncertain: break
             }
-            spots[wid] = landed
         }
-        let freshWids = Set(fresh.map(\.wid))
-        state.parked.removeAll { stayed.contains($0.wid) || (freshWids.contains($0.wid) && spots[$0.wid] == nil) }
-        for index in state.parked.indices {
-            if let spot = spots[state.parked[index].wid] { state.parked[index].spot = spot }
+        if !result.stayed.isEmpty {
+            DiagnosticLog.shared.info("LayerStage: \(result.stayed.count) windows stayed on screen when parked — left where they were")
         }
-        if !stayed.isEmpty {
-            DiagnosticLog.shared.info("LayerStage: \(stayed.count) windows stayed on screen when parked — left where they were")
-        }
-        return (Set(spots.keys), stayed)
+        return result
     }
 
     /// Wait until each of `pids` has a window on screen again, up to
@@ -1007,7 +1004,10 @@ final class LayerStage {
             if let value = AXValueCreate(.cgSize, &size) {
                 AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, value)
             }
-            restored.insert(wid)
+            if let landed = Self.position(of: axWindow),
+               abs(landed.x - saved.frame.x) <= 2, abs(landed.y - saved.frame.y) <= 2 {
+                restored.insert(wid)
+            }
         }
         return restored
     }
@@ -1087,8 +1087,15 @@ final class LayerStage {
         return try? JSONDecoder().decode(State.self, from: data)
     }
 
-    private func persistLocked() {
-        try? Self.write(state, to: statePath)
+    @discardableResult
+    private func persistLocked() -> Bool {
+        do {
+            try Self.write(state, to: statePath)
+            return true
+        } catch {
+            DiagnosticLog.shared.error("LayerStage: could not save recovery ledger — \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Writes the ledger atomically, making its folder if need be.
