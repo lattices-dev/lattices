@@ -10,11 +10,14 @@ export const latticesDownloadUrl =
   `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =
   'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+// Public Linux entry point documented in docs/install-linux.md.
+export const linuxInstallerUrl = 'https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh'
+export const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`
 
 export interface SoftwareFacts {
   name: string
   applicationCategory: 'DeveloperApplication' | 'ProductivityApplication'
-  operatingSystem: 'macOS'
+  operatingSystem: 'macOS' | 'Linux'
   downloadUrl: string
   softwareVersion?: string
   /** The product page says the download is free. */
@@ -118,6 +121,21 @@ export const staticRoutes: readonly RouteMeta[] = [
       operatingSystem: 'macOS',
       downloadUrl: speechDownloadUrl,
       softwareVersion: '0.2.0',
+    },
+  },
+  {
+    path: '/linux',
+    title: 'Lattices for Linux — the same workspace, on Hyprland',
+    description:
+      'Install Lattices on Omarchy and Hyprland with one command: the app, the lats CLI, a local host and a tray menu. Pair a Mac and a Linux machine into one desk.',
+    priority: '0.9',
+    jsonLd: 'software',
+    software: {
+      name: 'Lattices for Linux',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Linux',
+      downloadUrl: linuxInstallerUrl,
+      free: true,
     },
   },
   {

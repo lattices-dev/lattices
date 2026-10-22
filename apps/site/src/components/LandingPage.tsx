@@ -8,13 +8,10 @@ import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { heroDesktopMaps, heroLayer, heroOverlapCount, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
 import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
-import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
+import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion, linuxInstallCommand } from "../seo/routes";
 
 const latticesCliVersion = "0.15.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
-// Public entry point documented in docs/install-linux.md.
-const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";
-const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`;
 
 declare global {
   interface Window {
@@ -1050,7 +1047,7 @@ export default function App() {
               <li>API driven</li>
               <li>Open source</li>
             </ul>
-            <a href="#omarchy" className="hero-announcement">
+            <a href="/linux" className="hero-announcement">
               <span className="omarchy-mark" aria-hidden="true">
                 <img src="/brand/omarchy/logo.svg" alt="" width="20" height="20" />
               </span>
@@ -1142,6 +1139,7 @@ export default function App() {
               <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
             </div>
             <div className="omarchy-links">
+              <a href="/linux">Lattices for Linux <span aria-hidden="true">→</span></a>
               <a href="/lattices/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
               <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
             </div>

@@ -21,6 +21,7 @@ export const footerColumns: FooterColumn[] = [
     title: 'Products',
     links: [
       ...productLinks.map(({ title, href }) => ({ label: title, href })),
+      { label: 'Lattices for Linux', href: '/linux' },
       { label: 'All products', href: '/products' },
     ],
   },
