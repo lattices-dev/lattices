@@ -76,6 +76,6 @@ export async function machinesCommand(json: boolean) {
   if (json) console.log(JSON.stringify({ machines, ...(pairingError ? { pairingError } : {}) }, null, 2));
   else {
     if (pairingError) console.error(`Visit pairings unavailable: ${pairingError}`);
-    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.local ? "" : `gateway:${m.gateway ?? "unpaired"} `}visit:${m.paired ? "paired" : "unpaired"}${typeof m.placement === "string" ? m.placement : m.placement ? `at ${(m.placement as any).x},${(m.placement as any).y}` : "unplaced"}`);
+    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.local ? "" : `gateway:${m.gateway ?? "unpaired"} `}visit:${m.paired ? "paired" : "unpaired"}  ${typeof m.placement === "string" ? m.placement : m.placement ? `at ${Math.round((m.placement as any).x)},${Math.round((m.placement as any).y)}` : "unplaced"}`);
   }
 }
