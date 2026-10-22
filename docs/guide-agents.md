@@ -19,7 +19,7 @@ go through the gateway; see
 |---------|-------------|-------|
 | Skills | The agent runs in a harness that loads skills, such as Claude Code | `npx skills add lattices-dev/lattices --all --global --yes` |
 | CLI | The agent has a shell. Covers most tasks. | `lats` on `PATH` |
-| MCP | The harness speaks MCP and you want browser or remote-host tools | `lats mcp` registered as a server |
+| MCP | The harness speaks MCP and you want window, layer, browser or remote-host tools | `lats mcp` registered as a server |
 | Daemon API | A script or a typed client needs receipts and events | `lats call`, or `daemonCall` from `@lattices/lattices` |
 
 Prefer the CLI. Use `lats call` when no dedicated command exists. Use the
@@ -109,18 +109,22 @@ Check what the server offers without starting a session:
 lats mcp --list
 ```
 
-The server has two toolsets:
+The server has three toolsets:
 
 | Toolset | Tools | Does the work |
 |---------|-------|---------------|
+| `windows` | `windows_search`, `windows_place`, `windows_focus`, `layers_list`, `layers_switch`, `history_undo` | The Lattices daemon on this Mac |
 | `browser` | `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_console`, `browser_close`, `browser_profiles`, `browser_use_profile`, `browser_profile_info`, `browser_import_cookies`, `browser_companion_status` | Action Browser code in the package, driving a Chrome that Action owns |
 | `hosts` | `hosts_list`, `host_describe`, `host_windows`, `host_screenshot`, `host_read`, `host_place`, `host_focus`, `host_act`, `host_call` | The Lattices daemon here, or a paired host |
 
 Serve a subset with `lats mcp --toolsets browser`. In the harness, `/mcp`
 should list `lattices` as connected.
 
-Window tiling, sessions and layers are not MCP tools. Agents reach them
-through the CLI or the daemon API. Action.app has its own MCP server for
+Window search, placement, focus, layers and undo are MCP tools in the
+`windows` toolset. Search with `windows_search` first and set `deep: true`
+only when it misses. `windows_place` returns a `receiptId`; `history_undo`
+with that id puts the window back. Sessions are not MCP tools yet; use the
+CLI or the daemon API. Action.app has its own MCP server for
 native observe and act, started with `lats action mcp`; it is separate from
 `lats mcp`.
 
