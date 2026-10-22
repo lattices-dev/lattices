@@ -167,7 +167,7 @@ export async function writeProductAgentArtifacts(options = {}) {
   const selected = (slugs) => core.filter((entry) => slugs.includes(entry.slug))
   await write(paths.bundles.core, formatBundle('Lattices core', selected(['overview', 'quickstart', 'concepts', 'config', 'agents']), catalog))
   await write(paths.bundles.daemonApi, formatBundle('Lattices API', selected(['api', 'agents', 'tiling-reference', 'layers', 'ocr']), catalog))
-  await write(paths.bundles.voice, formatBundle('Voice input and Speech playback', [...selected(['voice']), ...current.filter((entry) => entry.product === 'speech')], catalog))
+  await write(paths.bundles.voice, formatBundle('Voice commands and Voice playback', [...selected(['voice']), ...current.filter((entry) => entry.product === 'speech')], catalog))
   await write(paths.bundles.install, formatBundle('Lattices installation', selected(['quickstart', 'install-linux']), catalog))
 
   await writeDiscoveryArtifacts({ repoRoot, distDir, catalog, write, products, currentEntries: current })

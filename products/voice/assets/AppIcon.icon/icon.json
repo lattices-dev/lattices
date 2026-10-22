@@ -14,7 +14,7 @@
   ],
   "groups": [
     {
-      "name": "Speech",
+      "name": "Voice",
       "layers": [
         {
           "name": "accent",

@@ -4,18 +4,20 @@ description: What Lattices owns in the product family, what ships with it, and w
 order: 0
 ---
 
-Lattices is an agentic window manager. On macOS it is a menu bar app, the
-`lats` CLI and a local agent API. On Linux it is a Bun host, a Quickshell
-desktop app and the same CLI. Lattices gives people and agents one
-programmable model of the desktop: windows, spaces, workspace layers, tmux
-sessions and the text on screen.
+Find any project's windows. Put them in place, for you or your agent.
+
+Lattices is a window manager that knows about projects. On macOS it is a
+menu bar app, the `lats` CLI and a local agent API. On Linux it is a Bun
+host, a Quickshell desktop app and the same CLI. People and agents share one
+model of the desktop: windows, spaces, workspace layers, tmux sessions and,
+when you turn it on, the text on screen.
 
 New here? Read [What Lattices is](/lattices/docs/what-is-lattices), then
 [Getting started](/lattices/docs/getting-started).
 
 ## Lattices in the family
 
-Lattices, Action, Canvas and Speech share this website, repository and skills
+Lattices, Action, Canvas and Voice share this website, repository and skills
 catalog. Each product ships its own app and keeps its own lifecycle.
 
 | Product | Use it for | Docs |
@@ -23,10 +25,10 @@ catalog. Each product ships its own app and keeps its own lifecycle.
 | **Lattices** | Window management, tiling, workspace layers, tmux sessions, screen text, voice commands | You are here |
 | **Action** | Native computer use: observe, resolve, act and record, including private agent layers | [Action docs](/action/docs/overview) |
 | **Canvas** | Spatial notes that float on the desktop | [Canvas docs](/canvas/docs/overview) |
-| **Speech** | Spoken output from agents and scripts | [Speech docs](/speech/docs/overview) |
+| **Voice** | Spoken output from agents and scripts | [Voice docs](/voice/docs/overview) |
 
 Some `lats` commands reach another product. For example, `lats action`
-installs and calls Action, and `lats voice say` forwards speech to the Speech
+installs and calls Action, and `lats voice say` forwards speech to the Voice
 app. [Concepts](/lattices/docs/concepts) shows each process, its local socket or network endpoint, and
 where every command goes. The [product map](/products) compares the products.
 
