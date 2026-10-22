@@ -49,6 +49,10 @@ sit in `~/dev/tideline` matches even when "tideline" is not in its window
 title. Each matching tab adds to the window's score, so a terminal with four
 tideline tabs outranks one with a single tab.
 
+Deep search reads tabs from iTerm2 and Terminal.app only. In Ghostty, kitty
+or Warp, it finds a terminal only through a tmux session that Lattices
+started.
+
 Use deep search when you look for a project by name and the project name
 lives in a directory path rather than a title. Use index search first; deep
 search costs a live inspection of every terminal.
