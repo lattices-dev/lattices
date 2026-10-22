@@ -371,11 +371,11 @@ final class SpeechRpcTests: XCTestCase {
             XCTAssertEqual(error as? SpeechQueueError, .unknownProvider("gemini"))
         }
 
-        let kokoro = try SpeechRpc.parseEnqueue(.object([
+        let phonon = try SpeechRpc.parseEnqueue(.object([
             "text": .string("hi"),
-            "provider": .string("kokoro"),
+            "provider": .string("phonon"),
         ]))
-        XCTAssertEqual(kokoro.provider, "kokoro")
+        XCTAssertEqual(phonon.provider, "phonon")
     }
 
     func testEnqueueRpcReturnsActualGeneratingState() async throws {

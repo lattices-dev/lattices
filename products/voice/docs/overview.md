@@ -78,8 +78,7 @@ approved grant such as `speech:speech.enqueue`. See [API](/voice/docs/api#privat
 
 Voice.app renders Phonon in-process through Gradium's Phonon 31m, an Apache 2.0
 model with 38 English voices. Phonon does not use Vox or a Python runtime. Its
-speaking rate is fixed, so `rate` does not apply. Current builds leave Kokoro
-out, and a `kokoro` request fails with a message that says so. Voice.app keeps provider credentials in
+speaking rate is fixed, so `rate` does not apply. Voice.app keeps provider credentials in
 the macOS Keychain.
 
 ## Stable identifiers

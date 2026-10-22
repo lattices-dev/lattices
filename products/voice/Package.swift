@@ -9,10 +9,6 @@ let package = Package(name: "Voice", platforms: [.macOS(.v26)],
     dependencies: [
         // Build with HUDSONKIT_WITH_VOICE=0, as tools/package.sh does, so Hudson leaves out Vox.
         hudson,
-        // Kokoro (FluidAudio's KokoroAne) is left out for now: FluidAudio's NeMo text normalizer and
-        // Phonon each ship a Rust staticlib defining rust_eh_personality, so the two cannot link
-        // together. Hudson pulls FluidAudio with its default traits, so `traits: []` here is not
-        // enough. Kokoro's sources compile out without FluidAudio (SpeechKokoro.isCompiledIn).
         // Phonon runs on the Neural Engine through Gradium's Core ML runtime. 0.4.0 is the newest
         // tag with a published release; the v0.4.1 tag points at a binary that was never uploaded.
         .package(url: "https://github.com/gradium-ai/xn-ptts.git", exact: "0.4.0"),

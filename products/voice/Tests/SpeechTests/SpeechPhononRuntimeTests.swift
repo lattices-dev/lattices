@@ -24,7 +24,7 @@ final class SpeechPhononRuntimeTests: XCTestCase {
         }
         do {
             _ = try await SpeechPhononRuntime.synthesizePhonon(text: "Hi", voice: "af_heart", rate: 1, model: nil)
-            XCTFail("A Kokoro voice is not in the Phonon catalog")
+            XCTFail("An unlisted voice is rejected")
         } catch {
             XCTAssertEqual(error as? SpeechQueueError, .unknownVoice("af_heart", provider: "phonon", listedUnder: nil))
         }

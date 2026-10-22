@@ -134,7 +134,7 @@ enum VoiceHelperRouting {
             access: .mutate,
             params: [
                 Param(name: "text", type: "string", required: true, description: "Text to speak"),
-                Param(name: "provider", type: "string", required: false, description: "system, openai, elevenlabs, kokoro, or phonon (default system)"),
+                Param(name: "provider", type: "string", required: false, description: "system, openai, elevenlabs, or phonon (default system)"),
                 Param(name: "model", type: "string", required: false, description: "Provider model override"),
                 Param(name: "voice", type: "string", required: false, description: "Voice identifier; defaults to the voice chosen with voice.select"),
                 Param(name: "rate", type: "double", required: false, description: "Speaking rate 0.25-4.0 (default 1.0)"),

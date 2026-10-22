@@ -28,16 +28,6 @@ struct SpeechSettingsView: View {
                         catalog: catalog
                     )
                 }
-                if SpeechKokoro.isCompiledIn {
-                    speechDivider
-                    SpeechLocalEngineRow(
-                        name: "Kokoro",
-                        caption: "Runs on the Neural Engine. Text stays on this Mac.",
-                        provider: SpeechProviders.kokoro,
-                        engine: SpeechKokoro.shared,
-                        catalog: catalog
-                    )
-                }
                 speechDivider
                 ForEach(Array(adapters.enumerated()), id: \.offset) { index, adapter in
                     if let key = adapter.credentialKey {
@@ -66,9 +56,6 @@ struct SpeechSettingsView: View {
         .task {
             await catalog.refresh(provider: SpeechProviders.system)
             await catalog.refresh(provider: SpeechProviders.openai)
-            if SpeechKokoro.isCompiledIn {
-                await catalog.refresh(provider: SpeechProviders.kokoro)
-            }
             if SpeechPhonon.isCompiledIn {
                 await catalog.refresh(provider: SpeechProviders.phonon)
             }
@@ -452,7 +439,6 @@ private struct SpeechVoicePickerBlock: View {
         case SpeechProviders.system: return "System"
         case SpeechProviders.openai: return "OpenAI"
         case SpeechProviders.elevenlabs: return "ElevenLabs"
-        case SpeechProviders.kokoro: return "Kokoro"
         case SpeechProviders.phonon: return "Phonon"
         default: return provider
         }

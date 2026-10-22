@@ -153,7 +153,7 @@ actor SpeechPhononEngine {
 }
 #endif
 
-/// 16-bit mono PCM WAV, peak-normalized like Kokoro's output.
+/// 16-bit mono PCM WAV, peak-normalized.
 enum SpeechWAV {
     static func data(from samples: [Float], sampleRate: Int) -> Data {
         let peak = samples.reduce(Float(0)) { max($0, abs($1)) }

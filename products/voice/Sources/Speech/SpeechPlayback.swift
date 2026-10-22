@@ -77,11 +77,10 @@ enum SpeechProviders {
     static let system = "system"
     static let openai = "openai"
     static let elevenlabs = "elevenlabs"
-    static let kokoro = "kokoro"
     static let phonon = "phonon"
 
     /// Display and reporting order.
-    static let all = [system, openai, elevenlabs, kokoro, phonon]
+    static let all = [system, openai, elevenlabs, phonon]
 
     static let supported = Set(all)
 

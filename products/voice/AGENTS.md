@@ -14,8 +14,8 @@ and Keychain service `dev.lattices.app.voice`. Internal Swift types and the
 Reuse HudsonUIAudio providers. Phonon (Gradium's Phonon 31m, Apache 2.0) renders
 in-process on the Neural Engine through xn-ptts, pinned to 0.4.0, with its model
 bundle pinned by SHA-256; do not route local speech through Vox or a Python runtime.
-Kokoro's sources stay but compile out: FluidAudio's NeMo normalizer and Phonon
-both link a Rust std, and their duplicate rust_eh_personality fails the link. Keep existing credential service
+Do not add FluidAudio: its NeMo normalizer and Phonon both link a Rust std, and their
+duplicate rust_eh_personality fails the link. Keep existing credential service
 `dev.lattices.app.voice`; do not copy credential values into preferences or logs.
 Source provenance is recorded in SOURCE-PROVENANCE.json. The source checkout is
 an active snapshot and must remain untouched.

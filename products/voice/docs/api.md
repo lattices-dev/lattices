@@ -120,7 +120,7 @@ active job. Otherwise the call fails with `Speech job <id> is not the active job
 | Param | Type | Notes |
 | --- | --- | --- |
 | `text` | string | Required. At most 8,000 characters. |
-| `provider` | string | `system` (default), `phonon`, `kokoro`, `openai`, or `elevenlabs`. Current builds leave `kokoro` out. |
+| `provider` | string | `system` (default), `phonon`, `openai`, or `elevenlabs`. |
 | `model` | string | Provider model override. |
 | `voice` | string | Voice id from `speech.voices`. If omitted, Voice.app uses the provider's preferred voice. |
 | `rate` | double | 0.25 to 4.0. Default 1.0. |

@@ -21,18 +21,15 @@ struct LatticesSpeechCredentialSource: HudTTSCredentialSource {
 final class HudsonSpeechSynthesizer: SpeechSynthesizing {
     private let tts: HudTTS
     private let cache: HudSpeechCache
-    private let kokoro: any SpeechLocalSynthesizing
     private let phonon: any SpeechLocalSynthesizing
 
     init(
         tts: HudTTS,
         cache: HudSpeechCache,
-        kokoro: (any SpeechLocalSynthesizing)? = nil,
         phonon: (any SpeechLocalSynthesizing)? = nil
     ) {
         self.tts = tts
         self.cache = cache
-        self.kokoro = kokoro ?? SpeechKokoro.shared
         self.phonon = phonon ?? SpeechPhonon.shared
     }
 
@@ -47,7 +44,6 @@ final class HudsonSpeechSynthesizer: SpeechSynthesizing {
             )
         }
         let local: (any SpeechLocalSynthesizing)? = switch request.provider {
-        case SpeechProviders.kokoro: kokoro
         case SpeechProviders.phonon: phonon
         default: nil
         }
@@ -154,18 +150,15 @@ final class HudsonSpeechPlayerAdapter: SpeechPlaying {
 final class HudsonSpeechVoiceCatalog: SpeechVoiceListing {
     private let credentialSource: LatticesSpeechCredentialSource
     private let adapters: [any HudTTSProviderAdapter]
-    private let kokoro: any SpeechLocalSynthesizing
     private let phonon: any SpeechLocalSynthesizing
 
     init(
         credentialSource: LatticesSpeechCredentialSource = LatticesSpeechCredentialSource(),
         adapters: [any HudTTSProviderAdapter] = SpeechProviders.cloudAdapters(),
-        kokoro: (any SpeechLocalSynthesizing)? = nil,
         phonon: (any SpeechLocalSynthesizing)? = nil
     ) {
         self.credentialSource = credentialSource
         self.adapters = adapters
-        self.kokoro = kokoro ?? SpeechKokoro.shared
         self.phonon = phonon ?? SpeechPhonon.shared
     }
 
@@ -193,9 +186,6 @@ final class HudsonSpeechVoiceCatalog: SpeechVoiceListing {
             items.append(contentsOf: marked(elevenLabs))
         }
 
-        if SpeechKokoro.isCompiledIn {
-            items.append(contentsOf: localVoices(kokoro, label: "Kokoro", provider: SpeechProviders.kokoro))
-        }
         if SpeechPhonon.isCompiledIn {
             items.append(contentsOf: localVoices(phonon, label: "Phonon", provider: SpeechProviders.phonon))
         }

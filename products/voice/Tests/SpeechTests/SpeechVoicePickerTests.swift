@@ -118,25 +118,25 @@ final class SpeechVoicePickerTests: XCTestCase {
         XCTAssertEqual(failed, .failed("ElevenLabs voices failed (HTTP 401)."))
     }
 
-    func testKokoroCatalogUsesProbedVoicesOnly() async {
-        let kokoro = FakeSpeechKokoro(status: SpeechLocalStatus(
+    func testPhononCatalogUsesProbedVoicesOnly() async {
+        let phonon = FakeSpeechLocalEngine(status: SpeechLocalStatus(
             available: true,
-            modelId: "FluidInference/kokoro-82m-coreml",
-            voiceId: "af_heart",
+            modelId: "gradium/phonon-31m-en",
+            voiceId: "Edwin",
             detail: nil,
             voices: [
-                SpeechVoiceInfo(id: "af_heart", label: "af_heart", provider: "kokoro", available: true, isDefault: true),
-                SpeechVoiceInfo(id: "af_bella", label: "af_bella", provider: "kokoro", available: true, isDefault: false),
+                SpeechVoiceInfo(id: "Edwin", label: "Edwin", provider: "phonon", available: true, isDefault: true),
+                SpeechVoiceInfo(id: "Maeve", label: "Maeve", provider: "phonon", available: true, isDefault: false),
             ]
         ))
-        let loader = SpeechVoiceCatalogLoader(kokoro: kokoro)
-        guard SpeechKokoro.isCompiledIn else {
-            let state = await loader.load(provider: "kokoro")
-            XCTAssertEqual(state, .unavailable(SpeechLocalStatus.kokoroCompiledOut.detail ?? ""))
+        let loader = SpeechVoiceCatalogLoader(phonon: phonon)
+        guard SpeechPhonon.isCompiledIn else {
+            let state = await loader.load(provider: "phonon")
+            XCTAssertEqual(state, .unavailable(SpeechLocalStatus.phononCompiledOut.detail ?? ""))
             return
         }
-        let state = await loader.load(provider: "kokoro")
-        XCTAssertEqual(state.voices.map(\.id), ["af_heart", "af_bella"])
+        let state = await loader.load(provider: "phonon")
+        XCTAssertEqual(state.voices.map(\.id), ["Edwin", "Maeve"])
     }
 
     func testPreviewEnqueueUsesExplicitVoiceAndDoesNotHideAsUICue() throws {
@@ -164,7 +164,7 @@ final class SpeechVoicePickerTests: XCTestCase {
 }
 
 @MainActor
-private final class FakeSpeechKokoro: SpeechLocalSynthesizing {
+private final class FakeSpeechLocalEngine: SpeechLocalSynthesizing {
     var status: SpeechLocalStatus
 
     init(status: SpeechLocalStatus) {
@@ -175,7 +175,7 @@ private final class FakeSpeechKokoro: SpeechLocalSynthesizing {
     func cachedVoices() -> [SpeechVoiceInfo] { status.voices }
     func probe() async -> SpeechLocalStatus { status }
     func synthesize(text: String, voice: String?, rate: Double, model: String?) async throws -> HudTTSResult {
-        throw SpeechQueueError.providerFailed("fake Kokoro has no audio")
+        throw SpeechQueueError.providerFailed("fake engine has no audio")
     }
 }
 
