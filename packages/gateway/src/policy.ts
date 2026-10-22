@@ -2,20 +2,33 @@ import { METHOD_ALIASES } from "../../host-linux/src/router.ts";
 
 export const PRODUCTS = ["lattices", "action", "blink", "speech"] as const;
 export type Product = typeof PRODUCTS[number];
-export type Scope = "read" | "act" | "drive";
-const rank = { read: 0, act: 1, drive: 2 };
+export const SCOPES = ["read", "screen", "act", "drive", "shell"] as const;
+export type Scope = typeof SCOPES[number];
+/** Pairing shorthands. Each still carries everything it granted before
+ * `screen` and `shell` were split out, except `read`, which no longer sees the screen. */
+export type Shorthand = "read" | "act" | "drive";
+const SHORTHANDS: Record<Shorthand, Scope[]> = {
+  read: ["read"],
+  act: ["read", "screen", "act"],
+  drive: ["read", "screen", "act", "drive", "shell"],
+};
 
-/** Exact reviewed operations. Unknown additions remain local until reviewed. */
+/** Exact reviewed operations. Unknown additions remain local until reviewed.
+ * `screen` returns what the display shows: pixels, OCR, terminal contents, files.
+ * `shell` runs commands or types free text, which reaches terminals. */
 const operations: Record<Product, Record<Scope, string[]>> = {
   lattices: {
     read: [
       "events.subscribe", "events.unsubscribe", "daemon.status", "host.describe", "api.schema",
-      "windows.list", "windows.get", "windows.preview", "windows.search", "windows.resolve", "spaces.list", "spaces.assignments", "desktop.snapshot",
-      "capture.screenshotDisplay", "capture.screenshotWindow", "capture.screenshotRegion", "capture.still", "computer.observe",
+      "windows.list", "windows.get", "windows.search", "windows.resolve", "spaces.list", "spaces.assignments", "desktop.snapshot",
+      "tmux.list", "terminals.list", "terminals.search", "projects.list", "processes.list", "processes.tree",
+      "layers.list", "layers.members", "solo.status", "stage.status", "tabs.list",
+      "search.query", "history.list", "runs.list", "runs.get", "runs.artifacts", "display.input.get",
+    ],
+    screen: [
+      "capture.screenshotDisplay", "capture.screenshotWindow", "capture.screenshotRegion", "capture.still", "computer.observe", "windows.preview",
       "capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop",
-      "tmux.list", "terminals.list", "terminals.search", "terminals.capture", "projects.list", "processes.list", "processes.tree",
-      "ocr.read", "ocr.find", "ocr.snapshot", "ocr.scan", "layers.list", "layers.members", "solo.status", "stage.status", "tabs.list",
-      "search.query", "history.list", "runs.list", "runs.get", "runs.artifacts", "browser.getText", "files.read", "display.input.get",
+      "terminals.capture", "ocr.read", "ocr.find", "ocr.snapshot", "ocr.scan", "browser.getText", "files.read",
     ],
     act: [
       "windows.focus", "windows.place", "windows.move", "windows.moveBack", "windows.present", "windows.pick",
@@ -27,20 +40,27 @@ const operations: Record<Product, Record<Scope, string[]>> = {
     ],
     drive: [
       "computer.click", "computer.doubleClick", "computer.rightClick", "computer.drag", "computer.scroll", "computer.aim",
-      "computer.typeText", "computer.pressKey", "computer.hotkey", "computer.prepare", "computer.windowState", "computer.elementAction", "computer.typeElement", "computer.setValue",
-      "computer.focusWindow", "computer.launchApp", "computer.typeWindowText", "computer.verify", "apps.open", "sessions.launch", "sessions.restart", "layers.activate", "layers.switch",
+      "computer.pressKey", "computer.hotkey", "computer.prepare", "computer.windowState", "computer.elementAction", "computer.setValue",
+      "computer.focusWindow", "computer.launchApp", "computer.verify", "layers.activate", "layers.switch",
       "display.input.set",
+    ],
+    shell: [
+      "computer.typeText", "computer.typeWindowText", "computer.typeElement",
+      // apps.open accepts an arbitrary command; sessions run their project's command.
+      "apps.open", "sessions.launch", "sessions.restart",
     ],
   },
   // Connection-owned leases and workspace operations stay local until routing
   // preserves a dedicated product connection for each remote client.
   action: {
-    read: ["ping", "status", "permissions.snapshot", "window.getFrame", "calculator.buttons", "calculator.displayValue", "drive.status", "capture.screenshotAppWindow", "capture.screenshotRegion", "capture.screenshotScreen"],
+    read: ["ping", "status", "permissions.snapshot", "window.getFrame", "calculator.buttons", "calculator.displayValue", "drive.status"],
+    screen: ["capture.screenshotAppWindow", "capture.screenshotRegion", "capture.screenshotScreen"],
     act: ["sessions.prune", "sessions.clear"],
-    drive: ["app.launch", "app.activate", "permissions.request", "permissions.requestAccessibility", "settings.openAccessibility", "settings.openScreenRecording", "input.typeText", "input.drag", "accessibility.pressElement", "accessibility.setValue", "window.setFrame", "calculator.clickButton", "capture.recordAppWindow", "capture.recordRegion"],
+    drive: ["app.launch", "app.activate", "permissions.request", "permissions.requestAccessibility", "settings.openAccessibility", "settings.openScreenRecording", "input.drag", "accessibility.pressElement", "accessibility.setValue", "window.setFrame", "calculator.clickButton", "capture.recordAppWindow", "capture.recordRegion"],
+    shell: ["input.typeText"],
   },
-  blink: { read: ["system.hello", "placements.list", "notes.list", "notes.get"], act: ["notes.present", "desk.save", "desk.restore"], drive: [] },
-  speech: { read: ["speech.status", "speech.voices"], act: ["speech.enqueue", "speech.pause", "speech.resume", "speech.seek", "speech.stop", "speech.next", "speech.preferredVoice.set"], drive: [] },
+  blink: { read: ["system.hello", "placements.list", "notes.list", "notes.get"], screen: [], act: ["notes.present", "desk.save", "desk.restore"], drive: [], shell: [] },
+  speech: { read: ["speech.status", "speech.voices"], screen: [], act: ["speech.enqueue", "speech.pause", "speech.resume", "speech.seek", "speech.stop", "speech.next", "speech.preferredVoice.set"], drive: [], shell: [] },
 };
 
 export function isProduct(value: unknown): value is Product { return typeof value === "string" && (PRODUCTS as readonly string[]).includes(value); }
@@ -51,12 +71,27 @@ export function canonicalProduct(value: unknown): Product | null {
 export function canonicalMethod(product: Product, method: string): string { return product === "lattices" ? METHOD_ALIASES[method] ?? method : method; }
 export function methodScope(product: Product, method: string): Scope | null {
   const name = canonicalMethod(product, method);
-  for (const scope of ["read", "act", "drive"] as const) if (operations[product][scope].includes(name)) return scope;
+  for (const scope of SCOPES) if (operations[product][scope].includes(name)) return scope;
   return null;
 }
 export function grantName(product: Product, method: string): string { return `${product}:${canonicalMethod(product, method)}`; }
-export function grantsForScope(product: Product, scope: Scope): string[] {
-  return (["read", "act", "drive"] as const).filter(s => rank[s] <= rank[scope]).flatMap(s => operations[product][s].map(m => grantName(product, m)));
+export function isShorthand(value: unknown): value is Shorthand { return value === "read" || value === "act" || value === "drive"; }
+export function isScope(value: unknown): value is Scope { return typeof value === "string" && (SCOPES as readonly string[]).includes(value); }
+/** The scopes a shorthand stands for, plus any named alongside it, in canonical order. */
+export function expandScopes(shorthand: Shorthand, extra: readonly Scope[] = []): Scope[] {
+  const wanted = new Set<Scope>([...SHORTHANDS[shorthand], ...extra]);
+  return SCOPES.filter(s => wanted.has(s));
+}
+/** Exact grants for one scope alone. */
+export function grantsInScope(product: Product, scope: Scope): string[] { return operations[product][scope].map(m => grantName(product, m)); }
+/** Exact grants for a shorthand (read, act or drive) and every scope it carries. */
+export function grantsForScope(product: Product, shorthand: Shorthand, extra: readonly Scope[] = []): string[] {
+  return expandScopes(shorthand, extra).flatMap(s => grantsInScope(product, s));
+}
+/** Core scopes whose every Lattices operation is in these grants. */
+export function scopesHeld(grants: readonly string[]): Scope[] {
+  const held = new Set(grants);
+  return SCOPES.filter(s => operations.lattices[s].length > 0 && grantsInScope("lattices", s).every(g => held.has(g)));
 }
 function canonicalGrant(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -82,10 +117,14 @@ export function requestedGrants(params: Record<string, unknown>): string[] {
     return [...new Set(grants as string[])].sort();
   }
   const scope = params.scope ?? "read";
-  if (scope !== "read" && scope !== "act" && scope !== "drive") throw new Error("Invalid pairing scope");
+  if (!isShorthand(scope)) throw new Error("Invalid pairing scope");
+  // Extra scopes ride along with the shorthand (pair --read-only --screen).
+  // Older gateways ignore them and grant the shorthand alone.
+  const extra = params.scopes ?? [];
+  if (!Array.isArray(extra) || extra.length > SCOPES.length || !extra.every(isScope)) throw new Error("Invalid pairing scopes");
   // Old lats --host pair only grants core product operations. Other products
   // require explicit grants and an additional human approval.
-  return grantsForScope("lattices", scope).sort();
+  return grantsForScope("lattices", scope, extra).sort();
 }
 
 export function validateRemoteRequest(req: Request, allowedHosts: Set<string>): string | null {

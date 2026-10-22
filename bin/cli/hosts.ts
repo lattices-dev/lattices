@@ -2,12 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "
 import { dirname } from "node:path";
 import { configuredHosts, discoverTailnetHosts, hostStatuses, HOSTS_FILE, resolveHost, callHost } from "../hosts.ts";
 import { hasFlag } from "./helpers.ts";
-import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost } from "../host-pairing.ts";
+import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost, type PairingScope } from "../host-pairing.ts";
 
 /**
  * lats hosts [--discover] [--json]   list reachable lattices hosts (LAT-013)
  * lats hosts describe <name>         host.describe for one host
- * lats hosts pair [name] [--read-only | --drive] [--grant product:method]  pair with a gateway
+ * lats hosts pair [name] [--read-only | --drive] [--screen] [--shell] [--grant product:method]  pair with a gateway
  */
 export async function hostsCommand(args: string[]): Promise<void> {
   const json = hasFlag(args, "json");
@@ -61,9 +61,10 @@ export async function hostsCommand(args: string[]): Promise<void> {
  * Ask a gateway to trust this machine. A person approves with
  * `lats gateway approve` on the host; this waits.
  */
-export function parsePairOptions(args: string[]): { name?: string; scope: "read" | "act" | "drive"; grants?: string[] } {
+export function parsePairOptions(args: string[]): { name?: string; scope: "read" | "act" | "drive"; scopes?: PairingScope[]; grants?: string[] } {
   let name: string | undefined;
   const grants: string[] = [];
+  const scopes: PairingScope[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--grant" || arg.startsWith("--grant=")) {
@@ -71,21 +72,27 @@ export function parsePairOptions(args: string[]): { name?: string; scope: "read"
       if (!grant || !/^(lattices|action|blink|speech):[a-zA-Z][a-zA-Z0-9_.]*$/.test(grant)) throw new Error("--grant requires an exact product:method, for example action:status");
       grants.push(grant);
     } else if (["--read-only", "--drive"].includes(arg)) continue;
+    // Screen contents and command running ride along with a smaller shorthand.
+    else if (arg === "--screen" || arg === "--shell") scopes.push(arg.slice(2) as PairingScope);
     else if (arg.startsWith("--")) throw new Error(`Unknown pairing option: ${arg}`);
     else if (name) throw new Error("Specify one host to pair");
     else name = arg;
   }
   if (hasFlag(args, "read-only") && hasFlag(args, "drive")) throw new Error("Choose --read-only or --drive");
-  if (grants.length && (hasFlag(args, "read-only") || hasFlag(args, "drive"))) throw new Error("Choose exact --grant permissions or a scope shorthand");
-  return { name, scope: grants.length || hasFlag(args, "read-only") ? "read" : hasFlag(args, "drive") ? "drive" : "act", ...(grants.length ? { grants: [...new Set(grants)] } : {}) };
+  if (grants.length && (hasFlag(args, "read-only") || hasFlag(args, "drive") || scopes.length)) throw new Error("Choose exact --grant permissions or a scope shorthand");
+  return {
+    name, scope: grants.length || hasFlag(args, "read-only") ? "read" : hasFlag(args, "drive") ? "drive" : "act",
+    ...(scopes.length ? { scopes: [...new Set(scopes)] } : {}),
+    ...(grants.length ? { grants: [...new Set(grants)] } : {}),
+  };
 }
 
 async function pairCommand(args: string[]): Promise<void> {
-  const { name, scope, grants } = parsePairOptions(args);
+  const { name, scope, scopes, grants } = parsePairOptions(args);
   const host = resolveHost(name);
-  const { params, fingerprint } = pairingRequest(scope);
+  const { params, fingerprint } = pairingRequest(scope, scopes);
   const where = `${host.address}:${host.port}`;
-  console.log(`Pairing ${params.clientName} with ${where} (${grants?.join(", ") ?? scope}).`);
+  console.log(`Pairing ${params.clientName} with ${where} (${grants?.join(", ") ?? [scope, ...(scopes ?? [])].join(" + ")}).`);
   console.log(`This client's code: ${fingerprint} \u2014 approve on the host only if its notification shows the same code.`);
   console.log(`(On the host: lats gateway clients, then lats gateway approve ${params.clientID})`);
   const result = (await callHost(host, "clients.pair", { ...params, ...(grants ? { grants } : {}) }, 135_000)) as {
@@ -94,6 +101,8 @@ async function pairCommand(args: string[]): Promise<void> {
     hostPublicKey: string;
     hostFingerprint: string;
     scope: "read" | "act" | "drive" | null;
+    /** Absent from gateways that predate the screen and shell scopes. */
+    scopes?: string[];
     detail?: string;
     grants?: string[];
   };
@@ -103,7 +112,7 @@ async function pairCommand(args: string[]): Promise<void> {
   }
   savePairedHost(
     { host: host.address, port: host.port },
-    { host: result.host, hostPublicKey: result.hostPublicKey, hostFingerprint: result.hostFingerprint, scope: result.scope, pairedAt: new Date().toISOString() }
+    { host: result.host, hostPublicKey: result.hostPublicKey, hostFingerprint: result.hostFingerprint, scope: result.scope, ...(Array.isArray(result.scopes) ? { scopes: result.scopes } : {}), pairedAt: new Date().toISOString() }
   );
   console.log(`Paired with ${result.host} (host code ${result.hostFingerprint}, permissions ${result.grants?.join(", ") ?? result.scope}).`);
   console.log(`Keys: ${CLIENT_FILE}, ${PAIRED_HOSTS_FILE}`);

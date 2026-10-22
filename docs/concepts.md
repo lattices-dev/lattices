@@ -204,7 +204,11 @@ lats gateway revoke CLIENT_ID
 ```
 
 Every stored grant names one exact `product:method`. `--read-only` requests
-the reviewed core Lattices read methods. Repeated `--grant` flags request
+the reviewed core Lattices read methods, which exclude screen contents. Add
+`--screen` for screenshots, streams, OCR and terminal contents, or `--shell`
+for typing and launching commands. Plain `pair` covers read, screen and act;
+`--drive` adds desktop input and shell. Clients paired earlier keep their
+exact grants. Repeated `--grant` flags request
 exactly the listed methods, from any product, instead of a scope. You cannot
 combine them with `--read-only` or `--drive`. A request for a new capability
 needs another local approval. Re-pairing with the same client key adds approved

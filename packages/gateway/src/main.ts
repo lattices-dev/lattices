@@ -18,7 +18,7 @@ The gateway is a separate opt-in per-user process. It binds only the verified
 Tailscale IP, which is encrypted by WireGuard. Clients must additionally pair
 and sign each connection. No insecure LAN, wildcard, or --no-pairing mode.
 Approve requests locally after checking fingerprints and exact method grants.
-Use lats --host HOST pair --read-only, then lats --host HOST call METHOD.
+Use lats --host HOST pair --read-only [--screen] [--shell], then lats --host HOST call METHOD.
 For other products use gateway.call {product,method,params}; request exact
 product:method grants when pairing, e.g. pair --grant action:status.
 Unknown methods are denied.`;
