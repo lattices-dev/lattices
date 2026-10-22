@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { machineStatuses, mergeMachines } from "../bin/cli/machines.ts";
+import { pairingLabel } from "../bin/host-pairing.ts";
 
 test("machine inventory merges transitively and preserves daemon ports and offline rows", async () => {
   const hosts = [{name: "local", address: "127.0.0.1", port: 9399, source: "local" as const},
@@ -105,4 +106,31 @@ test("a pairing through an ssh tunnel stays its own machine, not this one", () =
   const merged = mergeMachines(hosts, [{name: "archie", address: "127.0.0.1:5288"}], "mini");
   expect(merged).toHaveLength(2);
   expect(merged.find(m => m.pair)?.host.name).toBe("archie");
+});
+
+test("machine rows report gateway and visit pairings separately", async () => {
+  const gateway = {host: "archie", hostPublicKey: "k", hostFingerprint: "F", scope: "read" as const, scopes: ["read", "screen"], pairedAt: ""};
+  const asked: string[] = [];
+  const rows = await machineStatuses(
+    [{name: "local", address: "127.0.0.1", port: 9399, source: "local"}, {name: "archie", address: "100.64.0.7", port: 9399, source: "config"},
+      {name: "air", address: "air.invalid", port: 9399, source: "config"}],
+    [{name: "air", address: "air.invalid"}], "mini", async () => ({platform: "linux", displays: []}), {},
+    endpoint => { asked.push(endpoint.host); return endpoint.host === "archie" ? gateway : null; });
+  const row = (name: string) => rows.find(r => r.name === name)!;
+  expect(row("mini").gateway).toBeNull();
+  expect(row("archie").gateway).toBe("read+screen"); expect(row("archie").paired).toBe(false);
+  expect(row("air").gateway).toBeNull(); expect(row("air").paired).toBe(true);
+  expect(asked).not.toContain("127.0.0.1");
+});
+
+test("pairing labels read legacy entries by their former meaning", () => {
+  const entry = (scope: "read" | "act" | "drive" | "mutate", scopes?: string[]) => ({host: "h", hostPublicKey: "k", hostFingerprint: "F", scope, pairedAt: "", ...(scopes ? {scopes} : {})});
+  expect(pairingLabel(entry("read"))).toBe("read+screen");
+  expect(pairingLabel(entry("mutate"))).toBe("act");
+  expect(pairingLabel(entry("act"))).toBe("act");
+  expect(pairingLabel(entry("drive"))).toBe("drive");
+  expect(pairingLabel(entry("read", ["read"]))).toBe("read");
+  expect(pairingLabel(entry("read", ["read", "shell"]))).toBe("read+shell");
+  expect(pairingLabel(entry("act", ["read", "act"]))).toBe("act-screen");
+  expect(pairingLabel(entry("read", []))).toBe("grants");
 });

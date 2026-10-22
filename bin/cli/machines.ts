@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, hostname } from "node:os";
 import { callHost, configuredHosts, type HostEntry } from "../hosts.ts";
+import { pairedHost, pairingLabel, type PairedHost } from "../host-pairing.ts";
 
 type Pairing = { name: string; address: string; side?: string; placement?: unknown; unplaced?: boolean };
 const key = (s: string) => s.trim().toLowerCase();
@@ -39,15 +40,22 @@ export function mergeMachines(hosts: HostEntry[], paired: Pairing[], localName: 
   });
 }
 
-export async function machineStatuses(hosts: HostEntry[], paired: Pairing[], localName: string, call = callHost, placements: Record<string, unknown> = {}) {
+/**
+ * `paired` is the visit (companion) pairing, kept for JSON consumers. `gateway`
+ * is this client's gateway pairing for the host, from paired-hosts.json.
+ */
+export async function machineStatuses(hosts: HostEntry[], paired: Pairing[], localName: string, call = callHost, placements: Record<string, unknown> = {},
+  gatewayPairing: (endpoint: { host: string; port: number }) => PairedHost | null = endpoint => pairedHost(endpoint)) {
   return Promise.all(mergeMachines(hosts, paired, localName).map(async ({ host, pair }) => {
+    const gateway = host.source === "local" ? null : gatewayPairing({ host: host.address, port: host.port }) ?? (host.name !== host.address ? gatewayPairing({ host: host.name, port: host.port }) : null);
     const row = { name: host.source === "local" ? localName : pair?.name ?? host.name, address: host.address,
-      local: host.source === "local", paired: !!pair, placement: host.source === "local" ? "here" : pair?.placement ?? placements[host.name] ?? (pair ? placements[pair.name] : undefined) ?? (pair?.unplaced ? null : pair?.side) ?? null };
+      local: host.source === "local", paired: !!pair, gateway: gateway ? pairingLabel(gateway) : null, placement: host.source === "local" ? "here" : pair?.placement ?? placements[host.name] ?? (pair ? placements[pair.name] : undefined) ?? (pair?.unplaced ? null : pair?.side) ?? null };
     try {
       const info = await call(host, "host.describe", null, 2500) as any;
       return { ...row, reachable: true, os: info.platform ?? null, version: info.build?.version ?? info.version ?? null,
         commit: info.build?.commit ?? null, displays: Array.isArray(info.displays) ? info.displays.length : null };
     } catch (error) {
+      // A daemon too old for host.describe still answered, so it is reachable.
       return { ...row, reachable: (error as Error).message.includes("Unknown method"), os: null, version: null, commit: null, displays: null, error: (error as Error).message };
     }
   }));
@@ -68,6 +76,6 @@ export async function machinesCommand(json: boolean) {
   if (json) console.log(JSON.stringify({ machines, ...(pairingError ? { pairingError } : {}) }, null, 2));
   else {
     if (pairingError) console.error(`Visit pairings unavailable: ${pairingError}`);
-    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.paired ? "paired" : "unpaired"}  ${typeof m.placement === "string" ? m.placement : m.placement ? `at ${(m.placement as any).x},${(m.placement as any).y}` : "unplaced"}`);
+    for (const m of machines) console.log(`  ${m.name}${m.local ? " (local)" : ""}  ${m.reachable ? "reachable" : "unreachable"}  ${m.os ?? "?"}  ${m.version ?? "?"}/${m.commit?.slice(0, 8) ?? "?"}  ${m.displays ?? "?"} displays  ${m.local ? "" : `gateway:${m.gateway ?? "unpaired"} `}visit:${m.paired ? "paired" : "unpaired"}${typeof m.placement === "string" ? m.placement : m.placement ? `at ${(m.placement as any).x},${(m.placement as any).y}` : "unplaced"}`);
   }
 }
