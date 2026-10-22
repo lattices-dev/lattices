@@ -38,7 +38,7 @@ export default function TurnPipeline() {
 
   return (
     <div style={{ margin: '32px 0', fontFamily: ff }}>
-      <div style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#33c773', marginBottom: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ef6a47', marginBottom: 20 }}>
         Anatomy of a voice turn
       </div>
 

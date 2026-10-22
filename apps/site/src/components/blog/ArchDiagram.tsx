@@ -34,7 +34,7 @@ export default function HandsOffArch() {
       }}>
         <span style={{
           fontSize: 12, fontWeight: 500, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: '#33c773', fontFamily: ff,
+          letterSpacing: '0.08em', color: '#ef6a47', fontFamily: ff,
         }}>
           System architecture
         </span>
@@ -50,8 +50,8 @@ export default function HandsOffArch() {
             cursor: 'pointer', transition: 'all 0.15s',
           }}
           onMouseEnter={e => {
-            e.currentTarget.style.borderColor = 'rgba(51,199,115,0.3)'
-            e.currentTarget.style.color = '#33c773'
+            e.currentTarget.style.borderColor = 'rgba(239,106,71,0.3)'
+            e.currentTarget.style.color = '#ef6a47'
           }}
           onMouseLeave={e => {
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'

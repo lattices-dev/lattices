@@ -30,8 +30,8 @@ export const latticesPalette = {
  * Lattices aims with, Action's cursor, Blink's front note, Speech's current bar.
  * All four take coral, the colour that already means "live" in Action's menu
  * bar. It holds 3:1 on white and about 6:1 on the dark tile, so one value
- * serves both themes. The live site reads `--logo-accent`; the site's UI keeps
- * `--green`.
+ * serves both themes. The live site reads `--logo-accent`, and its UI accent
+ * `--ui-accent` uses the same coral (a deeper #c2461f in light mode).
  */
 export const latticesAccent = { light: '#ef6a47', dark: '#ef6a47' } as const
 
