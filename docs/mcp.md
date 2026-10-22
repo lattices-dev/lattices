@@ -1,6 +1,6 @@
 ---
 title: MCP
-description: The lats mcp server, its browser and hosts toolsets, and how agent harnesses register it
+description: The lats mcp server, its browser, hosts and windows toolsets, and how agent harnesses register it
 order: 8
 ---
 
@@ -18,7 +18,34 @@ That is the whole point of this document. Everything else is detail.
 | Toolset | Tools | Does the work | Product docs |
 |---------|-------|---------------|--------------|
 | `browser` | `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_console`, `browser_close`, `browser_profiles`, `browser_use_profile`, `browser_profile_info`, `browser_import_cookies`, `browser_companion_status` | Action Browser code inside the `lattices` package, driving Action-owned Chrome over CDP | [Action browser](/action/docs/browser) |
-| `hosts` | `hosts_list`, `host_describe`, `host_windows`, `host_screenshot`, `host_read`, `host_place`, `host_focus`, `host_act`, `host_call` | The Lattices daemon or a `lattices-host` on port 9399 | [Agent API](/lattices/docs/api) |
+| `hosts` | `hosts_list`, `host_describe`, `host_windows`, `host_screenshot`, `host_read`, `host_place`, `host_focus`, `host_act`, `host_call` | This Mac's daemon over its private socket, or a paired host through its gateway | [Agent API](/lattices/docs/api) |
+| `windows` | `windows_search`, `windows_place`, `windows_focus`, `layers_list`, `layers_switch`, `history_undo` | This Mac's daemon over its private socket | [Agent API](/lattices/docs/api) |
+
+The `hosts` and `windows` toolsets reach this Mac's daemon the way `lats`
+does: over the Unix socket `~/.lattices/run/lattices.sock`, with the token in
+`~/.lattices/run/lattices.token`. No TCP port is open by default. A paired
+remote host is reached through its gateway, which binds the host's Tailscale
+address (port 9399 by default) and accepts only signed, approved clients. See
+[Agent API](/lattices/docs/api).
+
+### The `windows` toolset
+
+The same window controls as the CLI, as tools on this Mac. Each tool wraps
+one daemon method and reuses the CLI's search and place code:
+
+| Tool | Daemon method | Same as |
+|------|---------------|---------|
+| `windows_search` | `search.query` (`sources: ["all"]` with `deep: true`) | `lats search`, `lats search --deep` |
+| `windows_place` | `windows.place`; by `query`, deep search + `windows.focus` + `windows.place` | `lats window place`, `lats place` |
+| `windows_focus` | `windows.focus` | `lats focus` |
+| `layers_list` | `layers.list` | `lats layer` |
+| `layers_switch` | `layers.activate` | `lats layer <name or slot>` |
+| `history_undo` | `history.undo` | `lats call history.undo` |
+
+Search with the basic sources first. Set `deep: true` only when the basic
+search misses, for example a project that appears only in a terminal's cwd.
+`windows_place` returns the daemon receipt with its `receiptId` at the top
+level; pass that id to `history_undo` to put the window back.
 
 `lats mcp` is a Lattices entry point. The `browser` toolset is Action Browser
 code, so its workflow and profile rules belong to Action. Action.app also has
@@ -109,6 +136,8 @@ bin/mcp/
       ...
     hosts/               # Lattices hosts over the daemon protocol
       index.ts
+    windows/             # this Mac's search, place, focus, layers, undo
+      index.ts
 ```
 
 The server lives under `bin/` because that is what the npm package actually
@@ -157,7 +186,7 @@ mcp__plugin_action-browser_action-browser__browser_open   →   mcp__lattices__b
 
 No instruction anywhere refers to the prefixed form, so nothing needs aliasing.
 Future toolsets follow the same convention: a short verb-ish prefix per domain
-(`browser_*`, and later `window_*`, `session_*`) rather than a product name.
+(`browser_*`, `host_*`, `windows_*`, `layers_*`, and later `session_*`) rather than a product name.
 
 ## Lifecycle guarantees
 
@@ -242,7 +271,7 @@ machine does not have to be told twice.
 
 ```bash
 lattices mcp --list                    # toolsets and tool names, no protocol
-bun test tests/mcp.test.ts             # router + toolset contract
+bun test bin/mcp                       # router + toolset contract, each toolset
 ```
 
 In a harness: `/mcp` should show `lattices` connected, and `browser_open`

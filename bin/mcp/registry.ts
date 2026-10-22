@@ -9,6 +9,7 @@ import type { Toolset } from "./types.ts";
 export const TOOLSET_LOADERS: Record<string, () => Promise<Toolset>> = {
   browser: async () => (await import("./toolsets/browser/index.ts")).browserToolset,
   hosts: async () => (await import("./toolsets/hosts/index.ts")).hostsToolset,
+  windows: async () => (await import("./toolsets/windows/index.ts")).windowsToolset,
 };
 
 export const TOOLSET_NAMES = Object.keys(TOOLSET_LOADERS);

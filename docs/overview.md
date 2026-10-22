@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: What Lattices is, what it owns in the product family, and where to start
+description: What Lattices owns in the product family, what ships with it, and where to start
 order: 0
 ---
 
@@ -11,6 +11,9 @@ menu bar app, the `lats` CLI and a local agent API. On Linux it is a Bun
 host, a Quickshell desktop app and the same CLI. People and agents share one
 model of the desktop: windows, spaces, workspace layers, tmux sessions and,
 when you turn it on, the text on screen.
+
+New here? Read [What Lattices is](/lattices/docs/what-is-lattices), then
+[Getting started](/lattices/docs/getting-started).
 
 ## Lattices in the family
 
@@ -29,82 +32,22 @@ installs and calls Action, and `lats voice say` forwards speech to the Voice
 app. [Concepts](/lattices/docs/concepts) shows each process, its local socket or network endpoint, and
 where every command goes. The [product map](/products) compares the products.
 
-## The problem
-
-I kept losing track of windows. Terminal here, dev server there, browser
-somewhere on the second monitor, three other projects buried under it all.
-Every morning I'd rebuild the same layout. Half my context-switching was
-just hunting for the right window.
-
-AI agents have it worse. They're stuck inside a single shell with no way
-to see what's on screen, arrange windows, or jump between projects.
-
-## The solution
-
-Lattices provides workspace controls, window layouts and persistent terminal
-sessions:
-
-### Programmable workspace
-
-The CLI and agent API expose everything: query what's on screen, search
-window text, tile layouts, manage sessions. Install the family skills with
-`npx skills add lattices-dev/lattices --all --global --yes` (`lattices`,
-`action`, `voice`, `blink`). Claude Code skills, MCP servers, or your own
-scripts can drive your desktop the same way you do. Your workspace becomes
-infrastructure you can observe and control programmatically.
-
-### Smart layout manager
-
-A native menu bar app tracks every window across all your monitors. Tile
-with hotkeys, organize into switchable layers, snap to grids. It can read
-your windows too. Screen text reading is off by default. When you turn on
-**Search & OCR** in Settings, it extracts text from UI elements every 60
-seconds and runs Vision OCR on background windows every 2 hours, and that
-text becomes searchable.
-
-### Managed tmux sessions
-
-We make tmux easy. Declare your dev environment in a `.lattices.json`:
-which panes, which commands, what layout. lattices builds it, runs it,
-and keeps it alive. Use your own terminal. Sessions survive terminal
-crashes and disconnects, and you can reattach anytime.
-
 ## What's included
+
+Screen-text indexing is off by default. It starts only after you grant
+Screen Recording permission and turn on **Search & OCR** in Settings; see
+[Screen scanning](/lattices/docs/ocr) for the scan intervals.
 
 | Component | Platform | Description |
 |-----------|----------|-------------|
 | **CLI** | macOS, Linux | The `lats` command. Tile windows, manage sessions, scan screen text, control the workspace from your terminal |
-| **Menu bar app** | macOS | Command palette, window tiling, project discovery, screen text indexing, voice commands |
+| **Menu bar app** | macOS | Command bar, window tiling, project discovery, screen text indexing, voice commands |
 | **Linux host and app** | Linux (Hyprland) | `lattices-host` serves the agent API; a Quickshell app and a tray menu sit on top of it |
 | **Agent API** | macOS, Linux | Authenticated WebSocket on `lattices.sock` in 0.15.1. RPC methods and real-time events; see [Concepts](/lattices/docs/concepts#private-ipc-and-the-gateway) |
-| **MCP server** | macOS | `lats mcp` serves the `browser_*` and `host_*` tools to agent harnesses. See [MCP](/lattices/docs/mcp) |
-| **Screen scanner** | macOS | Reads text from visible windows using the Accessibility API (60s) and Apple Vision OCR (2h), indexes with FTS5 |
+| **MCP server** | macOS | `lats mcp` serves window, browser and remote-host tools to agent harnesses. See [MCP](/lattices/docs/mcp) |
+| **Screen scanner** | macOS | When enabled, reads text from visible windows with the Accessibility API and Apple Vision OCR and indexes it with FTS5 |
 | **Node.js client** | macOS, Linux | Zero-dependency `daemonCall()` helper for scripting |
 | **Embedded SDK** | macOS | Swift package for embedding Lattices capabilities into host apps or product-owned helpers |
-
-## Example
-
-```bash
-cd ~/my-project && lats start
-```
-
-Agents get the same control programmatically:
-
-```js
-import { daemonCall } from '@lattices/lattices'
-await daemonCall('sessions.launch', { path: '/Users/you/dev/frontend' })
-await daemonCall('windows.place', {
-  session: 'frontend-a1b2c3',
-  placement: { kind: 'tile', value: 'left' }
-})
-```
-
-## Who it's for
-
-- Developers who juggle multiple projects and want faster window management
-- People building AI agents that need to observe and control the desktop
-- Power users who work across multiple macOS Spaces
-- Anyone who wants persistent, auto-configured terminal sessions
 
 ## Requirements
 
@@ -121,12 +64,29 @@ Linux:
   supported automatic setup
 - See [Install on Linux](/lattices/docs/install-linux) for the full list
 
-## Next steps
+## Where to go
 
-- [Quickstart](/lattices/docs/quickstart): install and run your first session
+Start here:
+
+- [What Lattices is](/lattices/docs/what-is-lattices): the three jobs, what you install, and the words you will see
+- [Quickstart](/lattices/docs/quickstart): install the app and the CLI
+- [Getting started](/lattices/docs/getting-started): tile, find, place, and start a session in ten minutes
 - [Install on Linux](/lattices/docs/install-linux): the Hyprland host, app and CLI
-- [Concepts](/lattices/docs/concepts): product boundary, processes, ports and glossary
+
+Guides:
+
+- [Tiling and placement](/lattices/docs/guide-tiling)
+- [Finding windows](/lattices/docs/guide-search)
+- [Sessions](/lattices/docs/guide-sessions)
+- [Layers](/lattices/docs/guide-layers)
+- [Working across machines](/lattices/docs/guide-machines)
+- [Lattices for AI agents](/lattices/docs/guide-agents)
+
+Reference:
+
+- [Concepts](/lattices/docs/concepts): product boundary, processes, sockets and glossary
 - [Configuration](/lattices/docs/config): `.lattices.json` format and CLI commands
+- [Menu bar app](/lattices/docs/app): every shortcut and setting
 - [Screen scanning](/lattices/docs/ocr): AX text extraction, Vision OCR and full-text search
 - [Voice](/lattices/docs/voice): voice commands and the `lats voice` reference
 - [Agent guide](/lattices/docs/agents): canonical action contracts for voice, CLI and daemon clients

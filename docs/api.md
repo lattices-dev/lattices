@@ -1833,6 +1833,9 @@ lats search vox
 lats search vox --deep
 
 # Same as --deep (all search sources)
+# A TTY matched only at app level (see terminals.list) adds 1 point to each
+# window of its terminal app, with the source "terminal-app". `lats place`
+# does not act on a result that has only that source.
 lats search vox --all
 
 # Pipeable output
@@ -2587,10 +2590,35 @@ List all discovered terminal instances with their processes, tabs, and tmux asso
     "tmuxSession": "myapp-a1b2c3",
     "tmuxPaneId": "%0",
     "hasClaude": true,
-    "displayName": "Terminal — myapp"
+    "displayName": "Terminal — myapp",
+    "windowId": 4211,
+    "windowAttribution": "terminal"
   }
 ]
 ```
+
+Terminal coverage. With `refresh: true`, Lattices reads tab data from these
+terminal apps, and only from apps that are already running:
+
+| Terminal | Tab data | Window match | What the terminal needs |
+|----------|----------|--------------|-------------------------|
+| iTerm2 | AppleScript | Window ID | Automation access |
+| Terminal.app | AppleScript | Window ID | Automation access |
+| Ghostty 1.3+ | AppleScript (tab title, terminal ID, cwd) | Window title, when one window has it | Automation access that you already granted. Lattices does not ask for it. |
+| kitty | `kitty @ ls` | Window ID | `allow_remote_control` and `listen_on` in `kitty.conf` |
+| Warp, Alacritty, others | None | Process tree only | Nothing |
+
+Ghostty reports no TTY, so Lattices joins each Ghostty terminal to a TTY by
+its working directory. It skips a terminal when two shells share that
+directory. When tab data is not available, Lattices finds the terminal
+process that owns the TTY. It picks that process's window when the process
+has one titled window, or when exactly one window title contains the shell's
+cwd. Otherwise the TTY has no `windowId`. It has `windowAttribution: "app"`,
+and `windowCandidates` lists the windows of that process, frontmost first.
+
+`windowAttribution` values: `tag` (the window title has the `[lattices:…]`
+tag), `terminal` (the terminal reported the window ID), `terminal-title`,
+`position`, `cwd-title`, `single-window`, `app`.
 
 #### `terminals.search`
 
