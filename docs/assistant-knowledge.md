@@ -14,13 +14,15 @@ audience: assistant
 
 ## What Lattices is
 
-Lattices is an **agentic window manager for macOS** — a programmable workspace
-that pairs a native menu bar app with managed tmux sessions and a scriptable
-agent API. Three layers, one product:
+Lattices is a **window manager for macOS that knows about projects**. It finds
+any project's windows and puts them in place, for you or your agent. It pairs a
+native menu bar app with managed tmux sessions and a scriptable agent API. Three
+layers, one product:
 
-1. **Programmable workspace** — a CLI and a WebSocket agent API (`ws://127.0.0.1:9399`,
-   35+ methods, real-time events) that let scripts and AI agents observe and drive
-   the desktop the same way a person does.
+1. **Programmable workspace** — a CLI, an MCP server and a daemon API on a
+   private socket (`~/.lattices/run/lattices.sock`, authorized by
+   `lattices.token`) that let scripts and AI agents observe and drive the
+   desktop the same way a person does.
 2. **Smart layout manager** — the menu bar app tracks every window across all
    monitors: tiling, switchable layers, snap zones, and screen-text indexing.
 3. **Managed tmux sessions** — declare a dev environment in `.lattices.json`;
