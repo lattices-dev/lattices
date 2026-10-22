@@ -5,37 +5,37 @@ const sourceUrl = 'https://github.com/lattices-dev/lattices/tree/main/products/v
 
 const features = [
   {
-    title: 'A unified speak API',
+    title: 'One call to speak',
     description:
-      'Any agent can say things out loud through one local interface — queue text, pick a voice, and playback keeps running even if the client disconnects.',
+      'Any agent or script sends text to one local socket. Voice queues it and reads it aloud, and the readout finishes even if the sender quits.',
   },
   {
-    title: 'Background by default',
+    title: 'Hear when work finishes',
     description:
-      'A task finishes and its summary is queued and spoken while you keep working. Define it once and every agent you run gets a voice.',
+      'When a task ends, its summary is read out while you keep working. Set it up once and every agent you run can use it.',
   },
   {
-    title: 'A readalong when you want it',
+    title: 'See what is playing',
     description:
-      'Voice shows a small HUD over the workspace while it reads. Follow along, or let it run quietly and check the queue later.',
+      'A small panel shows the text being read, its progress and how many readouts are queued. It hides when the queue is empty.',
   },
 ]
 
 const steps = [
   {
-    title: 'Enqueue the words',
+    title: 'Send the text',
     description:
-      'Agents and scripts call the local RPC with the text to say — no synthesis code, no audio handling, no process babysitting on their side.',
+      'An agent or script sends the words to Voice over a local socket. It needs no speech code and no audio library.',
   },
   {
-    title: 'Voice owns the queue',
+    title: 'Voice queues it',
     description:
-      'Voice.app holds the queue, picks the voice, and plays in the background. The job is safe even if the client that queued it exits.',
+      'Voice holds the queue, picks the voice and plays each job in order. A job keeps playing if the sender exits.',
   },
   {
-    title: 'Follow along — or don\u2019t',
+    title: 'Control playback',
     description:
-      'An optional HUD reads along over the workspace while it plays. Pause, resume, seek, skip, or stop from the same API.',
+      'Pause, resume, seek, skip or stop with the same calls. A small panel shows what is playing.',
   },
 ]
 
@@ -44,26 +44,26 @@ const voices = [
     title: 'System voices',
     label: 'offline · zero setup',
     description:
-      'macOS AVSpeech synthesis out of the box. No keys, no model downloads, works the moment Voice.app launches.',
+      'The voices built into macOS. No keys and no downloads; they work as soon as Voice opens.',
   },
   {
     title: 'Kokoro on-device',
     label: 'local neural · no account',
     description:
-      'The Kokoro-82M model runs fully on-device — a natural voice without a network call or an API key.',
+      'The Kokoro-82M model runs on your Mac. It sounds natural and needs no network or API key.',
   },
   {
     title: 'OpenAI TTS via Vox',
     label: 'cloud quality · your key',
     description:
-      'Bring an OpenAI credential for hosted voices like gpt-4o-mini-tts. Keys live in the Keychain, never in prefs or logs.',
+      'Add an OpenAI key to use hosted voices such as gpt-4o-mini-tts. The key stays in the Keychain, never in settings files or logs.',
   },
 ]
 
 const ambient = [
   { event: 'Download finished', detail: 'a long fetch completes in the background' },
-  { event: 'Build done', detail: 'the release build finishes while you read mail' },
-  { event: 'Agent summary', detail: 'a task closes out and its result is read back' },
+  { event: 'Build done', detail: 'a release build finishes while you read email' },
+  { event: 'Agent summary', detail: 'an agent finishes a task and Voice reads its result' },
 ]
 
 export default function SpeechPage() {
@@ -76,10 +76,11 @@ export default function SpeechPage() {
             <p className="family-kicker">Voice, for agents</p>
             <h1 id="speech-title">Give your agents a voice.</h1>
             <p>
-              Voice is a standalone player from Lattices: one local API for
-              agents and scripts to queue spoken readouts, with an optional HUD
-              readalong. Powered by Lattices, it can go ambient — a download
-              finished, a build done — spoken in the background.
+              Voice is a standalone app in the Lattices family. Agents and
+              scripts send it text over one local API, and it reads the text
+              aloud in order, showing what it reads in a small panel.
+              With Lattices running, it also tells you when things happen: a
+              download finishes, a build is done.
             </p>
             <div className="family-hero-actions">
               <a href={downloadUrl}>Download Voice</a>
@@ -115,13 +116,12 @@ export default function SpeechPage() {
 
         <section className="speech-how" aria-labelledby="speech-how-title">
           <div className="speech-how-copy">
-            <p className="family-kicker">How a readout happens</p>
-            <h2 id="speech-how-title">Three calls deep. That&apos;s the whole surface.</h2>
+            <p className="family-kicker">How it works</p>
+            <h2 id="speech-how-title">Speaking takes one call.</h2>
             <p>
-              Every spoken readout travels one short path: a client enqueues
-              text, Voice plays it, and anyone listening hears the result.
-              The RPC set stays tiny on purpose — enqueue, status, pause,
-              resume, seek, stop, next, voices.
+              An agent sends text and Voice reads it aloud. Seven more calls
+              cover the rest: status, pause, resume, seek, stop, next and
+              voices.
             </p>
           </div>
           <div className="speech-terminal" aria-label="Voice RPC example">
@@ -149,12 +149,12 @@ export default function SpeechPage() {
 
         <section className="speech-voices" aria-labelledby="speech-voices-title">
           <div className="speech-section-heading">
-            <p className="family-kicker">Pick a voice</p>
-            <h2 id="speech-voices-title">Three ways to sound.</h2>
+            <p className="family-kicker">Voices</p>
+            <h2 id="speech-voices-title">Three kinds of voice.</h2>
             <p>
-              Every provider shares the same queue and the same calls — a
-              preferred voice per provider is remembered locally, and an
-              explicit <code>voice</code> on enqueue always wins.
+              Every provider uses the same queue and the same calls. Voice
+              remembers a preferred voice for each provider, and a{' '}
+              <code>voice</code> named in the request always wins.
             </p>
           </div>
           <div className="speech-voice-grid">
@@ -170,13 +170,13 @@ export default function SpeechPage() {
 
         <section className="speech-hud" aria-labelledby="speech-hud-title">
           <div className="speech-hud-copy">
-            <p className="family-kicker">The readalong</p>
-            <h2 id="speech-hud-title">A HUD that follows the voice.</h2>
+            <p className="family-kicker">Playback panel</p>
+            <h2 id="speech-hud-title">See what it&apos;s reading.</h2>
             <p>
-              While Voice plays, a small overlay can float over the workspace
-              and read along — enough to glance at what&apos;s being said without
-              interrupting the task at hand. Turn it off and the queue still
-              runs; Voice is a player first, a window second.
+              While Voice plays, a small panel shows the text being read, its
+              progress and what&apos;s queued next, without taking focus from
+              what you&apos;re doing. It hides when the queue is empty, and the
+              menu bar brings it back.
             </p>
           </div>
           <div className="speech-hud-visual" aria-hidden="true">
@@ -193,17 +193,17 @@ export default function SpeechPage() {
 
         <section className="speech-boundary" aria-labelledby="speech-boundary-title">
           <div className="speech-section-heading">
-            <p className="family-kicker">One family, clear ownership</p>
-            <h2 id="speech-boundary-title">Lattices enqueues. Voice speaks.</h2>
+            <p className="family-kicker">Who does what</p>
+            <h2 id="speech-boundary-title">Lattices sends. Voice speaks.</h2>
           </div>
           <div className="speech-boundary-grid">
             <article>
               <span className="speech-boundary-label">Lattices</span>
-              <h3>A client like any other</h3>
+              <h3>One client among many</h3>
               <p>
-                The workspace daemon, your agents, and your scripts all call the
-                same RPC. Nobody owns the queue but Voice — clients hand over
-                text and get a job id back.
+                The Lattices app, your agents and your scripts all use the same
+                calls. They send text and get a job id back; only Voice manages
+                the queue.
               </p>
               <a href="/">Explore Lattices →</a>
             </article>
@@ -216,11 +216,11 @@ export default function SpeechPage() {
             </div>
             <article>
               <span className="speech-boundary-label speech-boundary-label-product">Voice</span>
-              <h3>Owns the whole readout</h3>
+              <h3>Handles everything after that</h3>
               <p>
-                Synthesis requests, queue state, audio playback, the HUD, and
-                voice preferences all live in Voice.app — a signed, separate
-                process that keeps playing when clients disconnect.
+                Voice.app does the synthesis, the queue, the audio, the panel
+                and the voice settings. It is a separate signed app, so playback
+                continues when a client disconnects.
               </p>
               <a href={sourceUrl}>Read the source →</a>
             </article>
@@ -229,11 +229,11 @@ export default function SpeechPage() {
 
         <section className="speech-ambient" aria-labelledby="speech-ambient-title">
           <div className="speech-section-heading">
-            <p className="family-kicker">Powered by Lattices</p>
-            <h2 id="speech-ambient-title">Then it goes ambient.</h2>
+            <p className="family-kicker">With Lattices</p>
+            <h2 id="speech-ambient-title">Hear what your Mac is doing.</h2>
             <p>
-              Wired into the workspace, Voice stops being a command and becomes
-              a sense — the desktop narrating its own events in the background.
+              With Lattices running, Voice can announce events as they happen,
+              so you don&apos;t have to keep checking.
             </p>
           </div>
           <div className="speech-ambient-grid">
@@ -260,14 +260,14 @@ export default function SpeechPage() {
             <p className="family-kicker">From source</p>
             <h2 id="speech-source-title">A signed app you can rebuild.</h2>
             <p>
-              Voice is Swift all the way down — the RPC server, the queue, the
-              HUD, and the Vox/Kokoro providers all live in{' '}
+              Voice is written in Swift. The API server, the queue, the panel
+              and the Vox and Kokoro providers are all in{' '}
               <code>products/voice</code>.
             </p>
             <ul className="speech-source-reqs">
               <li>macOS 26+ on Apple silicon</li>
               <li>Swift toolchain</li>
-              <li>No permissions required to speak</li>
+              <li>No macOS permissions needed</li>
             </ul>
             <a href={sourceUrl} className="speech-source-link">Browse products/voice →</a>
           </div>
@@ -286,8 +286,8 @@ export default function SpeechPage() {
 
         <section className="family-close">
           <div>
-            <p className="family-kicker">Independent, always listening</p>
-            <h2>Voice owns its queue and keeps running when a client disconnects.</h2>
+            <p className="family-kicker">Runs on its own</p>
+            <h2>Voice manages its own queue and keeps playing when a client disconnects.</h2>
           </div>
           <nav aria-label="Lattices products">
             <a href="/">Lattices</a>
