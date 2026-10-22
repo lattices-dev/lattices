@@ -29,11 +29,11 @@ export default function TestResults() {
   return (
     <div style={{ margin: '32px 0', fontFamily: "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 20 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#33c773' }}>
+        <span style={{ fontSize: 13, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ef6a47' }}>
           Test results
         </span>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 24, fontWeight: 500, color: '#33c773' }}>{overallScore}%</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 24, fontWeight: 500, color: '#ef6a47' }}>{overallScore}%</span>
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)' }}>{totalPassing}/{totalChecks} checks</span>
         </div>
       </div>

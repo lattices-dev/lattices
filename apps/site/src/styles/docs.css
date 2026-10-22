@@ -6,8 +6,8 @@
   --docs-border-lit: rgba(255, 255, 255, 0.1);
   --docs-text: rgba(255, 255, 255, 0.92);
   --docs-muted: rgba(255, 255, 255, 0.5);
-  --docs-accent: #33c773;
-  --docs-accent-soft: rgba(51, 199, 115, 0.12);
+  --docs-accent: #ef6a47;
+  --docs-accent-soft: rgba(239, 106, 71, 0.12);
   --docs-code-bg: #1b201d;
   --docs-code-border: rgba(255, 255, 255, 0.1);
   --docs-radius: 12px;
@@ -27,8 +27,8 @@
   --docs-border-lit: rgba(24, 31, 28, 0.14);
   --docs-text: #171b1a;
   --docs-muted: #66706d;
-  --docs-accent: #168d4d;
-  --docs-accent-soft: rgba(22, 141, 77, 0.1);
+  --docs-accent: #c2461f;
+  --docs-accent-soft: rgba(194, 70, 31, 0.1);
   --docs-code-bg: #272d29;
   --docs-code-border: rgba(10, 15, 13, 0.13);
   --docs-shadow-sm: 0 1px 2px rgba(35, 31, 20, 0.05);

@@ -948,13 +948,11 @@ export default function App() {
         <section className="hero fade-in">
           <div className="hero-inner">
 
-            <h1>Find any project&apos;s windows. Put them in place, for you or your agent.</h1>
+            <h1>More projects. More momentum.</h1>
             <p className="hero-sub">
-              Every morning I&apos;d rebuild the same layout. Half my
-              context-switching was just hunting for the right window.
-            </p>
-            <p className="hero-sub hero-sub-turn">
-              Your Mac knows apps. You work in projects.
+              Agents let you run more projects at once than ever before.
+              Lattices keeps up with you: it knows which windows belong to
+              which project and puts them where you need them.
             </p>
             <div className="hero-actions">
               <a
