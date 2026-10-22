@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "
 import { dirname } from "node:path";
 import { configuredHosts, discoverTailnetHosts, hostStatuses, HOSTS_FILE, resolveHost, callHost } from "../hosts.ts";
 import { hasFlag } from "./helpers.ts";
-import { CLIENT_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost, type PairingScope } from "../host-pairing.ts";
+import { IDENTITY_FILE, PAIRED_HOSTS_FILE, pairingRequest, savePairedHost, type PairingScope } from "../host-pairing.ts";
 
 /**
  * lats hosts [--discover] [--json]   list reachable lattices hosts (LAT-013)
@@ -115,7 +115,7 @@ async function pairCommand(args: string[]): Promise<void> {
     { host: result.host, hostPublicKey: result.hostPublicKey, hostFingerprint: result.hostFingerprint, scope: result.scope, ...(Array.isArray(result.scopes) ? { scopes: result.scopes } : {}), pairedAt: new Date().toISOString() }
   );
   console.log(`Paired with ${result.host} (host code ${result.hostFingerprint}, permissions ${result.grants?.join(", ") ?? result.scope}).`);
-  console.log(`Keys: ${CLIENT_FILE}, ${PAIRED_HOSTS_FILE}`);
+  console.log(`Keys: ${IDENTITY_FILE}, ${PAIRED_HOSTS_FILE}`);
   if (!result.grants || result.grants.includes("lattices:host.describe")) {
     console.log(`Check: lats --host ${host.address}:${host.port} call host.describe`);
   } else {

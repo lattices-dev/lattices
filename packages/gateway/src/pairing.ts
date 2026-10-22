@@ -1,19 +1,22 @@
 import { join } from "node:path";
 import { PairingApprovals } from "../../host-linux/src/bridge/approval.ts";
-import { BridgeSecurity, HEADERS, loadOrCreateBridgeKey, type TrustedDevice } from "../../host-linux/src/bridge/security.ts";
+import { BridgeSecurity, HEADERS, type TrustedDevice } from "../../host-linux/src/bridge/security.ts";
 import type { Identity } from "../../host-linux/src/auth.ts";
 import { privateDirectory } from "../../host-linux/src/private-ipc.ts";
+import { deviceIdentity } from "../../desktop-client/device-identity.ts";
 import { requestedGrants, scopesHeld, validGrant } from "./policy.ts";
 
 export class GatewayPairing {
   readonly approvals: PairingApprovals;
   readonly security: BridgeSecurity;
-  constructor(name: string, stateDir: string, approvals = new PairingApprovals(120_000, false, "Lattices gateway")) {
+  /** `identityBase` holds identity/device.json; it is ~/.lattices in
+   * production and the state directory itself in tests. */
+  constructor(name: string, stateDir: string, approvals = new PairingApprovals(120_000, false, "Lattices gateway"), identityBase = stateDir) {
     privateDirectory(stateDir);
     this.approvals = approvals;
     this.security = new BridgeSecurity({
       bridgeName: name,
-      privateKey: loadOrCreateBridgeKey(join(stateDir, "gateway-key.json")),
+      privateKey: deviceIdentity(identityBase).privateKey,
       devicesPath: join(stateDir, "gateway-clients.json"),
       approve: (request, kind, additions) => {
         if (this.approvals.list().length >= 16) return Promise.resolve(false);

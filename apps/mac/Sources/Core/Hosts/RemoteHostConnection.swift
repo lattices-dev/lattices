@@ -237,9 +237,10 @@ final class RemoteHostConnection: @unchecked Sendable {
 }
 
 
-/// Reads the CLI's gateway trust; companion VisitTrust credentials are a
-/// separate identity and never grant daemon access. This reader never creates
-/// keys, pairs implicitly, or falls back to an unsigned connection.
+/// Reads the CLI's gateway trust and signs with the machine's device identity.
+/// The gateway trusts that key only through its own pairing record, so a
+/// companion or visit pairing never grants daemon access. This reader never
+/// pairs implicitly or falls back to an unsigned connection.
 enum RemoteHostGatewayCredentials {
     static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices", isDirectory: true)
 
@@ -247,16 +248,6 @@ enum RemoteHostGatewayCredentials {
         let host: String
         let hostPublicKey: String
         let hostFingerprint: String
-    }
-    private struct Identity: Decodable {
-        let id: String
-        let privateKey: JWK
-    }
-    private struct JWK: Decodable {
-        let kty: String
-        let crv: String
-        let d: String
-        let x: String
     }
     enum Failure: LocalizedError {
         case unpaired
@@ -301,17 +292,12 @@ enum RemoteHostGatewayCredentials {
             throw Failure.invalid("gateway fingerprint mismatch")
         }
         do {
-            let identity = try JSONDecoder().decode(Identity.self, from: readPrivate(directory.appendingPathComponent("client.json")))
-            guard !identity.id.isEmpty, identity.id.utf8.count <= 128,
-                  identity.id.utf8.allSatisfy({ $0 >= 33 && $0 <= 126 }),
-                  identity.privateKey.kty == "OKP", identity.privateKey.crv == "X25519",
-                  let raw = base64URL(identity.privateKey.d), raw.count == 32,
-                  let publicRaw = base64URL(identity.privateKey.x), publicRaw.count == 32 else {
-                throw Failure.invalid("malformed client identity")
-            }
-            let key = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw)
-            guard key.publicKey.rawRepresentation == publicRaw else { throw Failure.invalid("client public key mismatch") }
-            var headers = try DeckBridgeClientCrypto(privateKey: key, deviceID: identity.id, bridgePublicKey: host.hostPublicKey)
+            // Only a paired endpoint reaches this point, so loading the device
+            // identity here migrates legacy keys; it never pairs implicitly.
+            let identity: DeviceIdentity
+            do { identity = try DeviceIdentity.load(base: directory) }
+            catch { throw Failure.invalid(error.localizedDescription) }
+            var headers = try DeckBridgeClientCrypto(privateKey: identity.privateKey, deviceID: identity.id, bridgePublicKey: host.hostPublicKey)
                 .sign(method: "GET", path: "/", plaintext: nil, encrypt: false, now: now, nonce: nonce).headers
             // The gateway requires the complete, explicitly allowed authority,
             // independent of the transport's generated Host header.
@@ -319,14 +305,7 @@ enum RemoteHostGatewayCredentials {
             headers["Host"] = "\(authorityHost):\(port)"
             return headers
         } catch let error as Failure { throw error }
-        catch { throw Failure.invalid("cannot read the X25519 client identity") }
-    }
-
-    private static func base64URL(_ value: String) -> Data? {
-        guard value.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }) else { return nil }
-        var encoded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        encoded += String(repeating: "=", count: (4 - encoded.count % 4) % 4)
-        return Data(base64Encoded: encoded)
+        catch { throw Failure.invalid("cannot sign with the device identity") }
     }
 
     private static func readPrivate(_ url: URL) throws -> Data {

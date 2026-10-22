@@ -7,13 +7,14 @@ import XCTest
 final class RemoteHostGatewayCredentialsTests: XCTestCase {
     private let publicKey = "WGmv9FBUlzLLqu1eXfmzCm2jHLDldCutWtShp2jxpns="
     private let fingerprint = "A053-D765-5733"
-    private let identity = #"{"id":"native-test-client","privateKey":{"kty":"OKP","crv":"X25519","x":"B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9_AsrhtHHw","d":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}}"#
+    private let identity = #"{"version":1,"id":"native-test-client","name":"test","privateKey":{"kty":"OKP","crv":"X25519","x":"B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9_AsrhtHHw","d":"AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}}"#
 
     private func fixture() throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        try put(identity, at: dir.appendingPathComponent("client.json"))
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("identity"), withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        try put(identity, at: DeviceIdentity.path(base: dir))
         let hosts = ["100.64.0.5:9399": ["host": "mini", "hostPublicKey": publicKey, "hostFingerprint": fingerprint]]
         let data = try JSONSerialization.data(withJSONObject: hosts)
         try put(String(decoding: data, as: UTF8.self), at: dir.appendingPathComponent("paired-hosts.json"))
@@ -51,11 +52,11 @@ final class RemoteHostGatewayCredentialsTests: XCTestCase {
 
     func testMissingPairingDoesNotCreateIdentityOrFallBackToUnsigned() throws {
         let dir = try fixture()
-        try FileManager.default.removeItem(at: dir.appendingPathComponent("client.json"))
+        try FileManager.default.removeItem(at: DeviceIdentity.path(base: dir))
         XCTAssertThrowsError(try RemoteHostGatewayCredentials.headers(address: "unknown", port: 9399, directory: dir)) { error in
             XCTAssertTrue(error.localizedDescription.contains("Gateway pairing required"))
         }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("client.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: DeviceIdentity.path(base: dir).path))
     }
 
     func testFingerprintMismatchIsRejected() throws {
@@ -67,7 +68,7 @@ final class RemoteHostGatewayCredentialsTests: XCTestCase {
 
     func testMalformedAndWorldReadableIdentityAreRejected() throws {
         let dir = try fixture()
-        let url = dir.appendingPathComponent("client.json")
+        let url = DeviceIdentity.path(base: dir)
         try put(identity.replacingOccurrences(of: "X25519", with: "Ed25519"), at: url)
         XCTAssertThrowsError(try RemoteHostGatewayCredentials.headers(address: "100.64.0.5", port: 9399, directory: dir))
         try put(identity, at: url)
@@ -76,7 +77,7 @@ final class RemoteHostGatewayCredentialsTests: XCTestCase {
     }
 
     func testSymlinkIdentityIsRejected() throws {
-        let dir = try fixture(), url = dir.appendingPathComponent("client.json"), target = dir.appendingPathComponent("key.json")
+        let dir = try fixture(), url = DeviceIdentity.path(base: dir), target = dir.appendingPathComponent("identity/key.json")
         try FileManager.default.moveItem(at: url, to: target)
         try FileManager.default.createSymbolicLink(at: url, withDestinationURL: target)
         XCTAssertThrowsError(try RemoteHostGatewayCredentials.headers(address: "100.64.0.5", port: 9399, directory: dir))

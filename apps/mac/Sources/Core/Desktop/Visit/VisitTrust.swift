@@ -58,7 +58,6 @@ final class VisitTrust {
     }
 
     static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices/visit", isDirectory: true)
-    private var keyFile: URL { Self.directory.appendingPathComponent("device-key") }
     private var hostsFile: URL { Self.directory.appendingPathComponent("hosts.json") }
 
     private let lock = NSLock()
@@ -68,13 +67,13 @@ final class VisitTrust {
 
     private init() {
         try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let keyFile = Self.directory.appendingPathComponent("device-key")
-        if let raw = try? Data(contentsOf: keyFile), let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw) {
-            privateKey = key
-            PrivateKeyFile.tighten(keyFile)
-        } else {
+        // The machine's device identity; the visit deviceID stays separate.
+        switch DeviceIdentity.current {
+        case .success(let identity):
+            privateKey = identity.privateKey
+        case .failure(let error):
+            DiagnosticLog.shared.warn("Visit · \(error.localizedDescription); using a key for this session only")
             privateKey = Curve25519.KeyAgreement.PrivateKey()
-            PrivateKeyFile.write(privateKey.rawRepresentation, to: keyFile)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
