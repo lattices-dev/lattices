@@ -33,3 +33,13 @@ export const productLinks: ProductLink[] = [
     meta: 'Menu bar app',
   },
 ]
+
+/** Products-menu-only entries, shown after the product they belong to. */
+export const productMenuExtras: Record<string, ProductLink> = {
+  '/': {
+    href: '/linux',
+    title: 'Lattices for Linux',
+    description: 'The same workspace on Omarchy and Hyprland',
+    meta: 'Linux app',
+  },
+}
