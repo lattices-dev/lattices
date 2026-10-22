@@ -4458,15 +4458,6 @@ button.nav-link {
   color: var(--hero-ink);
 }
 
-.hero-sub:has(+ .hero-sub-turn) {
-  margin-bottom: 10px;
-}
-
-.hero-sub-turn {
-  color: var(--hero-ink);
-  font-weight: 550;
-}
-
 .hero-linux-link {
   display: inline-block;
   margin-top: 20px;
