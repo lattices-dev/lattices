@@ -2,8 +2,8 @@ import type { Server, ServerWebSocket } from "bun";
 import { join } from "node:path";
 import { identify, type Identity, type Policy } from "../../host-linux/src/auth.ts";
 import { BridgeSecurityError } from "../../host-linux/src/bridge/security.ts";
-import { authorizeLocalRequest, prepareSocket, privateDirectory, privateToken, protectSocket } from "../../host-linux/src/private-ipc.ts";
-import { localEndpoint } from "../../desktop-client/local-ipc.ts";
+import { authorizeLocalRequest, prepareSocket, privateDirectory, privateToken, protectSocket, removeLegacyToken, type LocalCredential } from "../../host-linux/src/private-ipc.ts";
+import { legacyTokenFile, localEndpoint, sharedTokenFile } from "../../desktop-client/local-ipc.ts";
 import { localEvents } from "../../desktop-client/local-events.ts";
 import { GatewayPairing } from "./pairing.ts";
 import { appendAudit } from "./audit.ts";
@@ -31,7 +31,8 @@ export interface GatewayOptions {
   pairing: GatewayPairing;
   allowedHosts: Set<string>;
   policy: Policy;
-  localToken: string;
+  /** Admin socket credential; a function is read at each admission. */
+  localToken: LocalCredential;
   call?: ProductCall;
   streamConnect?: StreamConnect;
   identify?: (address: string, policy: Policy) => Promise<Identity | null>;
@@ -258,6 +259,11 @@ export async function startGateway(config: { address: string; port: number; name
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("Invalid gateway port");
   const local = localEndpoint("gateway");
   await prepareSocket(local.socketPath!);
+  // The admin socket shares lattices.token. No other gateway holds the socket
+  // now, so the pre-consolidation gateway.token is stale.
+  removeLegacyToken(legacyTokenFile("gateway"));
+  const tokenFile = sharedTokenFile();
+  privateToken(tokenFile);
   privateDirectory(config.stateDir);
   const auditPath = join(config.stateDir, "audit.jsonl");
   appendAudit(auditPath, { at: new Date().toISOString(), method: "gateway.start", disposition: "starting" });
@@ -271,7 +277,7 @@ export async function startGateway(config: { address: string; port: number; name
     if (stopped) return; stopped = true;
     handlers.stop(); remote?.stop(true); admin?.stop(true); removeSocket(); config.onStop?.();
   };
-  const handlers = gatewayHandlers({ pairing, allowedHosts, policy: config.policy, localToken: privateToken(local.tokenFile!), shutdown: stop,
+  const handlers = gatewayHandlers({ pairing, allowedHosts, policy: config.policy, localToken: () => privateToken(tokenFile), shutdown: stop,
     audit: record => appendAudit(auditPath, record),
   });
   try {

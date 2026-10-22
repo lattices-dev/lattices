@@ -114,7 +114,11 @@ final class DaemonServer: ObservableObject {
                 listeningPort = UInt16(bigEndian: bound.sin_port)
                 diag.warn("DaemonServer: loopback TCP on port \(listeningPort); any local process can reach it with the token. Unset LATTICES_ALLOW_LOOPBACK_TCP to return to the socket.")
             }
-            authToken = try endpointLease!.publishToken(at: tokenURL)
+            // lattices.token is the one per-user Lattices credential, shared
+            // with the companion bridge and the gateway admin socket. Starting
+            // the daemon rotates it; it outlives the daemon because the other
+            // endpoints keep admitting with it.
+            authToken = try endpointLease!.publishToken(at: tokenURL, removeOnClose: false)
         } catch {
             diag.error("DaemonServer: endpoint setup failed — \(error.localizedDescription)")
             close(serverFd); serverFd = -1; endpointLease = nil
@@ -213,12 +217,16 @@ final class DaemonServer: ObservableObject {
         let client = WebSocketClient(id: id, fd: clientFd)
 
         let acceptedGeneration = generation
-        let token = authToken
+        let running = !authToken.isEmpty
+        let credential = tokenURL
         let admissionPort = socketPath == nil ? listeningPort : nil
         // Read the HTTP upgrade request
         handshakeQueue.async { [weak self] in
             guard let self else { close(clientFd); return }
             defer { self.handshakeSlots.signal() }
+            // Read the shared credential at admission: a rotation by another
+            // writer, or a replacement to revoke, applies at once.
+            let token = running ? ((try? PrivateLocalEndpoint.currentToken(at: credential)) ?? "") : ""
             self.performHandshake(client: client, token: token, port: admissionPort, generation: acceptedGeneration)
         }
     }

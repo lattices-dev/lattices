@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { dirname } from "node:path";
 
@@ -11,12 +11,19 @@ export function privateDirectory(path: string): void {
   chmodSync(path, 0o700);
 }
 
+/** Read the credential at `path`, creating it if absent. Creation never
+ * replaces an existing credential and never exposes a partly written file:
+ * the token is written to a private temporary file, then hard-linked in. */
 export function privateToken(path: string): string {
   privateDirectory(dirname(path));
-  try {
-    const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    try { writeFileSync(fd, randomBytes(32).toString("hex") + "\n"); } finally { closeSync(fd); }
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  if (!existsSync(path)) {
+    const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}`;
+    const fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      try { writeFileSync(fd, randomBytes(32).toString("hex") + "\n"); } finally { closeSync(fd); }
+      try { linkSync(temporary, path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    } finally { unlinkSync(temporary); }
+  }
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd);
@@ -27,7 +34,26 @@ export function privateToken(path: string): string {
   } finally { closeSync(fd); }
 }
 
-export function authorizeLocalRequest(req: Request, token: string): boolean {
+/** A server's credential: fixed, or read at each admission so replacing the
+ * file revokes at once. A read failure denies instead of throwing. */
+export type LocalCredential = string | (() => string);
+export function currentToken(credential: LocalCredential): string {
+  if (typeof credential === "string") return credential;
+  try { return credential(); } catch { return ""; }
+}
+
+/** Remove a pre-consolidation per-service credential. Call only after taking
+ * the service's endpoint, so no live server still owns the file. */
+export function removeLegacyToken(path: string): void {
+  try {
+    const stat = lstatSync(path);
+    if (stat.uid === process.getuid?.() && (stat.isFile() || stat.isSymbolicLink())) unlinkSync(path);
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+}
+
+export function authorizeLocalRequest(req: Request, credential: LocalCredential): boolean {
+  const token = currentToken(credential);
+  if (!token) return false;
   // Native/CLI transports do not send Origin. Reject even "null" and localhost
   // origins: web content has no reason to reach a privileged local endpoint.
   if (req.headers.has("origin")) return false;

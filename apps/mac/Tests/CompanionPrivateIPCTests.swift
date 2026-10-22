@@ -10,7 +10,7 @@ final class CompanionPrivateIPCTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: directory) }
         let path = directory.appendingPathComponent("companion.sock").path
-        let credential = directory.appendingPathComponent("companion.token")
+        let credential = directory.appendingPathComponent("lattices.token")
         let server = LatticesCompanionBridgeServer(socketPath: path, tokenURL: credential)
         server.start()
         defer { server.stop() }
@@ -37,7 +37,53 @@ final class CompanionPrivateIPCTests: XCTestCase {
         }
         server.stop()
         XCTAssertFalse(FileManager.default.fileExists(atPath: path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: credential.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: credential.path), "The shared credential outlives one endpoint")
+    }
+
+    /// The bridge and the daemon admit with one lattices.token. A daemon
+    /// restart rotates it, and the bridge follows without restarting.
+    func testBridgeSharesTheDaemonCredentialAndRemovesTheLegacyToken() throws {
+        let directory = URL(fileURLWithPath: "/private/tmp/lats-shared-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let legacy = directory.appendingPathComponent("companion.token")
+        try Data(String(repeating: "b", count: 64).utf8).write(to: legacy)
+        let credential = directory.appendingPathComponent("lattices.token")
+        let bridgePath = directory.appendingPathComponent("companion.sock").path
+        let bridge = LatticesCompanionBridgeServer(socketPath: bridgePath, tokenURL: credential)
+        bridge.start()
+        defer { bridge.stop() }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path), "A current bridge removes the stale per-service token")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("companion.token.lock").path))
+        let first = try String(contentsOf: credential, encoding: .utf8)
+        func request(_ token: String) -> String { "GET /test-unknown-route HTTP/1.1\r\nHost: localhost\r\nx-lattices-token: \(token)\r\n\r\n" }
+        XCTAssertTrue(try exchange(path: bridgePath, text: request(first)).hasPrefix("HTTP/1.1 404"))
+
+        let daemon = DaemonServer(socketPath: directory.appendingPathComponent("lattices.sock").path, tokenURL: credential)
+        daemon.start()
+        defer { daemon.stop() }
+        let rotated = try String(contentsOf: credential, encoding: .utf8)
+        XCTAssertNotEqual(rotated, first)
+        XCTAssertTrue(try exchange(path: bridgePath, text: request(rotated)).hasPrefix("HTTP/1.1 404"))
+        XCTAssertTrue(try exchange(path: bridgePath, text: request(first)).hasPrefix("HTTP/1.1 403"), "A replaced credential revokes at once")
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".token") }
+        XCTAssertEqual(names, ["lattices.token"])
+    }
+
+    func testCurrentTokenCreatesOnceAndRefusesUnsafeFiles() throws {
+        let directory = URL(fileURLWithPath: "/private/tmp/lats-token-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let credential = directory.appendingPathComponent("lattices.token")
+        let created = try PrivateLocalEndpoint.currentToken(at: credential)
+        XCTAssertEqual(created.count, 64)
+        XCTAssertEqual(try PrivateLocalEndpoint.currentToken(at: credential), created)
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: credential.path)[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: credential.path)
+        XCTAssertThrowsError(try PrivateLocalEndpoint.currentToken(at: credential))
+        try FileManager.default.removeItem(at: credential)
+        try FileManager.default.createSymbolicLink(at: credential, withDestinationURL: URL(fileURLWithPath: "/dev/null"))
+        XCTAssertThrowsError(try PrivateLocalEndpoint.currentToken(at: credential))
     }
 
     func testRejectedEndpointInitializationReleasesItsLock() throws {
