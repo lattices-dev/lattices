@@ -6,6 +6,7 @@ import { authorizeLocalRequest, prepareSocket, privateDirectory, privateToken, p
 import { legacyTokenFile, localEndpoint, sharedTokenFile } from "../../desktop-client/local-ipc.ts";
 import { localEvents } from "../../desktop-client/local-events.ts";
 import { GatewayPairing } from "./pairing.ts";
+import { PairingLimits, pairingIdentity } from "./pairing-limits.ts";
 import { appendAudit } from "./audit.ts";
 import { authorizeMethod, canonicalMethod, canonicalProduct, isTailnetAddress, validateRemoteRequest, type Product } from "./policy.ts";
 import { callProduct, COMPANION_ROUTES, proxyCompanion, connectCompanionVisit, connectLatticesStream, type ProductCall, type CompanionVisit, type ProductStream, type StreamConnect } from "./products.ts";
@@ -15,6 +16,8 @@ const STREAM_METHODS = new Set(["capture.stream.start", "capture.stream.ack", "c
 interface Connection {
   local: boolean;
   identity: Identity;
+  /** Remote address, for pairing limits when the tailnet node is unknown. */
+  address?: string;
   clientID: string | null;
   clientKey?: string;
   active: Set<AbortController>;
@@ -37,6 +40,8 @@ export interface GatewayOptions {
   streamConnect?: StreamConnect;
   identify?: (address: string, policy: Policy) => Promise<Identity | null>;
   companion?: typeof proxyCompanion;
+  /** One pending prompt per machine and a cooldown after a denial. */
+  pairingLimits?: PairingLimits;
   audit: (record: Record<string, unknown>) => void;
   shutdown: () => void;
 }
@@ -48,6 +53,35 @@ export function gatewayHandlers(options: GatewayOptions) {
   const attempts = new Map<string, { at: number; count: number }>();
   const call = options.call ?? callProduct;
   const streamConnect = options.streamConnect ?? connectLatticesStream;
+  const limits = options.pairingLimits ?? new PairingLimits();
+  const companion = options.companion ?? proxyCompanion;
+  /** The companion decides its own pairing; the gateway only limits how often it is asked. */
+  const companionPairing = async (req: Request, who: string): Promise<Response> => {
+    const raw = await req.arrayBuffer();
+    let deviceID = "";
+    try { const body = JSON.parse(new TextDecoder().decode(raw)); if (typeof body?.deviceID === "string") deviceID = body.deviceID.slice(0, 128); } catch {}
+    let entry: ReturnType<typeof limits.enter>;
+    try {
+      entry = limits.enter("companion", who, deviceID, async () => {
+        const response = await companion(new Request(req.url, { method: "POST", headers: req.headers, body: raw, signal: req.signal }));
+        const body = await response.arrayBuffer();
+        if (response.status === 403) {
+          try {
+            const answer = JSON.parse(new TextDecoder().decode(body));
+            if (answer?.disposition === "denied" && /denied on the/i.test(String(answer.detail ?? ""))) limits.deny(who);
+          } catch {}
+        }
+        return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body };
+      });
+    } catch (error) {
+      return Response.json({ error: (error as Error).message }, { status: 429, headers: { "cache-control": "no-store" } });
+    }
+    try {
+      const shared = await entry.result as { status: number; contentType: string; body: ArrayBuffer };
+      return new Response(shared.body.slice(0), { status: shared.status, headers: { "content-type": shared.contentType, "cache-control": "no-store" } });
+    } catch { return new Response("Companion product unavailable", { status: 503 }); }
+    finally { entry.leave(); }
+  };
   const openStream = (ws: ServerWebSocket<Connection>) => {
     const conn = ws.data;
     conn.streamIDs ??= new Set();
@@ -78,13 +112,14 @@ export function gatewayHandlers(options: GatewayOptions) {
     let identity: Identity | null;
     let clientID: string | null = null;
     let clientKey: string | undefined;
+    let address = "";
     if (local) {
       if (!authorizeLocalRequest(req, options.localToken) || path !== "/" || req.method !== "GET") return new Response("Forbidden", { status: 403 });
       identity = { user: "local", node: "localhost", local: true };
     } else {
       const denied = validateRemoteRequest(req, options.allowedHosts);
       if (denied) return new Response(denied, { status: 403 });
-      const address = server.requestIP(req)?.address ?? "";
+      address = server.requestIP(req)?.address ?? "";
       identity = await (options.identify ?? identify)(address, options.policy);
       // Loopback never inherits the host's authority through the gateway.
       if (!identity || identity.local) return new Response("Tailnet identity required", { status: 403 });
@@ -97,7 +132,8 @@ export function gatewayHandlers(options: GatewayOptions) {
       }
       if (COMPANION_ROUTES.has(`${req.method} ${path}`)) {
         options.audit({ at: new Date().toISOString(), node: identity.node, method: `${req.method} ${path}`, disposition: "companion_forward" });
-        return (options.companion ?? proxyCompanion)(req);
+        if (req.method === "POST" && path === "/pairing/request") return companionPairing(req, pairingIdentity(identity, address));
+        return companion(req);
       }
       if (path !== "/" || req.method !== "GET") return new Response("Unknown route", { status: 404 });
       try { const client = options.pairing.authenticate(req.headers); clientID = client?.id ?? null; clientKey = client?.publicKey; }
@@ -106,7 +142,7 @@ export function gatewayHandlers(options: GatewayOptions) {
         return new Response("Authentication failed", { status: 403 });
       }
     }
-    if (server.upgrade(req, { data: { local, identity, clientID, clientKey, active: new Set(), requests: 0, windowStart: Date.now() } })) return;
+    if (server.upgrade(req, { data: { local, identity, address, clientID, clientKey, active: new Set(), requests: 0, windowStart: Date.now() } })) return;
     return new Response("WebSocket upgrade required", { status: 426 });
   };
   const fetchRequest = (local: boolean) => async (req: Request, server: Server<Connection>) => {
@@ -171,10 +207,14 @@ export function gatewayHandlers(options: GatewayOptions) {
           if (typeof params !== "object" || Array.isArray(params)) throw new Error("Invalid params");
           if (method === "clients.pair" && !conn.local) {
             if (conn.active.size > 0) throw new Error("Pairing already pending");
-            controller = new AbortController(); conn.active.add(controller);
             const pendingID = params.clientID;
-            controller.signal.addEventListener("abort", () => { if (typeof pendingID === "string") options.pairing.approvals.decide(pendingID, false); }, { once: true });
-            const result = await options.pairing.pair(params, conn.identity);
+            // A repeat from the same client waits on the prompt already showing.
+            const entry = limits.enter("gateway", pairingIdentity(conn.identity, conn.address ?? ""), typeof pendingID === "string" ? pendingID : "", () => options.pairing.pair(params, conn.identity));
+            controller = new AbortController(); conn.active.add(controller);
+            // Withdraw the prompt only when no connection still waits on it.
+            controller.signal.addEventListener("abort", () => { if (entry.leave() && typeof pendingID === "string") options.pairing.approvals.decide(pendingID, false); }, { once: true });
+            let result: Awaited<ReturnType<GatewayPairing["pair"]>>;
+            try { result = await entry.result as typeof result; } finally { entry.leave(); }
             const approvedKey = typeof pendingID === "string" ? options.pairing.client(pendingID)?.publicKey : undefined;
             for (const socket of sockets) if (!socket.data.visit && socket.data.clientID === pendingID && socket.data.clientKey !== approvedKey) {
               for (const active of socket.data.active) active.abort(); socket.close(4001, "Client key changed");
@@ -191,8 +231,10 @@ export function gatewayHandlers(options: GatewayOptions) {
             if (["clients.approve", "clients.deny", "clients.revoke"].includes(method)) {
               if (typeof params.clientID !== "string" || params.clientID.length > 128) throw new Error("Invalid clientID");
               const clientID = params.clientID;
+              const denier = method === "clients.deny" ? limits.pendingIdentity(clientID) : undefined;
               const pendingDenied = method === "clients.revoke" && options.pairing.approvals.decide(clientID, false);
               const ok = method === "clients.revoke" ? options.pairing.security.revoke(clientID) || pendingDenied : options.pairing.approvals.decide(clientID, method === "clients.approve");
+              if (ok && denier) limits.deny(denier);
               if (method === "clients.revoke") for (const socket of sockets) if (socket.data.clientID === clientID) { for (const active of socket.data.active) active.abort(); socket.close(4001, "revoked"); }
               audit(conn, method, ok ? "approved" : "not_found"); reply({ ok }); return;
             }

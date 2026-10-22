@@ -164,6 +164,8 @@ lats gateway start --tailnet
 
 # On the client: request access, then wait for approval on the host
 lats --host HOST pair --read-only
+# A viewer also needs screen contents (screenshots, streams, OCR):
+lats --host HOST pair --read-only --screen
 # Or request exactly these methods instead of the read-only scope:
 lats --host HOST pair --grant lattices:windows.list --grant speech:speech.enqueue
 
@@ -178,7 +180,14 @@ Core method names do not change. Methods of other products go through
 Each grant names one exact `product:method`, and only reviewed methods can be
 granted. Re-pairing with the same client key adds approved grants to the existing
 set. To reduce access, revoke the client and pair again. `--grant` cannot be
-combined with `--read-only` or `--drive`. Clients paired directly with a host before this
+combined with `--read-only`, `--drive`, `--screen` or `--shell`.
+
+Core scopes are `read`, `screen` (screenshots, streams, OCR, terminal
+contents), `act`, `drive` (desktop input) and `shell` (typing text and
+launching commands). `--read-only` requests `read`, plain `pair` requests
+`read`, `screen` and `act`, and `--drive` requests all five. Stored grants are
+exact methods, so clients paired before `screen` and `shell` were split out keep
+what they had. Clients paired directly with a host before this
 change must pair again with the gateway.
 
 The native Machines/Hosts view reuses this CLI gateway pairing and signs its

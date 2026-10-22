@@ -43,7 +43,7 @@ lats --host your-linux-host call host.describe
 
 Expect the intended Linux hostname, platform, and capabilities. Stop if the identity differs. Existing direct-host pairings do not grant gateway access; pair again because the gateway has its own key and trust store.
 
-Read-only access is enough for this check and Action's health check below. Desktop input and app launching require a separate request with `lats --host your-linux-host pair --drive`, followed by host approval of the expanded grants. The `--drive` scope covers Lattices host operations used by `RemoteEngine`. It does not grant access to the separate Action agent. Review [Gateway permissions](/lattices/docs/concepts#private-ipc-and-the-gateway) before approving control.
+Read-only access is enough for this check and Action's health check below. Desktop input and app launching require a separate request with `lats --host your-linux-host pair --drive`, followed by host approval of the expanded grants. The `--drive` scope covers Lattices host operations used by `RemoteEngine`, including screen capture and the `shell` scope for typing and launching commands. It does not grant access to the separate Action agent. Review [Gateway permissions](/lattices/docs/concepts#private-ipc-and-the-gateway) before approving control.
 
 ## Connect the MCP runtime
 

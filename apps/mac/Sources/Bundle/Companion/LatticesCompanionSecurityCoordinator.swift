@@ -697,6 +697,7 @@ private enum BridgeKeyFileStore {
 
     static func load() -> Data? {
         guard let data = try? Data(contentsOf: fileURL), data.isEmpty == false else { return nil }
+        PrivateKeyFile.tighten(fileURL)
         return data
     }
 
@@ -710,9 +711,7 @@ private enum BridgeKeyFileStore {
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
-            try data.write(to: url, options: [.atomic])
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            return true
+            return PrivateKeyFile.write(data, to: url)
         } catch {
             return false
         }

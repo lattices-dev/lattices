@@ -60,6 +60,7 @@ Machines and displays:
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
   lats --host <name> pair [--read-only | --drive]  Pair with a gateway (approve on the host)
+  lats --host <name> pair --read-only --screen     Also see the screen; --shell runs commands
   lats --host <name> pair --grant <product:method>  Request exact permissions (repeatable)
   lats mouse              Find mouse — sonar pulse at cursor position
   lats mouse summon       Summon mouse to screen center

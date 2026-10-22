@@ -147,7 +147,7 @@ final class RemoteHostGatewayCredentialsTests: XCTestCase {
     func testGatewayErrorsExplainAuthAndMethodBoundaries() {
         XCTAssertTrue(RemoteHostConnection.gatewayError("scope_denied: missing lattices:windows.list").contains("permission denied"))
         XCTAssertTrue(RemoteHostConnection.gatewayError("method_denied: capture.live").contains("unavailable through the gateway"))
-        XCTAssertTrue(RemoteHostConnection.gatewayError("pairing_required: test").contains("pair --read-only"))
+        XCTAssertTrue(RemoteHostConnection.gatewayError("pairing_required: test").contains("pair --read-only --screen"))
     }
 
     func testHandshakeDeadlineClosesAnUnresponsiveGateway() throws {

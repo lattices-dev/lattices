@@ -3,7 +3,7 @@ import { PairingApprovals } from "../../host-linux/src/bridge/approval.ts";
 import { BridgeSecurity, HEADERS, loadOrCreateBridgeKey, type TrustedDevice } from "../../host-linux/src/bridge/security.ts";
 import type { Identity } from "../../host-linux/src/auth.ts";
 import { privateDirectory } from "../../host-linux/src/private-ipc.ts";
-import { requestedGrants, validGrant } from "./policy.ts";
+import { requestedGrants, scopesHeld, validGrant } from "./policy.ts";
 
 export class GatewayPairing {
   readonly approvals: PairingApprovals;
@@ -36,7 +36,8 @@ export class GatewayPairing {
       requestedCapabilities: requestedGrants(params), node: identity.node,
     });
     return { disposition: result.disposition, host: result.bridgeName, hostPublicKey: result.bridgePublicKey, hostFingerprint: result.bridgeFingerprint,
-      scope: params.scope ?? "read", grants: result.grantedCapabilities, detail: result.detail };
+      scope: params.scope ?? "read", scopes: scopesHeld(result.grantedCapabilities),
+      grants: result.grantedCapabilities, detail: result.detail };
   }
   client(id: string): TrustedDevice | undefined { return this.security.trustedDevices().find(c => c.id === id); }
   list() { return { fingerprint: this.security.fingerprint, clients: this.security.trustedDevices().map(({ publicKey: _key, ...client }) => client), pending: this.approvals.list() }; }

@@ -214,7 +214,7 @@ final class RemoteHostConnection: @unchecked Sendable {
     }
 
     static func gatewayError(_ message: String) -> String {
-        if message.hasPrefix("pairing_required:") { return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only." }
+        if message.hasPrefix("pairing_required:") { return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only --screen." }
         if message.hasPrefix("scope_denied:") { return "Gateway permission denied: \(message.dropFirst("scope_denied:".count).trimmingCharacters(in: .whitespaces))" }
         if message.hasPrefix("method_denied:") { return "This operation is unavailable through the gateway: \(message.dropFirst("method_denied:".count).trimmingCharacters(in: .whitespaces))" }
         return message
@@ -263,7 +263,7 @@ enum RemoteHostGatewayCredentials {
         case invalid(String)
         var errorDescription: String? {
             switch self {
-            case .unpaired: return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only; companion pairing is separate."
+            case .unpaired: return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only --screen; companion pairing is separate."
             case .invalid(let detail): return "Gateway credentials are invalid: \(detail). Pair this Mac again with the gateway."
             }
         }
