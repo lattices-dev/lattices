@@ -3,7 +3,7 @@
 // The runtime uses a private Unix socket. The optional remote gateway serves
 // these same signed routes on its own port (9399 by default).
 
-import { authorizeLocalRequest, protectSocket } from "../private-ipc.ts";
+import { authorizeLocalRequest, protectSocket, type LocalCredential } from "../private-ipc.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { hostname } from "node:os";
 import { hasCommand } from "../exec.ts";
@@ -22,7 +22,7 @@ const MAX_BODY_BYTES = 512 * 1024;
 export interface BridgeOptions {
   hosts: string[];
   socketPath?: string;
-  token?: string;
+  token?: LocalCredential;
   port?: number;
   name?: string;
   version: string;

@@ -40,7 +40,8 @@ final class DaemonSecurityTests: XCTestCase {
         XCTAssertTrue(try exchange(path: socket, text: request(token: secret)).hasPrefix("HTTP/1.1 101"))
         server.stop()
         XCTAssertFalse(FileManager.default.fileExists(atPath: socket))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: credential.path))
+        // lattices.token is shared with the bridge and gateway admin socket.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: credential.path))
     }
     func testUnsafeDirectoryAndSymlinkAreRejected() throws {
         let directory = URL(fileURLWithPath: "/private/tmp/lats-ipc-\(UUID().uuidString)")

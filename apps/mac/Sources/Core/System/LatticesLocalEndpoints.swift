@@ -10,11 +10,13 @@ enum LatticesLocalEndpoints {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lattices/run", isDirectory: true)
     }
     static var agentSocketPath: String { runtimeDirectory.appendingPathComponent("lattices.sock").path }
+    /// The one per-user Lattices credential. The daemon socket, the companion
+    /// bridge and the gateway admin socket all admit with it. Speech, the Vox
+    /// voice runtime and Action keep their own tokens.
     static var agentTokenURL: URL { runtimeDirectory.appendingPathComponent("lattices.token") }
     static var speechCompanionSocketPath: String { runtimeDirectory.appendingPathComponent("speech.sock").path }
     static var speechCompanionTokenURL: URL { runtimeDirectory.appendingPathComponent("speech.token") }
     static var companionSocketPath: String { runtimeDirectory.appendingPathComponent("companion.sock").path }
-    static var companionTokenURL: URL { runtimeDirectory.appendingPathComponent("companion.token") }
     static var voiceSocketPath: String { runtimeDirectory.appendingPathComponent("voice.sock").path }
     static var voiceTokenURL: URL { runtimeDirectory.appendingPathComponent("voice.token") }
     /// Loopback bind host for explicit compatibility mode.

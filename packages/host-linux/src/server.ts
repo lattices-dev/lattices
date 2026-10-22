@@ -47,7 +47,10 @@ export interface ServeOptions {
 }
 
 export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
-  const token = privateToken(tokenFile);
+  privateToken(tokenFile);
+  // The shared lattices.token is read at each admission, so replacing it
+  // revokes every Lattices endpoint at once.
+  const token = () => privateToken(tokenFile);
   const sockets = new Set<ServerWebSocket<Conn>>();
   const server = Bun.serve<Conn, never>({
       unix: socketPath,

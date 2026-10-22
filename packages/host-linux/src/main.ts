@@ -9,7 +9,7 @@ import { BUILD_IDENTITY } from "./build-info.ts";
 import { localRuntimeDirectory } from "../../desktop-client/local-ipc.ts";
 import { hostname, homedir } from "node:os";
 import { join } from "node:path";
-import { prepareSocket, privateToken } from "./private-ipc.ts";
+import { prepareSocket, privateToken, removeLegacyToken } from "./private-ipc.ts";
 import { VERSION, capabilities, refreshCapabilities, registerEndpoints } from "./endpoints.ts";
 import * as hypr from "./hyprland.ts";
 import { updateEventHealth } from "./host-capabilities.ts";
@@ -101,9 +101,12 @@ async function main() {
   if (opts.bridge) {
     const bridgeSocket = join(runtimeDir, "companion.sock");
     await prepareSocket(bridgeSocket);
+    // The bridge shares lattices.token. No other bridge holds the socket now,
+    // so the pre-consolidation companion.token is stale.
+    removeLegacyToken(join(runtimeDir, "companion.token"));
     bridge = startBridge({
       hosts: [], socketPath: bridgeSocket,
-      token: privateToken(join(runtimeDir, "companion.token")),
+      token: () => privateToken(tokenFile),
       controlDir: visitControlDir(), name: hostname(), version: VERSION,
       trackpadAvailable: () => capabilities.has("input.pointer"),
       hasTmux: () => capabilities.has("sessions.tmux"),
