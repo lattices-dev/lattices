@@ -28,11 +28,30 @@ The default admits devices owned by the host's Tailscale user.
 
 From another tailnet machine, `lats --host HOST pair --read-only` asks the local
 operator to approve core read access. Check the fingerprint and requested grants
-with `lats gateway clients` before approval. `act` adds workspace mutations;
-`drive` adds desktop input and app/session launching, including layer activation
-because its launch mode can start sessions. These shorthand scopes
-cover only Lattices. Existing direct-host pairings must pair with the gateway
-because it has a separate key and trust store.
+with `lats gateway clients` before approval. Core operations fall in five scopes:
+
+| Scope | Covers |
+| --- | --- |
+| `read` | Window, space, layer, process and terminal listings; status and search |
+| `screen` | What the display shows: screenshots, stills, live streams, OCR, terminal contents, browser text, `files.read` |
+| `act` | Workspace mutations: focus, place, move, layers, stage, tabs, recording |
+| `drive` | Desktop input: clicks, keys, hotkeys, layer activation (its launch mode can start sessions) |
+| `shell` | Free text and commands: `computer.typeText` and related typing, `apps.open`, `sessions.launch` and `sessions.restart` |
+
+`pair --read-only` requests `read`. Plain `pair` requests `read`, `screen` and
+`act`. `pair --drive` requests all five. Add `--screen` or `--shell` to a
+smaller shorthand, for example `pair --read-only --screen` for a viewer. These
+scopes cover only Lattices. Stored grants are exact methods, so clients paired
+before `screen` and `shell` were split out keep exactly what they had.
+Existing direct-host pairings must pair with the gateway because it has a
+separate key and trust store.
+
+Each tailnet machine has at most one pairing prompt waiting. A repeat from the
+same client waits on that prompt; a request from another client on that
+machine is refused with `pairing_pending` until it is answered. After an
+operator denies a request with `lats gateway deny`, or a companion denies one,
+that machine gets `pairing_cooldown` for five minutes. Unanswered prompts that
+time out start no cooldown.
 
 Every stored grant names one exact `product:method`. Pairing requests may provide
 an explicit `grants` array instead of a scope. The CLI supplies it with repeated
