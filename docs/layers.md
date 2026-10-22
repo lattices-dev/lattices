@@ -313,7 +313,7 @@ Four ways to switch:
 |----------------------|------------------------------------------|
 | **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
-| **Command palette**  | Search "Switch to Layer" in Cmd+Shift+M  |
+| **Command bar**      | Press Control+Option+Space and search for the layer by name |
 | **CLI**              | `lats layer <name\|slot>`            |
 
 Every one of them switches the same way:

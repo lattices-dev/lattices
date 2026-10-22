@@ -1,6 +1,6 @@
 # lattices
 
-> macOS developer workspace manager — terminal sessions with a native menu bar app for tiling, navigation, and project management
+> macOS developer workspace manager: terminal sessions with a native menu bar app for tiling, navigation, and project management
 
 ## Documentation
 
@@ -10,13 +10,17 @@
 - Action setup manifest: /action/agent.json
 - Agent skill discovery: /.well-known/agent-skills/index.json
 
-- Quickstart: /docs/quickstart
+- What Lattices is: /docs/what-is-lattices
+- Getting started: /docs/getting-started
+- Quickstart (install): /docs/quickstart
 - Install on Linux: /docs/install-linux
 - Concepts: /docs/concepts
+- Guides: /docs/guide-tiling, /docs/guide-search, /docs/guide-sessions, /docs/guide-layers, /docs/guide-machines, /docs/guide-agents
 - Configuration: /docs/config
 - Menu Bar App: /docs/app
 - Workspace Layers & Tab Groups: /docs/layers
 - Daemon API: /docs/api
+- MCP server: /docs/mcp
 - Overview: /docs/overview
 
 ## Agent Retrieval Artifacts
@@ -31,9 +35,16 @@
 - Prompt manifest: /prompts.json
 - Prompt bundle: /prompts/all.md
 
-## Quickstart
+## What Lattices is
 
-Get from zero to a running workspace in five steps.
+Lattices keeps a live model of windows, desktops and terminal sessions, and
+lets people and agents act on it through keyboard shortcuts, the `lats` CLI,
+the MCP server, or the daemon API.
+
+## Getting started
+
+Install the app and the CLI, tile a window with a key, find and place a
+window from the terminal, and start a project session.
 
 ## Concepts
 
@@ -57,12 +68,16 @@ Two ways to organize related projects in `~/.lattices/workspace.json`:
 
 ## Daemon API
 
-The lattices menu bar app runs a WebSocket daemon on `ws://127.0.0.1:9399`.
-It exposes 20 RPC methods and 3 real-time events — everything the app
-can do, agents and scripts can do too.
+The lattices menu bar app serves a WebSocket daemon on the private socket
+`~/.lattices/run/lattices.sock`. Connections carry the token from
+`lattices.token` in the `x-lattices-token` header; `lats` and `daemonCall()`
+send it for you. The daemon exposes RPC methods and real-time events for
+windows, sessions, layers, terminals and screen text. Everything the app
+can do, agents and scripts can do too. Versions before 0.15.1 used
+`ws://127.0.0.1:9399`.
 
 ## Overview
 
 lattices is a macOS developer workspace manager. It pairs terminal sessions
-with a native menu bar app to give you — and your AI coding agents —
+with a native menu bar app to give you and your AI coding agents
 full control over terminal layouts, window tiling, and project navigation.
