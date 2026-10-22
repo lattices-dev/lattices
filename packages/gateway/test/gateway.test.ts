@@ -56,6 +56,10 @@ test("gateway grants are exact, scoped to products, and fail closed on aliases a
     expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", method)).toContain("method_denied");
   }
   expect(authorizeMethod(grantsForScope("lattices", "act"), "lattices", "layers.activate")).toContain("scope_denied");
+  // Reading a monitor's input is harmless; switching it takes the screen away from another host.
+  expect(authorizeMethod(read, "lattices", "display.input.get")).toBeNull();
+  expect(authorizeMethod(grantsForScope("lattices", "act"), "lattices", "display.input.set")).toContain("scope_denied");
+  expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "display.input.set")).toBeNull();
   for (const method of ["drive.begin", "drive.touch", "drive.release", "workspace.dragFile", "workspace.cancelOperation"]) {
     // A trust record from an earlier gateway must not revive unsupported leases.
     expect(authorizeMethod([`action:${method}`], "action", method)).toContain("method_denied");
@@ -353,3 +357,44 @@ test("audit metadata has a private bounded file and rejects linked targets", () 
     expect(() => appendAudit(join(root, "audit-link.jsonl"), {})).toThrow();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("capture.stream keeps one private lattices socket per client and relays its binary frames", () => fixture(async f => {
+  f.product.stop();
+  const token = privateToken(f.local.tokenFile!);
+  const daemon = { opened: 0, closed: 0, acks: 0, socket: undefined as any };
+  const fake = Bun.serve({ unix: f.local.socketPath!, fetch(req, server) {
+    if (req.headers.get("x-lattices-token") !== token) return new Response("no", { status: 403 });
+    if (server.upgrade(req)) return; return new Response("upgrade", { status: 426 });
+  }, websocket: {
+    open(ws) { daemon.opened++; daemon.socket ??= ws; },
+    close(ws) { if (ws === daemon.socket) daemon.closed++; },
+    message(ws, raw) {
+      const request = JSON.parse(String(raw));
+      const reply = (result: unknown, error: string | null = null) => ws.send(JSON.stringify({ id: request.id, result, error }));
+      if (request.method === "capture.stream.start") { reply({ streamId: 7, codec: "h264", width: 4, height: 2 }); ws.send(new Uint8Array([0x4c, 0x56, 0x46, 0x31, 7])); return; }
+      if (request.method === "capture.stream.ack") { daemon.acks++; reply({ ok: true }); return; }
+      reply({ ok: true });
+    },
+  } });
+  const { protectSocket } = await import("../../host-linux/src/private-ipc.ts"); const remove = protectSocket(f.local.socketPath!);
+  try {
+    await f.pair(["lattices:capture.stream.start", "lattices:capture.stream.ack", "lattices:capture.stream.stop", "lattices:windows.list"]);
+    const socket = await f.connect(f.signed());
+    socket.binaryType = "arraybuffer";
+    expect((await rpc(socket, "capture.stream.ack", { streamId: 7, seq: 1 })).error).toContain("Unknown stream");
+    const frame = new Promise<ArrayBuffer>(resolve => socket.addEventListener("message", (event: MessageEvent) => { if (typeof event.data !== "string") resolve(event.data); }));
+    expect((await rpc(socket, "capture.stream.start", { displayIndex: 0 })).result.streamId).toBe(7);
+    expect(new Uint8Array(await frame)).toEqual(new Uint8Array([0x4c, 0x56, 0x46, 0x31, 7]));
+    // Acks bypass the 600/min request budget.
+    for (let seq = 1; seq <= 700; seq++) socket.send(JSON.stringify({ id: `a${seq}`, method: "capture.stream.ack", params: { streamId: 7, seq } }));
+    await waitFor(() => daemon.acks === 700);
+    expect((await rpc(socket, "windows.list")).error).toBeNull();
+    const ended = new Promise<any>(resolve => socket.addEventListener("message", (event: MessageEvent) => { if (typeof event.data === "string" && JSON.parse(event.data).event) resolve(JSON.parse(event.data)); }));
+    daemon.socket.send(JSON.stringify({ event: "windows.changed", data: {} }));
+    daemon.socket.send(JSON.stringify({ event: "capture.stream.ended", data: { streamId: 7, reason: "ack-timeout" } }));
+    expect(await ended).toEqual({ event: "capture.stream.ended", data: { streamId: 7, reason: "ack-timeout" } });
+    expect(daemon.opened).toBe(2); // the stream socket, then one per-request call
+    socket.close();
+    await waitFor(() => daemon.closed === 1);
+  } finally { fake.stop(true); remove(); }
+}), 8000);

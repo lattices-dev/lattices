@@ -1815,6 +1815,27 @@ final class LatticesApi {
         ))
 
         api.register(Endpoint(
+            method: "capture.still",
+            description: "One compressed frame of a display, window or region, returned inline for remote viewers. Nothing is saved.",
+            access: .read,
+            params: [
+                Param(name: "displayIndex", type: "int", required: false, description: "Display to capture; defaults to the display under the pointer"),
+                Param(name: "wid", type: "int", required: false, description: "Window to capture instead of a display"),
+                Param(name: "x", type: "double", required: false, description: "Region left edge, with y/width/height"),
+                Param(name: "y", type: "double", required: false, description: "Region top edge"),
+                Param(name: "width", type: "double", required: false, description: "Region width"),
+                Param(name: "height", type: "double", required: false, description: "Region height"),
+                Param(name: "maxWidth", type: "int", required: false, description: "Largest pixel width to return (default 1600)"),
+                Param(name: "quality", type: "int", required: false, description: "JPEG quality 20-95 (default 70)"),
+            ],
+            returns: .custom("Object with format, width, height, base64 data, and the captured frame in layout coordinates"),
+            handler: { params in
+                try CaptureController.shared.still(params: params)
+            }
+        ))
+        VideoStreamer.registerEndpoints(api)
+
+        api.register(Endpoint(
             method: "capture.zoomArtifact",
             description: "Crop and zoom an image artifact into a new PNG artifact linked to the same run.",
             access: .mutate,
@@ -4077,6 +4098,7 @@ final class LatticesApi {
         ))
 
         DisplayGather.registerEndpoints(api)
+        MonitorDDC.registerEndpoints(api)
         ClusterVerbs.register(api)
         StateHistory.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
@@ -5262,7 +5284,7 @@ enum Encoders {
                     "h": .double(converted.height),
                 ])
             }
-            return .object([
+            var obj: [String: JSON] = [
                 "displayIndex": .int(display.displayIndex),
                 "displayId": .string(display.displayId),
                 "name": .string(screen?.localizedName ?? display.displayId),
@@ -5281,7 +5303,11 @@ enum Encoders {
                         })
                     ])
                 })
-            ])
+            ]
+            // The physical monitor's EDID identity; omitted for panels with no serial.
+            if let monitor = MonitorIdentity.forDisplay(uuid: display.displayId) { obj["monitor"] = monitor.json }
+            else if let builtin = MonitorIdentity.builtinJSON(uuid: display.displayId) { obj["builtin"] = builtin }
+            return .object(obj)
         })
     }
 

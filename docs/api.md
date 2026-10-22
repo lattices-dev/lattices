@@ -252,6 +252,11 @@ methods write into the Lattices run store under
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
 | `capture.screenshotDisplay` | write | Capture one complete display as a run artifact and optional clipboard image |
+| `capture.still` | read | One inline JPEG of a display, window or region for remote viewers; nothing is saved |
+| `capture.stream.start` | read | Stream a display, window or region as H.264 binary frames on this connection |
+| `capture.stream.ack` | read | Acknowledge frames up to `seq`; the host keeps at most 4 unacknowledged |
+| `capture.stream.keyframe` | read | Make the stream's next frame a keyframe |
+| `capture.stream.stop` | read | Stop a stream |
 | `capture.screenshotRegion` | write | Capture a screen region as a run artifact |
 | `capture.zoomArtifact` | write | Crop and zoom an image artifact into a linked artifact |
 | `vision.analyzeWindow` | write | Capture a window and run local OCR-based visual analysis |
@@ -305,6 +310,78 @@ await daemonCall('capture.screenshotWindow', {
   filename: 'before-layout.png'
 })
 ```
+
+#### `capture.still`
+
+Return one compressed frame inline. Other machines pull these one at a time to
+show this Mac in their remote viewer. Nothing is written to disk or the
+clipboard. Pass a window or a region, or neither for a display.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `displayIndex` | int | no | Display to capture; defaults to the display under the pointer |
+| `wid` | int | no | Window to capture instead of a display |
+| `x`, `y`, `width`, `height` | double | no | Region to capture, in layout points |
+| `maxWidth` | int | no | Largest pixel width to return; defaults to `1600` |
+| `quality` | int | no | JPEG quality from 20 to 95; defaults to `70` |
+
+The result has `format`, `width`, `height`, base64 `data`, and `frame`: the
+captured rect in the same coordinates that `computer.*` input takes.
+
+#### `capture.stream.*`
+
+Push H.264 of a display, window or region as binary WebSocket messages on the
+connection that asked, while a viewer is on screen. `capture.still` stays for
+thumbnails, idle views and hosts without streaming. `host.describe` lists
+`capture.stream` only when the host can stream now.
+
+`capture.stream.start` takes the same target fields as `capture.still`, plus:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `maxWidth` | int | no | Largest coded width, 320 to 3840; defaults to `1920` |
+| `fps` | int | no | Frame rate cap, 5 to 60; defaults to `30` |
+| `codec` | string | no | `h264`, the only codec required |
+
+The result is `{streamId, codec, width, height, frame:{x,y,w,h}, display}`.
+`display` is `{index, name}` for a display target and null otherwise.
+
+- `capture.stream.ack {streamId, seq}` acknowledges every frame up to `seq`.
+  Send one per frame received. The host keeps at most 4 frames unacknowledged
+  and stops feeding its encoder at that limit. With frames outstanding and no
+  ack for 3 s, the host ends the stream. An ack for an old `seq` changes
+  nothing and still answers `{ok:true}`, so viewers use it to check that a
+  quiet stream is alive.
+- `capture.stream.keyframe {streamId}` makes the next frame an IDR.
+- `capture.stream.stop {streamId}` stops the stream without an event.
+- Streams belong to their connection. Only that connection can ack, request a
+  keyframe or stop them, and they all stop when it closes.
+- When the host ends a stream itself, it sends
+  `{event:"capture.stream.ended", data:{streamId, reason}}` to the owning
+  connection, whatever it subscribed to. Reasons are `ack-timeout`,
+  `window-closed`, `encoder-failed: …` and, on a Mac, `capture-stopped: …`.
+
+A screen that doesn't change sends no frames. Each binary message is one
+access unit, big-endian:
+
+| Offset | Size | Field |
+|--------|------|-------|
+| 0 | 4 | `"LVF1"` |
+| 4 | u32 | `streamId` |
+| 8 | u32 | `seq`, per stream, from 1 |
+| 12 | u8 | flags: bit 0 keyframe, bit 1 parameter sets follow |
+| 13 | u8 | codec: 1 H.264, 2 HEVC |
+| 14 | u16 | reserved, 0 |
+| 16 | u64 | `pts`, microseconds on the host clock |
+| 24 | u32 | width of the coded picture |
+| 28 | u32 | height |
+| 32 | 4 × f32 | `frame` x, y, w, h: the host-space rect the picture shows |
+| 48 | | if bit 1: u16 count, then u16 length + bytes for each parameter set (SPS, PPS; VPS first for HEVC) |
+| | | the access unit: NAL units, each with a u32 length prefix (AVCC, not Annex B) |
+
+Every keyframe carries its parameter sets. There are no B-frames. The codec
+lives in `apps/mac/Sources/Core/Hosts/RemoteVideoFrame.swift` and
+`packages/host-linux/src/stream.ts`.
 
 #### `capture.screenshotDisplay`
 

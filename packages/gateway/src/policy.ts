@@ -12,9 +12,10 @@ const operations: Record<Product, Record<Scope, string[]>> = {
       "events.subscribe", "events.unsubscribe", "daemon.status", "host.describe", "api.schema",
       "windows.list", "windows.get", "windows.preview", "windows.search", "windows.resolve", "spaces.list", "spaces.assignments", "desktop.snapshot",
       "capture.screenshotDisplay", "capture.screenshotWindow", "capture.screenshotRegion", "capture.still", "computer.observe",
+      "capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop",
       "tmux.list", "terminals.list", "terminals.search", "terminals.capture", "projects.list", "processes.list", "processes.tree",
       "ocr.read", "ocr.find", "ocr.snapshot", "ocr.scan", "layers.list", "layers.members", "solo.status", "stage.status", "tabs.list",
-      "search.query", "history.list", "runs.list", "runs.get", "runs.artifacts", "browser.getText", "files.read",
+      "search.query", "history.list", "runs.list", "runs.get", "runs.artifacts", "browser.getText", "files.read", "display.input.get",
     ],
     act: [
       "windows.focus", "windows.place", "windows.move", "windows.moveBack", "windows.present", "windows.pick",
@@ -28,6 +29,7 @@ const operations: Record<Product, Record<Scope, string[]>> = {
       "computer.click", "computer.doubleClick", "computer.rightClick", "computer.drag", "computer.scroll", "computer.aim",
       "computer.typeText", "computer.pressKey", "computer.hotkey", "computer.prepare", "computer.windowState", "computer.elementAction", "computer.typeElement", "computer.setValue",
       "computer.focusWindow", "computer.launchApp", "computer.typeWindowText", "computer.verify", "apps.open", "sessions.launch", "sessions.restart", "layers.activate", "layers.switch",
+      "display.input.set",
     ],
   },
   // Connection-owned leases and workspace operations stay local until routing

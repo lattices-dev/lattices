@@ -46,6 +46,9 @@ final class DaemonServer: ObservableObject {
     )
     private static let blockingMethods: Set<String> = [
         "windows.pick",
+        // DDC round trips to a monitor take 100–250 ms, seconds for capabilities.
+        "display.input.get",
+        "display.input.set",
         "sessions.launch",
         // Relocation and undo can carry windows across Spaces, taking seconds.
         "windows.move",
@@ -53,6 +56,12 @@ final class DaemonServer: ObservableObject {
         "windows.present",
         "actions.execute",
         "history.undo",
+        // Frames must not queue behind input handlers that sleep.
+        "capture.still",
+        "capture.stream.start",
+        "capture.stream.ack",
+        "capture.stream.keyframe",
+        "capture.stream.stop",
     ]
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -153,10 +162,14 @@ final class DaemonServer: ObservableObject {
         endpointLease = nil
         authToken = ""
         lock.lock()
-        let snapshot = Array(clients.values)
+        let closing = Array(clients.values)
         clients.removeAll()
         lock.unlock()
-        for client in snapshot { client.readSource?.cancel() }
+        for client in closing {
+            let speech = client.speechConnection
+            Task { await speech?.close() }
+            client.closeSocket()
+        }
         DispatchQueue.main.async {
             self.clientCount = 0
             self.isListening = false
@@ -260,9 +273,9 @@ final class DaemonServer: ObservableObject {
             "Upgrade: websocket\r\n" +
             "Connection: Upgrade\r\n" +
             "Sec-WebSocket-Accept: \(acceptKey)\r\n\r\n"
-        let responseBytes = Array(response.utf8)
-        responseBytes.withUnsafeBufferPointer { ptr in
-            _ = write(client.fd, ptr.baseAddress!, ptr.count)
+        guard client.writeRaw(Data(response.utf8)) else {
+            client.closeSocket()
+            return
         }
 
         client.speechAuthorized = SpeechCompanionConnection.authorizes(handshake: request, tokenFile: speechCapabilityURL)
@@ -387,47 +400,11 @@ final class DaemonServer: ObservableObject {
     }
 
     private func sendFrame(opcode: UInt8, payload: [UInt8], to client: WebSocketClient) {
-        var frame: [UInt8] = [0x80 | opcode] // FIN + opcode
-
-        if payload.count < 126 {
-            frame.append(UInt8(payload.count))
-        } else if payload.count < 65536 {
-            frame.append(126)
-            frame.append(UInt8((payload.count >> 8) & 0xFF))
-            frame.append(UInt8(payload.count & 0xFF))
-        } else {
-            frame.append(127)
-            for i in (0..<8).reversed() {
-                frame.append(UInt8((payload.count >> (i * 8)) & 0xFF))
-            }
-        }
-        frame.append(contentsOf: payload)
-
-        client.sendLock.lock()
-        defer { client.sendLock.unlock() }
-        guard !client.closed else { return }
-        let deadline = Date().addingTimeInterval(2)
-        let complete = frame.withUnsafeBufferPointer { ptr -> Bool in
-            var offset = 0
-            while offset < ptr.count {
-                let count = write(client.fd, ptr.baseAddress!.advanced(by: offset), ptr.count - offset)
-                if count > 0 { offset += count; continue }
-                if count < 0 && errno == EINTR { continue }
-                if count < 0 && [EAGAIN, EWOULDBLOCK].contains(errno), Date() < deadline {
-                    var descriptor = pollfd(fd: client.fd, events: Int16(POLLOUT), revents: 0)
-                    _ = poll(&descriptor, 1, 20)
-                    continue
-                }
-                return false
-            }
-            return true
-        }
-        if !complete { client.readSource?.cancel() }
+        client.send(opcode: opcode, payload: Data(payload))
     }
 
     private func sendWebSocketText(_ text: String, to client: WebSocketClient) {
-        let payload = Array(text.utf8)
-        sendFrame(opcode: 0x1, payload: payload, to: client)
+        client.send(opcode: 0x1, payload: Data(text.utf8))
     }
 
     // MARK: - Message Handling
@@ -464,10 +441,12 @@ final class DaemonServer: ObservableObject {
 
         // These handlers can sleep or wait for the user. Keep them off the
         // serial socket queue so other clients, events, and RPCs still flow.
+        let context = DaemonContext(connection: client)
         if Self.blockingMethods.contains(MethodAliases.canonical(request.method)) {
             blockingRequestQueue.async { [weak self] in
-                let response = LatticesApi.shared.handle(request)
+                let response = context.run { LatticesApi.shared.handle(request) }
                 self?.queue.async { [weak self] in
+                    defer { context.replied() }
                     guard let self, self.isConnected(client) else { return }
                     self.sendResponse(response, to: client)
                 }
@@ -475,8 +454,9 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        let response = LatticesApi.shared.handle(request)
+        let response = context.run { LatticesApi.shared.handle(request) }
         sendResponse(response, to: client)
+        context.replied()
         if CaptureAudit.methods.contains(request.method), response.error == nil {
             CaptureAudit.record(method: request.method, caller: client.caller, result: response.result)
         }
@@ -640,11 +620,9 @@ final class DaemonServer: ObservableObject {
     private func removeClient(_ client: WebSocketClient) {
         let speech = client.speechConnection
         Task { await speech?.close() }
-        client.sendLock.lock()
-        if !client.closed { client.closed = true; close(client.fd) }
-        client.sendLock.unlock()
+        client.closeSocket()
         lock.lock()
-        clients.removeValue(forKey: client.id)
+        if clients[client.id] === client { clients.removeValue(forKey: client.id) }
         let count = clients.count
         lock.unlock()
         DispatchQueue.main.async { self.clientCount = count }
@@ -718,9 +696,71 @@ final class DaemonServer: ObservableObject {
 
 // MARK: - Client State
 
-final class WebSocketClient {
-    let sendLock = NSLock()
-    var closed = false // guarded by sendLock
+/// The socket a request arrived on. Safe from any thread: writes are
+/// serialized per connection, so encoders can push without the daemon queue.
+protocol DaemonConnection: AnyObject {
+    var connectionID: UUID { get }
+    var isOpen: Bool { get }
+    /// False once the connection is gone; a failed write closes it.
+    @discardableResult func sendBinary(_ data: Data) -> Bool
+    @discardableResult func sendEvent(_ event: DaemonEvent) -> Bool
+    /// Runs once, off the caller's thread, when the connection closes (at once if it already has).
+    func onClose(_ handler: @escaping () -> Void)
+}
+
+/// Per-request state handlers can reach while they run on the daemon's
+/// queues: who called, and work to do once the reply is on the wire.
+final class DaemonContext {
+    let connection: DaemonConnection
+    private let lock = NSLock()
+    private var afterReplyHandlers: [() -> Void] = []
+    private var didReply = false
+    private static let key = "lattices.daemon.context"
+
+    init(connection: DaemonConnection) {
+        self.connection = connection
+    }
+
+    /// The request being handled on this thread, nil for in-process dispatch.
+    static var current: DaemonContext? {
+        Thread.current.threadDictionary[key] as? DaemonContext
+    }
+
+    func run<T>(_ body: () throws -> T) rethrows -> T {
+        let dictionary = Thread.current.threadDictionary
+        let previous = dictionary[Self.key]
+        dictionary[Self.key] = self
+        defer { dictionary[Self.key] = previous }
+        return try body()
+    }
+
+    /// After the response is written, or now when there is no request.
+    static func afterReply(_ handler: @escaping () -> Void) {
+        guard let context = current else {
+            DispatchQueue.global(qos: .userInitiated).async(execute: handler)
+            return
+        }
+        context.lock.lock()
+        if context.didReply {
+            context.lock.unlock()
+            DispatchQueue.global(qos: .userInitiated).async(execute: handler)
+            return
+        }
+        context.afterReplyHandlers.append(handler)
+        context.lock.unlock()
+    }
+
+    func replied() {
+        lock.lock()
+        didReply = true
+        let handlers = afterReplyHandlers
+        afterReplyHandlers = []
+        lock.unlock()
+        handlers.forEach { $0() }
+    }
+}
+
+final class WebSocketClient: DaemonConnection {
     var speechAuthorized = false
     var caller: CaptureCaller?
     var speechConnection: SpeechCompanionConnection?
@@ -739,8 +779,109 @@ final class WebSocketClient {
     var buffer: [UInt8] = []
     var readSource: DispatchSourceRead?
 
+    /// Guards the fd for writes and close, so whole frames from any thread
+    /// never interleave and nothing writes to a reused descriptor.
+    private let writeLock = NSLock()
+    private var closed = false
+    private var closeHandlers: [() -> Void] = []
+    /// How long one frame may wait on a full socket before the client is dropped.
+    static let writeTimeout: TimeInterval = 2
+
     init(id: UUID, fd: Int32) {
         self.id = id
         self.fd = fd
+    }
+
+    var connectionID: UUID { id }
+
+    var isOpen: Bool {
+        writeLock.lock(); defer { writeLock.unlock() }
+        return !closed
+    }
+
+    @discardableResult
+    func sendBinary(_ data: Data) -> Bool { send(opcode: 0x2, payload: data) }
+
+    @discardableResult
+    func sendEvent(_ event: DaemonEvent) -> Bool {
+        guard let data = try? JSONEncoder().encode(event) else { return false }
+        return send(opcode: 0x1, payload: data)
+    }
+
+    func onClose(_ handler: @escaping () -> Void) {
+        writeLock.lock()
+        if closed {
+            writeLock.unlock()
+            DispatchQueue.global(qos: .userInitiated).async(execute: handler)
+            return
+        }
+        closeHandlers.append(handler)
+        writeLock.unlock()
+    }
+
+    /// One unfragmented frame. A frame that can't be written whole poisons
+    /// the stream, so the socket is shut down and the read source reaps it.
+    @discardableResult
+    func send(opcode: UInt8, payload: Data) -> Bool {
+        let header = Self.frameHeader(opcode: opcode, length: payload.count)
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        guard !closed else { return false }
+        let deadline = Date().addingTimeInterval(Self.writeTimeout)
+        if writeAll(header, deadline: deadline), writeAll(payload, deadline: deadline) { return true }
+        shutdown(fd, SHUT_RDWR)
+        return false
+    }
+
+    /// Bytes outside WebSocket framing (the upgrade response).
+    func writeRaw(_ data: Data) -> Bool {
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        return !closed && writeAll(data, deadline: Date().addingTimeInterval(Self.writeTimeout))
+    }
+
+    func closeSocket() {
+        writeLock.lock()
+        guard !closed else { writeLock.unlock(); return }
+        closed = true
+        close(fd)
+        let handlers = closeHandlers
+        closeHandlers = []
+        writeLock.unlock()
+        for handler in handlers { DispatchQueue.global(qos: .userInitiated).async(execute: handler) }
+    }
+
+    static func frameHeader(opcode: UInt8, length: Int) -> Data {
+        var header = Data([0x80 | opcode])
+        if length < 126 {
+            header.append(UInt8(length))
+        } else if length < 65536 {
+            header.append(126)
+            header.append(UInt8((length >> 8) & 0xFF))
+            header.append(UInt8(length & 0xFF))
+        } else {
+            header.append(127)
+            for i in (0..<8).reversed() { header.append(UInt8((length >> (i * 8)) & 0xFF)) }
+        }
+        return header
+    }
+
+    /// Loops over partial writes; waits out EAGAIN on the non-blocking fd until the deadline.
+    private func writeAll(_ data: Data, deadline: Date) -> Bool {
+        data.withUnsafeBytes { raw -> Bool in
+            guard let base = raw.baseAddress else { return true }
+            var offset = 0
+            while offset < raw.count {
+                let n = write(fd, base + offset, raw.count - offset)
+                if n > 0 { offset += n; continue }
+                if n < 0, errno == EINTR { continue }
+                guard n < 0, errno == EAGAIN || errno == EWOULDBLOCK else { return false }
+                let remaining = Int32(deadline.timeIntervalSinceNow * 1000)
+                guard remaining > 0 else { return false }
+                var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+                if poll(&descriptor, 1, remaining) < 0, errno != EINTR { return false }
+            }
+            return true
+        }
     }
 }

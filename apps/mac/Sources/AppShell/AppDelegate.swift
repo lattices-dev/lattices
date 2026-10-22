@@ -344,6 +344,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 ScreenMapWindowController.shared.show()
             }
+        case "view":
+            // lattices://view/<host>?display=N | ?wid=N opens a remote viewer.
+            handleViewDeepLink(url)
         case "settings":
             // lattices://settings/<section> jumps straight to a sidebar tab.
             if let action, !action.isEmpty {
@@ -353,6 +356,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         default:
             SettingsWindowController.shared.show()
+        }
+    }
+
+    private func handleViewDeepLink(_ url: URL) {
+        guard let name = url.pathComponents.first(where: { $0 != "/" }),
+              let host = RemoteHostsModel.configuredHosts().first(where: { $0.name == name }) else {
+            DiagnosticLog.shared.info("DeepLink: no configured host for \(url.path)")
+            return
+        }
+        let query = Dictionary(
+            (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") },
+            uniquingKeysWith: { _, last in last }
+        )
+        let target: RemoteView.Target
+        if let wid = query["wid"].flatMap(UInt32.init) {
+            target = .window(wid: wid, app: query["app"] ?? "", title: query["title"] ?? "")
+        } else {
+            let index = query["display"].flatMap(Int.init) ?? 0
+            target = .display(index: index, name: query["name"] ?? "Display \(index + 1)")
+        }
+        // Apple events arrive on the main thread.
+        MainActor.assumeIsolated {
+            RemoteViewerWindows.shared.show(host: host.name, address: host.address, port: host.port, target: target)
         }
     }
 

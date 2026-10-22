@@ -49,6 +49,17 @@ already follows this rule, keep it).
   elsewhere display shows; store it next to the mark. It's display only for
   now, with no behaviour.
 
+- **View.** Each monitor of a connected host shows a picture of itself, on the
+  arrangement and in the host's detail. Double-click a monitor, or click a
+  monitor or window in the detail, to open the remote viewer
+  (`AppShell/RemoteViewerWindow.swift`). It shows a monitor, one app's window,
+  or a region dragged out of either. While the window is visible it plays the
+  host's `capture.stream` H.264 when `host.describe` lists it, and otherwise
+  pulls `capture.still` frames, faster just after input. Control is off until
+  you turn it on; clicks, drags, scrolls and keys then go to the host's
+  `computer.*` methods. Screen Sharing remains the full-desktop fallback
+  (`capture.live` on Linux, `vnc://` on a Mac).
+
 Every action the page takes should also exist on the daemon API and the CLI,
 so agents and `lats` can do the same thing. Already there: `visit.status`,
 `visit.pair`, `visit.arm`, `visit.end`, `visit.screens`, `visit.elsewhere`

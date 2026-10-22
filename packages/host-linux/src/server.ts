@@ -2,13 +2,16 @@ import { withRequestContext } from "./request-context.ts";
 import type { ServerWebSocket } from "bun";
 import { type Identity } from "./auth.ts";
 import { authorizeLocalRequest, privateToken, protectSocket } from "./private-ipc.ts";
-import type { Request, Router } from "./router.ts";
+import type { Params, Request, Router } from "./router.ts";
+import { STREAM_METHODS, StreamRegistry } from "./stream.ts";
 
 interface Conn {
   identity: Identity;
   /** Events this connection asked for; null means all (the default, as on the Mac). */
   events: Set<string> | null;
   active: Set<AbortController>;
+  /** capture.stream sessions this connection owns. */
+  streams?: StreamRegistry;
 }
 
 /**
@@ -60,12 +63,18 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
         maxPayloadLength: 1024 * 1024,
         open(ws) {
           sockets.add(ws);
+          ws.data.streams = new StreamRegistry({
+            send: (bytes) => ws.send(bytes),
+            buffered: () => ws.getBufferedAmount(),
+            event: (event, data) => { ws.send(JSON.stringify({ event, data })); },
+          });
           const { user, node } = ws.data.identity;
           log(`connected ${user}@${node}`);
         },
         close(ws) {
           sockets.delete(ws);
           for (const controller of ws.data.active) controller.abort();
+          ws.data.streams?.stopAll();
         },
         async message(ws, raw) {
           let request: Request;
@@ -84,6 +93,19 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
           if (subscription) {
             ws.send(JSON.stringify({ id, result: subscription, error: null }));
             return;
+          }
+          const reply = (result: unknown, error: string | null): void => {
+            ws.send(JSON.stringify({ id, result: error ? null : result, error }));
+          };
+          const endpoint = router.lookup(request.method);
+          if (STREAM_METHODS.includes(endpoint?.method ?? "")) {
+            if (!router.available().includes(endpoint!)) return reply(null, `capability_unavailable: ${endpoint!.method} needs capture.stream, which this host does not have`);
+            try {
+              return reply(await ws.data.streams!.handle(endpoint!.method, (request.params ?? {}) as Params), null);
+            } catch (err) {
+              log(`${request.method} -> ${(err as Error).message}`);
+              return reply(null, (err as Error).message);
+            }
           }
           const controller = new AbortController();
           ws.data.active.add(controller);
@@ -108,6 +130,7 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
     },
     stop() {
       for (const ws of sockets) for (const controller of ws.data.active) controller.abort();
+      for (const ws of sockets) ws.data.streams?.stopAll();
       server.stop(true);
       removeSocket();
     },

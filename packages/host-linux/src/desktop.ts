@@ -1,6 +1,8 @@
 // Hyprland state projected onto the Mac daemon's shapes (docs/api.md:
 // windows.list, spaces.list), so clients read both hosts the same way.
 
+import { monitorIdentity, type MonitorIdentity } from "./ddc.ts";
+import { edidSize, type PhysicalSize } from "./edid.ts";
 import * as hypr from "./hyprland.ts";
 import type { Fractions, Rect } from "./placement.ts";
 import { rectFor } from "./placement.ts";
@@ -58,7 +60,14 @@ export function isVirtual(m: Pick<hypr.HyprMonitor, "make" | "model" | "serial">
   return !m.make && !m.model && !m.serial;
 }
 
-export function toDisplays(monitors: hypr.HyprMonitor[], workspaces: hypr.HyprWorkspace[]): Display[] {
+/** A Display plus the physical panel's EDID identity, omitted on headless outputs. */
+export type HostDisplay = Display & { monitor?: MonitorIdentity };
+
+export function toDisplays(
+  monitors: hypr.HyprMonitor[],
+  workspaces: hypr.HyprWorkspace[],
+  physicalSize: (connector: string) => PhysicalSize | undefined = () => undefined,
+): HostDisplay[] {
   const index = displayIndexById(monitors);
   return [...monitors]
     .sort((a, b) => (index.get(a.id) ?? 0) - (index.get(b.id) ?? 0))
@@ -79,6 +88,9 @@ export function toDisplays(monitors: hypr.HyprMonitor[], workspaces: hypr.HyprWo
           isCurrent: ws.id === m.activeWorkspace.id,
           windowCount: ws.windows,
         }));
+      const identity = monitorIdentity(m);
+      const size = identity ? physicalSize(m.name) : undefined;
+      const monitor = identity && size ? { ...identity, ...size } : identity;
       return {
         displayIndex,
         displayId: m.name,
@@ -89,6 +101,7 @@ export function toDisplays(monitors: hypr.HyprMonitor[], workspaces: hypr.HyprWo
         virtual: isVirtual(m),
         currentSpaceId: m.activeWorkspace.id,
         spaces,
+        ...(monitor ? { monitor } : {}),
       };
     });
 }
@@ -105,7 +118,7 @@ export async function snapshot() {
     .filter((c) => c.mapped && c.workspace.id > 0)
     .sort((a, b) => a.focusHistoryID - b.focusHistoryID)
     .map((c) => toWindow(c, monitors, focused));
-  return { windows, displays: toDisplays(monitors, workspaces), clients, monitors, focused };
+  return { windows, displays: toDisplays(monitors, workspaces, edidSize), clients, monitors, focused };
 }
 
 /**

@@ -6,6 +6,7 @@ import { registerVirtualSpaceEndpoints } from "./virtual-space.ts";
 import { registerLayerEndpoints } from "./layers.ts";
 import { registerSpaceFocus } from "./spaces.ts";
 import * as ownedDisplays from "./displays.ts";
+import * as ddc from "./ddc.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
@@ -77,13 +78,47 @@ async function resolvePoint(params: Params) {
   };
 }
 
-function regionFrom(params: Params): Rect | undefined {
+export function regionFrom(params: Params): Rect | undefined {
   const x = num(params, "x");
   const y = num(params, "y");
   const w = num(params, "width") ?? num(params, "w");
   const h = num(params, "height") ?? num(params, "h");
   if ([x, y, w, h].every((v) => v !== undefined)) return { x: x!, y: y!, w: w!, h: h! };
   return undefined;
+}
+
+/** Pixel density under a region: the scale of the display holding its centre. */
+export function stillScale(displays: { frame: Rect; scale: number }[], region: Rect): number {
+  const cx = region.x + region.w / 2;
+  const cy = region.y + region.h / 2;
+  const display = displays.find((d) => cx >= d.frame.x && cx < d.frame.x + d.frame.w && cy >= d.frame.y && cy < d.frame.y + d.frame.h);
+  return display?.scale ?? 1;
+}
+
+/**
+ * What capture.still and capture.stream show: a region, a window or a display
+ * (default: the focused one). `frame` is the shown rect in layout coordinates;
+ * `pixelWidth` its width in physical pixels.
+ */
+export async function captureTarget(
+  params: Params,
+  snap: Awaited<ReturnType<typeof desktop.snapshot>>,
+  resolveTarget: typeof desktop.resolveTarget = desktop.resolveTarget,
+) {
+  const region = regionFrom(params);
+  if (region) return { region, output: undefined, frame: region, pixelWidth: region.w * stillScale(snap.displays, region), display: null, wid: null };
+  if (num(params, "wid") !== undefined) {
+    const { window } = await resolveTarget(params);
+    return { region: window.frame, output: undefined, frame: window.frame, pixelWidth: window.frame.w * stillScale(snap.displays, window.frame), display: null, wid: window.wid };
+  }
+  const index = num(params, "displayIndex");
+  const focusedMonitor = snap.monitors.find((m) => m.focused)?.name;
+  const display = index !== undefined ? snap.displays[index] : snap.displays.find((d) => d.displayId === focusedMonitor) ?? snap.displays[0];
+  if (!display) throw RouterError.notFound(`display ${index}`);
+  return {
+    region: undefined, output: display.displayId, frame: display.frame, pixelWidth: display.frame.w * display.scale,
+    display: { index: display.displayIndex, name: display.name }, wid: null,
+  };
 }
 
 async function shoot(params: Params, region: Rect | undefined, output?: string) {
@@ -178,12 +213,12 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (!capabilities.has("spaces.read") && capabilityHealth["spaces.read"]?.available === false && hypr.available()) {
         await refreshCapabilities();
       }
-      let displays: desktop.Display[] = [];
+      let displays: desktop.HostDisplay[] = [];
       if (capabilities.has("spaces.read")) {
         try { displays = (await desktop.snapshot()).displays; }
         catch (error) {
           const reason = (error as Error).message;
-          for (const name of ["windows.read", "windows.place", "spaces.read", "apps.open", "capture.still", "capture.live", "input.pointer", "ocr", "capture.record"]) {
+          for (const name of ["windows.read", "windows.place", "spaces.read", "apps.open", "capture.still", "capture.stream", "capture.live", "input.pointer", "ocr", "capture.record"]) {
             capabilities.delete(name);
             capabilityHealth[name] = { available: false, reason };
           }
@@ -455,6 +490,34 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
   });
 
   router.register({
+    method: "display.input.get",
+    description: "A physical monitor's current input source over DDC/CI (VCP 0x60); ddc is false when this host can't reach it",
+    access: "read",
+    capability: "display.input",
+    params: [{ name: "key", type: "string", required: true, description: "Monitor key, as in Display.monitor.key" }],
+    returns: "Object with key, ddc, input ({code, name} or null) and inputs",
+    handler: async (params) => asJson(await ddc.getInput(requireStr(params, "key"))),
+  });
+
+  router.register({
+    method: "display.input.set",
+    description: "Switch a physical monitor's input source over DDC/CI (writes VCP 0x60); only on an explicit user request",
+    access: "mutate",
+    capability: "display.input",
+    params: [
+      { name: "key", type: "string", required: true, description: "Monitor key, as in Display.monitor.key" },
+      { name: "code", type: "int", required: true, description: "MCCS input code, e.g. 0x12 for HDMI-2" },
+    ],
+    returns: "Object with ok and input",
+    handler: async (params) => {
+      const code = num(params, "code");
+      if (code === undefined) throw RouterError.missingParam("code");
+      if (!Number.isInteger(code) || code < 0 || code > 0xff) throw new RouterError("code out of range (0-255)");
+      return asJson(await ddc.setInput(requireStr(params, "key"), code));
+    },
+  });
+
+  router.register({
     method: "desktop.snapshot",
     description: "Front window, displays and tmux sessions in one call",
     access: "read",
@@ -541,32 +604,21 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     params: [
       { name: "displayIndex", type: "int", description: "Display index; defaults to the focused display" },
       { name: "wid", type: "uint32", description: "Capture this window instead" },
+      { name: "x", type: "double", description: "Region left edge in layout coordinates; with y, width and height" },
+      { name: "y", type: "double", description: "Region top edge" },
+      { name: "width", type: "double", description: "Region width" },
+      { name: "height", type: "double", description: "Region height" },
       { name: "maxWidth", type: "int", description: "Longest width in pixels (default 1440)" },
       { name: "quality", type: "int", description: "JPEG quality (default 70)" },
     ],
-    returns: "Object with data (base64 JPEG), width, height",
+    returns: "Object with data (base64 JPEG), width, height, and the captured frame in layout coordinates",
     handler: async (params) => {
-      const snap = await desktop.snapshot();
       const maxWidth = num(params, "maxWidth") ?? 1440;
-      let region: Rect | undefined;
-      let output: string | undefined;
-      let width: number;
-      if (num(params, "wid") !== undefined) {
-        const { window } = await desktop.resolveTarget(params);
-        region = window.frame;
-        width = window.frame.w;
-      } else {
-        const index = num(params, "displayIndex");
-        const focusedMonitor = snap.monitors.find((m) => m.focused)?.name;
-        const display = index !== undefined ? snap.displays[index] : snap.displays.find((d) => d.displayId === focusedMonitor) ?? snap.displays[0];
-        if (!display) throw RouterError.notFound(`display ${index}`);
-        output = display.displayId;
-        width = display.frame.w * display.scale;
-      }
-      const scale = Math.min(1, maxWidth / Math.max(1, width));
+      const { region, output, frame, pixelWidth, display } = await captureTarget(params, await desktop.snapshot());
+      const scale = Math.min(1, maxWidth / Math.max(1, pixelWidth));
       const bytes = await capture.grab({ region, output, format: "jpeg", quality: num(params, "quality") ?? 70, scale });
       const size = capture.imageSize(bytes);
-      return asJson({ ok: true, format: "jpeg", width: size?.width ?? null, height: size?.height ?? null, data: bytes.toString("base64") });
+      return asJson({ ok: true, format: "jpeg", width: size?.width ?? null, height: size?.height ?? null, frame, display, data: bytes.toString("base64") });
     },
   });
 
@@ -588,6 +640,59 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       if (index !== undefined) output = (await desktop.snapshot()).displays[index]?.displayId;
       return asJson(await live.start(ctx.bindHost, num(params, "port") ?? 5900, output));
     },
+  });
+
+  // Streams belong to a WebSocket connection, so the server answers these
+  // (server.ts, stream.ts); registered here for api.schema, gating and describe.
+  const streamScoped = () => {
+    throw new RouterError("capture.stream.* acts on a WebSocket connection; send it over one");
+  };
+  const streamIdParam = { name: "streamId", type: "uint32", required: true, description: "From capture.stream.start" };
+  router.register({
+    method: "capture.stream.start",
+    description: "Push H.264 frames of a display, window or region as binary LVF1 messages on this connection",
+    access: "read",
+    capability: "capture.stream",
+    params: [
+      { name: "displayIndex", type: "int", description: "Display index; defaults to the focused display" },
+      { name: "wid", type: "uint32", description: "Stream this window's frame instead (covered pixels show)" },
+      { name: "x", type: "double", description: "Region left edge in layout coordinates; with y, width and height" },
+      { name: "y", type: "double", description: "Region top edge" },
+      { name: "width", type: "double", description: "Region width" },
+      { name: "height", type: "double", description: "Region height" },
+      { name: "maxWidth", type: "int", description: "Encoded width cap in pixels (default 1920, 320-3840)" },
+      { name: "fps", type: "int", description: "Frame rate (default 30, 5-60)" },
+      { name: "codec", type: "string", description: "h264 (the only one)" },
+    ],
+    returns: "Object with streamId, codec, width, height, frame and display",
+    handler: streamScoped,
+  });
+  router.register({
+    method: "capture.stream.ack",
+    description: "Acknowledge frames up to seq; the host keeps at most 4 unacked and stops after 3 s without an ack",
+    access: "read",
+    capability: "capture.stream",
+    params: [streamIdParam, { name: "seq", type: "uint32", required: true, description: "Highest frame seq received" }],
+    returns: "Object with ok",
+    handler: streamScoped,
+  });
+  router.register({
+    method: "capture.stream.keyframe",
+    description: "Ask for a keyframe soon (best effort: the encoder restarts if none comes within a second)",
+    access: "read",
+    capability: "capture.stream",
+    params: [streamIdParam],
+    returns: "Object with ok",
+    handler: streamScoped,
+  });
+  router.register({
+    method: "capture.stream.stop",
+    description: "Stop a stream",
+    access: "read",
+    capability: "capture.stream",
+    params: [streamIdParam],
+    returns: "Object with ok",
+    handler: streamScoped,
   });
 
   // ── Computer use ────────────────────────────────────────────────────

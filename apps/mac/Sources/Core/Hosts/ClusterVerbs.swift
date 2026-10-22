@@ -53,12 +53,18 @@ enum ClusterVerbs {
                         "platform": .string("macos"), "hostname": .string(VisitTrust.Host.localName),
                         "version": version.map(JSON.string) ?? .null,
                         "build": .object(["version": version.map(JSON.string) ?? .null, "commit": LatticesRuntime.buildRevision.map(JSON.string) ?? .null]),
-                        "capabilities": .array([.string("windows.read"), .string("windows.place"), .string("spaces.read")]),
+                        "capabilities": .array([.string("windows.read"), .string("windows.place"), .string("spaces.read"), .string("capture.still"), .string("display.input")]
+                            + (VideoStreamer.isAvailable ? [.string("capture.stream")] : [])),
                         "methods": .array(api.endpoints.keys.sorted().map(JSON.string)),
-                        "displays": .array(screens().map { s in .object([
-                            "index": .int(s.index), "name": .string(s.name), "main": .bool(s.isMain),
-                            "frame": .object(["x": .double(s.frame.minX), "y": .double(s.frame.minY), "w": .double(s.frame.width), "h": .double(s.frame.height)])
-                        ]) })
+                        "displays": .array(screens().map { s in
+                            var obj: [String: JSON] = [
+                                "index": .int(s.index), "name": .string(s.name), "main": .bool(s.isMain),
+                                "frame": .object(["x": .double(s.frame.minX), "y": .double(s.frame.minY), "w": .double(s.frame.width), "h": .double(s.frame.height)])
+                            ]
+                            if let monitor = MonitorIdentity.forDisplay(uuid: s.id) { obj["monitor"] = monitor.json }
+                            else if let builtin = MonitorIdentity.builtinJSON(uuid: s.id) { obj["builtin"] = builtin }
+                            return .object(obj)
+                        })
                     ])
                 }
             }))

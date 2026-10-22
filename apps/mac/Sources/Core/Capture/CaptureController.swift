@@ -624,13 +624,13 @@ final class CaptureController {
         return try RunStore.shared.createRun(title: title, source: source, surfaces: surfaces)
     }
 
-    private struct RegionResolution {
+    struct RegionResolution {
         let rect: CGRect
         let target: WindowEntry?
         let surfaces: [RunSurface]
     }
 
-    private struct DisplayResolution {
+    struct DisplayResolution {
         let index: Int
         let displayID: CGDirectDisplayID
         let name: String
@@ -687,6 +687,55 @@ final class CaptureController {
                 "value": .string(value),
             ])
         }
+    }
+
+    /// One compressed frame for a remote viewer: a display, a window or a
+    /// region, returned inline with the rect it covers in layout coordinates.
+    func still(params: JSON?) throws -> JSON {
+        let maxWidth = max(160, min(3840, params?["maxWidth"]?.intValue ?? 1600))
+        let quality = max(20, min(95, params?["quality"]?.intValue ?? 70))
+        let image: CGImage
+        let frame: CGRect
+        var display: JSON = .null
+        if params?["width"] != nil || params?["w"] != nil {
+            let region = try resolveRegion(params: params)
+            frame = region.rect
+            image = try captureRegionImage(rect: region.rect, timeoutSeconds: 5)
+        } else if let wid = params?["wid"]?.intValue {
+            let target = try resolveWindow(params: params)
+            frame = CGRect(x: target.frame.x, y: target.frame.y, width: target.frame.w, height: target.frame.h)
+            image = try captureWindowImage(wid: UInt32(wid), timeoutSeconds: 5)
+        } else {
+            let resolved = try resolveDisplay(params: params)
+            frame = resolved.frame
+            display = .object(["index": .int(resolved.index), "name": .string(resolved.name)])
+            image = try captureDisplayImage(displayID: resolved.displayID, showsCursor: true, timeoutSeconds: 5)
+        }
+        let scaled = image.width > maxWidth ? try smoothScaled(image, width: maxWidth) : image
+        let rep = NSBitmapImageRep(cgImage: scaled)
+        guard let data = rep.representation(using: .jpeg, properties: [.compressionFactor: Double(quality) / 100]) else {
+            throw RouterError.custom("Unable to encode frame")
+        }
+        return .object([
+            "format": .string("jpeg"),
+            "width": .int(scaled.width),
+            "height": .int(scaled.height),
+            "data": .string(data.base64EncodedString()),
+            "frame": .object(["x": .double(frame.minX), "y": .double(frame.minY), "w": .double(frame.width), "h": .double(frame.height)]),
+            "display": display,
+        ])
+    }
+
+    private func smoothScaled(_ image: CGImage, width: Int) throws -> CGImage {
+        let height = max(1, Int((Double(image.height) * Double(width) / Double(image.width)).rounded()))
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+            throw RouterError.custom("Unable to create frame context")
+        }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scaled = context.makeImage() else { throw RouterError.custom("Unable to render frame") }
+        return scaled
     }
 
     private func captureWindowImage(wid: UInt32, timeoutSeconds: Int) throws -> CGImage {
@@ -774,7 +823,7 @@ final class CaptureController {
         }
     }
 
-    private func resolveRegion(params: JSON?) throws -> RegionResolution {
+    func resolveRegion(params: JSON?) throws -> RegionResolution {
         let x = params?["x"]?.numericDouble
         let y = params?["y"]?.numericDouble
         let width = params?["width"]?.numericDouble ?? params?["w"]?.numericDouble
@@ -816,7 +865,7 @@ final class CaptureController {
         return RegionResolution(rect: rect, target: target, surfaces: [.window(target)])
     }
 
-    private func resolveDisplay(params: JSON?) throws -> DisplayResolution {
+    func resolveDisplay(params: JSON?) throws -> DisplayResolution {
         try onMainThread {
             let screens = NSScreen.screens
             guard !screens.isEmpty else {

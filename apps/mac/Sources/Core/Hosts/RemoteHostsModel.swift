@@ -36,6 +36,8 @@ final class RemoteHostsModel: ObservableObject {
         var windows: [Window] = []
         var monitors: [MachineArrangementStore.Monitor] = []
         var still: NSImage?
+        /// One picture per monitor, by its position in `monitors`.
+        var thumbnails: [Int: NSImage] = [:]
         var stillAt: Date?
         /// Round trip of the last still, so a slow link shows itself.
         var stillMilliseconds: Int?
@@ -208,6 +210,12 @@ final class RemoteHostsModel: ObservableObject {
         connection.start()
     }
 
+    /// One call on a connected host, for actions the page takes on request.
+    func call(_ name: String, _ method: String, params: [String: Any]? = nil, timeout: TimeInterval = 10) async throws -> Any {
+        guard let connection = connections[name] else { throw RemoteHostConnection.Failure.remote("\(name) is not connected") }
+        return try await connection.call(method, params: params, timeout: timeout)
+    }
+
     private func describe(_ name: String) async {
         guard let connection = connections[name],
               let result = try? await connection.call("host.describe") as? [String: Any] else { return }
@@ -247,20 +255,26 @@ final class RemoteHostsModel: ObservableObject {
         guard connections[name] === connection,
               hosts.first(where: { $0.name == name })?.capabilities.contains("capture.still") == true else { return }
         let started = Date()
-        do {
-            let result = try await connection.call("capture.still", params: ["maxWidth": 1600, "quality": 70], timeout: 15) as? [String: Any]
-            guard connections[name] === connection,
-                  let encoded = result?["data"] as? String,
-                  let data = Data(base64Encoded: encoded),
-                  let image = NSImage(data: data) else { return }
-            let elapsed = Int(Date().timeIntervalSince(started) * 1000)
-            update(name) {
-                $0.still = image
-                $0.stillAt = Date()
-                $0.stillMilliseconds = elapsed
+        let count = max(1, hosts.first(where: { $0.name == name })?.monitors.count ?? 1)
+        var thumbnails: [Int: NSImage] = [:]
+        for index in 0..<count {
+            do {
+                let result = try await connection.call("capture.still", params: ["displayIndex": index, "maxWidth": 1280, "quality": 68], timeout: 15) as? [String: Any]
+                guard connections[name] === connection else { return }
+                if let encoded = result?["data"] as? String, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+                    thumbnails[index] = image
+                }
+            } catch {
+                DiagnosticLog.shared.warn("Hosts: still \(index) from \(name) failed — \(error.localizedDescription)")
             }
-        } catch {
-            DiagnosticLog.shared.warn("Hosts: still from \(name) failed — \(error.localizedDescription)")
+        }
+        guard !thumbnails.isEmpty else { return }
+        let elapsed = Int(Date().timeIntervalSince(started) * 1000) / thumbnails.count
+        update(name) {
+            $0.thumbnails = thumbnails
+            $0.still = thumbnails[0] ?? thumbnails.values.first
+            $0.stillAt = Date()
+            $0.stillMilliseconds = elapsed
         }
     }
 

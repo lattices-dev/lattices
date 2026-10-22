@@ -129,3 +129,60 @@ export async function connectCompanionVisit(req: Request): Promise<CompanionVisi
     socket.onclose = () => finish(new Error("Companion connection closed"));
   });
 }
+
+/** One private lattices connection per remote client, kept open for
+ * capture.stream: the daemon ties a stream to the socket that started it and
+ * pushes binary frames on it. Frames pass through unread. */
+export interface ProductStream {
+  call(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown>;
+  close(): void;
+}
+export type StreamConnect = (handlers: { binary(data: ArrayBuffer): void; event(name: string, data: unknown): void; closed(): void }) => Promise<ProductStream>;
+
+export const connectLatticesStream: StreamConnect = handlers => {
+  const endpoint = localEndpoint("lattices");
+  validateLocalSocket(endpoint.socketPath!);
+  const socket = privateWebSocket(endpoint.socketPath!, "/", { host: "localhost", "x-lattices-token": readLocalToken(endpoint.tokenFile!) });
+  socket.binaryType = "arraybuffer";
+  const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+  let open = false;
+  const fail = (error: Error) => { for (const [id, entry] of pending) { clearTimeout(entry.timer); entry.reject(error); pending.delete(id); } };
+  const stream: ProductStream = {
+    call(method, params, timeoutMs) {
+      if (!open) return Promise.reject(new Error("product_unavailable: lattices is not running"));
+      const id = crypto.randomUUID();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Request timed out: ${method}`)); }, timeoutMs);
+        pending.set(id, { resolve, reject, timer });
+        socket.send(JSON.stringify({ id, method, params, deadline: Date.now() + timeoutMs }));
+      });
+    },
+    close() { socket.close(); },
+  };
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { socket.close(); reject(new Error("product_unavailable: lattices is not running")); }, 3000);
+    socket.onopen = () => {
+      clearTimeout(timer); open = true;
+      // Only this connection's stream events matter; skip the broadcast feed.
+      socket.send(JSON.stringify({ id: "gateway-stream-events", method: "events.unsubscribe", params: {} }));
+      resolve(stream);
+    };
+    socket.onmessage = event => {
+      if (typeof event.data !== "string") { handlers.binary(event.data as ArrayBuffer); return; }
+      let message: { id?: string; result?: unknown; error?: unknown; event?: string; data?: unknown };
+      try { message = JSON.parse(event.data); } catch { return; }
+      if (typeof message.event === "string") { handlers.event(message.event, message.data); return; }
+      const entry = message.id ? pending.get(message.id) : undefined;
+      if (!entry) return;
+      pending.delete(message.id!); clearTimeout(entry.timer);
+      if (message.error) entry.reject(new Error(typeof message.error === "string" ? message.error : "Request failed")); else entry.resolve(message.result);
+    };
+    socket.onerror = () => { clearTimeout(timer); reject(new Error("product_unavailable: lattices is not running")); };
+    socket.onclose = () => {
+      clearTimeout(timer);
+      const wasOpen = open; open = false;
+      fail(new Error("Lattices connection closed"));
+      if (wasOpen) handlers.closed(); else reject(new Error("product_unavailable: lattices is not running"));
+    };
+  });
+};
