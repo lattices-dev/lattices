@@ -71,9 +71,10 @@ final class VisitTrust {
         let keyFile = Self.directory.appendingPathComponent("device-key")
         if let raw = try? Data(contentsOf: keyFile), let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: raw) {
             privateKey = key
+            PrivateKeyFile.tighten(keyFile)
         } else {
             privateKey = Curve25519.KeyAgreement.PrivateKey()
-            FileManager.default.createFile(atPath: keyFile.path, contents: privateKey.rawRepresentation, attributes: [.posixPermissions: 0o600])
+            PrivateKeyFile.write(privateKey.rawRepresentation, to: keyFile)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
