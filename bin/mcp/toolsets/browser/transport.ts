@@ -82,6 +82,8 @@ export class CDPSession {
   private pending = new Map<number, { resolve: (value: JsonObject) => void; reject: (error: Error) => void }>();
   private listeners = new Map<string, Set<(params: JsonObject) => void>>();
 
+  get isOpen(): boolean { return this.socket.readyState === WebSocket.OPEN; }
+
   private constructor(private socket: WebSocket) {
     socket.addEventListener("message", event => {
       let message: { id?: number; method?: string; params?: JsonObject; result?: JsonObject; error?: { message?: string } };

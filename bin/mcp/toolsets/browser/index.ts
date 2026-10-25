@@ -34,8 +34,8 @@ import {
   parseResizeRequest,
   widthClass,
   windowBoundsFor,
-  type ViewportOverride,
 } from "./viewport.ts";
+import { SETTLE_LAYOUT_EXPRESSION, ViewportSessions } from "./viewport-sessions.ts";
 import {
   MAX_CAPTURE_EDGE,
   clipForRect,
@@ -142,13 +142,11 @@ const chromeBaseURL = `http://127.0.0.1:${debugPort}`;
 const textDecoder = new TextDecoder();
 let currentTargetId: string | undefined;
 /**
- * Emulated viewports, keyed by tab id. A device-metrics override lives on the CDP
- * client session, so it would vanish with the socket every tool call closes. Keeping
- * it here and re-applying it per session is what makes a resize hold across a later
- * screenshot or snapshot. Nothing is written to the profile: quit Chrome and the
- * override is gone.
+ * Keep the emulation-owning connection alive between tools. Re-applying metrics
+ * on each temporary action connection makes responsive pages bounce back to the
+ * real window size whenever that action finishes.
  */
-const viewportOverrides = new Map<string, ViewportOverride>();
+const viewportOverrides = new ViewportSessions();
 /**
  * Targets that already carry the page-side console recorder. The script is
  * installed with Page.addScriptToEvaluateOnNewDocument, which re-runs it on every
@@ -830,6 +828,7 @@ async function closeChrome(): Promise<boolean> {
 }
 
 async function releaseBrowser(reason: string): Promise<ReleaseOutcome> {
+  viewportOverrides.clear();
   releaseClaim();
   const { liveOwners } = sweepClaims();
   if (liveOwners > 0) {
@@ -842,10 +841,12 @@ async function releaseBrowser(reason: string): Promise<ReleaseOutcome> {
 }
 
 async function releaseOwnedBrowser(reason: string): Promise<ReleaseOutcome | undefined> {
+  viewportOverrides.clear();
   return ownsBrowser ? await releaseBrowser(reason) : undefined;
 }
 
 function releaseBrowserSync(): void {
+  viewportOverrides.clear();
   if (!ownsBrowser) return;
   releaseClaim();
   if (sweepClaims().liveOwners > 0) return;
@@ -918,11 +919,11 @@ async function useProfile(nextName: string): Promise<{
     return { profile: profileName, profileDir, switched: false, closedPrevious: false };
   }
   let closedPrevious = false;
+  viewportOverrides.clear();
+  currentTargetId = undefined;
   if (ownsBrowser) {
     const outcome = await releaseBrowser("profile-switch");
     closedPrevious = outcome.closed;
-    currentTargetId = undefined;
-    viewportOverrides.clear();
   }
   checkDeadline();
   profileName = name;
@@ -1067,7 +1068,7 @@ async function withTarget<T>(tabId: unknown, work: (session: CDPSession, target:
   const target = await targetFor(tabId);
   const session = await CDPSession.connect(target.webSocketDebuggerUrl!);
   try {
-    await applyViewportOverride(session, target.id);
+    await applyViewportOverride(target);
     return await work(session, target);
   } finally {
     session.close();
@@ -1075,31 +1076,12 @@ async function withTarget<T>(tabId: unknown, work: (session: CDPSession, target:
 }
 
 /**
- * Re-apply this tab's emulated viewport on a fresh CDP session. Failure throws
- * rather than degrading quietly: a screenshot taken at the wrong width would look
- * like a verified breakpoint when nothing was verified.
+ * Restore a lost owner when needed, without transferring metrics to the
+ * temporary connection used by this tool.
  */
-async function applyViewportOverride(session: CDPSession, targetId: string): Promise<void> {
-  const override = viewportOverrides.get(targetId);
-  if (!override) return;
-  try {
-    await session.call("Emulation.setDeviceMetricsOverride", {
-      width: override.width,
-      height: override.height,
-      deviceScaleFactor: override.deviceScaleFactor,
-      mobile: override.mobile,
-    });
-    await session.call("Emulation.setTouchEmulationEnabled", {
-      enabled: override.mobile,
-      maxTouchPoints: override.mobile ? 5 : 1,
-    });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Could not restore the ${override.width}x${override.height} viewport on tab ${targetId}: ${detail}. `
-      + "Call browser_resize again, or browser_resize { reset: true } to drop the override.",
-    );
-  }
+async function applyViewportOverride(target: ChromeTarget): Promise<void> {
+  if (!target.webSocketDebuggerUrl) throw new Error("Chrome tab has no DevTools endpoint.");
+  await viewportOverrides.apply(target.id, target.webSocketDebuggerUrl);
 }
 
 /** Read what the page actually got, which is the only number worth reporting. */
@@ -1161,8 +1143,9 @@ async function clearViewportOverride(session: CDPSession): Promise<void> {
 
 /** Forget a tab's emulated viewport and put the real one back. */
 async function dropViewportOverride(targetId: string): Promise<void> {
-  viewportOverrides.delete(targetId);
-  await withTarget(targetId, clearViewportOverride);
+  if (!await viewportOverrides.reset(targetId)) {
+    await withTarget(targetId, clearViewportOverride);
+  }
 }
 
 /**
@@ -1211,10 +1194,10 @@ async function resizeWindowForTab(
   return { chromeInset: inset, windowBounds: bounds };
 }
 
-/** Let media queries settle and the page repaint before anything screenshots it. */
+/** Yield resize work and, for visible pages, a paint boundary before capture. */
 async function settleLayout(session: CDPSession): Promise<void> {
   try {
-    await evaluateValue(session, `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))`);
+    await evaluateValue(session, SETTLE_LAYOUT_EXPRESSION);
   } catch {
     // A page mid-navigation can drop the evaluation; the measurement below still reports truth.
   }
@@ -1631,8 +1614,9 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
           hint: "Re-call with confirm=true to write these cookies into the Action profile.",
         });
       }
-      if (into === profileName && ownsBrowser) {
-        await releaseBrowser("cookie-import");
+      if (into === profileName) {
+        viewportOverrides.clear();
+        if (ownsBrowser) await releaseBrowser("cookie-import");
         currentTargetId = undefined;
       }
       const result = cookies.importCookiesToActionProfile({
@@ -1712,7 +1696,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
         await installConsoleRecorder(session, target.id);
         // Restore a sticky viewport before navigating so the first layout, and any
         // breakpoint-sensitive script the page runs on load, sees the right width.
-        await applyViewportOverride(session, target.id);
+        await applyViewportOverride(target);
         const navigation = await session.call("Page.navigate", { url });
         const navigateErrorText = typeof navigation.errorText === "string"
           ? navigation.errorText

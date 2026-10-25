@@ -6,9 +6,8 @@
  *   target=tab     CSS emulation for one tab (Emulation.setDeviceMetricsOverride).
  *                  Exact, per-tab, invisible to every other tab, and reversible.
  *                  It lives on the CDP client session, so it dies the moment the
- *                  socket closes -- which is why index.ts keeps the override in
- *                  server state and re-applies it on every new session instead of
- *                  treating the CDP call as durable.
+ *                  socket closes -- which is why ViewportSessions retains its
+ *                  owning connection across tool calls, until reset or release.
  *
  *   target=window  The real Chrome window that hosts the tab (Browser.setWindowBounds).
  *                  Durable because it is OS window state rather than session state,
