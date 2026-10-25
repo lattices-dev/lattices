@@ -49,9 +49,13 @@ sit in `~/dev/tideline` matches even when "tideline" is not in its window
 title. Each matching tab adds to the window's score, so a terminal with four
 tideline tabs outranks one with a single tab.
 
-Deep search reads tabs from iTerm2 and Terminal.app only. In Ghostty, kitty
-or Warp, it finds a terminal only through a tmux session that Lattices
-started.
+Deep search reads tabs from iTerm2 and Terminal.app. It also reads Ghostty
+tabs when Automation access to Ghostty is already granted, and kitty tabs
+when `allow_remote_control` and `listen_on` are set in `kitty.conf`. Warp,
+Alacritty and other terminals are matched from their shell processes: to one
+window when the terminal has one titled window or a title names the shell's
+directory, and otherwise to the app as a whole. `lats place` does not act on
+an app-wide match alone.
 
 Use deep search when you look for a project by name and the project name
 lives in a directory path rather than a title. Use index search first; deep

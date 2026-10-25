@@ -282,7 +282,7 @@ export default function SpeechPage() {
             <div className="speech-terminal-bar">products/voice</div>
             <pre className="speech-terminal-body">
               <code>
-                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> swift test --package-path products/voice</span>
+                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> HUDSONKIT_WITH_VOICE=0 swift test --package-path products/voice</span>
                 <span className="speech-terminal-output">Voice tests passed</span>
                 <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> products/voice/tools/package.sh</span>
                 <span className="speech-terminal-output">Local Voice.app artifact</span>
