@@ -1,0 +1,1 @@
+Graphite #22211e field, ivory #ede9df Inter title, muted #b9b6a8 topic. 232px left and120px vertical art clearance. Supplied illustration unchanged; opacity mask only across blank graphite margins. No decorative overlay. 14px text settle over0.46s, fixed solid art. Matching outro retains title position.

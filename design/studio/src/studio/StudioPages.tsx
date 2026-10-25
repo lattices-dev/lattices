@@ -14,11 +14,13 @@ import { ShellStudy } from "@/studio/studies/Shell";
 import { ShellBStudy } from "@/studio/studies/ShellB";
 import { TilingStudy } from "@/studio/studies/Tiling";
 import { CrossAppTabsStudy } from "@/studio/studies/CrossAppTabs";
+import { SpaceNavigationStudy } from "@/studio/studies/SpaceNavigation";
 import { SpaceBezelStudy } from "@/studio/studies/SpaceBezel";
 import { StageStudy } from "@/studio/studies/Stage";
 import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
 import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
+import { LatticeStudy } from "@/studio/studies/Lattice";
 import {
   HOME_HREF,
   pages,
@@ -38,6 +40,7 @@ type RenderContext = StudioHudsonRenderContext<Bucket, Surface, Status>;
 type ExhibitStudy = (props: { entry: LatticesPage; exhibit?: string }) => ReactNode;
 
 const EXHIBIT_STUDIES: Record<string, ExhibitStudy> = {
+  "/studio/studies/space-navigation": SpaceNavigationStudy,
   "/studio/studies/shell": ShellStudy,
   "/studio/studies/shell-b": ShellBStudy,
   "/studio/studies/tiling": TilingStudy,
@@ -79,6 +82,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (page?.href === "/studio/studies/stage") return <StageStudy page={page} />;
   if (page?.href === "/studio/studies/linux-command-center") return <LinuxCommandCenterStudy page={page} />;
   if (page?.href === "/studio/studies/product-family") return <ProductFamilyStudy page={page} />;
+  if (page?.href === "/studio/studies/lattice") return <LatticeStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

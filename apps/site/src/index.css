@@ -4458,6 +4458,27 @@ button.nav-link {
   color: var(--hero-ink);
 }
 
+.hero-announcement {
+  display: flex;
+  width: fit-content;
+  margin-inline: auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-top: 24px;
+  padding: 8px 14px;
+  border: 1px solid var(--hero-rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--hero-ink) 4%, var(--hero-ground));
+  color: var(--hero-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hero-announcement strong { font-weight: 650; }
+.hero-announcement:hover { border-color: var(--hero-ink-dim); }
+.hero-announcement:focus-visible { outline: 2px solid var(--hero-accent); outline-offset: 5px; }
+
 .hero-linux-link {
   display: inline-block;
   margin-top: 20px;

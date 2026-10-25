@@ -271,7 +271,7 @@ Transparency suppress the effect. Agents can also set it with
 The filmstrip stays visible while the switch is in progress, then waits 0.85
 seconds after landing before its 0.12-second fade.
 Only bare Ctrl+arrows are claimed;
-Ctrl+Option+arrows still tile. While the feature is on, the app
+Cmd+Option+Shift+arrows tile; Ctrl+Option+arrows are available for other shortcuts. While the feature is on, the app
 disables Mission Control's "Move left/right a space" symbolic hotkeys
 (they would replay the slide animation); the original setting is
 restored when the feature is toggled off or the app quits. Toggle it in
@@ -317,6 +317,11 @@ The settings window has five tabs:
 - hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
 - tap Caps Lock -> Escape
 
+Holding Control + Option is quiet by default. **Cmd+Option+arrows** browse
+layers; add **Shift** to tile the current window. Existing custom bindings
+remain available in Settings > Shortcuts.
+
+The pointer picker is optional under Settings > Shortcuts > **Ctrl+Option hold**.
 With **Spatial Lens** enabled, holding physical Control + Option reveals
 eight contextual placement targets around the pointer. Choose a side to preview
 left, right, top, or bottom placement, or choose a corner for quarter placement.
@@ -369,13 +374,14 @@ Tiling and placement:
 
 | Shortcut | Action |
 |----------|--------|
-| Control+Option+arrows | Tile the front window to a half |
+| Command+Option+Shift+arrows | Tile the front window to a half |
+| Control+Option+arrows | Available for custom shortcuts |
 | Control+Option+Return | Maximize |
 | Control+Option+C | Center |
 | Control+Option+U / I / J / K | Top-left, top-right, bottom-left, bottom-right quarter |
 | Control+Option+Shift+1 / 2 / 3 | Left, center, right third |
-| Hold Control+Option, press 1–9 | Tile to that cell of the 3×3 matrix; 5 maximizes. Number row and numpad both work |
-| Hold Control+Option, move the pointer | Aim a placement; release to tile, stay centered to cancel |
+| Hold Control+Option, press 1–9 | With Tile HUD enabled, tile to that cell of the 3×3 matrix; 5 maximizes. Number row and numpad both work |
+| Hold Control+Option, move the pointer | With Tile HUD enabled, aim a placement; release to tile, stay centered to cancel |
 | Control+Option+D | Distribute visible windows |
 | Control+Option+O | Organize the front app's windows |
 | Control+Option+V | Fill an open 3x2 cell |
@@ -386,6 +392,9 @@ Tiling and placement:
 | Hyper+H | Window navigation hints |
 | Hyper+Z | Focus mode |
 | Hyper+X | Stage |
+
+Control+Option pointer controls are off by default. Choose Tile HUD or Spatial
+Lens in Settings to enable one of those placement modes.
 
 Spaces and layers:
 

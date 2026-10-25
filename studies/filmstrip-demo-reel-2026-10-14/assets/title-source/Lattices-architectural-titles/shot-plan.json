@@ -1,0 +1,14 @@
+{
+  "category": "kinetic-type",
+  "asset_needs": [],
+  "asset_strategy": "Reuse user-approved local architectural art unchanged; frozen in assets. Plain text wordmark is not a canonical-logo replacement.",
+  "duration": 5,
+  "layout": "Solid complete building right; Lattices and editable topic left; safe area232px horizontal120px vertical at3440x1440.",
+  "motion": "14px settle and opacity entrance over0.46s; artwork stationary; no soundtrack.",
+  "proof_times": [
+    0.2,
+    1.2,
+    2.7,
+    3.7
+  ]
+}

@@ -1,0 +1,507 @@
+{
+  "description": "Local source recordings and generated review media preserved before the October 25 launch integration. Restore files at their recorded paths to reproduce the media compositions. Website and app builds do not need these recordings.",
+  "archiveName": "Lattices-launch-20261025-110708",
+  "archiveSubdirectory": "web/files",
+  "files": [
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/anim-map/animation-map.json",
+      "bytes": 42555,
+      "sha256": "ef5a6af817f7d1750aa02d0a6fbc7d1369c0c29184438a5162ae3adad31904f2"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/hf-ids-stamped.json",
+      "bytes": 440,
+      "sha256": "bc27c025df6509c3d110881f14c232f162ba7f2f2fc0386db19b5cf57dbe30ef"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/history-id",
+      "bytes": 37,
+      "sha256": "d9904fcc008d63600dcf210b566902e081d06b249bb0e36c95a0ed8ccdaeefa0"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/history-turns.json",
+      "bytes": 128,
+      "sha256": "56a58d6388246ac566d2ad9d6e7b12af3e426afc398c1cdfc5266e72e0530365"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/preview/a921de28696b0fb6b9185195b62710fb.html",
+      "bytes": 184079,
+      "sha256": "b0089fcd935565d68f4bc2b111edf62db243774585ac51ab5885f3a618a51c08"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.hyperframes/video-state.json",
+      "bytes": 67222,
+      "sha256": "2fbf3a93cbeb32769aef081e8790b4188dc31ba90f0e862ddbbd66e58c995cc6"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_34ed1b2ff3853875_99b08dea98a8288d_jpeg_source_index.html_3440x1440_3440x1440_1792029510868_0.00.jpg",
+      "bytes": 222220,
+      "sha256": "7268fb178c7c841cf52a6a792898c60e289866ed8eaa8e22d27bdbb862a9f509"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_12da3f51644102cf_a7925bd45996120e_jpeg_preview_compositions_lt-accent-underline.html_1920x1080_240x135_1792029510864_3.00.jpg",
+      "bytes": 1848,
+      "sha256": "bc9edb01ab811ca4ff09007dfa48586cffed6dcbdd1be0e14c6b8ac3c66aba36"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_34ed1b2ff3853875_99b08dea98a8288d_jpeg_preview_index.html_3440x1440_240x100_1792029510868_3.00.jpg",
+      "bytes": 6552,
+      "sha256": "575e09ae50f6e8cc2520bf388d2244ccd39526fba185c4f581ace74d78c37d38"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_5b8c3a59fae5ff45_5db1618c7e6cfbd7_jpeg_preview_compositions_canvas.html_3440x1440_240x100_1792072306089_3.00.jpg",
+      "bytes": 553,
+      "sha256": "3b3bbc00ffa8c37014c92757ca2682dea62e9d5ebd9ec072e36dd50b295cb537"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_6b9f4542332c8bc4_3f5047bed5da5a36_jpeg_preview_compositions_filmstrip.html_3440x1440_240x100_1792072306089_3.00.jpg",
+      "bytes": 561,
+      "sha256": "3adc1bac425dec511229c6eb0d2ac7a97dd3e025b177a86563b50eb80ab765e5"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_8a130218300e4027_1e2582edfdfbfb6c_jpeg_preview_index.html_3440x1440_240x100_1792072306089_3.00.jpg",
+      "bytes": 6084,
+      "sha256": "1b954409de023b592e549486697e4311cdfd06245766c35f516c7855bfe20153"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_c811c4843c464e3f_95190991799b9797_jpeg_preview_compositions_closing.html_3440x1440_240x100_1792029510860_1.25.jpg",
+      "bytes": 3240,
+      "sha256": "eed845c0d21a0bbae4937e1b88a56c142938d55f06adb4964b9c3943878860b4"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_c811c4843c464e3f_95190991799b9797_jpeg_preview_compositions_closing.html_3440x1440_240x100_1792029510860_3.00.jpg",
+      "bytes": 3240,
+      "sha256": "eed845c0d21a0bbae4937e1b88a56c142938d55f06adb4964b9c3943878860b4"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_d1b1cd4008a72472_3f5047bed5da5a36_jpeg_preview_compositions_filmstrip.html_3440x1440_240x100_1792072306089_3.00.jpg",
+      "bytes": 561,
+      "sha256": "3adc1bac425dec511229c6eb0d2ac7a97dd3e025b177a86563b50eb80ab765e5"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_ded68c5d0f687618_811a52aa0448c085_jpeg_preview_compositions_opening.html_3440x1440_240x100_1792029510866_1.25.jpg",
+      "bytes": 3112,
+      "sha256": "a531f00d768deb3a11acac5533c75e891f6413bbcf037c72aa8bbba9deaaa9f5"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_ded68c5d0f687618_811a52aa0448c085_jpeg_preview_compositions_opening.html_3440x1440_240x100_1792029510866_3.00.jpg",
+      "bytes": 3112,
+      "sha256": "a531f00d768deb3a11acac5533c75e891f6413bbcf037c72aa8bbba9deaaa9f5"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_e3a2b29457df9ed4_5db1618c7e6cfbd7_jpeg_preview_compositions_canvas.html_3440x1440_240x100_1792072306089_3.00.jpg",
+      "bytes": 553,
+      "sha256": "3b3bbc00ffa8c37014c92757ca2682dea62e9d5ebd9ec072e36dd50b295cb537"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_eca1a059a9449ca6_153a431e4c5ed945_jpeg_preview_compositions_filmstrip.html_3440x1440_240x100_1792029510862_3.00.jpg",
+      "bytes": 621,
+      "sha256": "dacb000968657bed6f7f4398d3ead9c4ae18a42657ca76f127bbe0dbf640d9e2"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/.thumbnails/v5_v3_f9b86074b7a14ea0_de87f7fd180b193b_jpeg_preview_compositions_closing.html_3440x1440_240x100_1792072306090_3.00.jpg",
+      "bytes": 3148,
+      "sha256": "956df00b8f575ac7cf012d689b25cd3c2f88b2d123a760ae494c9ce79acf593c"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/assets/canvas.mov",
+      "bytes": 47682125,
+      "sha256": "c63fbff388ed19f410166a87fa5094689828e05d6ea71e4ca0e4783ed55d41a1"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/assets/filmstrip.mov",
+      "bytes": 87794196,
+      "sha256": "27362f10afe117922072664baa4c8c25efbe54153018da6d8fad4084df73268a"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/assets/intro.mp4",
+      "bytes": 499758,
+      "sha256": "9d44deb81f05d88ec223ffb10baa7e1ac1bbbdbae767d3e64e9e60a00dc82eb4"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/assets/outro.mp4",
+      "bytes": 486119,
+      "sha256": "068d4d37a183b8d0c2eebd281744e5fede690e328f0c0c3164b45e672166fa4e"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/after-take-01.json",
+      "bytes": 3709,
+      "sha256": "86aba905beba0f2e56bbd1def20b6748a781ec150cb3342b244feef5f8be2540"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01-events.json",
+      "bytes": 545,
+      "sha256": "c30b3ef62bdb24f0850bcdae58b307fdcf1d8972d2aeb54f45af7416325dd39c"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01.log",
+      "bytes": 688,
+      "sha256": "d2b7c5406c1705ea8fe802d80188e482f1dcfe5db75cdcac71e957fbb6cce303"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01.mov",
+      "bytes": 87794196,
+      "sha256": "27362f10afe117922072664baa4c8c25efbe54153018da6d8fad4084df73268a"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01.reply.json",
+      "bytes": 148,
+      "sha256": "c4a028d5f90e6ca406dc0ddbc8934a9bd438337d74e60f91d15f8f8f747684a7"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-01.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02-events.json",
+      "bytes": 596,
+      "sha256": "0eeb6908bafb85e7d0db5232818eefaf2ea3e741d17423feda8e9635a9d55a5d"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02.log",
+      "bytes": 688,
+      "sha256": "e988f6176bf3ef21a193891fa5438e25bf2c840763a1b08ef2871cecda58d7b3"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02.mov",
+      "bytes": 37711730,
+      "sha256": "b9284cd91fd4cfdb64141ff5c3be984303183d88df43ab394908a7b6eb888fbe"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02.reply.json",
+      "bytes": 148,
+      "sha256": "2f3b37b3310f99f6fb1a799f61eabdd8be809edb2d50c487a2859e1cc94e1af1"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-02.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03-events.json",
+      "bytes": 211,
+      "sha256": "f73759523e323af41591a5cd141ac3dd1f2207d81a1415b635f92b83a5da67a9"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03.log",
+      "bytes": 688,
+      "sha256": "5b521116a70d6ebaed58afa5def980c0602bbb7bbcaf9f9e814726e902667255"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03.mov",
+      "bytes": 9664455,
+      "sha256": "92b6dbcd673ac316a13200415e489dcf15a871ab8b04415278d9ce644d9712b0"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03.reply.json",
+      "bytes": 148,
+      "sha256": "91000ab1c806544789905331b9d02e74840a106f6b2e26872509281918764818"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-03.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04-events.json",
+      "bytes": 458,
+      "sha256": "4a54b3b968f08fc2bca11583a57e87c44ed5f283ec0af4f4a9de7f6468306e8e"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04.log",
+      "bytes": 688,
+      "sha256": "a05629e1869896657dd9c4b774115790769bda90a69463e367fa54336aa917e1"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04.mov",
+      "bytes": 9972214,
+      "sha256": "7357411da55e82c468ab09e210d81c836b7a5a575255fc6cf75b11d71b704698"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04.reply.json",
+      "bytes": 148,
+      "sha256": "d7cadf5765d03945c3dfbd408b9444f6a57a131c9bcb2b2d9785e718da9fae45"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-04.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05-events.json",
+      "bytes": 165,
+      "sha256": "965616a0289573701bd247dfff24e643d89bbdf77de7317a74a920ce2e6f9c01"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05.log",
+      "bytes": 688,
+      "sha256": "05205dea20152a639c3bc9722d38ed77cc53ee910f1f290ee3a26332629c7190"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05.mov",
+      "bytes": 49697202,
+      "sha256": "80bddbde2e00abc18fe7ae289ca30b90fe327b26ec7980ae77c9df80fa28f1d8"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05.reply.json",
+      "bytes": 148,
+      "sha256": "babd4f4c42e595c2226c62ee8a7ce353c6cdd9a614af59425c5b398e0c59a417"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-05.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06-events.json",
+      "bytes": 164,
+      "sha256": "de6aa2b448356cdd12aeb95c3ac3247182c1fffd651052f6ae25e2a4de4d72b6"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06.finished",
+      "bytes": 9,
+      "sha256": "161069badc0cc23058b13d7c068e45205f4333aa15fd78db9d68f5c9f1ae8983"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06.log",
+      "bytes": 688,
+      "sha256": "e47af9271854afbe3147f88a529d93e06dffe480486e3408527fe67a4218c22b"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06.mov",
+      "bytes": 47682125,
+      "sha256": "c63fbff388ed19f410166a87fa5094689828e05d6ea71e4ca0e4783ed55d41a1"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06.reply.json",
+      "bytes": 148,
+      "sha256": "bc417f3420a0e8ae89ebfec2d827c06e32c8bd560856153449f4cfaeb6d6d5da"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/captures/take-06.stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/REVIEW.md",
+      "bytes": 942,
+      "sha256": "de0e1b5e39b72e6eafebd4726c92170ccf19ee585fbe90f414047b86a91d03bc"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/check-demo-first.txt",
+      "bytes": 2593,
+      "sha256": "a8b712f75b3b4a13161c489cd2491f89262eafeeba88d84230a5e495f931d458"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/check.json",
+      "bytes": 3454,
+      "sha256": "588786796b665e21d5e222b3cb82961cfce8095c46b428ff84bb6b384d013672"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/contact-sheet.jpg",
+      "bytes": 134329,
+      "sha256": "b9b4c5469bf37b1bae0ef32d91d8f08befcc16d03e69b3f3f3cf6151754b6904"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-00-at-1.5s.png",
+      "bytes": 4369397,
+      "sha256": "2fec8833fbb7e4e9a6dea6ee083d048ec502504c7cd71f3b7427ccbd71e45013"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-01-at-10s.png",
+      "bytes": 2472450,
+      "sha256": "732db141aac26b094aefda03da01b29dcc423c8bcbd4e7d4a5ef850c64124624"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-02-at-14s.png",
+      "bytes": 725616,
+      "sha256": "01401e86c5e460a00d065788ccbe92070395fac7b3838ae369b873d0048ab6ef"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-03-at-17s.png",
+      "bytes": 779790,
+      "sha256": "7553651db5560c36c50f37950692effea68f9b0bbeec4a1ccec322e711096d82"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-04-at-20s.png",
+      "bytes": 2821305,
+      "sha256": "09ed2f6ac899c83aa90e272ecd624b2bdd143462f27c3ae47ea6040166bc13d7"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/demo-first/frame-05-at-22.5s.png",
+      "bytes": 2731795,
+      "sha256": "245531ebc8581d784eb8897eeb7d6964d94244acdedfe53e1031253c52940fc8"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/contact-sheet.jpg",
+      "bytes": 163135,
+      "sha256": "01617117a28c666984666eb10489d83b3216d545c5cde9497dafb40aa1815011"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-00-at-1.25s.png",
+      "bytes": 2727862,
+      "sha256": "43e5204d5ee4f44e48b6eb32ace2624d89e63c6572d67f5c29d9f0508bb5f7b0"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-01-at-6.75s.png",
+      "bytes": 4774515,
+      "sha256": "768c860586fbb775e1d84fd1251b954c5aa3c394d2f209a5fc3aeab251337a14"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-02-at-13.5s.png",
+      "bytes": 2545941,
+      "sha256": "9c80099c97dbf3b79b8eb8a92dbee50f2b0aa63425241efbc110228f13757afc"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-03-at-17.5s.png",
+      "bytes": 763434,
+      "sha256": "e05b255c3a43097607df122b7dd594f1428ebfff34bf4ade1e01bdf0bbaee927"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-04-at-19.5s.png",
+      "bytes": 761749,
+      "sha256": "c5eed8072e3cb9be76dbafab246447cfa1fe1b24b62d9f91eded439f9e172c44"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-05-at-23.5s.png",
+      "bytes": 3220324,
+      "sha256": "9f84ececcad1eef594cf0900d52b9b004f9d7a5ae368631f5a55b7f5f3d557c8"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/final/frame-06-at-25.75s.png",
+      "bytes": 2737852,
+      "sha256": "1b4b69bd0f03438cca29f7527dd099d0156b80390de7a153c516bdb7ce411741"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/take-01-contact.png",
+      "bytes": 3135301,
+      "sha256": "e21bdb028dc07e0c80cf75e78112740029ce654d9292962f5b563ebb5400fcc8"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/take-02-contact.png",
+      "bytes": 1704833,
+      "sha256": "ccd1e954fc44b4929ce3d09853986225cd3772eb449847359ca4bda313635160"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/take-04-contact.png",
+      "bytes": 572968,
+      "sha256": "cddecb555a36c9fcc6d04798aa908a1773fdcb8160fb362f0148db7b59dabb1b"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/take-05-contact.jpg",
+      "bytes": 112753,
+      "sha256": "05dcaafe2a59b46fa83a5b211521190102f40053ff3521b2c4851b4de6bb3bcd"
+    },
+    {
+      "path": "studies/filmstrip-demo-reel-2026-10-14/qc/take-06-contact.jpg",
+      "bytes": 114529,
+      "sha256": "7148b44f1384343e9b37286f181e17fa075326eaa7e5c13500ae1c14c9bc4e05"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.hyperframes/hf-ids-stamped.json",
+      "bytes": 213,
+      "sha256": "d36d8f08d52877700a3239c9d37a7ae0e4eaade8a4e85d5530fc12f31f52e203"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.hyperframes/history-id",
+      "bytes": 37,
+      "sha256": "1c77a0f5a1b3172588aaf95a61f0212dc285920ecbb2e5b2e6d7d76aa0a44eca"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.hyperframes/preview/837276a952b13cba4adb2a31b002ccac.html",
+      "bytes": 182177,
+      "sha256": "a8f03b91ae8510a10a108e85763203e9a998827c337ee897ceaefc35b90d9b00"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.hyperframes/render-outputs.json",
+      "bytes": 70,
+      "sha256": "66854702cd57cafa28571e5c4941fa88c77ed8d1ebc79ef64b471b8c477b8d86"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.hyperframes/video-state.json",
+      "bytes": 18670,
+      "sha256": "9de1e3dcfe50df28223792d2cbe20356cabb2e37031b2e3e80718b73cc0b2c02"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_b52d44711e07b54a_9c7db2b38e2b4828_jpeg_source_index.html_3440x1440_3440x1440_1792369499798_0.00.jpg",
+      "bytes": 549792,
+      "sha256": "a8c1863d5b0a2c97ecbac4fe981a929f0c920d6d41df39512c10b5824fd46066"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_3e7e732c8955645e_70739fa2fda946b7_jpeg_preview_compositions_resize.html_3440x1440_240x100_1792369499795_3.00.jpg",
+      "bytes": 725,
+      "sha256": "49faee9ef0fe97ca3572c6447ab69ee41f2f0dd20749f865c2fc8c8060978f1d"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_6d90ad3b18b5dbc4_1458d7c30948dea8_jpeg_preview_compositions_expand.html_3440x1440_240x100_1792369499792_3.00.jpg",
+      "bytes": 842,
+      "sha256": "53e12a107e6f8eb2ef44605484050953785c70359d2a2c04a433ca21d48fd745"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_b52d44711e07b54a_9c7db2b38e2b4828_jpeg_preview_index.html_3440x1440_240x100_1792369499798_3.00.jpg",
+      "bytes": 6733,
+      "sha256": "bb957f26590a31a98b08da60780abeedc34925a55b455830a77d9c2891e73e6e"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_d87897aa7098bdd5_854f61bfc1d8020f_jpeg_preview_compositions_keep.html_3440x1440_240x100_1792369499793_3.00.jpg",
+      "bytes": 800,
+      "sha256": "b57fa0b3d39f1a407506677628c65c7b86045d58f3decfe22a8bb79703456ec3"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_f08064029a2071b8_2c30c3e4c83dead7_jpeg_preview_renders_work-4cbcce95-61c2-4d79-9157-086862e33b00-C7M6eJ_compiled_compositions_keep.html_3440x1440_240x100_1792369524309_3.00.jpg",
+      "bytes": 800,
+      "sha256": "b57fa0b3d39f1a407506677628c65c7b86045d58f3decfe22a8bb79703456ec3"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_f08064029a2071b8_2da730e11227fc1b_jpeg_preview_renders_work-4cbcce95-61c2-4d79-9157-086862e33b00-C7M6eJ_compiled_compositions_expand.html_3440x1440_240x100_1792369524309_3.00.jpg",
+      "bytes": 842,
+      "sha256": "53e12a107e6f8eb2ef44605484050953785c70359d2a2c04a433ca21d48fd745"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_f08064029a2071b8_3b057131e3239840_jpeg_preview_renders_work-4cbcce95-61c2-4d79-9157-086862e33b00-C7M6eJ_compiled_index.html_3440x1440_240x100_1792369524308_3.00.jpg",
+      "bytes": 6730,
+      "sha256": "20d722931cdd00e48045a7f75fb5c0df8f5604524462a7aea3569cec6bdd0f91"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/.thumbnails/v5_v3_f08064029a2071b8_4c605638511afaab_jpeg_preview_renders_work-4cbcce95-61c2-4d79-9157-086862e33b00-C7M6eJ_compiled_compositions_resize.html_3440x1440_240x100_1792369524309_3.00.jpg",
+      "bytes": 725,
+      "sha256": "49faee9ef0fe97ca3572c6447ab69ee41f2f0dd20749f865c2fc8c8060978f1d"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/assets/screen-recording.mp4",
+      "bytes": 111219006,
+      "sha256": "1241ee3d13584e840cc810be1841df50fec765025b658e6ee674b34c6075a739"
+    },
+    {
+      "path": "studies/picture-in-picture-demo-2026-10-18/renders/Lattices-picture-in-picture-30s.mp4",
+      "bytes": 11842278,
+      "sha256": "1c2fafed282c026fadb21959c9fc67730a39a1762c047a4185b702f6f0a547cf"
+    }
+  ]
+}

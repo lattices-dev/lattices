@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aperture Lens Study</title>
+<meta name="description" content="Opus visual study: the filmstrip's fixed centre aperture stays put while the previews inside it zoom out to a miniature workspace, then hand off to an illustrative canvas. Simulated concept.">
+<style>
+:root{
+  --bg:#0b0d0f; --panel:#121518; --line:rgba(255,255,255,.08); --text:#e9ecee; --dim:rgba(233,236,238,.62); --faint:rgba(233,236,238,.38);
+  --ink:#f2f2f2; --coral:#ef6a47; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif}
+main{max-width:1320px;margin:0 auto;padding:20px 16px 64px}
+a{color:var(--text);text-decoration:underline;text-decoration-color:rgba(255,255,255,.25);text-underline-offset:2px}
+a:hover{text-decoration-color:var(--text)}
+.back{font-size:12px;color:var(--faint);margin:0 0 10px}
+h1{font-size:18px;margin:0 0 4px;font-weight:600}
+.sub{color:var(--dim);margin:0 0 14px;max-width:880px}
+.sim{display:inline-block;font:600 10px var(--mono);letter-spacing:.08em;color:var(--dim);border:1px solid rgba(255,255,255,.22);border-radius:4px;padding:1px 6px;margin-left:8px;vertical-align:2px}
+button{font:12px -apple-system,system-ui,sans-serif;color:var(--text);background:#1a1e22;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:rgba(255,255,255,.22)}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible,#stage:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:8px}
+.row .lab{color:var(--faint);font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-right:2px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+label{color:var(--dim);font-size:12px;display:inline-flex;gap:6px;align-items:center}
+#scrub{width:min(320px,60vw);accent-color:var(--ink)}
+.readout{font:11px var(--mono);color:var(--faint);min-width:150px}
+.status{display:flex;justify-content:space-between;gap:12px;font:11px var(--mono);color:var(--faint);margin:6px 2px 0}
+
+/* ——— the stable desktop ——— */
+#stage{position:relative;width:100%;aspect-ratio:16/10;min-height:480px;border-radius:10px;overflow:hidden;outline:none;border:1px solid var(--line);
+  background:radial-gradient(120% 90% at 22% 8%,#2b3540 0%,#161c22 46%,#0d1013 100%);user-select:none;-webkit-user-select:none}
+.menubar{position:absolute;left:0;right:0;top:0;height:22px;background:rgba(10,12,14,.55);display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:rgba(255,255,255,.7);z-index:1}
+.menubar .r{margin-left:auto;font:10px var(--mono);color:rgba(255,255,255,.45)}
+.desk{position:absolute;inset:22px 0 0 0;transition:opacity .09s linear}
+.desk.swap{opacity:.35;transition:none}
+.dw{position:absolute;border-radius:9px;background:#1d2226;border:1px solid rgba(255,255,255,.09);box-shadow:0 14px 30px rgba(0,0,0,.45);overflow:hidden}
+.dw .bar{height:22px;display:flex;align-items:center;gap:6px;padding:0 9px;border-bottom:1px solid rgba(255,255,255,.06);font-size:10.5px;color:rgba(255,255,255,.55);white-space:nowrap}
+.dw .bar i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.16);flex:none}
+.dw .body{position:absolute;inset:22px 0 0 0;background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(255,255,255,.045) 9px 13px,transparent 13px 18px)}
+.desk-empty{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);font:12px var(--mono);color:rgba(255,255,255,.2)}
+
+/* subtle backdrop: dim only, no blur (the native layer is vector) */
+.backdrop{position:absolute;inset:0;z-index:3;pointer-events:none;background:rgba(4,7,10,.5)}
+
+/* ——— overlay geometry: every rect below is set from JS each frame ——— */
+.abs{position:absolute;left:0;top:0}
+.tray{z-index:4;border-radius:16px;
+  background:linear-gradient(180deg,rgba(24,28,31,.98),rgba(11,13,16,.98));box-shadow:0 6px 28px rgba(0,0,0,.42),inset 0 .75px 0 rgba(255,255,255,.12)}
+.vp{z-index:5;overflow:hidden;border-radius:10px;background:rgba(0,0,0,.22);box-shadow:inset 0 0 0 .5px rgba(0,0,0,.4)}
+.vp.mask{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%)}
+#content{position:absolute;inset:0;transition:opacity .12s linear}
+#content.out{opacity:0}
+
+.card{position:absolute;left:0;top:0;transform-origin:0 0;border-radius:8px;background:#232a31;border:.75px solid rgba(255,255,255,.09);overflow:hidden;cursor:pointer;will-change:transform}
+.card.empty{background:#1b2025}
+.card .w{position:absolute;border-radius:4px;background:#323b44;border:.75px solid rgba(255,255,255,.10);overflow:hidden}
+.card .w .t{height:13px;background:rgba(255,255,255,.05);border-bottom:.75px solid rgba(255,255,255,.06);font:8.5px/13px var(--mono);color:rgba(255,255,255,.62);padding:0 5px;white-space:nowrap;overflow:hidden;opacity:var(--detail,1)}
+.card .e{position:absolute;inset:0;display:grid;place-items:center;font:11px var(--mono);color:rgba(255,255,255,.22);opacity:var(--detail,1)}
+.blitz .card .w{opacity:.0}
+.bookend{position:absolute;left:0;top:0;border-radius:8px;background:rgba(255,255,255,.025);border:.75px solid rgba(255,255,255,.06);display:flex;flex-direction:column;justify-content:center;align-items:flex-end;padding:0 18px;gap:2px;pointer-events:none;color:var(--faint);font:10px var(--mono)}
+.bookend.lead{align-items:flex-end}
+.bookend.trail{align-items:flex-start}
+.bookend b{font:600 12px -apple-system,system-ui,sans-serif;color:var(--dim);display:flex;gap:6px;align-items:center}
+.bookend big{font:300 26px/1 -apple-system,system-ui,sans-serif;color:var(--dim)}
+
+.cap{position:absolute;left:0;top:0;height:18px;display:flex;align-items:center;gap:8px;font:12px var(--mono);color:var(--faint);white-space:nowrap;overflow:hidden;pointer-events:none}
+.cap b{font-weight:500;color:var(--dim)}
+.cap .n{margin-left:auto;letter-spacing:1px;font-size:10px}
+.cap.cur b,.cap.cursor b{color:var(--ink)}
+.num{position:absolute;left:0;top:0;font:600 8px/1 var(--mono);color:rgba(255,255,255,.6);pointer-events:none}
+
+.ring{z-index:6;pointer-events:none;border:1.5px solid var(--ink);border-radius:10px;box-shadow:0 0 0 .5px rgba(0,0,0,.65)}
+.lens{z-index:6;pointer-events:none;border:.75px solid rgba(255,255,255,.16);border-radius:11px;overflow:hidden}
+.lens.live{pointer-events:auto;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#mini{position:absolute;inset:0;pointer-events:none}
+#mini i{position:absolute;border-radius:2px;background:rgba(255,255,255,.16)}
+#mini i.e{background:rgba(255,255,255,.05)}
+#mini i.cursor{box-shadow:0 0 0 1px var(--ink)}
+#mini i.cur::after{content:"";position:absolute;right:2px;top:2px;width:4px;height:4px;border-radius:50%;background:var(--coral)}
+#mini .vpi{position:absolute;border:1px solid rgba(255,255,255,.7);border-radius:3px;background:rgba(255,255,255,.07)}
+.vp.pan{cursor:grab;background:#0d1013} .vp.panning{cursor:grabbing}
+.card,.card .w{transition:background-color .25s,border-color .25s}
+.plane{position:absolute;left:0;top:0;pointer-events:none;background-color:#101316;border-radius:6px;box-shadow:0 0 0 .75px rgba(255,255,255,.12);
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)}
+.zones .card{background:transparent;border-color:rgba(255,255,255,.075)}
+.zones .card.empty{background:transparent}
+.cap.onplane{height:18px;padding:0 6px;border-radius:4px;background:rgba(16,19,22,.82);width:auto!important;max-width:60%;font-size:11px}
+.cap.onplane .n{display:none}
+.zones .card .w{background:rgba(150,175,200,.07);border-color:rgba(255,255,255,.22)}
+.zones .card .w .t{background:none;border-bottom-color:rgba(255,255,255,.08)}
+#guides{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:visible}
+.here{z-index:7;width:6px;height:6px;border-radius:50%;background:var(--coral);box-shadow:0 0 0 1.5px rgba(10,12,14,.8);pointer-events:none}
+.rail{z-index:6;display:flex;gap:4px;pointer-events:none}
+.rail i{width:7px;height:7px;border-radius:2px;background:rgba(255,255,255,.16)}
+.rail i.cursor{background:rgba(255,255,255,.55)}
+.rail i.cur{background:var(--coral)}
+.wing{z-index:6;pointer-events:none;display:flex;flex-direction:column;justify-content:center;gap:3px;font:10.5px var(--mono);color:var(--faint);white-space:nowrap}
+.wing.l{align-items:flex-end;text-align:right}
+.wing big{font:300 30px/1 -apple-system,system-ui,sans-serif;color:var(--dim)}
+.wing b{font:600 12px -apple-system,system-ui,sans-serif;color:var(--dim);display:flex;gap:6px;align-items:center}
+.wing kbd{font:10px var(--mono);border:1px solid rgba(255,255,255,.14);border-radius:3px;padding:0 4px;color:var(--dim)}
+.mark{display:grid;grid-template-columns:repeat(3,3px);gap:1.5px}
+.mark i{width:3px;height:3px;background:rgba(233,236,238,.7);border-radius:.5px}
+.mark i:nth-child(5){background:var(--coral)}
+.head{z-index:6;pointer-events:none;display:flex;align-items:center;gap:10px;font:12px -apple-system,system-ui,sans-serif;color:var(--dim);white-space:nowrap}
+.head{background:rgba(14,16,19,.88);border:.75px solid rgba(255,255,255,.08);border-radius:8px;padding:0 10px;width:auto!important;max-width:calc(100% - 28px);overflow:hidden}
+.head b{color:var(--text);font-weight:600}
+.head .pill{font:600 9.5px var(--mono);letter-spacing:.08em;color:var(--faint);border:1px solid rgba(255,255,255,.16);border-radius:4px;padding:0 5px}
+.counter{z-index:7;pointer-events:none;display:grid;place-items:center;font:300 64px/1 var(--mono);color:var(--ink);opacity:0;transition:opacity .08s linear}
+.blitz .counter{opacity:.92}
+
+/* ——— notes ——— */
+.cols{display:grid;grid-template-columns:1.2fr 1fr;gap:18px;margin-top:18px}
+@media (max-width:860px){.cols{grid-template-columns:1fr}}
+.card-n{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:var(--dim)}
+.card-n h2{color:var(--text);font-size:14px;margin:0 0 6px;font-weight:600}
+.card-n h3{color:var(--text);font-size:12px;margin:12px 0 4px;font-weight:600}
+.card-n p{margin:0 0 8px} .card-n ul{margin:4px 0 0;padding-left:16px}
+.card-n b{color:var(--text);font-weight:600}
+.card-n kbd{font:11px var(--mono);border:1px solid rgba(255,255,255,.16);border-radius:3px;padding:0 4px}
+
+/* Cut glass: Codex material refinement of Opus's aperture study.
+   Only the tray and minimap sample the background; no per-card blur. */
+body{--dim:#bdc8cd;--faint:#9daeb7;color-scheme:dark;scrollbar-color:#50616a #10171c}
+::selection{background:#ef6a4744;color:#fff5ea}
+.materials{margin:14px 0 10px;gap:6px}
+.materials button[aria-pressed="true"]{background:#efe8dc;color:#172128;border-color:#efe8dc}
+.material-note{color:var(--dim);font-size:12px;margin-left:8px}
+#stage[data-material="glass"]{
+  --ink:#fff1dc;
+  background:radial-gradient(ellipse at 92% 88%,#865444 0,transparent 53%),
+    radial-gradient(ellipse at 8% 5%,#356779 0,transparent 58%),#14252d;
+}
+#stage[data-material="glass"] .backdrop{background:rgba(5,17,23,.38)}
+#stage[data-material="glass"] .dw{background:rgba(14,33,42,.76);border-color:#a9ced329}
+#stage[data-material="glass"] .dw .bar{background:#b5d9df0c;color:#c0d4d9}
+#stage[data-material="glass"] .tray{
+  background:linear-gradient(125deg,rgba(197,228,228,.20),rgba(25,51,62,.62) 32%,rgba(15,31,40,.76) 68%,rgba(181,119,88,.24));
+  backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:0 18px 38px #030b1273,inset 0 1px 0 #e7f8ed80,inset 0 -1px 0 #efae7a38,inset 1px 0 0 #d2f5ff38,inset -1px 0 0 #e9cbb333;
+}
+#stage[data-material="glass"] .tray::before{content:"";position:absolute;inset:5px;border:1px solid #d6e5dc1c;border-radius:inherit;pointer-events:none}
+#stage[data-material="glass"] .vp{background:rgba(7,22,31,.20);box-shadow:none}
+#stage[data-material="glass"] .card{background:linear-gradient(145deg,#40637180,#132c3e99);border-color:#accad34d}
+#stage[data-material="glass"] .card.empty{background:#21414c26;border-style:dashed;border-color:#a4c3cc4d}
+#stage[data-material="glass"] .card .w{background:#7299a62e;border-color:#b3d5dc70;border-radius:3px}
+#stage[data-material="glass"] .card .w[data-kind="edit"]{background:#bdb6a12b;border-color:#f3dab36b}
+#stage[data-material="glass"] .card .w[data-kind="notes"]{background:#c3886226;border-color:#e6b18b66}
+#stage[data-material="glass"] .card .w .t{background:#d6eef00a;color:#e1eeed;border-bottom-color:#cfebec24;font-family:-apple-system,system-ui,sans-serif}
+#stage[data-material="glass"] .card .e{color:#bacbd1}
+#stage[data-material="glass"] .ring{border-color:#fff1dc;box-shadow:0 1px 0 #090e17,inset 0 0 0 1px #fff4dc24}
+#stage[data-material="glass"] .ring::before,#stage[data-material="glass"] .ring::after{content:"";position:absolute;top:-3px;width:5px;height:5px;background:#fff1dc}
+#stage[data-material="glass"] .ring::before{left:-3px}#stage[data-material="glass"] .ring::after{right:-3px}
+#stage[data-material="glass"] .lens{box-shadow:inset 0 1px 0 #ebf8e847,inset 0 -1px 0 #f3ad7540}
+#stage[data-material="glass"] .lens.live{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 8px 24px #03121a66,inset 0 1px 0 #e5f1dc66}
+#stage[data-material="glass"] #mini i{background:#b5d9d250;border-radius:1px}
+#stage[data-material="glass"] #mini i.e{background:#b5d9d212;border:1px dashed #b5d9d240}
+#stage[data-material="glass"] #mini .vpi{border-color:#fff1dc;background:#f8e7cc0d}
+#stage[data-material="glass"] #guidePath{stroke:#fff1dc;stroke-width:1}
+#stage[data-material="glass"] .cap{color:#a9bec8;font-family:-apple-system,system-ui,sans-serif}
+#stage[data-material="glass"] .cap b{font-family:var(--mono);color:#d8e5e7}
+#stage[data-material="glass"] .cap.cursor b{color:#fff1dc}
+#stage[data-material="glass"] .bookend{background:#b6d5ce08;border-color:#bdd7d42b}
+#stage[data-material="glass"] .mark{gap:2px}
+#stage[data-material="glass"] .mark i{background:#e3efdb;border-radius:0}
+#stage[data-material="glass"] .mark i:nth-child(5){background:var(--coral)}
+#stage[data-material="glass"] .wing big{color:#fff1dc;font-variant-numeric:tabular-nums;font-weight:400}
+#stage[data-material="glass"] .rail i{height:4px;border-radius:0;background:#c2dfde42}
+#stage[data-material="glass"] .rail i.cursor{background:#fff1dc}
+#stage[data-material="glass"] .rail i.cur{background:var(--coral);height:7px}
+#stage[data-material="glass"][data-phase="canvas"] .tray{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(10,29,40,.82)}
+#stage[data-material="glass"] .vp.pan{background:transparent}
+#stage[data-material="glass"] .plane{background-color:#102b37;background-image:linear-gradient(#c0ddd90a 1px,transparent 1px),linear-gradient(90deg,#c0ddd90a 1px,transparent 1px);box-shadow:none}
+#stage[data-material="glass"] .zones .card{background:transparent;border-color:#c8e0d932}
+#stage[data-material="glass"] .zones .card .w{background:#91bcc213;border-color:#b0cfd680}
+#stage[data-material="glass"] .cap.onplane{background:#102b37e8;color:#c5d7db}
+#stage[data-material="glass"] .head{background:#0d2735e6;border-color:#cae4df33;border-radius:5px;color:#c5d7db}
+#stage[data-material="glass"] .head b{color:#fff1dc}
+@media(prefers-reduced-transparency:reduce){#stage[data-material="glass"] .tray,#stage[data-material="glass"] .lens.live{backdrop-filter:none;-webkit-backdrop-filter:none;background:#18313d!important}}
+@media(max-width:700px){.material-note{flex-basis:100%;margin:2px 0}.head>span:not(.pill){display:none}}
+
+/* Lattice glass: Opus material pass. Clear cobalt glass, lit hairline edges, a quiet lattice
+   on the tray and canvas, white corner brackets for the selection, coral only for "you are here".
+   Blur stays on the tray and minimap; previews and window zones are flat translucent fills. */
+#stage[data-material="lattice"]{
+  --ink:#ffffff; --lg-line:#b9ccff; --lg-edge:rgba(214,226,255,.34);
+  background:radial-gradient(70% 60% at 86% 96%,#6b2f2a 0,transparent 62%),
+    radial-gradient(80% 70% at 6% 0%,#24438f 0,transparent 64%),
+    linear-gradient(160deg,#0f1a3a,#0a1024 60%,#120f22);
+}
+#stage[data-material="lattice"] .menubar{background:rgba(8,12,28,.5)}
+#stage[data-material="lattice"] .backdrop{background:rgba(5,8,22,.42)}
+#stage[data-material="lattice"] .dw{background:rgba(20,30,62,.78);border-color:rgba(185,204,255,.14)}
+#stage[data-material="lattice"] .dw .bar{background:rgba(185,204,255,.05);color:#c3cdea;border-bottom-color:rgba(185,204,255,.1)}
+#stage[data-material="lattice"] .dw .body{background:repeating-linear-gradient(180deg,transparent 0 9px,rgba(185,204,255,.05) 9px 13px,transparent 13px 18px)}
+#stage[data-material="lattice"] .tray{
+  background:linear-gradient(180deg,rgba(150,176,255,.16),rgba(26,38,82,.42) 22%,rgba(12,18,44,.62));
+  backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);
+  box-shadow:0 0 0 .75px var(--lg-edge),0 24px 48px rgba(2,4,16,.55),0 2px 6px rgba(2,4,16,.4),
+    inset 0 1px 0 rgba(255,255,255,.42),inset 0 -1px 0 rgba(239,106,71,.18);
+}
+#stage[data-material="lattice"] .tray::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background-image:linear-gradient(rgba(185,204,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(185,204,255,.07) 1px,transparent 1px);
+  background-size:24px 24px;background-position:center center;
+  -webkit-mask-image:radial-gradient(ellipse 30% 120% at 50% 50%,transparent 62%,#000 78%,rgba(0,0,0,.25) 100%);
+          mask-image:radial-gradient(ellipse 30% 120% at 50% 50%,transparent 62%,#000 78%,rgba(0,0,0,.25) 100%);
+  transition:opacity .12s linear}
+#stage[data-material="lattice"][data-phase="canvas"] .tray{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(10,15,36,.86)}
+#stage[data-material="lattice"][data-phase="canvas"] .tray::after{opacity:0}
+#stage[data-material="lattice"] .vp{background:rgba(6,10,28,.18);box-shadow:none}
+#stage[data-material="lattice"] .card{background:linear-gradient(180deg,rgba(120,148,230,.30),rgba(30,44,96,.55) 40%,rgba(16,24,58,.7));
+  border-color:rgba(200,214,255,.26);box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+#stage[data-material="lattice"] .card.empty{background:rgba(40,56,110,.16);border-style:dashed;border-color:rgba(185,204,255,.24);box-shadow:none}
+#stage[data-material="lattice"] .card .w{background:rgba(170,192,255,.13);border-color:rgba(210,222,255,.46);border-radius:2px;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+#stage[data-material="lattice"] .card .w .t{background:rgba(220,230,255,.07);color:#eef2ff;border-bottom-color:rgba(210,222,255,.2);font-family:-apple-system,system-ui,sans-serif;font-weight:500}
+#stage[data-material="lattice"] .card .e{color:rgba(200,214,255,.4)}
+#stage[data-material="lattice"] .num{color:rgba(238,242,255,.82)}
+#stage[data-material="lattice"] .ring{border-color:#fff;box-shadow:0 0 0 .75px rgba(4,8,24,.85),0 0 0 4px rgba(255,255,255,.06)}
+#stage[data-material="lattice"] .ring::before{content:"";position:absolute;inset:-6px;pointer-events:none;--b:7px;--t:1.5px;
+  background:linear-gradient(#fff,#fff) 0 0/var(--b) var(--t),linear-gradient(#fff,#fff) 0 0/var(--t) var(--b),
+    linear-gradient(#fff,#fff) 100% 0/var(--b) var(--t),linear-gradient(#fff,#fff) 100% 0/var(--t) var(--b),
+    linear-gradient(#fff,#fff) 0 100%/var(--b) var(--t),linear-gradient(#fff,#fff) 0 100%/var(--t) var(--b),
+    linear-gradient(#fff,#fff) 100% 100%/var(--b) var(--t),linear-gradient(#fff,#fff) 100% 100%/var(--t) var(--b);
+  background-repeat:no-repeat}
+#stage[data-material="lattice"] .lens{box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+#stage[data-material="lattice"] .lens.live{backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);
+  box-shadow:0 0 0 .75px var(--lg-edge),0 14px 32px rgba(2,4,16,.6),inset 0 1px 0 rgba(255,255,255,.4)}
+#stage[data-material="lattice"] #mini i{background:rgba(170,192,255,.22);border:.75px solid rgba(210,222,255,.4);border-radius:1px}
+#stage[data-material="lattice"] #mini i.e{background:transparent;border:.75px dashed rgba(185,204,255,.3)}
+#stage[data-material="lattice"] #mini i.cursor{box-shadow:none;border:1px solid #fff;background:rgba(255,255,255,.22)}
+#stage[data-material="lattice"] #mini i.cur::after{border-radius:0;width:4px;height:4px}
+#stage[data-material="lattice"] #mini .vpi{border-color:#fff;border-radius:1px;background:rgba(255,255,255,.06);box-shadow:0 0 0 .75px rgba(4,8,24,.7)}
+#stage[data-material="lattice"] #guidePath{stroke:rgba(214,226,255,.7);stroke-width:1}
+#stage[data-material="lattice"] .here{border-radius:1px;box-shadow:0 0 0 1.5px rgba(8,12,30,.9)}
+#stage[data-material="lattice"] .cap{color:#9fb0d8;font-family:-apple-system,system-ui,sans-serif}
+#stage[data-material="lattice"] .cap b{font-family:var(--mono);color:#d4ddf5}
+#stage[data-material="lattice"] .cap.cursor b{color:#fff}
+#stage[data-material="lattice"] .bookend{background:rgba(185,204,255,.04);border-color:rgba(185,204,255,.18)}
+#stage[data-material="lattice"] .mark{gap:1.5px}
+#stage[data-material="lattice"] .mark i{background:#f2f2f2;border-radius:0}
+#stage[data-material="lattice"] .mark i:nth-child(5){background:var(--coral)}
+#stage[data-material="lattice"] .wing{color:#9fb0d8}
+#stage[data-material="lattice"] .wing big{color:#fff;font-weight:200;font-variant-numeric:tabular-nums}
+#stage[data-material="lattice"] .wing b{color:#fff}
+#stage[data-material="lattice"] .wing kbd{border-color:rgba(185,204,255,.3);color:#d4ddf5;background:rgba(185,204,255,.06)}
+#stage[data-material="lattice"] .rail{gap:3px}
+#stage[data-material="lattice"] .rail i{width:8px;height:3px;border-radius:0;background:rgba(185,204,255,.28)}
+#stage[data-material="lattice"] .rail i.cursor{background:#fff}
+#stage[data-material="lattice"] .rail i.cur{background:var(--coral);height:6px;margin-top:-1.5px}
+#stage[data-material="lattice"] .vp.pan{background:transparent}
+#stage[data-material="lattice"] .plane{background-color:#0d1534;box-shadow:0 0 0 .75px rgba(185,204,255,.22);
+  background-image:radial-gradient(circle,rgba(185,204,255,.2) .8px,transparent 1.3px)}
+#stage[data-material="lattice"] .zones .card{background:transparent;border-color:rgba(185,204,255,.2);box-shadow:none}
+#stage[data-material="lattice"] .zones .card .w{background:rgba(150,176,255,.08);border-color:rgba(200,214,255,.42)}
+#stage[data-material="lattice"] .cap.onplane{background:rgba(13,21,52,.9);color:#b7c4e6}
+#stage[data-material="lattice"] .head{background:rgba(12,18,44,.9);border-color:rgba(185,204,255,.24);border-radius:4px;color:#b7c4e6;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+#stage[data-material="lattice"] .head b{color:#fff}
+#stage[data-material="lattice"] .head .pill{border-color:rgba(185,204,255,.3);color:#9fb0d8}
+#stage[data-material="lattice"] .counter{color:#fff}
+@media(prefers-reduced-transparency:reduce){
+  #stage[data-material="lattice"] .tray,#stage[data-material="lattice"] .lens.live{backdrop-filter:none;-webkit-backdrop-filter:none;background:#141e44!important}
+  #stage[data-material="lattice"] .card{background:#1e2c5c}
+}
+
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../">← Study index</a> · <a href="../pull-back/">Pull back (Codex, parallel study)</a> · <a href="../opus-previews/">Opus filmstrip</a></p>
+<h1>Aperture lens · lattice glass <span class="sim">SIMULATED CONCEPT</span></h1>
+<p class="sub">Opus’s fixed aperture in three materials. <b>Lattice glass</b> (Opus): clear cobalt glass with lit edges, a quiet lattice grid etched into the tray and canvas, white corner brackets for the selection, and coral only for the desktop you are on. <b>Cut glass</b> (Codex): translucent petrol glass with ivory edges. <b>Original</b>: the first Opus study. This is a visual study; the native app has separate, newer navigation behavior.</p>
+<div class="row materials" role="group" aria-label="Material treatment">
+  <button type="button" data-material="lattice" aria-pressed="true">Lattice glass · Opus</button>
+  <button type="button" data-material="glass" aria-pressed="false">Cut glass · Codex</button>
+  <button type="button" data-material="original" aria-pressed="false">Original · Opus</button>
+  <span class="material-note">Same geometry and motion. Different light, edges, and surface.</span>
+</div>
+
+<div class="row" role="toolbar" aria-label="Zoom">
+  <span class="lab">Zoom</span>
+  <button id="zoomOut">Zoom out <span style="color:var(--faint)">−</span></button>
+  <button id="ret">Return <span style="color:var(--faint)">↵</span></button>
+  <button id="cancel">Back to start <span style="color:var(--faint)">esc</span></button>
+  <span class="sep"></span>
+  <span class="lab">Scrub</span>
+  <input id="scrub" type="range" min="0" max="2" step="0.001" value="0" aria-label="Zoom scrub, 0 is the strip, 1 the miniature workspace, 2 the canvas">
+  <span class="readout" id="readout">0.00 · strip</span>
+  <span class="sep"></span>
+  <label><input type="checkbox" id="stage2" checked> Stage 2 canvas</label>
+  <label><input type="checkbox" id="rm"> Reduce Motion</label>
+  <label><input type="checkbox" id="slow"> Slow ×4</label>
+</div>
+
+<div id="stage" data-material="lattice" tabindex="0" aria-label="Simulated desktop with the filmstrip aperture. Arrows move, minus zooms out, Return lands, Escape goes back.">
+  <div class="menubar"><b>Terminal</b><span>Shell</span><span>Edit</span><span>View</span><span>Window</span><span class="r">Wed 14 Oct  9:41</span></div>
+  <div class="desk" id="desk"></div>
+  <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+  <div class="abs tray" id="tray"></div>
+  <div class="abs vp mask" id="vp"><div id="content"></div></div>
+  <div class="abs lens" id="lens"><div id="mini" aria-hidden="true"></div></div>
+  <svg id="guides" aria-hidden="true"><path id="guidePath" fill="none" stroke="rgba(255,255,255,.30)" stroke-width=".75"/></svg>
+  <div class="abs ring" id="ring"></div>
+  <div class="abs here" id="here" title="The desktop showing behind the strip"></div>
+  <div class="abs counter" id="counter"></div>
+  <div class="abs rail" id="rail"></div>
+  <div class="abs wing l" id="wingL"><big>16</big><span>desktops</span><span>This display · 2 empty</span></div>
+  <div class="abs wing" id="wingR"><b><span class="mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Lattices</b><span><kbd>↵</kbd> land  <kbd>esc</kbd> back</span><span><kbd>−</kbd> canvas</span></div>
+  <div class="abs head" id="head"><b>Canvas</b><span>This display · 16 desktops</span><span>Drag or scroll to pan · pinch to zoom · minimap to jump</span><span class="pill">ILLUSTRATIVE</span></div>
+</div>
+<div class="status"><span id="where"></span><span id="log" aria-live="polite">ready</span></div>
+
+<div class="cols">
+  <div class="card-n">
+    <h2>What the lens does</h2>
+    <ul>
+      <li><b>The frame is the anchor.</b> The tray, the aperture and its corner guides keep their geometry from 0 to 1. Only the contents change scale: the strip's track shrinks inside the aperture until every desktop fits as one 4 × 4 miniature workspace (a regular grid sized for 16 Spaces; fewer desktops use fewer rows and columns).</li>
+      <li><b>The focus ring comes out of the aperture.</b> At 1:1 the ink ring and the aperture are one shape, as in the native strip. While zooming out, the ring follows the selected desktop down to its cell, and the aperture stays behind as a quieter lens edge.</li>
+      <li><b>Coral only for where you are.</b> One coral dot marks the desktop that is actually showing. The ink ring is what you would land on. Browsing never moves the coral until you land.</li>
+      <li><b>The wings are the end cards.</b> At the miniature stop, the tray space either side of the aperture carries the quiet Lattices summary that the end cards show at the first and last desktop. It does not take clicks.</li>
+      <li><b>Stage 2: the aperture becomes a minimap.</b> Past the miniature stop, the frame keeps its copy of the 4 × 4 map and shrinks into the corner as a persistent minimap. The desktops themselves fly out of it and close up into one continuous workspace plane: adjoining desktop regions on a shared grid, divided by quiet seams, carrying their window zones. You can drag, scroll and pinch it. A viewport rectangle on the minimap shows which part of the canvas is in view, and clicking or dragging the minimap jumps there. In the app this canvas would be Overview's existing canvas; here it is a stand-in.</li>
+      <li><b>Held arrows keep their speed.</b> A held <kbd>←</kbd>/<kbd>→</kbd> at 1:1 hides every preview detail and shows only the flipping number, as natively. Zoom never starts from a key repeat.</li>
+    </ul>
+    <h3>Controls</h3>
+    <p><kbd>←</kbd> <kbd>→</kbd> at 1:1 switch desktops right away (the background swaps). When zoomed out, <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> move the ring across the map without switching. <kbd>−</kbd> zooms out one stop, <kbd>=</kbd> or <b>Return</b> zooms in one stop, <kbd>↵</kbd> lands on the ring's desktop, and <kbd>esc</kbd> returns to the desktop you started on. At the miniature stop, clicking a cell lands on it. On the canvas, drag or scroll to pan and pinch to zoom; click a region to move the ring, double-click to land, and click or drag the minimap to jump. The slider scrubs the same curve the buttons play.</p>
+  </div>
+  <div class="card-n">
+    <h2>The material passes</h2>
+    <p><b>Lattice glass.</b> The lattice is structure, not texture: a fine grid etched into the tray wings that fades out before it reaches the aperture, and a dot grid on the canvas plane. Edges are lit from above with a single hairline. White corner brackets mark the selection; the coral square marks the desktop you are on, so the two never share a colour or a shape.</p>
+    <p><b>Cut glass.</b> Glass takes its colour from the desktop. Ivory edges mark the selection; coral still marks the desktop you are actually on. Square registration points and the small lattice mark give the frame a sharper, architectural character.</p>
+    <p>In both glass passes, blur is limited to the strip and the small minimap. Window zones stay simple shapes, and the large canvas uses a tinted surface. This browser study does not establish native rendering cost.</p>
+    <h3>What to judge</h3>
+    <ul>
+      <li>Does the miniature read as "the same strip, further away", or as a new screen?</li>
+      <li>Does the ring leaving the aperture still read as one continuous selection?</li>
+      <li>At the miniature stop, is the 4 × 4 map big enough to be useful inside a frame this size, or is it only a waypoint to stage 2?</li>
+      <li>Does the minimap read as the same aperture, now parked in the corner, rather than a new widget?</li>
+    </ul>
+    <h3>Native mapping and cost</h3>
+    <ul>
+      <li>Stage 1 is one scale-and-translate on the track layer, pivoting on the aperture. The tray, aperture, guides and rail do not change geometry.</li>
+      <li>At the miniature stop, all 16 cards are visible. Today the strip builds only what is near the aperture. When zoomed out, cards should be window rectangles only: no labels, no captures.</li>
+      <li>The strip's additive travel animations must be paused or flattened before the scale starts, or they fight the transform.</li>
+      <li>Trigger: Ctrl plus scroll or a pinch while the strip is up, or a Lattices-owned chord. Bare Ctrl+↓ is macOS App Exposé and should not be the key.</li>
+      <li>Stage 2 adds one small minimap layer and moves the canvas with a single pan/zoom transform. Window zones are rectangles from the same per-space frames; no captures are needed.</li>
+      <li>Reduce Motion: zoom stops crossfade in place (about 120ms) and the strip snaps instead of travelling.</li>
+    </ul>
+    <h3>Limitations</h3>
+    <p>Layouts are invented. Timing is a browser approximation of the native curve (0.22, 0, 0, 1), not Core Animation. The stage 2 canvas is an illustration and stands in for Overview, whose real layout and data are unchanged by this concept. Multi-display and full-screen Spaces are not modelled.</p>
+  </div>
+</div>
+</main>
+
+<script src="gesture.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), desk = $('#desk'), tray = $('#tray'), vp = $('#vp'), content = $('#content'), lens = $('#lens'), ring = $('#ring'),
+        here = $('#here'), rail = $('#rail'), wingL = $('#wingL'), wingR = $('#wingR'), head = $('#head'), counter = $('#counter'),
+        guidePath = $('#guidePath'), mini = $('#mini'), scrub = $('#scrub'), readout = $('#readout'), backdrop = $('#backdrop');
+  const mq = matchMedia('(prefers-reduced-motion: reduce)');
+  $('#rm').checked = mq.matches;
+
+  document.querySelectorAll('button[data-material]').forEach(button => button.addEventListener('click', () => {
+    stage.dataset.material = button.dataset.material;
+    document.querySelectorAll('button[data-material]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    render();
+  }));
+
+  // ——— invented, internally consistent data: 16 desktops, 2 empty ———
+  // regular grid, tuned for 16 Spaces (4 × 4); fewer desktops use fewer columns and rows
+  const N = 16, COLS = Math.ceil(Math.sqrt(N)), ROWS = Math.ceil(N/COLS), START = 7; // desktop 8
+  const W = {
+    term: ['Terminal','tideline — zsh'], edit: ['Editor','tideline/src/tides.ts'], web: ['Browser','NOAA tide tables'],
+    notes: ['Notes','Release checklist'], design: ['Figma','Tideline · charts'], mail: ['Mail','Inbox (4)'], sim: ['Simulator','iPhone 17'],
+    docs: ['Browser','tideline docs'], logs: ['Terminal','tail -f ingest.log'], db: ['TablePlus','tides · stations'], linear: ['Linear','TIDE-112']
+  };
+  const L = (k,x,y,w,h) => ({k,x,y,w,h});
+  const DESKS = [
+    [L('term',.03,.05,.45,.88), L('edit',.51,.05,.46,.88)],
+    [L('web',.06,.05,.88,.88)],
+    [L('edit',.03,.05,.6,.88), L('term',.65,.05,.32,.42), L('logs',.65,.51,.32,.42)],
+    [L('design',.04,.05,.92,.88)],
+    [],
+    [L('mail',.05,.06,.5,.86), L('notes',.58,.06,.37,.6)],
+    [L('docs',.03,.05,.45,.88), L('edit',.51,.05,.46,.88)],
+    [L('term',.03,.05,.45,.88), L('edit',.51,.05,.46,.6), L('notes',.51,.69,.46,.24)],
+    [L('db',.06,.06,.6,.8), L('term',.69,.06,.27,.8)],
+    [L('sim',.36,.04,.26,.9), L('edit',.03,.05,.31,.88), L('logs',.65,.05,.32,.88)],
+    [L('linear',.05,.06,.9,.86)],
+    [],
+    [L('web',.03,.05,.6,.88), L('notes',.65,.05,.32,.88)],
+    [L('term',.03,.05,.94,.42), L('term',.03,.51,.94,.42)],
+    [L('design',.03,.05,.62,.88), L('web',.67,.05,.3,.88)],
+    [L('edit',.1,.06,.8,.86)]
+  ];
+
+  // ——— state ———
+  let z = 0, zFrom = 0, zTo = 0, tStart = 0, tDur = 0, tweening = false;
+  let f = START, cursor = START, current = START, origin = START, blitz = false, blitzTimer = null;
+  let rafId = 0, lastT = 0, pinchTimer = null;
+  let canvasLive = false, view = {x:0,y:0,u:1}, viewT = {x:0,y:0,u:1}, drag = null, dragMoved = false;
+  const reduce = () => $('#rm').checked;
+  const maxZ = () => $('#stage2').checked ? 2 : 1;
+  const log = t => { $('#log').textContent = t; };
+
+  // native travelTiming: cubic-bezier(0.22, 0, 0, 1)
+  function bez(x1,y1,x2,y2){
+    const cx=3*x1, bx=3*(x2-x1)-cx, ax=1-cx-bx, cy=3*y1, by=3*(y2-y1)-cy, ay=1-cy-by;
+    const sx=t=>((ax*t+bx)*t+cx)*t, sy=t=>((ay*t+by)*t+cy)*t, dx=t=>(3*ax*t+2*bx)*t+cx;
+    return x => { if (x<=0) return 0; if (x>=1) return 1; let t=x; for (let i=0;i<8;i++){ const d=dx(t); if (Math.abs(d)<1e-6) break; t-= (sx(t)-x)/d; t=Math.min(1,Math.max(0,t)); } return sy(t); };
+  }
+  const ease = bez(.22,0,0,1);
+  const clamp = (v,a=0,b=1) => Math.min(b, Math.max(a, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const lerpR = (a,b,t) => ({x:lerp(a.x,b.x,t), y:lerp(a.y,b.y,t), w:lerp(a.w,b.w,t), h:lerp(a.h,b.h,t)});
+  const inset = (r,d) => ({x:r.x+d, y:r.y+d, w:r.w-2*d, h:r.h-2*d});
+  const place = (el,r) => { el.style.transform = `translate(${r.x}px,${r.y}px)`; el.style.width = r.w+'px'; el.style.height = r.h+'px'; };
+  const emph = d => d < .5 ? lerp(1,.72,d*2) : d < 1.5 ? lerp(.72,.5,d-.5) : d < 2.5 ? lerp(.5,.36,d-1.5) : .36;
+
+  // ——— build DOM once ———
+  const cards = [], caps = [], nums = [];
+  const plane = document.createElement('div'); plane.className = 'plane'; content.appendChild(plane);
+  function windowHTML(list, cls){
+    return list.map(w => `<div class="${cls}" data-kind="${w.k}" style="left:${w.x*100}%;top:${w.y*100}%;width:${w.w*100}%;height:${w.h*100}%">` +
+      (cls === 'w' ? `<div class="t">${W[w.k][0]}</div>` : `<div class="bar"><i></i><i></i><i></i><span>${W[w.k][0]} — ${W[w.k][1]}</span></div><div class="body"></div>`) + `</div>`).join('');
+  }
+  for (let i=0;i<N;i++){
+    const c = document.createElement('div');
+    c.className = 'card' + (DESKS[i].length ? '' : ' empty');
+    c.innerHTML = DESKS[i].length ? windowHTML(DESKS[i], 'w') : '<div class="e">Empty</div>';
+    c.addEventListener('click', () => clickCard(i));
+    content.appendChild(c); cards.push(c);
+    const cap = document.createElement('div'); cap.className = 'cap';
+    cap.innerHTML = `<b>${i+1}</b><span>Desktop</span><span class="n">${'•'.repeat(DESKS[i].length)}</span>`;
+    content.appendChild(cap); caps.push(cap);
+    const n = document.createElement('div'); n.className = 'num'; n.textContent = i+1;
+    content.appendChild(n); nums.push(n);
+    rail.appendChild(document.createElement('i'));
+  }
+  const bookL = document.createElement('div'), bookR = document.createElement('div');
+  bookL.className = 'bookend lead'; bookR.className = 'bookend trail';
+  bookL.innerHTML = bookR.innerHTML = `<b><span class="mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>Lattices</b><big>16</big><span>desktops · 2 empty</span>`;
+  content.appendChild(bookL); content.appendChild(bookR);
+
+  function renderDesk(){
+    desk.classList.add('swap');
+    const list = DESKS[current];
+    desk.innerHTML = list.length ? windowHTML(list.map(w => ({...w, x:.02+w.x*.96, y:.03+w.y*.94, w:w.w*.96, h:w.h*.94})), 'dw')
+                                 : '<div class="desk-empty">Desktop ' + (current+1) + ' is empty</div>';
+    requestAnimationFrame(() => desk.classList.remove('swap'));
+    $('#where').textContent = `Showing desktop ${current+1} of ${N}` + (cursor !== current ? ` · ring on ${cursor+1}` : '');
+  }
+
+  // ——— geometry (stage pixels) ———
+  function geo(){
+    const SW = stage.clientWidth, SH = stage.clientHeight, top = 22, cx = SW/2, cy = top + (SH-top)/2;
+    const trayW = Math.min(SW*.86, 1060), Wa = clamp(trayW*.28, 210, 300), Ha = Wa*.625, capH = 24, railH = 18;
+    const trayH = 10 + Ha + 6 + capH + railH + 8;
+    const T = {x:cx-trayW/2, y:cy-trayH/2, w:trayW, h:trayH};
+    const A = {x:cx-Wa/2, y:T.y+12, w:Wa, h:Ha};
+    const V = {x:T.x+8, y:T.y+6, w:T.w-16, h:Ha+12+capH};
+    // miniature grid, inside the aperture
+    const pB = 9, gB = 4;
+    const cB = Math.min((A.w-2*pB-(COLS-1)*gB)/COLS, ((A.h-2*pB-(ROWS-1)*gB)/ROWS)/.625);
+    const gwB = COLS*cB+(COLS-1)*gB, ghB = ROWS*cB*.625+(ROWS-1)*gB;
+    const B0 = {x:A.x+(A.w-gwB)/2, y:A.y+(A.h-ghB)/2};
+    // stage 2: the canvas surface, and the minimap the aperture resolves into
+    const P = {x:14, y:top+14, w:SW-28, h:SH-top-28};
+    const K0 = inset(A,-4), mw = clamp(SW*.2, 176, 260);
+    const M = {x:P.x+14, y:P.y+P.h-mw*K0.h/K0.w-14, w:mw, h:mw*K0.h/K0.w};
+    const worldW = COLS, worldH = ROWS*.625;
+    const u0 = P.w*.3, uMin = Math.min(P.w/worldW, P.h/worldH)*.9, uMax = P.w*.85;
+    const sX = gwB/COLS, sY = ghB/worldH; // canvas world → miniature pixels, linear across the whole map
+    return {SW,SH,T,A,V,P,M,K0,Wa,Ha,gapA:16,cB,gB,B0,sX,sY,worldW,worldH,u0,uMin,uMax};
+  }
+  const rectA = (g,i) => ({x:g.A.x+(i-f)*(g.Wa+g.gapA), y:g.A.y, w:g.Wa, h:g.Ha});
+  const rectB = (g,i) => ({x:g.B0.x+(i%COLS)*(g.cB+g.gB), y:g.B0.y+Math.floor(i/COLS)*(g.cB*.625+g.gB), w:g.cB, h:g.cB*.625});
+  // world units: one desktop is 1 wide; desktops adjoin on one plane
+  const worldOf = (g,i) => ({x:i%COLS, y:Math.floor(i/COLS)*.625});
+  const centreOf = (g,i) => { const w = worldOf(g,i); return {x:w.x+.5, y:w.y+.3125}; };
+  const rectC = (g,i) => { const w = worldOf(g,i), cx = g.P.x+g.P.w/2, cy = g.P.y+g.P.h/2;
+    return {x:cx+(w.x-view.x)*view.u, y:cy+(w.y-view.y)*view.u, w:view.u, h:.625*view.u}; };
+  function clampView(g, v){
+    v.u = clamp(v.u, g.uMin, g.uMax);
+    // keep the canvas filled: an edge may come in by a short margin, never half the view
+    const m = .12, hw = g.P.w/2/v.u, hh = g.P.h/2/v.u;
+    v.x = g.worldW+2*m > 2*hw ? clamp(v.x, hw-m, g.worldW-hw+m) : g.worldW/2;
+    v.y = g.worldH+2*m > 2*hh ? clamp(v.y, hh-m, g.worldH-hh+m) : g.worldH/2;
+    return v;
+  }
+
+  // minimap cells, built once and laid out in the aperture's own proportions
+  const miniCells = [], vpi = document.createElement('div'); vpi.className = 'vpi';
+  for (let i=0;i<N;i++){ const c = document.createElement('i'); if (!DESKS[i].length) c.className = 'e'; mini.appendChild(c); miniCells.push(c); }
+  mini.appendChild(vpi);
+
+  function render(){
+    const g = geo();
+    stage.dataset.phase = z > 1.5 ? "canvas" : "strip";
+    const mat = stage.dataset.material, glass = mat === "glass", lattice = mat === "lattice";
+    // radii per material: [tray 1:1, tray canvas], card, ring [1:1, cell, region]
+    const RAD = lattice ? {t:[12,8], c:3, r:[6,2,3]} : glass ? {t:[10,6], c:4, r:[5,2,3]} : {t:[16,12], c:8, r:[10,4,6]};
+    if (!canvasLive){ view = {...centreOf(g,cursor), u:g.u0}; viewT = {...view}; }
+    clampView(g, view);
+    const e1 = ease(clamp(z)), e2 = ease(clamp(z-1)), inner = z <= 1;
+    const T = inner ? g.T : lerpR(g.T, g.P, e2);
+    const V = inner ? g.V : lerpR(g.V, inset(g.P,1), e2);
+    const K = inner ? g.K0 : lerpR(g.K0, g.M, e2);
+    place(tray, T); tray.style.borderRadius = lerp(RAD.t[0],RAD.t[1],e2)+'px';
+    place(vp, V); vp.classList.toggle('mask', z < .02); vp.classList.toggle('pan', z > 1.98);
+    place(lens, K); lens.style.opacity = inner ? e1 : 1;
+    lens.style.background = `rgba(${lattice ? "14,22,44" : glass ? "17,42,52" : "12,14,17"},${((lattice ? .58 : glass ? .7 : .94)*e2).toFixed(3)})`; lens.style.zIndex = z > 1 ? 9 : 6;
+    lens.style.borderColor = `rgba(255,255,255,${((lattice ? .38 : glass ? .32 : .16)+.14*e2).toFixed(3)})`;
+    lens.classList.toggle('live', z > 1.98);
+    backdrop.style.opacity = (.42 + .38*e2).toFixed(3);
+    content.style.setProperty('--detail', blitz ? 0 : (inner ? clamp(1 - e1*2.5) : clamp((e2-.5)*2)).toFixed(3));
+    content.classList.toggle('zones', z > 1.5);
+
+    const rect = i => inner ? lerpR(rectA(g,i), rectB(g,i), e1) : lerpR(rectB(g,i), rectC(g,i), e2);
+    for (let i=0;i<N;i++){
+      const r = rect(i), empty = !DESKS[i].length;
+      const oA = emph(Math.abs(i-f)), oB = empty ? .55 : .95, oC = empty ? .6 : 1;
+      cards[i].style.transform = `translate(${r.x-V.x}px,${r.y-V.y}px) scale(${r.w/g.Wa})`;
+      cards[i].style.width = g.Wa+'px'; cards[i].style.height = g.Ha+'px';
+      cards[i].style.opacity = (inner ? lerp(oA,oB,e1) : lerp(oB,oC,e2)).toFixed(3);
+      cards[i].style.borderRadius = (inner ? RAD.c : lerp(RAD.c,0,e2))+'px';
+      const capO = inner ? oA*clamp(1-e1*3) : clamp((e2-.55)/.45);
+      // strip: caption under the card; canvas: a quiet label inside the region's bottom edge
+      if (inner){ caps[i].style.transform = `translate(${r.x-V.x+2}px,${r.y+r.h+6-V.y}px)`; caps[i].style.width = Math.max(0,r.w-4)+'px'; }
+      else { caps[i].style.transform = `translate(${r.x-V.x+10}px,${r.y+r.h-25-V.y}px)`; caps[i].style.width = Math.max(0,r.w-20)+'px'; }
+      caps[i].classList.toggle('onplane', !inner);
+      caps[i].style.opacity = blitz ? 0 : capO.toFixed(3);
+      caps[i].classList.toggle('cursor', i === cursor);
+      nums[i].style.transform = `translate(${r.x-V.x+3}px,${r.y-V.y+3}px)`;
+      nums[i].style.opacity = (inner ? clamp((e1-.5)*2) : clamp(1-e2*2.5)).toFixed(3);
+      // the same cell, in the minimap's (aperture-relative) proportions
+      const b = rectB(g,i), m = miniCells[i];
+      m.style.left = (b.x-g.K0.x)/g.K0.w*100+'%'; m.style.top = (b.y-g.K0.y)/g.K0.h*100+'%';
+      m.style.width = b.w/g.K0.w*100+'%'; m.style.height = b.h/g.K0.h*100+'%';
+      m.classList.toggle('cur', i === current); m.classList.toggle('cursor', i === cursor);
+    }
+    mini.style.opacity = inner ? 0 : clamp(e2*4).toFixed(3);
+    const p0 = rectC(g,0), pN = rectC(g,N-1);
+    place(plane, {x:p0.x-V.x, y:p0.y-V.y, w:pN.x+pN.w-p0.x, h:pN.y+pN.h-p0.y});
+    plane.style.opacity = inner ? 0 : e2.toFixed(3);
+    const step = view.u/8; plane.style.backgroundSize = `${step}px ${step}px, ${step}px ${step}px`;
+    // viewport indicator: the canvas's visible world rect, drawn on the minimap
+    const fx = wx => (g.B0.x-g.K0.x + wx*g.sX)/g.K0.w*100;
+    const fy = wy => (g.B0.y-g.K0.y + wy*g.sY)/g.K0.h*100;
+    const hw = g.P.w/2/view.u, hh = g.P.h/2/view.u;
+    const x0 = clamp(fx(view.x-hw),0,100), x1 = clamp(fx(view.x+hw),0,100), y0 = clamp(fy(view.y-hh),0,100), y1 = clamp(fy(view.y+hh),0,100);
+    vpi.style.left = x0+'%'; vpi.style.top = y0+'%'; vpi.style.width = (x1-x0)+'%'; vpi.style.height = (y1-y0)+'%';
+    vpi.style.opacity = inner ? 0 : clamp((e2-.6)/.4).toFixed(3);
+
+    // quiet end cards travel with the strip and leave as soon as the zoom starts
+    const bw = g.Wa*1.25, a0 = rectA(g,0), aN = rectA(g,N-1);
+    place(bookL, {x:a0.x-g.gapA-bw-V.x, y:a0.y-V.y, w:bw, h:g.Ha}); place(bookR, {x:aN.x+g.Wa+g.gapA-V.x, y:aN.y-V.y, w:bw, h:g.Ha});
+    bookL.style.opacity = bookR.style.opacity = clamp(1-e1*3).toFixed(3);
+
+    // the ring is the aperture at 1:1 and follows the selection down to its cell
+    const ringA = g.K0, ringB = inset(rectB(g,cursor),-2.5), ringC = inset(rectC(g,cursor),3);
+    const R = inner ? lerpR(ringA, ringB, e1) : lerpR(ringB, ringC, e2);
+    place(ring, R); ring.style.borderRadius = (inner ? lerp(RAD.r[0],RAD.r[1],e1) : lerp(RAD.r[1],RAD.r[2],e2))+'px';
+    ring.style.borderWidth = (inner ? lerp(1.5,1.25,e1) : lerp(1.25,1.5,e2))+'px';
+    guidePath.setAttribute('d', guides(K, inner ? lerp(9,7,e1) : 7, inner ? lerp(10,8,e1) : lerp(8,0,e2)));
+    guidePath.style.opacity = inner ? 1 : 1-e2;
+
+    // coral: the desktop actually showing, never the browsing ring
+    const hr = rect(current);
+    here.style.transform = `translate(${Math.min(hr.x+hr.w, V.x+V.w)-10}px,${hr.y+4}px)`;
+    const visible = hr.x+hr.w > V.x+4 && hr.x < V.x+V.w-4 && hr.y+hr.h > V.y && hr.y < V.y+V.h;
+    here.style.opacity = visible ? (inner ? lerp(emph(Math.abs(current-f)),1,e1) : 1) : 0;
+
+    // rail (1:1 only), wings (miniature stop), canvas header (stage 2)
+    const railW = N*11-4;
+    rail.style.transform = `translate(${g.T.x+g.T.w/2-railW/2}px,${g.T.y+g.T.h-16}px)`;
+    rail.style.opacity = inner ? clamp(1-e1*2) : 0;
+    [...rail.children].forEach((c,i) => { c.className = i===current ? 'cur' : i===cursor ? 'cursor' : ''; });
+    const wingO = inner ? clamp((e1-.35)/.65) : clamp(1-e2*3);
+    place(wingL, {x:g.T.x+22, y:g.A.y, w:g.A.x-g.T.x-56, h:g.A.h}); wingL.style.opacity = wingO;
+    place(wingR, {x:g.A.x+g.A.w+34, y:g.A.y, w:g.T.x+g.T.w-(g.A.x+g.A.w)-56, h:g.A.h}); wingR.style.opacity = wingO;
+    place(head, {x:g.P.x+14, y:g.P.y+12, w:0, h:28}); head.style.opacity = inner ? 0 : clamp((e2-.4)/.6);
+    place(counter, g.A); counter.textContent = current+1;
+
+    $('#where').textContent = `Showing desktop ${current+1} of ${N}` + (cursor !== current ? ` · ring on ${cursor+1}` : '');
+    scrub.value = z; scrub.max = maxZ();
+    const phase = z < .02 ? 'strip' : Math.abs(z-1) < .02 ? 'miniature' : z > 1.98 ? 'canvas + minimap' : z < 1 ? 'strip → miniature' : 'miniature → canvas';
+    readout.textContent = `${z.toFixed(2)} · ${phase}`;
+    $('#ret').disabled = z < .02; $('#cancel').disabled = z < .02 && cursor === origin; $('#zoomOut').disabled = z > maxZ()-.02;
+  }
+
+  // corner guides: the aperture's straight edges continue past its soft corners and stop short of meeting
+  function guides(r, gap, reach){
+    if (reach <= .2) return '';
+    const {x,y,w,h} = r, x2 = x+w, y2 = y+h, p = [];
+    p.push(`M${x-gap-reach},${y}H${x-gap}`, `M${x},${y-gap-reach}V${y-gap}`);
+    p.push(`M${x2+gap},${y}H${x2+gap+reach}`, `M${x2},${y-gap-reach}V${y-gap}`);
+    p.push(`M${x-gap-reach},${y2}H${x-gap}`, `M${x},${y2+gap}V${y2+gap+reach}`);
+    p.push(`M${x2+gap},${y2}H${x2+gap+reach}`, `M${x2},${y2+gap}V${y2+gap+reach}`);
+    return p.join('');
+  }
+
+  // ——— motion loop: z plays the native curve per stop; the strip offset and canvas view glide ———
+  const slowK = () => $('#slow').checked ? 4 : 1;
+  function kick(){ if (!rafId) { lastT = performance.now(); rafId = requestAnimationFrame(tick); } }
+  function tick(t){
+    const dt = Math.min(64, t-lastT); lastT = t; rafId = 0;
+    if (tweening){
+      const p = clamp((t-tStart)/tDur);
+      z = lerp(zFrom, zTo, p);
+      if (p >= 1){ tweening = false; z = zTo; settled(); }
+    }
+    if (z >= .98 || reduce()) f = cursor;
+    else f += (cursor-f) * (1 - Math.exp(-dt/(70*slowK())));
+    if (Math.abs(cursor-f) < .001) f = cursor;
+    let gliding = false;
+    if (canvasLive && !drag){
+      const k = reduce() ? 1 : 1 - Math.exp(-dt/(90*slowK()));
+      for (const key of ['x','y','u']){ view[key] += (viewT[key]-view[key])*k; if (Math.abs(viewT[key]-view[key]) > .0005*(key==='u'?100:1)) gliding = true; else view[key] = viewT[key]; }
+    }
+    render();
+    if (tweening || f !== cursor || gliding) rafId = requestAnimationFrame(tick);
+  }
+  function zoomTo(target){
+    target = clamp(target, 0, maxZ());
+    if (reduce()){
+      tweening = false; content.classList.add('out');
+      setTimeout(() => { z = target; f = cursor; settled(); render(); content.classList.remove('out'); }, 120);
+      return;
+    }
+    zFrom = z; zTo = target; tStart = performance.now();
+    tDur = Math.max(.35, Math.abs(target-z)) * 420 * slowK();
+    tweening = true; kick();
+  }
+  function settled(){
+    if (z > 1.999) canvasLive = true;
+    if (z < 1.02) canvasLive = false;
+    if (z < .02 && cursor !== current){ current = cursor; renderDesk(); log(`landed on desktop ${current+1}`); }
+    if (z < .02) origin = current;
+  }
+  function revealCursor(){
+    if (!canvasLive) return;
+    const g = geo(), r = rectC(g, cursor), P = inset(g.P, 36);
+    const m = g.M, underMini = r.x < m.x+m.w && r.y+r.h > m.y;
+    if (r.x < P.x || r.y < P.y || r.x+r.w > P.x+P.w || r.y+r.h > P.y+P.h || underMini){
+      const c = centreOf(g, cursor); viewT = clampView(g, {...viewT, x:c.x, y:c.y});
+    }
+    kick();
+  }
+
+  // ——— actions ———
+  function zoomOut(){
+    if (z < .02) origin = current;
+    zoomTo(z < .98 ? 1 : 2); log(z < .98 ? 'zoom out · miniature' : 'zoom out · canvas + minimap');
+  }
+  function zoomIn(){ zoomTo(z > 1.02 ? 1 : 0); log(z > 1.02 ? 'zoom in · miniature' : `return · desktop ${cursor+1}`); }
+  function land(){ if (z < .02) return; zoomTo(0); log(`return · desktop ${cursor+1}`); }
+  function cancel(){ if (z < .02 && cursor === origin) return; cursor = origin; zoomTo(0); log(`back to desktop ${origin+1}`); }
+  function step(dx, dy, repeat){
+    if (z < .5){
+      if (dy) return;
+      const n = clamp(cursor+dx, 0, N-1);
+      if (repeat){ blitz = true; stage.classList.add('blitz'); clearTimeout(blitzTimer);
+        blitzTimer = setTimeout(() => { blitz = false; stage.classList.remove('blitz'); render(); }, 220); }
+      if (n === cursor) { render(); return; } // silent boundary
+      cursor = current = origin = n; renderDesk(); log(`desktop ${n+1}`);
+      kick(); return;
+    }
+    let c = cursor % COLS, r = Math.floor(cursor/COLS);
+    c = clamp(c+dx, 0, COLS-1); r = clamp(r+dy, 0, ROWS-1);
+    cursor = r*COLS + c; $('#where').textContent = `Showing desktop ${current+1} of ${N} · ring on ${cursor+1}`;
+    render(); revealCursor();
+  }
+  function clickCard(i){
+    if (dragMoved) return;
+    if (z < .5){ if (i === cursor) return; cursor = current = origin = i; renderDesk(); kick(); log(`desktop ${i+1}`); return; }
+    if (z > 1.5){ cursor = i; $('#where').textContent = `Showing desktop ${current+1} of ${N} · ring on ${cursor+1}`; render(); log(`ring on ${i+1} · double-click or ↵ to land`); return; }
+    cursor = i; zoomTo(0); log(`return · desktop ${i+1}`);
+  }
+  cards.forEach((c,i) => c.addEventListener('dblclick', () => { if (z > 1.5){ cursor = i; land(); } }));
+
+  // ——— canvas: drag or scroll to pan, pinch to zoom; minimap click or drag to jump ———
+  vp.addEventListener('pointerdown', e => {
+    if (z < 1.98 || e.button) return;
+    drag = {x:e.clientX, y:e.clientY, vx:view.x, vy:view.y, id:e.pointerId}; dragMoved = false;
+  });
+  vp.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX-drag.x, dy = e.clientY-drag.y;
+    if (!dragMoved && Math.hypot(dx,dy) < 4) return;
+    if (!dragMoved){ dragMoved = true; vp.setPointerCapture(drag.id); vp.classList.add('panning'); }
+    const g = geo(); view.x = drag.vx - dx/view.u; view.y = drag.vy - dy/view.u; clampView(g, view); viewT = {...view}; render();
+  });
+  const endDrag = () => { if (!drag) return; drag = null; vp.classList.remove('panning'); setTimeout(() => { dragMoved = false; }, 0); };
+  vp.addEventListener('pointerup', endDrag); vp.addEventListener('pointercancel', endDrag);
+  function miniToWorld(e){
+    const g = geo(), b = lens.getBoundingClientRect();
+    const kx = (e.clientX-b.left)/b.width*g.K0.w, ky = (e.clientY-b.top)/b.height*g.K0.h;
+    return {x:(kx-(g.B0.x-g.K0.x))/g.sX, y:(ky-(g.B0.y-g.K0.y))/g.sY};
+  }
+  let miniDrag = false;
+  lens.addEventListener('pointerdown', e => {
+    if (z < 1.98) return; e.stopPropagation(); miniDrag = true; lens.setPointerCapture(e.pointerId);
+    const w = miniToWorld(e); viewT = clampView(geo(), {...viewT, x:w.x, y:w.y}); kick();
+  });
+  lens.addEventListener('pointermove', e => { if (!miniDrag) return; const w = miniToWorld(e); view = clampView(geo(), {...view, x:w.x, y:w.y}); viewT = {...view}; render(); });
+  lens.addEventListener('pointerup', () => { miniDrag = false; });
+
+  $('#zoomOut').onclick = zoomOut; $('#ret').onclick = zoomIn; $('#cancel').onclick = cancel;
+  $('#stage2').onchange = () => { if (z > maxZ()) zoomTo(maxZ()); render(); };
+  scrub.addEventListener('input', () => {
+    tweening = false; if (z < .02) origin = current;
+    z = +scrub.value; if (z >= .98) f = cursor; if (z > 1.999) canvasLive = true; if (z < 1.02) canvasLive = false; render();
+  });
+  scrub.addEventListener('change', () => { if (+scrub.value < .02 && cursor !== current) { z = 0; settled(); render(); } });
+  stage.addEventListener('keydown', e => {
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'ArrowUp' || k === 'ArrowDown'){
+      e.preventDefault(); step(k==='ArrowLeft'?-1:k==='ArrowRight'?1:0, k==='ArrowUp'?-1:k==='ArrowDown'?1:0, e.repeat); return;
+    }
+    if (e.repeat) return; // zoom never starts from a key repeat
+    if (k === '-' || k === '_'){ e.preventDefault(); zoomOut(); }
+    else if (k === '=' || k === '+'){ e.preventDefault(); zoomIn(); }
+    else if (k === 'Enter'){ e.preventDefault(); land(); }
+    else if (k === 'Escape'){ e.preventDefault(); cancel(); }
+  });
+  stage.addEventListener('mousedown', () => stage.focus());
+  // on the canvas: scroll pans, pinch (ctrl+wheel) zooms about the pointer.
+  // elsewhere: pinch scrubs the lens and snaps to the nearest stop when it ends.
+  stage.addEventListener('wheel', e => {
+    if (z > 1.98 && !tweening){
+      e.preventDefault(); const g = geo();
+      if (e.ctrlKey){
+        const b = stage.getBoundingClientRect(), px = e.clientX-b.left-(g.P.x+g.P.w/2), py = e.clientY-b.top-(g.P.y+g.P.h/2);
+        const wx = view.x + px/view.u, wy = view.y + py/view.u;
+        view.u = clamp(view.u * Math.exp(-e.deltaY*.01), g.uMin, g.uMax);
+        view.x = wx - px/view.u; view.y = wy - py/view.u;
+      } else { view.x += e.deltaX/view.u; view.y += e.deltaY/view.u; }
+      clampView(g, view); viewT = {...view}; render(); return;
+    }
+    if (!e.ctrlKey) return;
+    e.preventDefault(); tweening = false; if (z < .02) origin = current;
+    z = clamp(z + e.deltaY*.012, 0, Math.min(maxZ(), 1.97)); if (z >= .98) f = cursor; if (z < 1.02) canvasLive = false; render();
+    clearTimeout(pinchTimer); pinchTimer = setTimeout(() => zoomTo(Math.round(z)), 140);
+  }, {passive:false});
+  addEventListener('resize', render);
+  mq.addEventListener?.('change', () => { $('#rm').checked = mq.matches; });
+
+  window.installApertureGesture({
+    stage,
+    getState: () => ({zoom:z,current,cursor}),
+    openCanvas: () => {
+      if (z < .02) origin = current;
+      $('#stage2').checked = true;
+      zoomTo(2);
+      if (!reduce()) tDur = 240 * slowK();
+      log('canvas · choose, then double-click or Enter');
+    }
+  });
+  renderDesk(); render();
+})();
+</script>
+</body>
+</html>

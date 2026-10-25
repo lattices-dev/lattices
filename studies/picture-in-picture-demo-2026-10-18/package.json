@@ -1,0 +1,11 @@
+{
+  "name": "picture-in-picture-demo-2026-10-18",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.173 preview",
+    "check": "npx --yes hyperframes@0.8.173 check",
+    "render": "npx --yes hyperframes@0.8.173 render",
+    "publish": "npx --yes hyperframes@0.8.173 publish"
+  }
+}

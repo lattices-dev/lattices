@@ -21,19 +21,19 @@ export function Install() {
               <MockTitleBar title="release — latest" />
               <div className="flex flex-col gap-6 p-5 md:flex-row md:items-center md:justify-between md:gap-8 md:p-6">
                 <div className="min-w-0">
-                  <div className="text-[15px] font-bold text-[var(--text)]">Blink.dmg</div>
+                  <div className="text-[15px] font-bold text-[var(--text)]">Canvas.dmg</div>
                   <div className="mt-1 text-[11px] text-faintx">
                     Apple Silicon · macOS 14+ · notarized · no account
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3 shrink-0">
-                  <PrimaryButton href="https://github.com/arach/blink/releases/latest">
+                  <PrimaryButton href="https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/Canvas.dmg">
                     <span className="text-[15px] leading-none" aria-hidden>
                       ↓
                     </span>{' '}
                     download for macOS
                   </PrimaryButton>
-                  <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
+                  <GhostButton href="https://github.com/lattices-dev/lattices/tree/main/products/blink">
                     source <span className="text-faintx" aria-hidden>↗</span>
                   </GhostButton>
                 </div>
@@ -47,13 +47,14 @@ export function Install() {
 }
 
 const FOOTER_LINKS = [
-  { href: 'https://github.com/arach/lattices/tree/main/products/blink', label: 'GitHub', external: true },
-  { href: 'https://github.com/arach/blink/releases/latest', label: 'Releases', external: true },
+  { href: 'https://github.com/lattices-dev/lattices/tree/main/products/blink', label: 'GitHub', external: true },
+  { href: 'https://github.com/lattices-dev/lattices/releases/tag/canvas-v2.3.0', label: 'Releases', external: true },
   { href: '/agents.md', label: 'AGENTS.md', external: false },
   { href: '/llms.txt', label: 'llms.txt', external: false },
   { href: '/privacy/', label: 'Privacy', external: false },
+  { href: '/support/', label: 'Support', external: false },
   {
-    href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md',
+    href: 'https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md',
     label: 'CLI docs',
     external: true,
   },
@@ -67,10 +68,10 @@ export function Footer() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[12px] font-bold text-[var(--text)]">
               <BlinkMark className="h-4 w-4 shrink-0 text-acc" />
-              <span>blink</span>
+              <span>Canvas</span>
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-faintx">
-              spatial notes for your Mac
+              spatial notes for your Mac · formerly Blink
             </p>
           </div>
 

@@ -18,7 +18,7 @@ export function TopBar() {
           className="font-display flex shrink-0 items-center gap-2 text-[17px] font-semibold leading-none tracking-[-0.015em] text-[var(--text)]"
         >
           <BlinkMark className="h-4 w-4 shrink-0 text-acc" />
-          <span>blink</span>
+          <span>Canvas</span>
         </a>
 
         <nav
@@ -39,7 +39,7 @@ export function TopBar() {
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <ThemeSwitcher />
           <a
-            href="https://github.com/arach/lattices/tree/main/products/blink"
+            href="https://github.com/lattices-dev/lattices/tree/main/products/blink"
             target="_blank"
             rel="noreferrer"
             aria-label="GitHub repository"

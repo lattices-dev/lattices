@@ -32,11 +32,13 @@ positions such as sixths and eighths.
 ## Tile with a key
 
 1. Bring the window to the front.
-2. Press Control+Option and an arrow key.
+2. Press Command+Option+Shift and an arrow key.
 
-Expected: the window fills that half of its display. Hold Control+Option
-and move the pointer instead of pressing an arrow to aim a placement with the
-on-screen picker; release to tile, or keep the pointer centered to cancel.
+Expected: the window fills that half of its display.
+
+For pointer placement, enable Tile HUD in Settings. Then hold Control+Option
+and move the pointer to aim a placement with the on-screen picker; release to
+tile, or keep the pointer centered to cancel. Pointer placement is off by default.
 
 The other default placement keys:
 
@@ -46,7 +48,7 @@ The other default placement keys:
 | Control+Option+C | Center |
 | Control+Option+U / I / J / K | Top-left, top-right, bottom-left, bottom-right quarter |
 | Control+Option+Shift+1 / 2 / 3 | Left, center, right third |
-| Hold Control+Option, press 1 to 9 | That cell of the 3×3 matrix, laid out like a numpad. 5 maximizes |
+| With Tile HUD enabled, hold Control+Option and press 1 to 9 | That cell of the 3×3 matrix, laid out like a numpad. 5 maximizes |
 | Control+Option+D | Distribute every visible window |
 
 Settings > Shortcuts lists the full set and lets you change any of them. See

@@ -495,6 +495,25 @@
       "ownership": "lattices"
     },
     {
+      "id": "lattices:remote-streaming",
+      "product": "lattices",
+      "slug": "remote-streaming",
+      "source": "docs/remote-streaming.md",
+      "title": "Remote stream acknowledgments",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/remote-streaming",
+      "aliases": [
+        "/docs/remote-streaming"
+      ],
+      "navGroup": "Agents and integrations",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/remote-streaming.md",
+        "/agent/raw/docs/remote-streaming.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
       "id": "lattices:mcp",
       "product": "lattices",
       "slug": "mcp",

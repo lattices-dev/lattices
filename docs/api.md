@@ -200,7 +200,9 @@ Remote core event subscriptions are limited to `windows.changed`,
 `spaces.changed`, `layers.changed` and `host.healthChanged`. A client needs
 `lattices:events.subscribe` and the corresponding read grant (`windows.list`,
 `spaces.list`, `layers.list` or `daemon.status`). Unsubscribing requires
-`lattices:events.unsubscribe`. Other event streams stay local.
+`lattices:events.unsubscribe`. Capture stream lifecycle and activity events go
+directly to the connection that owns the stream; see `capture.stream.*` below.
+Other event streams stay local.
 
 ## Node.js client
 
@@ -413,14 +415,16 @@ thumbnails, idle views and hosts without streaming. `host.describe` lists
 | `codec` | string | no | `h264`, the only codec required |
 
 The result is `{streamId, codec, width, height, frame:{x,y,w,h}, display}`.
-`display` is `{index, name}` for a display target and null otherwise.
+`display` is `{index, name}` for a display target and null otherwise. Hosts
+that report capture activity also include `activity`, as described below.
 
 - `capture.stream.ack {streamId, seq}` acknowledges every frame up to `seq`.
-  Send one per frame received. The host keeps at most 4 frames unacknowledged
-  and stops feeding its encoder at that limit. With frames outstanding and no
-  ack for 3 s, the host ends the stream. An ack for an old `seq` changes
+  Send one per frame received. Hosts limit the number of frames in flight.
+  With frames outstanding and no ack for 3 s, the host ends the stream.
+  An ack for an old `seq` changes
   nothing and still answers `{ok:true}`, so viewers use it to check that a
-  quiet stream is alive.
+  quiet stream is alive. Hosts that report capture activity include the current
+  `activity` in successful ACK responses.
 - `capture.stream.keyframe {streamId}` makes the next frame an IDR.
 - `capture.stream.stop {streamId}` stops the stream without an event.
 - Streams belong to their connection. Only that connection can ack, request a
@@ -430,8 +434,49 @@ The result is `{streamId, codec, width, height, frame:{x,y,w,h}, display}`.
   connection, whatever it subscribed to. Reasons are `ack-timeout`,
   `window-closed`, `encoder-failed: …` and, on a Mac, `capture-stopped: …`.
 
-A screen that doesn't change sends no frames. Each binary message is one
-access unit, big-endian:
+**Host activity and variable frame delivery**
+
+Current macOS source builds suppress unchanged pictures before H.264 encoding.
+The host compares the visible pixels of complete capture frames and accepts
+ScreenCaptureKit's explicit unchanged-frame status as idle evidence. After at
+least one second without a picture change, with unchanged-frame evidence, the
+host reports `idle`. A pixel or capture-geometry change reports `active`
+immediately and resumes frame delivery, subject to the ACK limit.
+
+The capture rate remains at the requested `fps` ceiling so the host can observe
+new changes promptly. The encoded video rate can fall to zero while the picture
+is unchanged. The viewer holds the last picture. A requested recovery keyframe
+can still send the same picture without changing the activity state.
+
+Supporting hosts include this optional object in start and successful ACK
+responses:
+
+```json
+{"activity":{"state":"idle","source":"host","activeFPS":30,"idleFPS":0,"revision":2}}
+```
+
+`state` is `active`, `idle` or `unknown`. `unknown` means the host does not have
+current evidence of picture activity, including before the first frame or when
+capture is blank or suspended. `activeFPS` is the configured frame rate ceiling;
+`idleFPS` is the intended unchanged-picture rate, currently zero. Neither field
+is a measurement of received frames.
+
+`revision` is a nonnegative integer, starting at zero for each stream and
+increasing on each state change. Viewers ignore activity reports with an older
+revision so a delayed ACK cannot overwrite a newer activity event.
+
+When the state changes, the host sends
+`{event:"capture.stream.activity", data:{streamId, activity}}` only to the
+connection that owns the stream. The gateway forwards this event for streams
+owned by that viewer. No event subscription is required.
+
+Older hosts and the current Linux host omit `activity`. Viewers must not infer
+`idle` from missing frames, low received FPS or an omitted activity object.
+Those hosts do not promise the macOS unchanged-picture suppression behavior.
+
+**Binary frames**
+
+Each binary message is one access unit, big-endian:
 
 | Offset | Size | Field |
 |--------|------|-------|
@@ -2293,6 +2338,7 @@ user hid stay hidden. Select a layer explicitly to enter layer focus again.
   "unhidden": ["Slack"],
   "stillHidden": [],
   "recoveryPending": false,
+  "persistenceWarning": null,
   "stage": { "parked": [], "hidden": [] }
 }
 ```
@@ -2300,6 +2346,12 @@ user hid stay hidden. Select a layer explicitly to enter layer focus again.
 `unparked` counts restored windows. `rescued` counts untracked windows
 recovered from the parking corner. `stillParked` and `stillHidden` report
 restoration that remains pending; `ok` confirms exit, not complete recovery.
+
+`recoveryPending` remains true while window restoration or saving the recovery
+state is pending. `persistenceWarning` is a string when saving fails, or `null`
+when saving succeeds. Restoration can finish before the state is saved, so
+`recoveryPending` can be true when `stillParked` is zero and `stillHidden` is
+empty. Lattices retains the recovery state and retries saving it.
 
 A window on an inactive desktop can remain parked until that desktop is
 visible. Lattices retains its saved position and retries restoration when
@@ -2310,7 +2362,8 @@ outstanding recovery.
 #### `layers.reveal`
 
 Compatibility alias for `layers.exit`, with the same result. The former
-Show All action also exits layer focus.
+Show All action also exits layer focus. Lattices centres untracked windows
+found in the parking corner on the main screen and counts them in `rescued`.
 
 #### `layers.members`
 
@@ -2354,30 +2407,6 @@ corner a switch parks windows in) or `hidden` (its app is hidden).
 
 `desktop.snapshot` reports the active layer in the same shape as
 `activeLayer`.
-
-#### `layers.reveal`
-
-Show All. Puts back every window a layer switch parked and unhides every
-app a switch hid; apps the user hid stay hidden. A window parked on a
-desktop that isn't showing stays parked until that desktop is showing.
-Untracked windows sitting in the park corner (an app can reopen a window
-where it last saw it) are centred on the main screen and counted in
-`rescued`.
-
-**Params**: none
-
-**Returns**:
-
-```json
-{
-  "ok": true,
-  "unparked": 3,
-  "stillParked": 0,
-  "rescued": 0,
-  "unhidden": ["Slack"],
-  "stage": { "parked": [], "hidden": [] }
-}
-```
 
 #### Editing layers
 

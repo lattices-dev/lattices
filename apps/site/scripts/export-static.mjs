@@ -758,6 +758,7 @@ function titleFromSlug(slug) {
 
 function formatDate(value) {
   return new Date(value).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

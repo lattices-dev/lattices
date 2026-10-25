@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=3440,height=1440"><title>Lattices — architectural titles</title><script src="assets/gsap.min.js"></script><style>@font-face { font-family: 'LatticesTitle'; font-style: normal; font-weight: 400; src: url('assets/inter-0.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'LatticesTitle'; font-style: normal; font-weight: 500; src: url('assets/inter-1.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'LatticesTitle'; font-style: normal; font-weight: 600; src: url('assets/inter-2.ttf') format('truetype'); font-display: block; }
+
+*{box-sizing:border-box;margin:0}html,body{width:100%;height:100%;overflow:hidden;background:#22211e}#root{width:100%;height:100%;position:relative;overflow:hidden;background:#22211e;color:#ede9df;font-family:LatticesTitle,sans-serif}.scene{position:absolute;inset:0;width:100%;height:100%}.art{position:absolute;left:1510px;top:120px;width:1800px;height:1200px;object-fit:contain;mask-image:linear-gradient(to right,transparent,#000 7%,#000 94%,transparent),linear-gradient(to bottom,transparent,#000 1%,#000 99%,transparent);mask-composite:intersect}.words{position:absolute;left:232px;top:554px;width:1200px}h1{font-size:244px;font-weight:500;line-height:1.07;letter-spacing:-10px}p{font-size:66px;font-weight:400;line-height:1.35;letter-spacing:-1px;margin-top:38px;color:#b9b6a8}
+</style></head><body><div id="root" data-composition-id="main" data-duration="5" data-width="3440" data-height="1440">
+<section id="intro" class="clip scene" data-start="0" data-duration="2.5" data-track-index="0"><img id="intro-art" class="art" src="assets/lattices-architecture.png" alt="Ivory architectural L cutaway"><div class="words"><h1 id="intro-title">Lattices</h1><p id="intro-topic">Overview</p></div></section>
+<section id="outro" class="clip scene" data-start="2.5" data-duration="2.5" data-track-index="0"><img id="outro-art" class="art" src="assets/lattices-architecture.png" alt="Ivory architectural L cutaway"><div class="words"><h1 id="outro-title">Lattices</h1></div></section>
+</div><script>
+window.__timelines = window.__timelines || {};
+const tl=gsap.timeline({paused:true});
+tl.fromTo('#intro-title',{y:14,opacity:0},{y:0,opacity:1,duration:.46,ease:'power2.out'},0);
+tl.fromTo('#intro-topic',{y:10,opacity:0},{y:0,opacity:1,duration:.4,ease:'power2.out'},.12);
+tl.fromTo('#outro-title',{y:14,opacity:0},{y:0,opacity:1,duration:.46,ease:'power2.out'},2.5);
+window.__timelines.main=tl;
+</script></body></html>

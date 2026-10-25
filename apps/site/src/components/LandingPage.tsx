@@ -618,6 +618,7 @@ function HeroWorkspaceStage() {
             <span className="hero-harness-dot" aria-hidden="true" />
             <span>claude</span>
             <span className="hero-harness-cwd">~/dev/{heroLayer.name}</span>
+            <span className="hero-harness-transport">Local workspace API</span>
           </div>
           <div className="hero-harness-body" key={typing ? "typing" : "done"}>
             <motion.span className="hero-harness-user" {...line(0.2)}>
@@ -791,7 +792,7 @@ function PlacementFilm() {
         <source src="/hands/placement-hud.mp4" type="video/mp4" />
       </video>
       <figcaption>
-        Hold ⌃⌥ and point at a side or a corner, then let go to put the front
+        Enable Tile HUD in Settings, hold ⌃⌥ and point at a side or a corner, then let go to put the front
         window there. The centre fills the screen; dead centre cancels.
       </figcaption>
     </figure>
@@ -801,11 +802,11 @@ function PlacementFilm() {
 function HandsOnSection() {
   return (
     <section className="home-sec fade-in" id="hands">
-      <SectionHead title="Shortcuts and mouse gestures, not just the palette.">
+      <SectionHead title="Shape the workspace as you work.">
         <p className="sec-lede">
-          On macOS, Caps Lock is Hyper. ⌃⌥ tiles halves and grids. Hold a mouse button,
-          draw a direction or a shape, release. The app replays that path in
-          a 3×3 <em>matrix</em>, the same completer as the logo.
+          On macOS, tile halves with ⌘⌥⇧ and an arrow, use Caps Lock as Hyper, or hold a mouse button,
+          draw a gesture, and release. Explore the paths in the 3×3
+          gesture matrix below.
         </p>
         <div className="hands-links">
           <a href="/lattices/docs/app">Shortcut reference &rarr;</a>
@@ -852,7 +853,7 @@ function SectionHead({ kicker, title, children }: { kicker?: string; title: stri
 }
 
 const tickerMethods = [
-  "agent api · lattices.sock",
+  "local workspace API",
   "lattices.search",
   "windows.search",
   "terminals.search",
@@ -948,11 +949,11 @@ export default function App() {
         <section className="hero fade-in">
           <div className="hero-inner">
 
-            <h1>More projects. More momentum.</h1>
+            <h1>Your workspace, programmable.</h1>
             <p className="hero-sub">
-              Agents let you run more projects at once than ever before.
-              Lattices keeps up with you: it knows which windows belong to
-              which project and puts them where you need them.
+              Take full control of your windows, terminals, and projects.
+              Give your agents the same workspace controls, across every
+              computer you connect.
             </p>
             <div className="hero-actions">
               <a
@@ -973,6 +974,12 @@ export default function App() {
               <li>API driven</li>
               <li>Open source</li>
             </ul>
+            <a href="/blog/your-workspace-programmable" className="hero-announcement">
+              <span><strong>Product update:</strong> Your workspace, programmable</span>
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 12h16m-6-6 6 6-6 6" />
+              </svg>
+            </a>
             <a href="/linux" className="hero-linux-link">
               Also on Linux, with Hyprland and Omarchy <span aria-hidden="true">&rarr;</span>
             </a>
@@ -1001,11 +1008,12 @@ export default function App() {
         <section className="section shared-state-section" id="shared-state">
          <div className="shared-state-inner">
           <div className="shared-state-copy fade-in">
-            <h2>Same desktop, whether you drive or your agent does.</h2>
+            <h2>The same controls. Across your computers.</h2>
             <p>
-              You hold ⌃⌥ and point. Your agent runs <code>lats place</code>.
-              Both move the same windows on the same desktop, and you can
-              see every move your agent makes.
+              Use a shortcut, a script, or an agent to find windows, arrange
+              layouts, and bring projects into focus. Connect another computer
+              to extend that control beyond the one in front of you. You choose
+              which machines and actions your agents can access.
             </p>
             <p>
               A placement made through <code>lats</code> or the API returns a
@@ -1067,8 +1075,9 @@ export default function App() {
                 </a>
               </div>
               <p className="app-desc">
-                The Mac app keeps the windows for coding, research, or deep work together.
-                Switch workspace layers when it’s time to change focus.
+                Keep the windows for each project together in a named layer.
+                See what’s running, find what you need, and switch the whole
+                workspace when it’s time to change focus.
               </p>
               <ul className="app-features">
                 <li>See every project and live session</li>
@@ -1098,36 +1107,36 @@ export default function App() {
 
         {/* Product spine */}
         <section className="home-sec fade-in fade-in-delay-2" id="features">
-          <SectionHead title="See your workspace. Put it to work." />
+          <SectionHead title="Make your environment part of your workflow." />
           <div className="home-spine">
             <article>
               <span className="home-spine-num">01</span>
               <h3>Window manager</h3>
-              <h2>Keep each project together.</h2>
+              <h2>Organize around the work.</h2>
               <p>
-                Tile windows, group them into layers, launch whole projects,
-                and switch contexts from the app, a shortcut, or a mouse
-                gesture.
+                Arrange windows, group them into project layers, and move
+                between contexts without rebuilding your desktop each time.
+                Keep the tools for the task together.
               </p>
             </article>
             <article>
               <span className="home-spine-num">02</span>
               <h3>Tools and terminals</h3>
-              <h2>Run your tools.</h2>
+              <h2>Run the whole project.</h2>
               <p>
-                Launch your editor, browser, and terminal commands as a project.
-                Keep your development server, tests, and coding agents
-                ready in their own panes.
+                Launch your editor, browser, and terminal commands together.
+                Keep your development server, tests, and coding agents running
+                in their own panes, ready when you return.
               </p>
             </article>
             <article>
               <span className="home-spine-num">03</span>
               <h3>Configuration</h3>
-              <h2>Make it yours.</h2>
+              <h2>Make your workflow executable.</h2>
               <p>
-                Define your tools and layouts in a config file. Add scripts
-                and agent tools through the same API that moves your
-                windows.
+                Define tools and layouts in a config file. Connect scripts
+                and agents to the same workspace controls you use by hand.
+                Turn a repeated setup into something you can run.
               </p>
             </article>
           </div>
@@ -1136,11 +1145,11 @@ export default function App() {
         {/* Config */}
         <section className="home-sec" id="config">
           <div className="fade-in fade-in-delay-2">
-            <SectionHead kicker="Configuration" title="Do more with less friction.">
+            <SectionHead kicker="Configuration" title="Define the workspace. Return to the work.">
               <p className="sec-lede">
-                Set up your terminals, browser, editor, and commands once.
-                Bring the project back in one step, with each tool
-                in its place.
+                Give each project a repeatable setup: named panes, startup
+                commands, and a layout that fits the task. Define it once
+                in .lattices.json, then launch or reattach with a command.
               </p>
             </SectionHead>
           </div>
@@ -1196,13 +1205,14 @@ export default function App() {
             <div>
               <p className="sec-kicker">Agent API</p>
               <h2 className="sec-title">
-                A foundation for builders.
+                Give your agents workspace control.
               </h2>
               <p className="sec-lede">
-                The workspace is programmable. An open-source app and a
-                documented local API give scripts and agents the same calls
-                you use: find windows, arrange layouts, switch layers, and
-                undo a move. For clicking and typing inside apps, use{" "}
+                Give agents the same workspace capabilities you use yourself:
+                find windows, arrange layouts, activate project layers, and
+                inspect the result. Use the API locally, or enable remote
+                access on a connected computer with the permissions you choose.
+                For clicking and typing inside apps, use{" "}
                 <a href="/action">Action</a>.
               </p>
               <ul className="agent-methods">
@@ -1240,8 +1250,8 @@ export default function App() {
               <h2>Your workspace, under your control.</h2>
             </div>
             <p>
-              Arrange windows, switch projects, and see what your agents do.
-              Workspace control and action history stay on your computer.
+              Workspace control and action history stay on your computers.
+              Remote access is opt-in, with permissions you approve.
               Screen text reading is off until you turn it on.
               Optional vision-model features may send screen context to the
               provider you choose. Lattices is open source, so you can inspect
@@ -1287,14 +1297,14 @@ export default function App() {
 
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
-            <h2>Make yourself at home.</h2>
+            <h2>Build your workspace.</h2>
             <p>Download the Mac app, or <a href="#linux">install on Linux</a>.</p>
           </div>
           <div className="install-main">
             <div className="install-download">
               <div className="install-app-mark"><LatticesMark width={48} height={48} aria-hidden="true" /></div>
               <h3>Lattices for Mac</h3>
-              <p>Your windows, projects, and tools. A little more together.</p>
+              <p>Your windows, projects, and tools, ready to work together.</p>
               <a className="install-primary" href={latticesDownloadURL}
                 onClick={() => trackCta('download_dmg_install', latticesDownloadURL)}>
                 <DownloadIcon /> Download for Mac
@@ -1334,8 +1344,8 @@ export default function App() {
 
         {/* CTA */}
         <section className="cta">
-          <h2>Find any project&apos;s windows. Put them in place, for you or your agent.</h2>
-          <p>Free and open source. A window manager that knows about projects.</p>
+          <h2>Put your workspace to work.</h2>
+          <p>For you and your agents, across the computers you connect. Free and open source.</p>
           <div className="cta-download-row">
             <a
               href={latticesDownloadURL}

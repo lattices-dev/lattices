@@ -143,6 +143,7 @@ function TagList({ tags }: { tags: BlogPost['tags'] }) {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

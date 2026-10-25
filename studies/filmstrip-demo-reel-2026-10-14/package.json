@@ -1,0 +1,11 @@
+{
+  "name": "filmstrip-demo-reel-2026-10-14",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.162 preview",
+    "check": "npx --yes hyperframes@0.8.162 check",
+    "render": "npx --yes hyperframes@0.8.162 render",
+    "publish": "npx --yes hyperframes@0.8.162 publish"
+  }
+}

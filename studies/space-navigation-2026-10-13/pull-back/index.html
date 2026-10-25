@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aperture → Canvas · Lattices study</title>
+<style>
+:root{color-scheme:dark;--bg:#0c0f12;--surface:#151a1e;--text:#e7ebed;--dim:#9ca9b0;--line:#ffffff20;--accent:#ef6a47;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}main{max-width:1440px;margin:auto;padding:24px 28px 40px}nav{display:flex;gap:22px;align-items:center;font-size:13px;margin-bottom:22px}a{color:var(--dim);text-decoration:none}a:hover{color:var(--text)}a[aria-current]{color:var(--text);border-bottom:2px solid var(--accent);padding:8px 0}header{display:flex;justify-content:space-between;gap:24px;align-items:baseline;margin-bottom:18px}h1{font-size:26px;letter-spacing:-.6px;font-weight:550;margin:0 0 5px}p{color:var(--dim);margin:0;font-size:14px;line-height:1.55}.meta{font-size:12px;white-space:nowrap}.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0}button,select{font:inherit;font-size:13px;color:var(--text);background:#1d2429;border:1px solid #ffffff24;border-radius:7px;padding:9px 14px;cursor:pointer}button:hover{background:#293238}button.primary{color:#111619;background:#e6ecef;border-color:#e6ecef;font-weight:600}button:disabled{opacity:.35;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,#stage:focus-visible{outline:2px solid var(--accent);outline-offset:4px}.controls label{display:flex;gap:8px;align-items:center;color:var(--dim);font-size:12px}.spacer{flex:1}#stage{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#171e25;aspect-ratio:1200/680} #tray,#focus,#rail,#canvas-title,#map-shell,#lens-frame,#lens-guides,#wings{pointer-events:none}svg{display:block;width:100%;height:100%}.scrubber{display:flex;align-items:center;gap:16px;margin-top:16px;font-size:12px;color:var(--dim)}input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}input[type=checkbox]{accent-color:var(--accent)}output{min-width:42px;text-align:right;font-variant-numeric:tabular-nums}.notes{display:flex;gap:36px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}.notes p{flex:1;max-width:650px;font-size:13px}.notes strong{display:block;color:var(--text);margin-bottom:3px;font-weight:550}#state{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dim)}@media(max-width:700px){main{padding:16px 12px}header{display:block}.meta{margin-top:8px}nav{gap:15px;margin-bottom:18px}.spacer{display:none}.controls{gap:8px}.notes{display:block}.notes p+p{margin-top:16px}#stage{aspect-ratio:1/1}h1{font-size:23px}}
+</style></head>
+<body><main>
+<nav aria-label="Studies"><a href="../">All studies</a><a href="./" aria-current="page">Pull back · Codex</a><a href="../aperture-lens/">Aperture lens · Opus</a></nav>
+<header><div><h1>Aperture → Canvas</h1><p>A fixed lens, a connected workspace, and a little map that stays with you.</p></div><p class="meta">Interactive concept · illustrative desktops</p></header>
+<div id="stage" tabindex="0" aria-label="Pull back study. Drag to pan the canvas. Scroll to zoom. Left and right arrows browse desktops. Escape returns to the filmstrip.">
+<svg viewBox="0 0 1200 680" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="scene-title scene-desc">
+<title id="scene-title">A workspace canvas with a persistent minimap</title><desc id="scene-desc">The filmstrip folds into a small map. Drag the larger canvas to explore desktops; the map shows your viewport. The original desktop stays fixed behind the overlay.</desc>
+<defs><linearGradient id="wall" x2=".8" y2="1"><stop stop-color="#354652"/><stop offset="1" stop-color="#152027"/></linearGradient><linearGradient id="metal" x2="0" y2="1"><stop stop-color="#242c31"/><stop offset="1" stop-color="#0d1216"/></linearGradient><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#ffffff18"/></pattern><clipPath id="world-clip"><rect id="world-cliprect" x="48" y="116" width="1104" height="496" rx="12"/></clipPath><clipPath id="crop"><rect id="cliprect" x="100" y="262" width="1000" height="156" rx="15"/></clipPath></defs>
+<!-- The desktop is intentionally a separate, stationary group. -->
+<g id="stationary-desktop"><rect width="1200" height="680" fill="url(#wall)"/><rect width="1200" height="24" fill="#10171bb0"/><text x="22" y="16" fill="#d2dade" font-size="11">Lattices</text><text x="1100" y="16" fill="#a9bac3" font-size="10">9:41</text>
+<g transform="translate(88 95)"><rect width="600" height="456" rx="12" fill="#141c22" stroke="#70818b55"/><path d="M0 32H600" stroke="#72828b33"/><text x="20" y="21" fill="#899ca8" font-size="11">Terminal — workspace</text><g fill="#869da8" font-family="monospace" font-size="12"><text x="24" y="68">~/workspace/lattices</text><text x="24" y="97" fill="#b1c8bd">› bun run dev</text><text x="24" y="126">Ready. Watching for changes.</text></g><g stroke="#70859233" stroke-width="4"><path d="M24 173H420 M24 197H325 M24 221H470 M24 245H250 M24 269H390"/></g></g>
+<g transform="translate(728 125)"><rect width="365" height="398" rx="12" fill="#202a31" stroke="#70818b55"/><path d="M0 32H365" stroke="#72828b33"/><text x="20" y="21" fill="#9aadb7" font-size="11">Notes</text><text x="28" y="83" fill="#bbcad1" font-size="21">A little more room.</text><g stroke="#7e959f44" stroke-width="5"><path d="M28 113H310 M28 139H280 M28 165H316 M28 191H241 M28 239H290 M28 265H265"/></g></g></g>
+<rect id="backdrop" width="1200" height="680" fill="#060a0e" opacity=".38"/>
+<rect id="canvas-surface" x="48" y="68" width="1104" height="544" rx="18" fill="#11191de8" stroke="#ffffff14" opacity="0"/>
+<g id="workspace" opacity="0" clip-path="url(#world-clip)"><rect x="48" y="116" width="1104" height="496" fill="#11191d"/><g id="world"></g></g>
+<g id="canvas-title" opacity="0" fill="#a6b5be" font-family="-apple-system,system-ui,sans-serif"><text x="76" y="102" font-size="12">Lattices / Canvas</text><text x="1124" y="102" text-anchor="end" font-size="11">Drag to pan · scroll to zoom</text></g>
+<rect id="tray" x="100" y="262" width="1000" height="156" rx="15" fill="url(#metal)" stroke="#ffffff30"/>
+<rect id="lens-frame" x="512" y="281" width="176" height="113" rx="9" fill="#0d131af5" stroke="#ffffff40" opacity="0"/>
+<g id="map-shell" opacity="0"><text x="86" y="390" font-size="9" fill="#b7c6cf">LATTICES / MAP</text></g>
+<g id="wings" opacity="0" fill="#b1c0c8" font-family="system-ui"><path d="M146 314h18v18h-18z M168 314h18v18h-18z M146 336h18v18h-18z" fill="none" stroke="#b1c0c8"/><text x="202" y="329" font-size="13" letter-spacing="2">LATTICES</text><text x="202" y="350" font-size="11" fill="#83959f">A little more perspective.</text><text x="744" y="327" font-size="12" id="lens-count">16 desktops · one workspace</text><text x="744" y="350" font-size="11" fill="#83959f">Pull back again to explore the canvas</text></g>
+<path id="lens-guides" d="M499 281h-8 M512 268v-8 M701 281h8 M688 268v-8 M499 394h-8 M512 407v8 M701 394h8 M688 407v8" stroke="#a8bac8" opacity=".45"/>
+<g clip-path="url(#crop)"><g id="cards"></g></g>
+<rect id="focus" x="512" y="281" width="176" height="113" rx="9" fill="none" stroke="#e5edf2" stroke-width="1.2"/>
+<g id="rail"></g><g id="map-interaction" opacity="0"><rect id="viewport" fill="#ef6a471a" stroke="#ef6a47" stroke-width="1.3" pointer-events="none"/><rect id="map-hit" x="84" y="402" width="180" height="180" fill="transparent" style="cursor:crosshair"/></g>
+</svg></div>
+<div class="controls"><button id="zoom" class="primary">Preview through aperture</button><button id="canvas">Open canvas</button><button id="return">Return to filmstrip</button><button id="fit">Fit canvas</button><button id="closer" aria-label="Zoom canvas in">＋</button><button id="farther" aria-label="Zoom canvas out">−</button><button id="prev" aria-label="Previous desktop">Previous</button><button id="next" aria-label="Next desktop">Next</button><span id="state" aria-live="polite">Desktop 8 of 16 · Filmstrip</span><span class="spacer"></span><label>Desktops <select id="desktop-count" aria-label="Desktop count"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16" selected>16</option></select></label><label>Timing <select id="timing"><option value="460">Natural · 460 ms</option><option value="1200">Study · 1.2 s</option></select></label><label><input id="reduce" type="checkbox">Reduce motion</label></div>
+<label class="scrubber" for="progress"><span>Filmstrip</span><input id="progress" type="range" min="0" max="200" step="1" value="0" aria-label="Zoom progress: 0 filmstrip, 100 aperture, 200 canvas"><span>Canvas</span><output id="percent">0.00</output></label>
+<div class="notes"><p><strong>A map and a place to work</strong>Opus’s fixed aperture first gathers every desktop into a miniature grid. Pull back again: the lens docks bottom left as the connected canvas opens; the coral rectangle tracks the visible area. Click the map to travel. Double-click a desktop to return to its filmstrip.</p><p><strong>Try the reversal</strong>Use Aperture, Canvas and Return mid-motion, or scrub the three stops. Arrow keys browse; Z advances a stop; Escape returns. This is an interactive spatial concept with illustrative windows, not the shipping Overview layout.</p></div>
+</main>
+<script>
+(()=>{
+const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';let selected=7,p=0,raf=0,goal=0;let count=16;const cards=[],rails=[],details=[],captions=[];let camera,worldW,worldH,mapScale,mapX,mapY,layout=[];
+const reduce=$('reduce'),media=matchMedia('(prefers-reduced-motion: reduce)');reduce.checked=media.matches;
+function el(tag,attrs,parent){const n=document.createElementNS(NS,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);parent.append(n);return n}
+function buildModel(){
+ cards.length=0;rails.length=0;details.length=0;captions.length=0;['world','cards','rail'].forEach(id=>$(id).replaceChildren());
+ const cols=Math.ceil(Math.sqrt(count)),rows=Math.ceil(count/cols);worldW=cols*420;worldH=rows*300;mapScale=Math.min(180/worldW,180/worldH);mapX=84+(180-worldW*mapScale)/2;mapY=402+(180-worldH*mapScale)/2;
+ layout=Array.from({length:count},(_,i)=>({x:i%cols*420+210,y:Math.floor(i/cols)*300+150,h:300}));
+ selected=Math.min(selected,count-1);fitCamera();
+ el('rect',{width:worldW,height:worldH,fill:'url(#dots)'},$('world'));
+for(let i=0;i<count;i++){
+ const g=el('g',{},$('cards')),shot=el('rect',{x:-84,y:-52.5,width:168,height:105,rx:6,fill:'#1e2a32',stroke:'#b0c3cc55','stroke-width':.8},g);
+ const patterns=[[[8,8,88,88],[101,8,59,88]],[[8,8,152,40],[8,55,72,41],[88,55,72,41]],[[8,8,152,88]],[[8,8,72,88],[88,8,72,88]]];
+ if(i!==3&&i!==11)patterns[i%4].forEach(([x,y,w,h],j)=>{el('rect',{x:x-84,y:y-52.5,width:w,height:h,rx:2,fill:'#a5bdca16',stroke:'#bfd0d855','stroke-width':.7},g);el('path',{d:`M${x-84} ${y-46.5}h${w}`,stroke:'#b7cbd333','stroke-width':1},g);const t=el('text',{x:x-79,y:y-30,'font-size':7,fill:'#b6c8d0','font-family':'system-ui'},g);t.textContent=['Terminal','Editor','Notes'][j%3];});
+ const t=el('text',{x:-82,y:70,'font-size':10,fill:'#becbd2','font-family':'ui-monospace,monospace'},g);t.textContent=`${i+1}  Desktop`;cards.push(g);captions.push(t);details.push([...g.querySelectorAll('text')]);
+ const area=el('g',{'data-desktop':i,transform:`translate(${layout[i].x} ${layout[i].y})`},$('world'));el('rect',{x:-210,y:-layout[i].h/2,width:420,height:layout[i].h,fill:i%2===0?'#bed6e004':'#bed6e008',stroke:'#c1d4df14','stroke-width':1},area);
+ const copy=g.cloneNode(true);copy.firstElementChild.remove();copy.lastElementChild.remove();copy.setAttribute('transform','translate(0 12) scale(2.15)');area.append(copy);
+ const regionLabel=el('text',{x:-188,y:-layout[i].h/2+26,fill:i===selected?'#ef9279':'#81959f','font-size':11,'font-family':'system-ui','data-region-label':i},area);regionLabel.textContent=`${String(i+1).padStart(2,'0')} / DESKTOP`;
+
+ rails.push(el('rect',{x:600-(count*11-4)/2+i*11,y:405,width:7,height:3,rx:1.5,fill:'#ffffff35'},$('rail')));
+}
+}
+function fitCamera(){camera={x:worldW/2,y:worldH/2,z:Math.min(.9,1000/worldW,440/worldH)}}
+buildModel();
+const mix=(a,b,t)=>a+(b-a)*t,smooth=t=>t*t*(3-2*t);
+function draw(){
+ // Phase one changes only the contents of the fixed aperture. Phase two
+ // carries that exact map into the corner while its workspace opens behind it.
+ const a=smooth(Math.min(1,p)),b=smooth(Math.max(0,p-1));
+ const lensScale=Math.min(156/worldW,93/worldH);
+ const lensX=600-worldW*lensScale/2,lensY=337.5-worldH*lensScale/2;
+ const active=p===2;
+ $('workspace').style.pointerEvents=active?'auto':'none';$('map-hit').style.pointerEvents=active?'auto':'none';
+ document.querySelectorAll('[data-region-label]').forEach(n=>n.setAttribute('fill',Number(n.dataset.regionLabel)===selected?'#ef9279':'#81959f'));
+ $('world').setAttribute('transform',`translate(${mix(600,600,b)} ${mix(337.5,364,b)}) scale(${mix(lensScale,camera.z,b)}) translate(${-mix(worldW/2,camera.x,b)} ${-mix(worldH/2,camera.y,b)})`);
+ cards.forEach((g,i)=>{
+   const lx=lensX+layout[i].x*lensScale,ly=lensY+layout[i].y*lensScale;
+   const x=mix(mix(600+(i-selected)*178,lx,a),mapX+layout[i].x*mapScale,b);
+   const y=mix(mix(337.5,ly,a),mapY+layout[i].y*mapScale,b);
+   g.setAttribute('transform',`translate(${x} ${y}) scale(${mix(mix(1,2.15*lensScale,a),2.15*mapScale,b)})`);
+   g.setAttribute('opacity',mix(i===selected?1:Math.max(.30,.75-Math.abs(i-selected)*.12),i===selected?1:.75,a));
+   details[i].forEach(n=>n.setAttribute('opacity',Math.max(0,1-a*3)));
+ });
+ const scale=mix(mix(1,2.15*lensScale,a),2.15*mapScale,b);
+ const fx=mix(mix(600,lensX+layout[selected].x*lensScale,a),mapX+layout[selected].x*mapScale,b);
+ const fy=mix(mix(337.5,lensY+layout[selected].y*lensScale,a),mapY+layout[selected].y*mapScale,b);
+ attrs('focus',{x:fx-88*scale,y:fy-56.5*scale,width:176*scale,height:113*scale,rx:mix(9,2,a),stroke:a>.5?'#ef6a47':'#e5edf2'});
+ attrs('cliprect',{x:mix(100,84,b),y:mix(262,402,b),width:mix(1000,180,b),height:mix(156,180,b)});
+ attrs('lens-frame',{x:mix(512,72,b),y:mix(281,370,b),width:mix(176,204,b),height:mix(113,220,b),rx:mix(9,12,b),opacity:a});
+ attrs('world-cliprect',{x:mix(512,48,b),y:mix(281,116,b),width:mix(176,1104,b),height:mix(113,496,b)});
+ attrs('canvas-surface',{x:mix(512,48,b),y:mix(281,68,b),width:mix(176,1104,b),height:mix(113,544,b),opacity:b});
+ $('tray').setAttribute('opacity',1-b);$('rail').setAttribute('opacity',1-a);rails.forEach((r,i)=>r.setAttribute('fill',i===selected?'#ef6a47':'#ffffff35'));
+ $('wings').setAttribute('opacity',Math.max(0,(a-.45)/.55)*Math.max(0,1-b*3));$('lens-count').textContent=`${count} ${count===1?'desktop':'desktops'} · one workspace`;
+ $('lens-guides').setAttribute('opacity',.45*(1-b));
+ $('canvas-title').setAttribute('opacity',Math.max(0,(b-.5)*2));$('workspace').setAttribute('opacity',Math.min(1,b*4));$('map-shell').setAttribute('opacity',b);$('map-interaction').setAttribute('opacity',b);$('backdrop').setAttribute('opacity',mix(.38,.7,b));
+ const vx=Math.max(0,camera.x-552/camera.z),vy=Math.max(0,camera.y-248/camera.z),vr=Math.min(worldW,camera.x+552/camera.z),vb=Math.min(worldH,camera.y+248/camera.z);
+ attrs('viewport',{x:mapX+vx*mapScale,y:mapY+vy*mapScale,width:Math.max(0,vr-vx)*mapScale,height:Math.max(0,vb-vy)*mapScale});
+ ['fit','closer','farther'].forEach(id=>$(id).disabled=!active);
+ $('progress').value=Math.round(p*100);$('percent').textContent=p.toFixed(2);$('state').textContent=`Desktop ${selected+1} of ${count} · ${p===0?'Filmstrip':p===1?'Aperture':p===2?'Canvas':p<1?'Gathering desktops':'Opening canvas'}`;$('prev').disabled=selected===0;$('next').disabled=selected===count-1;
+}
+function attrs(id,values){for(const[k,v]of Object.entries(values))$(id).setAttribute(k,v)}
+function animate(to){cancelAnimationFrame(raf);goal=to;if(reduce.checked){p=to;draw();return}const from=p,start=performance.now(),duration=Number($('timing').value)*Math.max(.35,Math.abs(to-from));function tick(now){const q=Math.min(1,(now-start)/duration);p=mix(from,to,1-Math.pow(1-q,3));draw();if(q<1)raf=requestAnimationFrame(tick);else{p=to;draw()}}raf=requestAnimationFrame(tick)}
+function step(dir){const next=Math.max(0,Math.min(count-1,selected+dir));if(next===selected)return;selected=next;camera.x=layout[selected].x;camera.y=layout[selected].y;draw()}
+$('zoom').onclick=()=>animate(1);$('canvas').onclick=()=>animate(2);$('return').onclick=()=>animate(0);$('prev').onclick=()=>step(-1);$('next').onclick=()=>step(1);$('progress').oninput=e=>{cancelAnimationFrame(raf);p=Number(e.target.value)/100;goal=p;draw()};reduce.onchange=()=>{if(reduce.checked){cancelAnimationFrame(raf);p=goal;draw()}};media.addEventListener('change',e=>{reduce.checked=e.matches;reduce.onchange()});
+function constrain(){camera.x=Math.max(0,Math.min(worldW,camera.x));camera.y=Math.max(0,Math.min(worldH,camera.y));camera.z=Math.max(.16,Math.min(1.8,camera.z));}
+function zoomBy(factor){camera.z*=factor;constrain();draw()}
+$('desktop-count').onchange=e=>{count=Number(e.target.value);buildModel();draw()};
+$('fit').onclick=()=>{fitCamera();draw()};$('closer').onclick=()=>zoomBy(1.2);$('farther').onclick=()=>zoomBy(1/1.2);
+const svg=document.querySelector('svg');function point(e){return new DOMPoint(e.clientX,e.clientY).matrixTransform(svg.getScreenCTM().inverse())}
+let drag=null;
+$('workspace').style.touchAction='none';$('workspace').style.cursor='grab';
+$('workspace').onpointerdown=e=>{if(p!==2)return;const q=point(e);drag={id:e.pointerId,x:q.x,y:q.y,cx:camera.x,cy:camera.y};$('workspace').setPointerCapture(e.pointerId);$('workspace').style.cursor='grabbing'};
+$('workspace').onpointermove=e=>{if(!drag)return;const q=point(e);camera.x=drag.cx-(q.x-drag.x)/camera.z;camera.y=drag.cy-(q.y-drag.y)/camera.z;constrain();draw()};
+function endDrag(){drag=null;$('workspace').style.cursor='grab'}$('workspace').onpointerup=endDrag;$('workspace').onpointercancel=endDrag;
+$('workspace').onwheel=e=>{if(p!==2)return;e.preventDefault();zoomBy(Math.exp(-e.deltaY*.0015))};
+$('workspace').ondblclick=e=>{const target=e.target.closest('[data-desktop]');if(target){selected=Number(target.dataset.desktop);animate(0)}};
+$('map-hit').onpointerdown=e=>{if(p!==2)return;const q=point(e);camera.x=(q.x-mapX)/mapScale;camera.y=(q.y-mapY)/mapScale;constrain();draw()};
+document.addEventListener('keydown',e=>{if(e.target.matches('input,select,textarea')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}else if(e.key==='ArrowRight'){e.preventDefault();step(1)}else if(e.key==='Escape'){e.preventDefault();animate(0)}else if(e.key.toLowerCase()==='z'){e.preventDefault();animate(goal<1?1:goal<2?2:0)}});draw();
+})();
+</script></body></html>

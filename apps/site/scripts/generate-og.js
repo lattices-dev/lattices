@@ -342,7 +342,7 @@ const pages = [
     tag: "npm install -g @lattices/lattices",
     title: "lattices",
     subtitle:
-      "Find any project's windows. Put them in place, for you or your agent.",
+      "Your workspace, programmable. For you and your agents.",
     preview: screenMapPreview,
   },
   {

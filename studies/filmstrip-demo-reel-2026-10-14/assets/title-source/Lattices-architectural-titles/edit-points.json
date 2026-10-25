@@ -1,0 +1,15 @@
+{
+  "intro": {
+    "in": 0,
+    "out": 2.5
+  },
+  "outro": {
+    "in": 2.5,
+    "out": 5
+  },
+  "canvas": {
+    "width": 3440,
+    "height": 1440
+  },
+  "fps": 30
+}
