@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { createServer } from "node:net";
 import { createHash } from "node:crypto";
-import { mkdtempSync, chmodSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, chmodSync, writeFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { resetVoxRuntimeCache, resolveVoxRuntime, synthesizeWithVox } from "../bin/vox-tts.ts";
 
@@ -12,7 +12,8 @@ function frame(text: string): Buffer {
 }
 
 test("worker TTS uses private IPC admission and preserves synthesis metadata", async () => {
-  const dir = mkdtempSync("/private/tmp/voice-cli-"); chmodSync(dir, 0o700);
+  // Keep the Unix socket path short and resolve macOS's /tmp symlink.
+  const dir = mkdtempSync(join(realpathSync("/tmp"), "voice-cli-")); chmodSync(dir, 0o700);
   const socketPath = join(dir, "voice.sock"); const tokenPath = join(dir, "voice.token"); const capabilityPath = join(dir, "runtime.json");
   const token = "a".repeat(43); writeFileSync(tokenPath, token, { mode: 0o600 });
   const previous = process.env.LATTICES_VOICE_CAPABILITY;
