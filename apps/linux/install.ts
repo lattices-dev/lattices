@@ -44,7 +44,10 @@ export async function installLinux(options: InstallOptions, context: InstallCont
   // An update without gesture flags retains the explicitly chosen profile.
   if (previous?.gestures && !options.gestures) options = { ...options, gestures: true, wheel: previous.wheel };
   for (const command of ["hyprctl", "quickshell", "tmux", "systemctl", ...(options.gestures ? ["python3", "Hyprland"] : [])]) {
-    if (!which(command)) throw new Error(`Missing ${command}. Run bash install.sh to install dependencies, or install it with your distribution's package manager.`);
+    if (!which(command)) {
+      if (!options.dryRun) throw new Error(`Missing ${command}. Run bash install.sh to install dependencies, or install it with your distribution's package manager.`);
+      log(`Missing dependency: ${command} (required before installation).`);
+    }
   }
   if (options.start && !options.dryRun) {
     checked("hyprctl", ["-j", "monitors"], 5000);

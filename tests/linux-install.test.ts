@@ -55,6 +55,20 @@ linuxTest("dry-run writes nothing and does not run package, service, or desktop 
   expect(existsSync(join(f.paths.config, "hypr/bindings.lua"))).toBe(false);
 });
 
+linuxTest("dry-run reports missing dependencies while real installation requires them before writing", async () => {
+  const f = fixture(), before = readdirSync(f.home), messages: string[] = [];
+  const context = { ...f.context, which: () => null, log: (message: string) => messages.push(message) };
+  await installLinux(parseOptions(["--dry-run", "--no-start"]), context);
+  for (const command of ["hyprctl", "quickshell", "tmux", "systemctl"]) {
+    expect(messages).toContain(`Missing dependency: ${command} (required before installation).`);
+  }
+  expect(messages.some(message => message.startsWith("Would copy:"))).toBe(true);
+  await expect(installLinux(options(), context)).rejects.toThrow("Missing hyprctl");
+  expect(f.commands).toEqual([]);
+  expect(readdirSync(f.home)).toEqual(before);
+  expect(existsSync(f.paths.runtime)).toBe(false);
+});
+
 linuxTest("install creates a checkout-independent runtime and repeatable Omarchy config", async () => {
   const f = fixture("a home ' $% space");
   mkdirSync(join(f.paths.config, "omarchy"), { recursive: true });
@@ -152,9 +166,9 @@ linuxTest("the public shell entry routes Linux help and dry-run without requirin
   const f=fixture();
   const env={...process.env,HOME:f.home,XDG_CONFIG_HOME:f.paths.config,XDG_DATA_HOME:f.paths.data,XDG_STATE_HOME:f.paths.state};
   const help=Bun.spawnSync(["bash",join(root,"install.sh"),"--help"],{env,stdout:"pipe",stderr:"pipe"});
-  expect(help.exitCode).toBe(0); expect(help.stdout.toString()).toContain("Install Lattices on Linux");
+  expect(help.exitCode, help.stderr.toString()).toBe(0); expect(help.stdout.toString()).toContain("Install Lattices on Linux");
   const preview=Bun.spawnSync(["bash",join(root,"install.sh"),"--dry-run","--no-start"],{env,stdout:"pipe",stderr:"pipe"});
-  expect(preview.exitCode).toBe(0); expect(preview.stdout.toString()).toContain("Would copy");
+  expect(preview.exitCode, preview.stderr.toString()).toBe(0); expect(preview.stdout.toString()).toContain("Would copy");
   expect(existsSync(f.paths.runtime)).toBe(false);
 });
 
