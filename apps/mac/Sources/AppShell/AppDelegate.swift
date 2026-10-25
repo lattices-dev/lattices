@@ -209,6 +209,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installSystemInputBoundaryObservers() {
+        SystemSpaceChangeFeedback.shared.seed(WindowTiler.getDisplaySpaces())
         let center = NSWorkspace.shared.notificationCenter
         notificationObservers.append(center.addObserver(
             forName: NSWorkspace.willSleepNotification,
@@ -254,9 +255,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { _ in
             SpaceNumberMark.shared.refresh()
-            // System-initiated Space change (Dock app activation, trackpad
-            // swipe, Mission Control). Switches Lattices performs show their
-            // own bezel — skip those so it doesn't double up.
+            // Update history even when a programmatic switch already owns its
+            // feedback. Native fullscreen returns are window transitions.
+            let feedback = SystemSpaceChangeFeedback.shared.observe(
+                WindowTiler.getDisplaySpaces(), activeSpaceID: WindowTiler.getCurrentSpace())
+            if feedback == .fullScreenReturn {
+                DiagnosticLog.shared.info("SpaceSwitchBezel: suppressed native fullscreen return")
+            }
+            guard feedback == .show else { return }
+            // System-initiated desktop navigation keeps the normal bezel.
             guard CFAbsoluteTimeGetCurrent() - WindowTiler.lastProgrammaticSwitchAt > 0.8 else { return }
             WindowTiler.showSpaceSwitchBezelForCurrentSpace()
         })

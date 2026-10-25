@@ -115,7 +115,7 @@ final class LayerPreview {
     func arm() {
         dispatchPrecondition(condition: .onQueue(.main))
         let flags = CGEventSource.flagsState(.combinedSessionState)
-        guard flags.contains(.maskCommand), flags.contains(.maskAlternate) else { return }
+        guard LayerChordState.mode(flags) == .browse else { return }
         guard ensureTap() else { return }
         lock.lock()
         armed = true
@@ -581,7 +581,7 @@ final class LayerPreview {
         }
 
         let flags = event.flags
-        let chord = flags.contains(.maskCommand) && flags.contains(.maskAlternate)
+        let chord = LayerChordState.mode(flags) == .browse
         preview.lock.lock()
         let armed = preview.armed
         let frozen = preview.frozen
@@ -606,6 +606,7 @@ final class LayerPreview {
                     if !preview.isFrozen, let tap = preview.eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
                 }
             }
+            if frozen, LayerChordState.hasBaseModifiers(flags), !chord { return endAndPass() }
             if frozen, !holds, !chord { return endAndPass() }
             return Unmanaged.passUnretained(event)
         }
@@ -669,8 +670,11 @@ final class LayerPreview {
     }
 
     static func passesSystemNavigation(key: Int64, flags: CGEventFlags) -> Bool {
+        // Shift transfers the shared ⌘⌥ arrow family to tiling. Control
+        // likewise leaves layer browsing, even if its close is still queued.
+        if LayerChordState.hasBaseModifiers(flags), LayerChordState.mode(flags) != .browse { return true }
         let modifiers = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
-        return (modifiers == .maskControl && Key.arrows[key] != nil)
+        return ((modifiers == .maskControl || modifiers == [.maskControl, .maskAlternate]) && Key.arrows[key] != nil)
             || (key == Key.tab && (modifiers == .maskCommand || modifiers == [.maskCommand, .maskShift]))
             || (key == Key.escape && modifiers == [.maskCommand, .maskAlternate])
     }

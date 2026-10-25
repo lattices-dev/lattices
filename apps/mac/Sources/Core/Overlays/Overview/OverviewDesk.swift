@@ -18,8 +18,7 @@ struct OverviewStage: View {
     static let captionHeight: CGFloat = 12
     static let displayGap: CGFloat = 36
     static let thumbGap: CGFloat = 6
-    static let thumbWidth: CGFloat = 84
-    static let minThumbWidth: CGFloat = 44
+    static let thumbWidth: CGFloat = 56
     static let hintHeight: CGFloat = 34
     /// The widest monitor's map never gets narrower; past it the row scrolls.
     static let minMapWidth: CGFloat = 260
@@ -27,6 +26,7 @@ struct OverviewStage: View {
     struct Layout: Equatable {
         var maps: [CGSize]
         var thumbs: [CGSize]
+        var mapRowHeight: CGFloat { maps.map(\.height).max() ?? 0 }
     }
 
     /// One scale for every monitor so they compare, a smaller one drawn a
@@ -43,21 +43,14 @@ struct OverviewStage: View {
             let boost: CGFloat = size.width < widest * 0.7 ? 1.12 : 1
             return CGSize(width: size.width * boost, height: size.height * boost)
         }
-        let thumbRow: CGFloat = sizes.map { thumbWidth / ($0.width / $0.height) }.max() ?? 50
-        let chrome = headHeight + spacing * 2 + thumbRow + 4 + captionHeight
+        let chrome = headHeight + spacing * 2 + thumbWidth + 4 + captionHeight
         let across = room.width - displayGap * CGFloat(desk.count - 1)
         let byWidth = across / drawn.reduce(0) { $0 + $1.width }
         let byHeight = max(1, room.height - chrome) / (drawn.map(\.height).max() ?? 1)
         let floor = minMapWidth / ((drawn.map(\.width).max()) ?? 1)
         let scale = max(floor, min(byWidth, byHeight))
         let maps = drawn.map { CGSize(width: ($0.width * scale).rounded(), height: ($0.height * scale).rounded()) }
-        let thumbs: [CGSize] = zip(desk, maps).enumerated().map { index, pair in
-            let count = CGFloat(max(1, pair.0.spaces.count))
-            let fit = (pair.1.width - thumbGap * (count - 1)) / count
-            let width = max(minThumbWidth, min(thumbWidth, fit)).rounded()
-            let aspect = sizes[index].width / sizes[index].height
-            return CGSize(width: width, height: (width / aspect).rounded())
-        }
+        let thumbs = Array(repeating: CGSize(width: thumbWidth, height: thumbWidth), count: desk.count)
         return Layout(maps: maps, thumbs: thumbs)
     }
 
@@ -74,6 +67,7 @@ struct OverviewStage: View {
                                 OverviewDisplayBlock(
                                     model: model, monitor: monitor,
                                     mapSize: layout.maps[index], thumbSize: layout.thumbs[index],
+                                    mapRowHeight: layout.mapRowHeight,
                                     quiet: model.workingRows.isEmpty
                                 )
                             }
@@ -124,6 +118,7 @@ struct OverviewDisplayBlock: View {
     let monitor: OverviewDeskMonitor
     let mapSize: CGSize
     let thumbSize: CGSize
+    let mapRowHeight: CGFloat
     /// Nothing anywhere is in scope; the stage says so once.
     let quiet: Bool
 
@@ -142,10 +137,15 @@ struct OverviewDisplayBlock: View {
         VStack(alignment: .leading, spacing: OverviewStage.spacing) {
             head
                 .frame(width: mapSize.width, height: OverviewStage.headHeight)
-            if let viewed {
-                OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
-                    .opacity(scopedOut ? 0.55 : 1)
+            Group {
+                if let viewed {
+                    OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
+                        .opacity(scopedOut ? 0.55 : 1)
+                } else {
+                    Color.clear
+                }
             }
+            .frame(width: mapSize.width, height: mapRowHeight, alignment: .top)
             desktops
         }
         .accessibilityElement(children: .contain)
@@ -852,9 +852,12 @@ struct OverviewMiniDesktop: View {
     private var tiles: [Tile] {
         let bounds = display.bounds
         guard bounds.width > 0, bounds.height > 0 else { return [] }
-        let map = CGRect(origin: .zero, size: size)
-        let sx: CGFloat = size.width / bounds.width
-        let sy: CGFloat = size.height / bounds.height
+        // Equal square tiles keep the Desktop row readable; the windows
+        // inside still retain the proportions of their own display.
+        let scale = min((size.width - 8) / bounds.width, (size.height - 8) / bounds.height)
+        let mapSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        let map = CGRect(x: (size.width - mapSize.width) / 2, y: (size.height - mapSize.height) / 2,
+                         width: mapSize.width, height: mapSize.height)
         return space.rows.compactMap { (row: OverviewRow) -> Tile? in
             let live = space.drawsLive(row)
             if space.desktop == nil {
@@ -862,8 +865,9 @@ struct OverviewMiniDesktop: View {
             }
             guard let frame = row.frame else { return nil }
             let scaled = CGRect(
-                x: (frame.minX - bounds.minX) * sx, y: (frame.minY - bounds.minY) * sy,
-                width: frame.width * sx, height: frame.height * sy
+                x: map.minX + (frame.minX - bounds.minX) * scale,
+                y: map.minY + (frame.minY - bounds.minY) * scale,
+                width: frame.width * scale, height: frame.height * scale
             )
             let rect = scaled.intersection(map)
             guard !rect.isNull, rect.width >= 2, rect.height >= 2 else { return nil }

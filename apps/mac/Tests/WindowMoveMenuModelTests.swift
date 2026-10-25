@@ -159,17 +159,16 @@ final class WindowMoveMenuModelTests: XCTestCase {
         XCTAssertFalse(multi.isDisabled(other))
     }
 
-    func testAssignedAppCannotChooseRefusedDesktopOrBringHere() {
-        var refused = desktop(displayIndex: 0, displayName: "DELL", spaceId: 1, number: 1, showing: true)
-        refused.isRefused = true
-        let assigned = desktop(displayIndex: 0, displayName: "DELL", spaceId: 6, number: 3)
+    func testBringHereAndOtherDesktopsRemainAvailableAwayFromCurrentDesktop() {
+        let showing = desktop(displayIndex: 0, displayName: "DELL", spaceId: 1, number: 1, showing: true)
+        let current = desktop(displayIndex: 0, displayName: "DELL", spaceId: 6, number: 3, current: true)
         let otherDisplay = desktop(displayIndex: 1, displayName: "U32", spaceId: 46, number: 1)
         let model = WindowMoveMenuModel(displays: [
-            display(0, desktops: [refused, assigned]), display(1, desktops: [otherDisplay])
-        ], targets: [target(1)], here: refused)
-        XCTAssertTrue(model.isDisabled(refused))
-        XCTAssertTrue(model.isDisabled(model.here!))
-        XCTAssertFalse(model.isDisabled(assigned))
+            display(0, desktops: [showing, current]), display(1, desktops: [otherDisplay])
+        ], targets: [target(1)], here: showing)
+        XCTAssertFalse(model.isDisabled(showing))
+        XCTAssertFalse(model.isDisabled(model.here!))
+        XCTAssertTrue(model.isDisabled(current))
         XCTAssertFalse(model.isDisabled(otherDisplay))
     }
 
@@ -381,12 +380,12 @@ final class WindowMoveMenuModelTests: XCTestCase {
         ])), "Accessibility is disabled")
     }
 
-    func testAssignedDesktopBlockShowsActionableMessage() {
-        let message = "Chrome is assigned to Desktop 3 on DELL in macOS"
-        XCTAssertEqual(WindowMovementService.failureMessage(for: .object([
-            "status": .string("blocked"), "blockedReason": .string("app-assigned-desktop"),
-            "message": .string(message), "assignedSpaceId": .int(6), "verified": .bool(false),
-        ])), message)
+    func testVerifiedMoveCanDifferFromAppDesktopAssignment() {
+        XCTAssertNil(WindowMovementService.failureMessage(for: .object([
+            "status": .string("ok"), "verified": .bool(true),
+            "assignedSpaceId": .int(5), "spaceId": .int(1),
+            "afterSpaceIds": .array([.int(1)]),
+        ])))
     }
 
     // MARK: - Truthful receipts

@@ -10,6 +10,8 @@ import * as ddc from "./ddc.ts";
 import { run } from "./exec.ts";
 import * as hypr from "./hyprland.ts";
 import * as input from "./input.ts";
+import { interactiveInput, physicalKey } from "./interactive-input.ts";
+import { physicalKeyboardAvailable } from "./physical-keyboard.ts";
 import * as live from "./live.ts";
 import * as moves from "./moves.ts";
 import { bringCursorHome, type CursorHomeDependencies } from "./cursor-home.ts";
@@ -60,11 +62,18 @@ function staged(plan: Record<string, unknown>): Json {
 }
 
 /** A point in layout coordinates from x/y or a window plus xRatio/yRatio. */
+let pointerLayout: { at: number; value: Promise<ReturnType<typeof input.layoutExtent>> } | undefined;
 async function resolvePoint(params: Params) {
-  const snap = await desktop.snapshot();
-  const extent = input.layoutExtent(snap.displays);
   const x = num(params, "x");
   const y = num(params, "y");
+  const continuous = params.interactive === true || params.phase === "down" || params.phase === "up";
+  let extent: ReturnType<typeof input.layoutExtent>;
+  if (continuous && x !== undefined && y !== undefined) {
+    if (!pointerLayout || Date.now() - pointerLayout.at > 1000) {
+      pointerLayout = { at: Date.now(), value: desktop.snapshot().then(snap => input.layoutExtent(snap.displays)) };
+    }
+    extent = await pointerLayout.value;
+  } else { extent = input.layoutExtent((await desktop.snapshot()).displays); }
   if (x !== undefined && y !== undefined) return { x, y, extent, window: null as desktop.Window | null };
   const xr = num(params, "xRatio");
   const yr = num(params, "yRatio");
@@ -238,6 +247,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
         eventStream: hypr.getEventStreamHealth(),
         methods: router.available().map((e) => e.method).sort(),
         keyMapping: "command and control map to ctrl; option to alt; super, meta and win to the logo key",
+        interactiveInput: { pointer: capabilities.has("input.pointer"), keyboard: capabilities.has("input.keys") && await physicalKeyboardAvailable(), keyCodes: "evdev-us" },
       });
     },
   });
@@ -624,20 +634,21 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
 
   router.register({
     method: "capture.live",
-    description: "Start (or report) a wayvnc live view on this host's address; `stop: true` ends it",
+    description: "Start (or report) WayVNC on loopback for an explicit VNC/SSH connection; `stop: true` ends the owned server",
     access: "mutate",
     capability: "capture.live",
     params: [
       { name: "stop", type: "bool", description: "Stop the live view" },
       { name: "port", type: "int", description: "VNC port (default 5900)" },
-      { name: "displayIndex", type: "int", description: "Display to share; defaults to wayvnc's choice" },
+      { name: "displayIndex", type: "int", description: "Display to share; defaults to the first display" },
     ],
     returns: "Object with running, host, port and a vnc:// url",
     handler: async (params) => {
       if (bool(params, "stop")) return asJson(live.stop());
-      let output: string | undefined;
-      const index = num(params, "displayIndex");
-      if (index !== undefined) output = (await desktop.snapshot()).displays[index]?.displayId;
+      const index = num(params, "displayIndex") ?? 0;
+      if (!Number.isInteger(index) || index < 0) throw new RouterError("Invalid displayIndex");
+      const output = (await desktop.snapshot()).displays[index]?.displayId;
+      if (!output) throw new RouterError("Display not found");
       return asJson(await live.start(ctx.bindHost, num(params, "port") ?? 5900, output));
     },
   });
@@ -669,7 +680,7 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
   });
   router.register({
     method: "capture.stream.ack",
-    description: "Acknowledge frames up to seq; the host keeps at most 4 unacked and stops after 3 s without an ack",
+    description: "Acknowledge frames up to seq; the host bounds unacknowledged frames by frame rate and stops after 3 s without an ack",
     access: "read",
     capability: "capture.stream",
     params: [streamIdParam, { name: "seq", type: "uint32", required: true, description: "Highest frame seq received" }],
@@ -744,14 +755,30 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     access: "mutate",
     capability: "input.pointer",
     params: [
-      { name: "fromX", type: "double", required: true, description: "Start x" },
-      { name: "fromY", type: "double", required: true, description: "Start y" },
-      { name: "toX", type: "double", required: true, description: "End x" },
-      { name: "toY", type: "double", required: true, description: "End y" },
+      { name: "phase", type: "string", description: "Viewer gesture: down, up, reset or keepalive; connection-scoped" },
+      { name: "button", type: "string", description: "left, right or middle (viewer gesture)" },
+      ...pointParams,
+      { name: "fromX", type: "double", description: "Start x (required without phase)" },
+      { name: "fromY", type: "double", description: "Start y (required without phase)" },
+      { name: "toX", type: "double", description: "End x (required without phase)" },
+      { name: "toY", type: "double", description: "End y (required without phase)" },
       ...treatmentParams,
     ],
     returns: "Receipt with from, to and status",
     handler: async (params) => {
+      if (params.phase !== undefined) {
+        const phase = str(params, "phase");
+        if (!["down", "up", "reset", "keepalive"].includes(phase ?? "")) throw new RouterError("Invalid pointer phase");
+        const button = str(params, "button") ?? "left";
+        if (button !== "left" && button !== "right" && button !== "middle") throw new RouterError("Invalid button");
+        const point = phase === "down" || phase === "up" ? await resolvePoint(params) : undefined;
+        if (!executes(params)) return staged({ phase, button, x: point?.x, y: point?.y });
+        const session = interactiveInput();
+        if (phase === "reset") await session.reset("pointer");
+        else if (phase === "keepalive") await session.keepalive();
+        else await session.button(button, phase === "down", point);
+        return { ok: true, executed: true, phase: phase! };
+      }
       const [fromX, fromY, toX, toY] = ["fromX", "fromY", "toX", "toY"].map((k) => {
         const v = num(params, k);
         if (v === undefined) throw RouterError.missingParam(k);
@@ -794,12 +821,16 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     description: 'Move the pointer without clicking. Stages by default; acts with treatment: "execute"',
     access: "mutate",
     capability: "input.pointer",
-    params: [...pointParams, ...treatmentParams],
+    params: [...pointParams, { name: "interactive", type: "bool", description: "Use the viewer connection's persistent pointer" }, ...treatmentParams],
     returns: "Receipt with point and status",
     handler: async (params) => {
       const point = await resolvePoint(params);
       const plan = { point: { x: Math.round(point.x), y: Math.round(point.y) } };
       if (!executes(params)) return staged(plan);
+      if (bool(params, "interactive")) {
+        await interactiveInput().move(point.x, point.y, point.extent);
+        return asJson({ ok: true, executed: true, ...plan });
+      }
       await input.moveCursor(point.x, point.y, point.extent);
       await announce({ kind: "aim", label: "Aim", point: plan.point, wid: point.window?.wid ?? null });
       return asJson({ ok: true, status: "executed", executed: true, ...plan });
@@ -843,6 +874,15 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
   });
 
   const keyHandler = (method: "computer.pressKey" | "computer.hotkey") => async (params: Params) => {
+    if (params.phase !== undefined) {
+      const { code, phase } = physicalKey(params);
+      if (!executes(params)) return staged({ phase, ...(Number.isFinite(code) ? { code } : {}) });
+      const session = interactiveInput();
+      if (phase === "reset") await session.reset("keyboard");
+      else if (phase === "keepalive") await session.keepalive();
+      else await session.key(code, phase === "down");
+      return { ok: true, executed: true, phase };
+    }
     let key = str(params, "key");
     let modifiers: string[] = Array.isArray(params.modifiers)
       ? params.modifiers.map(String)
@@ -871,6 +911,8 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
     return asJson({ ok: true, status: "executed", executed: true, ...plan });
   };
   const keyParams = [
+    { name: "phase", type: "string", description: "Physical viewer input: down, up, reset or keepalive; connection-scoped" },
+    { name: "code", type: "int", description: "Linux evdev key code with a stable US XKB map (physical input only)" },
     { name: "key", type: "string", description: "Key name or single character" },
     { name: "shortcut", type: "string", description: "e.g. ctrl+shift+p; command maps to ctrl" },
     { name: "modifiers", type: "array|string", description: "command, control, option, shift, super" },

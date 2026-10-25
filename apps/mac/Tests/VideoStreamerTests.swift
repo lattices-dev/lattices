@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreVideo
 import XCTest
 @testable import Lattices
 
@@ -104,6 +105,164 @@ final class VideoStreamerTests: XCTestCase {
         flow.ack(2, now: 2002.5)
         XCTAssertFalse(flow.timedOut(now: 2005))
         XCTAssertTrue(flow.timedOut(now: 2005.6))
+    }
+
+    func testHostActivityNeedsEvidenceRatherThanMissingFrames() {
+        var activity = VideoCaptureActivity()
+        activity.advance(now: 100)
+        activity.unchanged(now: 101)
+        XCTAssertEqual(activity.state, .unknown)
+
+        activity.changed(now: 200)
+        activity.advance(now: 300)
+        XCTAssertEqual(activity.state, .active, "Capture silence is not proof of an unchanged screen")
+    }
+
+    func testHostActivitySettlesAndResumesOnTheFirstChange() {
+        var activity = VideoCaptureActivity()
+        activity.changed(now: 10)
+        activity.unchanged(now: 10.2)
+        activity.advance(now: 10.99)
+        XCTAssertEqual(activity.state, .active)
+        activity.advance(now: 11)
+        XCTAssertEqual(activity.state, .idle)
+
+        activity.changed(now: 11.01)
+        XCTAssertEqual(activity.state, .active)
+        activity.advance(now: 100)
+        XCTAssertEqual(activity.state, .active, "Old idle evidence must not survive new motion")
+        activity.unchanged(now: 100)
+        XCTAssertEqual(activity.state, .idle)
+    }
+
+    func testUnavailableCaptureClearsIdleEvidence() {
+        var activity = VideoCaptureActivity()
+        activity.changed(now: 1)
+        activity.unchanged(now: 1.5)
+        activity.unavailable()
+        activity.advance(now: 5)
+        activity.unchanged(now: 6)
+        XCTAssertEqual(activity.state, .unknown)
+        activity.changed(now: 7)
+        XCTAssertEqual(activity.state, .active)
+    }
+
+    func testActivityReportStatesHostPolicyWithoutConflatingActualFrameRate() {
+        let report = VideoCaptureActivity.report(state: .idle, fps: 60, revision: 4)
+        XCTAssertEqual(report, .object([
+            "state": .string("idle"), "source": .string("host"), "revision": .int(4),
+            "activeFPS": .int(60), "idleFPS": .int(0),
+        ]))
+    }
+
+    func testPixelComparisonIgnoresPaddingAndChecksEveryVisiblePlane() throws {
+        var snapshot = VideoPixelSnapshot()
+        let initial = try makeNV12(padding: 0x00)
+        XCTAssertTrue(snapshot.hasChanged(initial))
+        XCTAssertFalse(snapshot.hasChanged(initial))
+        let identical = try makeNV12(padding: 0xFF)
+        XCTAssertFalse(snapshot.hasChanged(identical), "Row padding is not visible motion")
+
+        // A chroma-only change at the last visible byte must wake the stream.
+        try changeLastVisibleByte(identical, plane: 1, value: 0x72)
+        XCTAssertTrue(snapshot.hasChanged(identical))
+        XCTAssertFalse(snapshot.hasChanged(identical))
+
+        // Mutating the same CVPixelBuffer also changes the exact snapshot.
+        try changeLastVisibleByte(identical, plane: 0, value: 0x42)
+        XCTAssertTrue(snapshot.hasChanged(identical))
+        XCTAssertFalse(snapshot.hasChanged(identical))
+    }
+
+    func testPixelComparisonTreatsResolutionAndCaptureResetAsChanges() throws {
+        var snapshot = VideoPixelSnapshot()
+        let initial = try makeNV12()
+        XCTAssertTrue(snapshot.hasChanged(initial))
+        XCTAssertFalse(snapshot.hasChanged(initial))
+        let resized = try makeNV12(width: 12, height: 8)
+        XCTAssertTrue(snapshot.hasChanged(resized))
+        XCTAssertFalse(snapshot.hasChanged(resized))
+        snapshot.reset()
+        XCTAssertTrue(snapshot.hasChanged(resized))
+    }
+
+    private func makeNV12(width: Int = 10, height: Int = 6, padding: UInt8 = 0) throws -> CVPixelBuffer {
+        var pixels: CVPixelBuffer?
+        let attributes = [kCVPixelBufferBytesPerRowAlignmentKey: 64] as CFDictionary
+        XCTAssertEqual(CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                                           attributes, &pixels), kCVReturnSuccess)
+        let buffer = try XCTUnwrap(pixels)
+        XCTAssertEqual(CVPixelBufferLockBaseAddress(buffer, []), kCVReturnSuccess)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        for plane in 0..<2 {
+            let base = try XCTUnwrap(CVPixelBufferGetBaseAddressOfPlane(buffer, plane))
+            let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, plane)
+            let rowBytes = CVPixelBufferGetWidthOfPlane(buffer, plane) * (plane == 0 ? 1 : 2)
+            let rows = CVPixelBufferGetHeightOfPlane(buffer, plane)
+            XCTAssertGreaterThan(stride, rowBytes)
+            memset(base, Int32(padding), stride * rows)
+            for row in 0..<rows { memset(base.advanced(by: row * stride), plane == 0 ? 0x20 : 0x80, rowBytes) }
+        }
+        return buffer
+    }
+
+    private func changeLastVisibleByte(_ buffer: CVPixelBuffer, plane: Int, value: UInt8) throws {
+        XCTAssertEqual(CVPixelBufferLockBaseAddress(buffer, []), kCVReturnSuccess)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        let base = try XCTUnwrap(CVPixelBufferGetBaseAddressOfPlane(buffer, plane))
+        let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, plane)
+        let rowBytes = CVPixelBufferGetWidthOfPlane(buffer, plane) * (plane == 0 ? 1 : 2)
+        let rows = CVPixelBufferGetHeightOfPlane(buffer, plane)
+        base.storeBytes(of: value, toByteOffset: (rows - 1) * stride + rowBytes - 1, as: UInt8.self)
+    }
+
+    func testFailedStaticFrameRemainsPendingUntilBoundedRetry() {
+        var feed = VideoFrameFeed()
+        feed.captured(changed: true)
+        XCTAssertTrue(feed.take(now: 1))
+        XCTAssertFalse(feed.pendingFresh)
+        // Both synchronous rejection and an asynchronous dropped access unit
+        // restore the obligation, without needing a changed capture sample.
+        feed.failed(now: 1.01)
+        feed.captured(changed: false)
+        XCTAssertTrue(feed.pendingFresh)
+        XCTAssertFalse(feed.take(now: 1.1), "Repeated callbacks must not spin on the failed frame")
+        XCTAssertTrue(feed.take(now: 1.12), "A health tick can retry an otherwise static screen")
+        feed.failed(now: 1.13)
+        XCTAssertFalse(feed.take(now: 1.3))
+        XCTAssertTrue(feed.take(now: 1.34))
+        feed.succeeded()
+        XCTAssertFalse(feed.pendingFresh)
+        XCTAssertFalse(feed.take(now: 10))
+    }
+
+    func testFrameRetryBackoffIsCappedAndResetsAfterRecovery() {
+        var feed = VideoFrameFeed()
+        var now: TimeInterval = 0
+        for delay: TimeInterval in [0.1, 0.2, 0.4, 0.8, 1, 1, 1] {
+            feed.failed(now: now)
+            XCTAssertEqual(feed.retryAt!, now + delay, accuracy: 0.000_001)
+            feed.captured(changed: false)
+            XCTAssertFalse(feed.take(now: now + delay - 0.01))
+            now += delay
+            XCTAssertTrue(feed.take(now: now))
+        }
+        feed.succeeded()
+        feed.failed(now: 10)
+        XCTAssertEqual(feed.retryAt!, 10.1, accuracy: 0.000_001)
+    }
+
+    func testDuplicateFrameDoesNotErasePendingUpdateOrRecoveryRequest() {
+        var feed = VideoFrameFeed()
+        feed.captured(changed: true)
+        feed.captured(changed: false)
+        XCTAssertTrue(feed.take(now: 0))
+        feed.succeeded()
+        // Explicit recovery is allowed while the host still reports idle.
+        feed.request()
+        feed.captured(changed: false)
+        XCTAssertTrue(feed.take(now: 1))
+        XCTAssertFalse(feed.take(now: 2))
     }
 
     func testSplitLengthPrefixedReadsShortHeaders() {

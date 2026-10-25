@@ -96,7 +96,6 @@ struct AppShellView: View {
     @AppStorage("sidebar.labelWidth") private var sidebarLabelWidth = 120.0
     /// Actions the visible page published with `.pageActions(_:)`.
     @State private var pageActions: [PageAction] = []
-    @ObservedObject private var daemon = DaemonServer.shared
     @ObservedObject private var desktop = DesktopModel.shared
 
     private var manifest: HudAppManifest {
@@ -211,27 +210,15 @@ struct AppShellView: View {
             .buttonStyle(.plain)
             .offset(y: headerOffset)
         } footer: {
-            // The footer holds the two ambient things: whether the daemon is
-            // reachable, and Settings — a non-primary page, so it routes through
-            // showPage directly rather than the selection binding.
-            VStack(spacing: 0) {
-                SidebarDaemonStatus(
-                    isListening: daemon.isListening,
-                    port: daemon.listeningPort,
-                    isCompact: sidebarCompact,
-                    labelWidth: CGFloat(sidebarLabelWidth)
-                )
-
-                SidebarFooterButton(
-                    icon: "gearshape",
-                    label: "Settings",
-                    isActive: windowController.activePage == .settings,
-                    isCompact: sidebarCompact,
-                    labelWidth: CGFloat(sidebarLabelWidth),
-                    accent: Palette.textDim
-                ) {
-                    windowController.showPage(.settings)
-                }
+            SidebarFooterButton(
+                icon: "gearshape",
+                label: "Settings",
+                isActive: windowController.activePage == .settings,
+                isCompact: sidebarCompact,
+                labelWidth: CGFloat(sidebarLabelWidth),
+                accent: Palette.textDim
+            ) {
+                windowController.showPage(.settings)
             }
         }
         .resizable(
@@ -462,46 +449,6 @@ struct AppShellView: View {
                 onBack: { windowController.showPage(.overview) }
             )
         }
-    }
-}
-
-// MARK: - Sidebar Daemon Status
-
-/// Daemon reachability, drawn on the rail's geometry so it lines up with the
-/// footer button under it: the dot centers in the fixed rail column, the name
-/// and port ride the collapsing label column. Not a button — it reports, it
-/// doesn't navigate.
-private struct SidebarDaemonStatus: View {
-    let isListening: Bool
-    let port: UInt16
-    let isCompact: Bool
-    var labelWidth: CGFloat = HudSidebarLayout.labelWidth
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Circle()
-                .fill(isListening ? Palette.running : Palette.kill)
-                .frame(width: 6, height: 6)
-                .frame(width: HudSidebarLayout.railWidth, height: HudSidebarLayout.rowHeight)
-
-            HStack(spacing: 6) {
-                Text("Daemon")
-                    .font(Typo.body(12))
-                    .foregroundColor(Palette.textDim)
-                Text(verbatim: port == 0 ? "Private IPC" : ":\(port)")
-                    .font(Typo.mono(11))
-                    .foregroundColor(Palette.textMuted)
-            }
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.leading, HudSidebarLayout.labelLeading)
-            .frame(width: isCompact ? 0 : labelWidth, alignment: .leading)
-            .clipped()
-            .opacity(isCompact ? 0 : 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(isListening ? (port == 0 ? "Daemon listening on private IPC" : "Daemon listening on port \(port)") : "Daemon offline")
-        .help(isListening ? (port == 0 ? "Authenticated private local socket" : "Daemon listening on :\(port)") : "Daemon offline")
     }
 }
 

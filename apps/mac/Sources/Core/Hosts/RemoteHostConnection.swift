@@ -117,7 +117,8 @@ final class RemoteHostConnection: @unchecked Sendable {
                 }
                 nextID += 1
                 let id = "mac-\(nextID)"
-                var request: [String: Any] = ["id": id, "method": method]
+                var request: [String: Any] = ["id": id, "method": method,
+                    "deadline": Int64((Date().timeIntervalSince1970 + timeout) * 1000)]
                 if let params { request["params"] = params }
                 guard let data = try? JSONSerialization.data(withJSONObject: request) else {
                     continuation.resume(throwing: Failure.remote("Unencodable params for \(method)"))

@@ -10,6 +10,7 @@ interface Conn {
   /** Events this connection asked for; null means all (the default, as on the Mac). */
   events: Set<string> | null;
   active: Set<AbortController>;
+  lifetime: AbortController;
   /** capture.stream sessions this connection owns. */
   streams?: StreamRegistry;
 }
@@ -57,7 +58,7 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
       async fetch(req, server) {
         if (req.method !== "GET" || new URL(req.url).pathname !== "/" || !authorizeLocalRequest(req, token)) return new Response("forbidden\n", { status: 403 });
         const identity: Identity = { user: "local", node: "localhost", local: true };
-        if (server.upgrade(req, { data: { identity, events: null, active: new Set<AbortController>() } })) return undefined;
+        if (server.upgrade(req, { data: { identity, events: null, active: new Set<AbortController>(), lifetime: new AbortController() } })) return undefined;
         // Plain HTTP GET / answers a health check, like the companion bridge.
         return Response.json({ ok: true, service: "lattices-host", transport: "private-ipc" });
       },
@@ -76,6 +77,7 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
         },
         close(ws) {
           sockets.delete(ws);
+          ws.data.lifetime.abort();
           for (const controller of ws.data.active) controller.abort();
           ws.data.streams?.stopAll();
         },
@@ -113,7 +115,7 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
           const controller = new AbortController();
           ws.data.active.add(controller);
           try {
-            const response = await withRequestContext({ signal: controller.signal, deadline: request.deadline }, () => router.handle({ ...request, id }));
+            const response = await withRequestContext({ signal: controller.signal, deadline: request.deadline, connection: ws.data.lifetime.signal }, () => router.handle({ ...request, id }));
             if (response.error) log(`${request.method} -> ${response.error}`);
             if (!controller.signal.aborted) ws.send(JSON.stringify(response));
           } finally { ws.data.active.delete(controller); }
@@ -132,6 +134,7 @@ export function serve({ socketPath, tokenFile, router, log }: ServeOptions) {
       }
     },
     stop() {
+      for (const ws of sockets) ws.data.lifetime.abort();
       for (const ws of sockets) for (const controller of ws.data.active) controller.abort();
       for (const ws of sockets) ws.data.streams?.stopAll();
       server.stop(true);

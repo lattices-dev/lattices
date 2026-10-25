@@ -400,6 +400,96 @@ test("capture.stream keeps one private lattices socket per client and relays its
   } finally { fake.stop(true); remove(); }
 }), 8000);
 
+test("host stream activity follows its owning viewer and retains ownership until stop or end", () => fixture(async f => {
+  f.product.stop();
+  const token = privateToken(f.local.tokenFile!);
+  const owners = new Map<number, { send(data: string): unknown }>();
+  const fake = Bun.serve({ unix: f.local.socketPath!, fetch(req, server) {
+    if (req.headers.get("x-lattices-token") !== token) return new Response("no", { status: 403 });
+    if (server.upgrade(req)) return; return new Response("upgrade", { status: 426 });
+  }, websocket: {
+    message(ws, raw) {
+      const request = JSON.parse(String(raw));
+      let result: unknown = { ok: true };
+      if (request.method === "capture.stream.start") {
+        const streamId = request.params.displayIndex + 7;
+        owners.set(streamId, ws);
+        result = { streamId, codec: "h264", width: 4, height: 2 };
+      }
+      ws.send(JSON.stringify({ id: request.id, result, error: null }));
+    },
+  } });
+  const { protectSocket } = await import("../../host-linux/src/private-ipc.ts"); const remove = protectSocket(f.local.socketPath!);
+  try {
+    await f.pair(["lattices:capture.stream.start", "lattices:capture.stream.ack", "lattices:capture.stream.stop"]);
+    const first = await f.connect(f.signed()), second = await f.connect(f.signed());
+    const firstEvents: unknown[] = [], secondEvents: unknown[] = [];
+    for (const [socket, events] of [[first, firstEvents], [second, secondEvents]] as const) {
+      socket.addEventListener("message", (event: MessageEvent) => {
+        const message = JSON.parse(String(event.data));
+        if (message.event) events.push(message);
+      });
+    }
+    expect((await rpc(first, "capture.stream.start", { displayIndex: 0 })).result.streamId).toBe(7);
+    expect((await rpc(second, "capture.stream.start", { displayIndex: 1 })).result.streamId).toBe(8);
+    const activity = (streamId: number | string, state: "idle" | "active") => ({
+      event: "capture.stream.activity", data: { streamId, activity: { state, source: "host", activeFPS: 60, idleFPS: 0 } },
+    });
+    const send = (owner: number, event: unknown) => owners.get(owner)!.send(JSON.stringify(event));
+    // A reply on the same product connection fences all preceding events.
+    const settle = async () => {
+      await rpc(first, "capture.stream.ack", { streamId: 7, seq: 0 });
+      await rpc(second, "capture.stream.ack", { streamId: 8, seq: 0 });
+    };
+    send(7, activity(8, "idle")); // belongs to the other viewer
+    send(8, activity(7, "idle"));
+    send(7, activity("7", "idle")); // malformed identifiers do not gain ownership
+    send(7, { event: "windows.changed", data: {} });
+    send(7, activity(7, "idle"));
+    send(7, activity(7, "active")); // activity must not retire the stream
+    await settle();
+    expect(firstEvents).toEqual([activity(7, "idle"), activity(7, "active")]);
+    expect(secondEvents).toEqual([]);
+
+    await rpc(first, "capture.stream.stop", { streamId: 7 });
+    send(7, activity(7, "idle"));
+    const ended = { event: "capture.stream.ended", data: { streamId: 8, reason: "ack-timeout" } };
+    send(8, activity(8, "idle"));
+    send(8, ended);
+    send(8, activity(8, "active"));
+    await settle();
+    expect(firstEvents).toEqual([activity(7, "idle"), activity(7, "active")]);
+    expect(secondEvents).toEqual([activity(8, "idle"), ended]);
+  } finally { fake.stop(true); remove(); }
+}), 8000);
+
+test("viewer input stays on one owned connection and still requires exact method grants", () => fixture(async f => {
+  f.product.stop();
+  await prepareSocket(f.local.socketPath!);
+  const router = new Router(() => new Set());
+  const owners: AbortSignal[] = [];
+  for (const method of ["computer.aim", "computer.drag", "computer.pressKey"]) router.register({
+    method, description: "", access: "mutate", returns: "object", handler: () => {
+      owners.push(currentRequestContext()!.connection!);
+      return { ok: true };
+    },
+  });
+  const host = serve({ socketPath: f.local.socketPath!, tokenFile: f.local.tokenFile!, router, log: () => {} });
+  try {
+    await f.pair(["lattices:computer.aim", "lattices:computer.drag"]);
+    const socket = await f.connect(f.signed());
+    expect((await rpc(socket, "computer.aim", { interactive: true, x: 20, y: 30 })).error).toBeNull();
+    expect((await rpc(socket, "computer.drag", { phase: "down", x: 20, y: 30 })).error).toBeNull();
+    expect((await rpc(socket, "computer.drag", { phase: "up", x: 50, y: 60 })).error).toBeNull();
+    expect((await rpc(socket, "computer.pressKey", { phase: "down", code: 125 })).error).toContain("scope_denied");
+    expect(owners.length).toBe(3);
+    expect(new Set(owners).size).toBe(1);
+    expect(owners[0]!.aborted).toBe(false);
+    socket.close();
+    await waitFor(() => owners[0]!.aborted);
+  } finally { host.stop(); }
+}));
+
 test("screen and shell are separate scopes; shorthands keep their former reach", () => {
   const read = grantsForScope("lattices", "read");
   for (const method of ["capture.still", "capture.screenshot", "terminals.capture", "ocr.search", "computer.observe", "files.read"]) expect(read).not.toContain(`lattices:${method}`);

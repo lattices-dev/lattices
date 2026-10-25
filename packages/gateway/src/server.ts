@@ -12,6 +12,10 @@ import { authorizeMethod, canonicalMethod, canonicalProduct, isTailnetAddress, v
 import { callProduct, COMPANION_ROUTES, proxyCompanion, connectCompanionVisit, connectLatticesStream, type ProductCall, type CompanionVisit, type ProductStream, type StreamConnect } from "./products.ts";
 
 const STREAM_METHODS = new Set(["capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop"]);
+export function isInteractiveInput(method: string, params: Record<string, unknown>): boolean {
+  return method === "computer.aim" && params.interactive === true
+    || ["computer.drag", "computer.pressKey"].includes(method) && ["down", "up", "reset", "keepalive"].includes(String(params.phase));
+}
 
 interface Connection {
   local: boolean;
@@ -23,6 +27,8 @@ interface Connection {
   active: Set<AbortController>;
   requests: number;
   windowStart: number;
+  inputRequests?: number;
+  inputWindow?: number;
   visit?: CompanionVisit;
   events?: { close(): void };
   eventNames?: string[];
@@ -93,6 +99,13 @@ export function gatewayHandlers(options: GatewayOptions) {
         ws.send(data);
       },
       event(name, data) {
+        if (name === "capture.stream.activity") {
+          const streamId = (data as { streamId?: unknown })?.streamId;
+          if (typeof streamId === "number" && conn.streamIDs!.has(streamId) && ws.readyState === 1) {
+            ws.send(JSON.stringify({ event: name, data }));
+          }
+          return;
+        }
         if (name !== "capture.stream.ended") return;
         conn.streamIDs!.delete(Number((data as { streamId?: unknown })?.streamId));
         ended(data);
@@ -198,13 +211,21 @@ export function gatewayHandlers(options: GatewayOptions) {
           if (!request || typeof request !== "object" || Array.isArray(request)) throw new Error("Invalid request");
           id = String(request.id ?? "?"); method = request.method;
           if (id.length > 128 || typeof method !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.]{0,127}$/.test(method)) throw new Error("Invalid request");
-          // A live stream acks every frame; the daemon bounds those itself.
-          if (method !== "capture.stream.ack") {
+          const params = request.params ?? {};
+          if (typeof params !== "object" || Array.isArray(params)) throw new Error("Invalid params");
+          const inputMethod = method === "gateway.call" && params.product === "lattices" ? params.method : method;
+          const inputParams = method === "gateway.call" ? params.params ?? {} : params;
+          const interactive = inputParams && typeof inputParams === "object" && isInteractiveInput(inputMethod, inputParams);
+          // Interactive input has a bounded per-second budget; ordinary RPCs
+          // keep their existing budget. Exact method grants still apply below.
+          if (interactive) {
+            if (Date.now() - (conn.inputWindow ?? 0) >= 1000) { conn.inputRequests = 0; conn.inputWindow = Date.now(); }
+            conn.inputRequests = (conn.inputRequests ?? 0) + 1;
+            if (conn.inputRequests > 120 || conn.active.size >= 8) throw new Error("rate_limited: viewer input limit");
+          } else if (method !== "capture.stream.ack") {
             if (Date.now() - conn.windowStart > 60_000) { conn.requests = 0; conn.windowStart = Date.now(); }
             if (++conn.requests > 600 || conn.active.size >= 8) throw new Error("rate_limited: gateway request limit");
           }
-          const params = request.params ?? {};
-          if (typeof params !== "object" || Array.isArray(params)) throw new Error("Invalid params");
           if (method === "clients.pair" && !conn.local) {
             if (conn.active.size > 0) throw new Error("Pairing already pending");
             const pendingID = params.clientID;
@@ -271,6 +292,17 @@ export function gatewayHandlers(options: GatewayOptions) {
           const denied = authorizeMethod(client?.capabilities ?? [], product, targetMethod);
           if (denied) throw new Error(denied);
           const streamMethod = product === "lattices" ? canonicalMethod(product, targetMethod) : "";
+          if (product === "lattices" && isInteractiveInput(streamMethod, targetParams)) {
+            const deadline = request.deadline ?? Date.now() + 2000;
+            if (!Number.isSafeInteger(deadline) || deadline <= Date.now()) throw new Error("Request deadline exceeded");
+            controller = new AbortController(); conn.active.add(controller);
+            conn.stream ??= openStream(ws);
+            // The same private socket owns held input and video. Closing the
+            // viewer releases devices, instead of reconnecting for each event.
+            const result = await (await conn.stream).call(streamMethod, targetParams, Math.min(2000, deadline - Date.now()));
+            if (streamMethod !== "computer.aim" && targetParams.phase !== "keepalive") audit(conn, targetMethod, "success", product);
+            reply(result); return;
+          }
           if (STREAM_METHODS.has(streamMethod)) {
             if (streamMethod !== "capture.stream.start" && !conn.stream) throw new Error("Unknown stream");
             conn.stream ??= openStream(ws);

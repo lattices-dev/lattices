@@ -190,6 +190,11 @@ struct KeyBinding: Codable, Equatable {
         return displayParts
     }
 
+    var symbolicDisplay: String {
+        let symbols = ["Ctrl": "⌃", "Option": "⌥", "Shift": "⇧", "Cmd": "⌘"]
+        return displayParts.map { symbols[$0] ?? $0 }.joined()
+    }
+
     static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
         var mods: UInt32 = 0
         if flags.contains(.command) { mods |= UInt32(cmdKey) }
@@ -278,6 +283,7 @@ class HotkeyStore: ObservableObject {
         let hyper = UInt32(cmdKey | controlKey | optionKey | shiftKey)
         let cmdShift = UInt32(cmdKey | shiftKey)
         let cmdOpt = UInt32(cmdKey | optionKey)
+        let cmdOptShift = UInt32(cmdKey | optionKey | shiftKey)
         let ctrlOpt = UInt32(controlKey | optionKey)
         let ctrlOptShift = UInt32(controlKey | optionKey | shiftKey)
 
@@ -318,11 +324,12 @@ class HotkeyStore: ObservableObject {
         bind(.layerDown, 125, cmdOpt)  // Cmd+Opt+↓
         bind(.layerTag,   17, cmdOpt)  // Cmd+Opt+T
 
-        // Tiling: Ctrl+Option for all
-        bind(.tileLeft,        123, ctrlOpt)  // Ctrl+Opt+←
-        bind(.tileRight,       124, ctrlOpt)  // Ctrl+Opt+→
-        bind(.tileTop,         126, ctrlOpt)  // Ctrl+Opt+↑
-        bind(.tileBottom,      125, ctrlOpt)  // Ctrl+Opt+↓
+        // Arrows share the layer family: add Shift to arrange the window.
+        // Ctrl+Option+arrows remain available to other apps and custom bindings.
+        bind(.tileLeft,        123, cmdOptShift)  // Cmd+Opt+Shift+←
+        bind(.tileRight,       124, cmdOptShift)  // Cmd+Opt+Shift+→
+        bind(.tileTop,         126, cmdOptShift)  // Cmd+Opt+Shift+↑
+        bind(.tileBottom,      125, cmdOptShift)  // Cmd+Opt+Shift+↓
         bind(.tileMaximize,     36, ctrlOpt)  // Ctrl+Opt+Return
         bind(.tileCenter,        8, ctrlOpt)  // Ctrl+Opt+C
         bind(.tileTopLeft,      32, ctrlOpt)  // Ctrl+Opt+U
@@ -351,12 +358,49 @@ class HotkeyStore: ObservableObject {
         "hotkey.\(action.rawValue).disabled"
     }
 
+    /// Move only persisted former defaults. User remaps, disabled actions, and
+    /// the higher-priority hotkeys.json file keep their explicit choices.
+    static func migrateLayerTilingArrows(in defaults: UserDefaults) {
+        let migrationKey = "hotkey.tilingArrows.cmdOptShift.v1"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        let formerModifiers = UInt32(controlKey | optionKey)
+        for action in [HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom] {
+            let key = storageKey(for: action)
+            guard !defaults.bool(forKey: disabledKey(for: action)),
+                  let data = defaults.data(forKey: key),
+                  let binding = try? JSONDecoder().decode(KeyBinding.self, from: data),
+                  let replacement = defaultBindings[action],
+                  binding.keyCode == replacement.keyCode,
+                  binding.carbonModifiers == formerModifiers else { continue }
+            // Inherit the new default rather than saving it as a user override.
+            defaults.removeObject(forKey: key)
+        }
+        defaults.set(true, forKey: migrationKey)
+    }
+
+    /// New defaults must not take a chord already assigned by the user, including
+    /// file overrides. Explicit tile remaps remain under the user's control too.
+    static func preserveExplicitArrowBindings(
+        in bindings: inout [HotkeyAction: KeyBinding], explicitActions: Set<HotkeyAction>
+    ) {
+        for tile in [HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom] {
+            guard !explicitActions.contains(tile), let proposed = bindings[tile] else { continue }
+            let occupied = explicitActions.contains { action in
+                guard action != tile, let binding = bindings[action] else { return false }
+                return binding.keyCode == proposed.keyCode && binding.carbonModifiers == proposed.carbonModifiers
+            }
+            if occupied { bindings.removeValue(forKey: tile) }
+        }
+    }
+
     private init() {
         // Start with defaults
         var merged = Self.defaultBindings
 
         // Layer 2: UserDefaults overrides
         let ud = UserDefaults.standard
+        Self.migrateLayerTilingArrows(in: ud)
+        var explicitActions = Set<HotkeyAction>()
         for action in HotkeyAction.allCases {
             if ud.bool(forKey: Self.disabledKey(for: action)) {
                 merged.removeValue(forKey: action)
@@ -367,6 +411,7 @@ class HotkeyStore: ObservableObject {
             if let data = ud.data(forKey: key),
                let binding = try? JSONDecoder().decode(KeyBinding.self, from: data) {
                 merged[action] = binding
+                explicitActions.insert(action)
             }
         }
 
@@ -379,12 +424,15 @@ class HotkeyStore: ObservableObject {
                     switch override {
                     case .binding(let binding):
                         merged[action] = binding
+                        explicitActions.insert(action)
                     case .disabled:
                         merged.removeValue(forKey: action)
                     }
                 }
             }
         }
+
+        Self.preserveExplicitArrowBindings(in: &merged, explicitActions: explicitActions)
 
         // Retire Hyper+P → Desktop Inventory; Studio is Hyper+L. Clear the old default
         // for installs that still have it persisted without a custom remap.

@@ -147,6 +147,10 @@ struct MachinesPageView: View {
                         view: {
                             guard let host else { return }
                             RemoteViewerWindows.shared.show(host, target: .display(index: 0, name: host.monitors.first?.name ?? "Display"))
+                        },
+                        vnc: {
+                            RemoteVNCWindows.shared.show(host: machine.name, address: host?.address ?? machine.name,
+                                                         platform: host?.platform)
                         })
                 }
             }
@@ -349,6 +353,7 @@ struct MachineRow: View {
     let select: () -> Void
     let visit: () -> Void
     let view: () -> Void
+    var vnc: (() -> Void)? = nil
     @State private var hovering = false
 
     private typealias Column = MachineColumn
@@ -368,7 +373,11 @@ struct MachineRow: View {
             }.buttonStyle(.plain)
             HStack(spacing: 6) {
                 Button("Visit", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1)
-                Button("View", action: view).disabled(!canView)
+                Menu {
+                    Button("Lattices viewer", action: view).disabled(!canView)
+                    if let vnc { Button("VNC in Screen Sharing…", action: vnc) }
+                } label: { Text("View") }
+                .disabled(!canView && vnc == nil)
             }
             .frame(width: Column.actions, alignment: .trailing)
         }

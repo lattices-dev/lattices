@@ -179,24 +179,23 @@ struct MachineArrangementCanvas: View {
         let key = inputs.local[screen.displayID]
         let away = inputs.showing(key, machine: MonitorInputs.here) == false
         let hidden = model.showVirtual ? [] : model.screens.filter(\.virtual)
-        return RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .fill(MachineTone.tile)
-            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .strokeBorder(MachineTone.tileEdge, style: StrokeStyle(lineWidth: 1, dash: away || screen.virtual ? [4, 3] : [])))
+        return MachineMonitorFrame(size: r.size, stroke: StrokeStyle(lineWidth: 1, dash: away || screen.virtual ? [4, 3] : [])) {
+            Rectangle().fill(MachineTone.tile)
+        }
             .overlay(alignment: .bottomLeading) {
                 if r.width > 70 && r.height > 32 {
-                    Text(label).font(Typo.body(11)).foregroundStyle(MachineTone.label).lineLimit(1).padding(6)
+                    Text(label).font(Typo.body(11)).foregroundStyle(MachineTone.label).lineLimit(1)
+                        .padding(.horizontal, 7).padding(.bottom, 11)
                 }
             }
-            .frame(width: r.width, height: r.height)
             .opacity(screen.elsewhere ? MachineTone.away : 1)
             .overlay(alignment: .topTrailing) {
                 if r.width > 90, r.height > 40 {
                     // DDC says which input is on; otherwise the user does.
                     if let key, inputs.states[key] != nil {
-                        MonitorInputChip(inputs: inputs, key: key, machine: MonitorInputs.here, machines: assignable).padding(5)
+                        MonitorInputChip(inputs: inputs, key: key, machine: MonitorInputs.here, machines: assignable).padding(7)
                     } else if !screen.virtual, !(screen.main && !screen.elsewhere), MonitorIdentity.builtinSize(screen.displayID) == nil {
-                        DisplayShowingChip(screen: screen, machines: assignable) { model.show(screen, machine: $0) }.padding(5)
+                        DisplayShowingChip(screen: screen, machines: assignable) { model.show(screen, machine: $0) }.padding(7)
                     }
                 }
             }
@@ -208,7 +207,7 @@ struct MachineArrangementCanvas: View {
                             .padding(.horizontal, 6).frame(height: 18)
                             .background(Capsule().fill(MachineTone.chip))
                     }
-                    .buttonStyle(.plain).padding(5)
+                    .buttonStyle(.plain).padding(.horizontal, 7).padding(.bottom, 11)
                     .help("Virtual displays are hidden; click to show them")
                 }
             }
@@ -338,20 +337,20 @@ struct MachineArrangementCanvas: View {
         func open() { if let host, canView { RemoteViewerWindows.shared.show(host, target: .display(index: index, name: monitor.name)) } }
         // Cabled here but showing another machine: same tile, still viewable.
         let away = inputs.showing(monitor.key, machine: node.machine.name) == false
-        return ZStack {
-            Rectangle().fill(MachineTone.backing)
-            if let image {
-                Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
-                    .opacity(away ? MachineTone.away : 1)
+        return MachineMonitorFrame(size: size,
+                                   edge: hovering ? Palette.text.opacity(0.6) : MachineTone.tileEdge,
+                                   stroke: StrokeStyle(lineWidth: 1, dash: away ? [4, 3] : [])) {
+            ZStack {
+                Rectangle().fill(MachineTone.backing)
+                if let image {
+                    Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                        .opacity(away ? MachineTone.away : 1)
+                }
             }
         }
-        .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .strokeBorder(hovering ? Palette.text.opacity(0.6) : MachineTone.tileEdge, style: StrokeStyle(lineWidth: 1, dash: away ? [4, 3] : [])))
         .overlay(alignment: .topTrailing) {
             if let key = monitor.key, size.width > 90, size.height > 40 {
-                MonitorInputChip(inputs: inputs, key: key, machine: node.machine.name, machines: assignable).padding(5)
+                MonitorInputChip(inputs: inputs, key: key, machine: node.machine.name, machines: assignable).padding(7)
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -359,7 +358,7 @@ struct MachineArrangementCanvas: View {
                 Text(monitor.name).font(Typo.mono(9)).foregroundStyle(Palette.textDim).lineLimit(1)
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Capsule().fill(MachineTone.chip))
-                    .padding(5)
+                    .padding(.horizontal, 7).padding(.bottom, 11)
                     .allowsHitTesting(false)
             }
         }
@@ -370,7 +369,7 @@ struct MachineArrangementCanvas: View {
                         .frame(width: 22, height: 18)
                         .background(Capsule().fill(MachineTone.chip))
                 }
-                .buttonStyle(.plain).padding(5)
+                .buttonStyle(.plain).padding(.horizontal, 7).padding(.bottom, 11)
                 .help("View \(monitor.name) on \(node.machine.name)")
             }
         }

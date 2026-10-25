@@ -2199,10 +2199,43 @@ final class ScreenMapController: ObservableObject {
 
     // MARK: - Key Handler
 
+    static func directionalTilePosition(
+        for keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags,
+        bindings: [HotkeyAction: KeyBinding]
+    ) -> TilePosition? {
+        let carbonModifiers = KeyBinding.carbonModifiers(from: modifiers)
+        let directions: [(HotkeyAction, TilePosition)] = [
+            (.tileLeft, .left), (.tileRight, .right), (.tileTop, .top), (.tileBottom, .bottom),
+        ]
+        for (action, position) in directions {
+            if let binding = bindings[action],
+               binding.keyCode == UInt32(keyCode), binding.carbonModifiers == carbonModifiers {
+                return position
+            }
+        }
+        return nil
+    }
+
     func handleKey(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> Bool {
         let diag = DiagnosticLog.shared
 
-        // Tiling mode intercepts keys before anything else
+        // Use the same directional shortcuts as the desktop, including remaps.
+        if selectedWindowIds.count == 1,
+           let position = Self.directionalTilePosition(
+               for: keyCode, modifiers: modifiers, bindings: HotkeyStore.shared.bindings
+           ) {
+            tileSelectedWindowInEditor(to: position)
+            return true
+        }
+        let shortcutModifiers = modifiers.intersection([.control, .option, .command, .shift])
+        if shortcutModifiers == [.control, .option], [123, 124, 125, 126].contains(keyCode) {
+            // An unbound former tiling chord must not become canvas navigation
+            // or a modal placement below.
+            return false
+        }
+
+        // Local tiling mode owns the remaining placement keys.
         if editor?.isTilingMode == true {
             switch keyCode {
             case 53: // Escape — always dismiss
@@ -2252,33 +2285,6 @@ final class ScreenMapController: ObservableObject {
                 exitTilingMode()
                 flash("Tiling cancelled")
                 return true
-            }
-        }
-
-        // Ctrl+Option direct tiling shortcuts (always active, single selection)
-        // Ensure Command is NOT held so the Hyper key (Ctrl+Opt+Cmd+Shift) is not intercepted.
-        let mods = modifiers.intersection(.deviceIndependentFlagsMask)
-        let isCtrlOpt = mods.contains(.control) && mods.contains(.option) && !mods.contains(.command)
-        if isCtrlOpt && selectedWindowIds.count == 1 {
-            switch keyCode {
-            case 123 where !mods.contains(.shift): // Ctrl+Opt+← → left
-                tileSelectedWindowInEditor(to: .left)
-                return true
-            case 124 where !mods.contains(.shift): // Ctrl+Opt+→ → right
-                tileSelectedWindowInEditor(to: .right)
-                return true
-            case 126: // Ctrl+Opt+↑ → top (+ Shift = maximize)
-                if mods.contains(.shift) {
-                    tileSelectedWindowInEditor(to: .maximize)
-                } else {
-                    tileSelectedWindowInEditor(to: .top)
-                }
-                return true
-            case 125 where !mods.contains(.shift): // Ctrl+Opt+↓ → bottom
-                tileSelectedWindowInEditor(to: .bottom)
-                return true
-            default:
-                break
             }
         }
 

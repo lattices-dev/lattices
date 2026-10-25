@@ -50,6 +50,8 @@ const KEYS: Record<string, string> = {
   "\\": "backslash",
   "-": "minus",
   "=": "equal",
+  "+": "plus",
+  "_": "underscore",
   "`": "grave",
 };
 

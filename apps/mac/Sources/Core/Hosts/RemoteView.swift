@@ -109,10 +109,132 @@ enum RemoteView {
         var quality: Int
     }
 
+    struct StreamProfile: Equatable {
+        var fps: Int
+        var maxWidth: Int
+    }
+
+    /// Recover a temporary capture failure without repeatedly probing a relay
+    /// that accepts stream starts but never forwards a video picture.
+    struct StreamRecovery {
+        enum Failure: Equatable { case startFailed, streamInterrupted, invalidReply }
+
+        private(set) var hasReceivedVideo = false
+        private(set) var retryAt: TimeInterval?
+        private var failures = 0
+        private var healthySince: TimeInterval?
+
+        mutating func failed(_ failure: Failure, at now: TimeInterval) {
+            healthySince = nil
+            guard failure == .startFailed || (failure == .streamInterrupted && hasReceivedVideo) else {
+                retryAt = nil
+                return
+            }
+            let delay = min(30, 2 * pow(2, Double(min(failures, 4))))
+            failures = min(failures + 1, 5)
+            retryAt = now + delay
+        }
+
+        /// A start reply is not delivery evidence. Only a decoded picture
+        /// establishes that this connection can transport video.
+        mutating func receivedVideo(at now: TimeInterval) {
+            hasReceivedVideo = true
+            retryAt = nil
+            if healthySince == nil { healthySince = now }
+            confirmedHealthy(at: now)
+        }
+
+        /// Called after liveness checks too, so a healthy idle stream can
+        /// recover its retry budget without manufacturing duplicate pictures.
+        mutating func confirmedHealthy(at now: TimeInterval) {
+            if let healthySince, now - healthySince >= 30 { failures = 0 }
+        }
+
+        /// The caller supplies fresh capture evidence, not merely elapsed time.
+        func shouldRetry(afterSuccessfulStillAt now: TimeInterval) -> Bool {
+            retryAt.map { now >= $0 } ?? false
+        }
+
+        mutating func beginRetry() { retryAt = nil }
+
+        mutating func streamStarting() { healthySince = nil }
+
+        mutating func targetChanged() {
+            healthySince = nil
+            retryAt = nil
+        }
+    }
+
+    /// Capture activity is reported by the source, never inferred from a
+    /// quiet network connection or a low decoded frame rate.
+    struct StreamActivity: Equatable {
+        enum State: String { case active, idle, unknown }
+        var state: State
+        var activeFPS: Int
+        var idleFPS: Int
+        var revision: Int
+
+        init?(_ value: Any?) {
+            guard let value = value as? [String: Any], value["source"] as? String == "host",
+                  let raw = value["state"] as? String, let state = State(rawValue: raw),
+                  let activeFPS = value["activeFPS"] as? Int, (1...60).contains(activeFPS),
+                  let idleFPS = value["idleFPS"] as? Int, (0...activeFPS).contains(idleFPS),
+                  let revision = value["revision"] as? Int, revision >= 0 else { return nil }
+            self.state = state
+            self.activeFPS = activeFPS
+            self.idleFPS = idleFPS
+            self.revision = revision
+        }
+
+        /// RPC replies and events can cross while being delivered to the UI.
+        /// A delayed ACK must not replace newer host evidence for this stream.
+        func supersedes(_ current: Self?) -> Bool { revision >= (current?.revision ?? 0) }
+    }
+
+    /// Sampling continues while no pictures arrive, so the displayed rate
+    /// settles to zero instead of retaining the last active rate forever.
+    struct FrameRateMeter {
+        private var times: [TimeInterval] = []
+
+        mutating func record(at now: TimeInterval) { times.append(now) }
+
+        mutating func rate(at now: TimeInterval) -> Double {
+            times.removeAll { now - $0 > 2 }
+            guard times.count > 1, let first = times.first else { return 0 }
+            return Double(times.count - 1) / max(0.001, now - first)
+        }
+    }
+
+    /// Requested pixel-width cap; the host keeps the source's aspect ratio and
+    /// never needs to upscale a smaller monitor or window.
+    enum Resolution: String, CaseIterable, Identifiable {
+        case automatic
+        case width1280 = "1280"
+        case width1920 = "1920"
+        case width2560 = "2560"
+        case width3840 = "3840"
+
+        var id: String { rawValue }
+        var maxWidth: Int? { Int(rawValue) }
+        var label: String { maxWidth.map { "\($0) px wide" } ?? "Auto" }
+    }
+
+    /// Viewing the foreground window is engagement; input permission is separate.
+    static func streamProfile(engaged: Bool, requestWidth: Int, resolution: Resolution = .automatic) -> StreamProfile {
+        let width = resolution.maxWidth ?? max(320, min(engaged ? 3840 : 2560, requestWidth))
+        return StreamProfile(fps: engaged ? 60 : 30, maxWidth: width)
+    }
+
+    /// A completed RPC can still say that its stream no longer exists.
+    static func streamIsAlive(_ response: Any?) -> Bool {
+        (response as? [String: Any])?["ok"] as? Bool == true
+    }
+
     /// Pull, don't push: the next frame is requested after the last one lands.
-    /// Right after input the viewer goes as fast as the link allows at a lower
-    /// quality; idle it settles to a calm rate and a sharper picture.
-    static func pace(roundTrip: TimeInterval, sinceInput: TimeInterval) -> Pace {
+    /// Foreground viewing keeps text sharp and requests up to 20 fps. In the
+    /// background, recent input gets a brief burst before the rate settles.
+    static func pace(roundTrip: TimeInterval, sinceInput: TimeInterval, engaged: Bool = false) -> Pace {
+        if engaged { return Pace(delay: max(0, 1.0 / 20 - roundTrip), quality: 75) }
         let interactive = sinceInput < 2
         let target: TimeInterval = interactive ? 1.0 / 20 : sinceInput < 15 ? 1.0 / 8 : 1.0 / 2
         let quality = interactive ? (roundTrip > 0.15 ? 45 : 60) : 75
@@ -120,7 +242,7 @@ enum RemoteView {
     }
 
     /// Pixel width worth asking for: what the view shows on this screen, capped.
-    static func requestWidth(viewWidth: CGFloat, backingScale: CGFloat, cap: Int = 2560) -> Int {
+    static func requestWidth(viewWidth: CGFloat, backingScale: CGFloat, cap: Int = 3840) -> Int {
         max(320, min(cap, Int((viewWidth * max(1, backingScale)).rounded())))
     }
 
@@ -129,6 +251,53 @@ enum RemoteView {
     enum Key: Equatable {
         case text(String)
         case press(key: String, modifiers: [String])
+    }
+
+    struct KeyboardSupport: Equatable {
+        var canSend: Bool
+        var canCapture: Bool
+    }
+
+    /// Ordinary typing does not require Linux's held-key transport. Mac hosts
+    /// accept named key presses even when interactiveInput is absent.
+    static func keyboardSupport(platform: String?, methods: Set<String>, interactive: [String: Any]?) -> KeyboardSupport {
+        let physical = interactive?["keyboard"] as? Bool == true && methods.contains("computer.pressKey")
+        let namedKeys = methods.contains("computer.pressKey")
+        return KeyboardSupport(canSend: namedKeys && (platform == "macos" || physical || methods.contains("computer.typeText")),
+                               canCapture: physical)
+    }
+
+    static func isKeyboardMethod(_ method: String) -> Bool {
+        ["computer.pressKey", "computer.hotkey", "computer.typeText", "computer.typeWindowText"].contains(method)
+    }
+
+    /// The Mac's existing global pressKey contract takes physical base keys,
+    /// not shifted glyphs. Validate the whole text before sending any of it.
+    static func macTextKeys(_ text: String) -> [Key]? {
+        let shifted: [Character: String] = [
+            "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6",
+            "&": "7", "*": "8", "(": "9", ")": "0", "_": "-", "+": "=",
+            "{": "[", "}": "]", "|": "\\", ":": ";", "\"": "'", "<": ",",
+            ">": ".", "?": "/", "~": "`",
+        ]
+        let plain = Set("abcdefghijklmnopqrstuvwxyz0123456789=[];'\\,./`-")
+        var keys: [Key] = []
+        for character in text {
+            if let base = shifted[character] {
+                keys.append(.press(key: base, modifiers: ["shift"]))
+            } else if character == " " {
+                keys.append(.press(key: "space", modifiers: []))
+            } else if character == "\n" || character == "\r" {
+                keys.append(.press(key: "enter", modifiers: []))
+            } else if character == "\t" {
+                keys.append(.press(key: "tab", modifiers: []))
+            } else {
+                let lower = String(character).lowercased()
+                guard lower.count == 1, let base = lower.first, plain.contains(base) else { return nil }
+                keys.append(.press(key: lower, modifiers: String(character) == lower ? [] : ["shift"]))
+            }
+        }
+        return keys
     }
 
     private static let named: [UInt16: String] = [
