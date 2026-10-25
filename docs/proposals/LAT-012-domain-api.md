@@ -305,8 +305,8 @@ Lattices.app/Contents/Helpers/
   `2U83JFPW66`, with one notarization.
 - **Lifecycle** follows LAT-011. Helpers launch on demand or from the Apps menu,
   and quitting Lattices does not kill them.
-- **Size:** Voice does not embed Kokoro. Its Core ML models and lexicon (about 90 MB)
-  download to `~/.cache/fluidaudio` on the first Kokoro request.
+- **Size:** Voice does not embed its Phonon model. The model downloads to
+  `~/Library/Application Support/Speech/Phonon` on the first Phonon request.
 - **Action stops shipping on its own.** Its DMG, MCP server, plugins and
   `lattices.dev/action` are retired after phase 3, once `lattices mcp` serves
   `computer_*`, `capture_*` and `browser_*`. The per-helper DMG workflows and the

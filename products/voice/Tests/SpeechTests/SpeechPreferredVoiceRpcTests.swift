@@ -83,9 +83,9 @@ final class SpeechPreferredVoiceRpcTests: XCTestCase {
 
     func testProviderWithoutListedVoicesAndBadParamsAreRejected() {
         XCTAssertThrowsError(try api.dispatch(method: "speech.preferredVoice.set", params: .object([
-            "voice": .string("af_heart"), "provider": .string("kokoro"),
+            "voice": .string("Edwin"), "provider": .string("phonon"),
         ]))) { error in
-            XCTAssertEqual(error as? SpeechQueueError, .noVoices(provider: "kokoro"))
+            XCTAssertEqual(error as? SpeechQueueError, .noVoices(provider: "phonon"))
         }
         XCTAssertThrowsError(try api.dispatch(method: "speech.preferredVoice.set", params: .object([
             "voice": .string("alloy"), "provider": .string("groq"),
@@ -100,7 +100,7 @@ final class SpeechPreferredVoiceRpcTests: XCTestCase {
         ]))) { error in
             XCTAssertEqual(error.localizedDescription, "voice must be a string")
         }
-        XCTAssertNil(preferences.preferredVoice(for: "kokoro"))
+        XCTAssertNil(preferences.preferredVoice(for: "phonon"))
     }
 
     func testEmptyVoiceClearsTheChoice() throws {
