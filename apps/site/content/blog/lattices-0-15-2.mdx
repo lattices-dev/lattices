@@ -1,0 +1,33 @@
+---
+title: "Lattices 0.15.2: workspace controls through MCP"
+description: "Window controls join the browser and host tools in the packaged MCP server, with stable browser viewports and matching app and CLI downloads."
+date: "2026-10-25"
+tags: ["release", "mcp", "workspace", "agents"]
+author: "Arach Tchoupani"
+---
+
+Lattices 0.15.2 brings window search, placement, focus, workspace layers, and
+undo directly to MCP clients. These are the same workspace controls available
+through the app and CLI. Agents can now call them as named tools.
+
+The packaged `lats mcp` server includes **29 tools**: six for windows, 14 for
+the browser, and nine for local or paired hosts.
+
+- **Find, place, and restore windows.** Search for a window, focus it, place it,
+  and use the returned receipt to undo that placement. List and switch
+  workspace layers through the same connection.
+- **Keep browser sizes consistent.** A viewport set with `browser_resize`
+  now stays in effect across later actions, including in background tabs,
+  until it is reset or the tab or session closes.
+- **Use the installed package.** The browser profile and cookie helpers are
+  included in the npm package. They no longer depend on a development checkout.
+
+Install the **0.15.2 app and CLI together**, then restart the MCP connection
+in your agent harness. [Quickstart](/lattices/docs/quickstart) covers the
+installation, and the [MCP guide](/lattices/docs/mcp) lists the tools and setup.
+
+Remote access remains opt-in through a paired gateway with approved
+permissions. Action, Canvas, and Voice keep their own apps and release cycles.
+
+Download the [Mac app](https://github.com/lattices-dev/lattices/releases/download/v0.15.2/Lattices.dmg)
+or read the [release details](https://github.com/lattices-dev/lattices/releases/tag/v0.15.2).

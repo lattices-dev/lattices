@@ -5,7 +5,7 @@ import { docsProduct } from '../lib/docs-catalog'
 export const SITE_ORIGIN = 'https://lattices.dev'
 
 // Published release; repository candidates may be ahead of downloadable builds.
-export const latticesAppVersion = '0.15.1'
+export const latticesAppVersion = '0.15.2'
 export const latticesDownloadUrl =
   `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =

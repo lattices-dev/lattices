@@ -11,6 +11,8 @@ walks through tiling, finding windows, and starting a project session.
 Requires macOS 26 or later on Apple Silicon. For Hyprland and Omarchy, use
 [Install on Linux](/docs/install-linux).
 
+The current release is **0.15.2**. Install the app and CLI at the same version.
+
 ## 1. Install the app
 
 With Homebrew:
@@ -21,7 +23,7 @@ brew trust arach/tap
 brew install --cask arach/tap/lattices
 ```
 
-Or download the [disk image](https://github.com/lattices-dev/lattices/releases/latest)
+Or download the [0.15.2 disk image](https://github.com/lattices-dev/lattices/releases/download/v0.15.2/Lattices.dmg)
 and drag `Lattices.app` to `/Applications`.
 
 ## 2. Install the CLI

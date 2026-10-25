@@ -628,6 +628,25 @@
       "ownership": "lattices"
     },
     {
+      "id": "lattices:security-identity",
+      "product": "lattices",
+      "slug": "security-identity",
+      "source": "docs/security-identity.md",
+      "title": "Device identity",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/security-identity",
+      "aliases": [
+        "/docs/security-identity"
+      ],
+      "navGroup": "Development",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/security-identity.md",
+        "/agent/raw/docs/security-identity.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
       "id": "lattices:release",
       "product": "lattices",
       "slug": "release",

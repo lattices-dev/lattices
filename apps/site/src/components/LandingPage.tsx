@@ -11,7 +11,6 @@ import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
 import { tideNow, tidePaths, tideToday } from "./heroTide";
 import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion, linuxInstallCommand } from "../seo/routes";
 
-const latticesCliVersion = "0.15.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
 
 declare global {
@@ -1330,7 +1329,7 @@ export default function App() {
                 <code>bun install -g @lattices/lattices</code>
                 <button type="button" onClick={copyInstall} aria-label="Copy Bun install command">{installCopy}</button>
               </div>
-              <small>CLI {latticesCliVersion} · <a href="/lattices/docs/quickstart">Setup guide</a></small>
+              <small>CLI {latticesAppVersion} · <a href="/lattices/docs/quickstart">Setup guide</a></small>
               <span className="sr-only" role="status">{installCopy === "Copied" ? "Command copied" : ""}</span>
             </div>
           </div>

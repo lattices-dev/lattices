@@ -11,7 +11,9 @@ never a path:
 { "command": "lattices", "args": ["mcp"] }
 ```
 
-That is the whole point of this document. Everything else is detail.
+Lattices **0.15.2** includes all 29 tools below: 14 browser tools, nine host
+tools, and six window tools. Install the matching app and CLI, then restart
+the MCP connection in your agent harness after upgrading.
 
 ## Current toolsets
 
@@ -140,11 +142,10 @@ bin/mcp/
       index.ts
 ```
 
-The server lives under `bin/` because that is what the npm package actually
-ships. `package.json#files` lists `bin`; it does not list `products`. A design
-that left the server under `products/action/plugins/` and imported it would
-typecheck locally and be missing from every real install, so the code moves
-rather than being referenced across the boundary. The root `tsconfig.json`
+The server lives under `bin/`, which the npm package includes. The package also
+includes the two Action browser profile and cookie helpers it uses; it does
+not require an Action checkout. Release checks start the server from the
+extracted package and verify its tool list and helper imports. The root `tsconfig.json`
 already covers `bin/**/*.ts`, so the browser server is now typechecked by
 `bun run check:types`, which it was not before.
 

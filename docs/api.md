@@ -4,7 +4,7 @@ description: WebSocket API reference for programmatic control of lattices
 order: 5
 ---
 
-Lattices 0.15.1 serves its agent API over authenticated WebSocket on
+Lattices 0.15.1 and later serve the agent API over authenticated WebSocket on
 `~/.lattices/run/lattices.sock`. The same app hosts voice input on
 `~/.lattices/run/voice.sock` (see [Voice](/lattices/docs/voice)).
 ~120 RPC methods and real-time events. Prefer `desktop.snapshot` when you
@@ -39,7 +39,7 @@ the authentication headers below.
 
 ### Private connection
 
-Install the Lattices app and CLI at version 0.15.1 together. Older clients
+Install the Lattices app and CLI at version 0.15.2 together. Older clients
 that connect directly to TCP must migrate to the private transport.
 
 - The daemon listens on a private Unix socket, `~/.lattices/run/lattices.sock`,
@@ -2806,7 +2806,7 @@ project knows how to control the workspace:
 
 This project uses lattices for workspace management. The daemon API
 uses authenticated WebSocket over ~/.lattices/run/lattices.sock.
-Use the matching 0.15.1 CLI or daemonCall client for discovery and authentication.
+Use a CLI or daemonCall client that matches the app version for discovery and authentication.
 
 ### Search (find windows)
 - Search by content: `daemonCall('windows.search', { query: 'myproject' })`

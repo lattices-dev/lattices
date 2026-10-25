@@ -87,7 +87,7 @@ export default function SpeechPage() {
               <a href="/voice/docs">Read the docs</a>
             </div>
             <p className="speech-platform-note">macOS 26+ · Apple silicon · signed + notarized</p>
-            <p className="speech-platform-note">Speech 0.3.0 downloads as Speech.app and appears as Voice in the menu bar. Use it with Lattices app and CLI 0.15.1.</p>
+            <p className="speech-platform-note">Speech 0.3.0 downloads as Speech.app and appears as Voice in the menu bar. Use matching Lattices app and CLI versions, 0.15.1 or later.</p>
           </div>
           <div className="family-speech-visual speech-queue-hero" aria-hidden="true">
             <div className="is-playing">
