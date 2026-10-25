@@ -157,6 +157,27 @@ final class OverviewRenderTests: XCTestCase {
     private func assertListsScroll(width: CGFloat, file: StaticString = #filePath, line: UInt = #line) throws {
         let (host, window, cleanup) = self.host(width: width, height: 380, sidebar: true)
         defer { cleanup(); _ = window }
+        // SwiftUI can finish installing and sizing its scroll documents after
+        // the host's first layout, especially on the first render in a process.
+        var previousLayout: [[CGRect]]?
+        let layoutReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            host.layoutSubtreeIfNeeded()
+            let scrolls = self.scrollViews(in: host)
+            let layout = scrolls.compactMap { scroll -> [CGRect]? in
+                guard let document = scroll.documentView, scroll.window === window,
+                      scroll.contentView.bounds.height > 0 else { return nil }
+                return [scroll.frame, scroll.contentView.bounds, document.frame]
+            }
+            guard !scrolls.isEmpty, layout.count == scrolls.count else {
+                previousLayout = nil
+                return false
+            }
+            defer { previousLayout = layout }
+            return layout == previousLayout
+        }, object: nil)
+        let layoutResult = XCTWaiter.wait(for: [layoutReady], timeout: 5)
+        XCTAssertEqual(layoutResult, .completed, "list layout didn't settle at \(width)", file: file, line: line)
+        guard layoutResult == .completed else { return }
         let overflowing = scrollViews(in: host).filter { scroll in
             guard let doc = scroll.documentView else { return false }
             return doc.frame.height > scroll.contentView.bounds.height + 20
@@ -164,10 +185,13 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertFalse(overflowing.isEmpty, "no list overflows at \(width)", file: file, line: line)
         for scroll in overflowing {
             let before = scroll.contentView.bounds.origin.y
+            let moved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                scroll.contentView.bounds.origin.y != before
+            }, object: nil)
             let wheel = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
                                               wheel1: -80, wheel2: 0, wheel3: 0))
             scroll.scrollWheel(with: try XCTUnwrap(NSEvent(cgEvent: wheel)))
-            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            _ = XCTWaiter.wait(for: [moved], timeout: 3)
             XCTAssertNotEqual(scroll.contentView.bounds.origin.y, before, "a list didn't scroll at \(width)", file: file, line: line)
         }
     }
