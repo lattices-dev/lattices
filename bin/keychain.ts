@@ -16,7 +16,7 @@
  *   deleteKeychainSecret("xai");
  *
  * Usage from a terminal (no Lattices wrapper needed — pure macOS):
- *   security add-generic-password -s lattices.inference -a xai -w <key> -U
+ *   security add-generic-password -U -s lattices.inference -a xai -w   (prompts for the key)
  *   security find-generic-password -s lattices.inference -a xai -w
  *   security delete-generic-password -s lattices.inference -a xai
  */
@@ -42,14 +42,15 @@ export function getKeychainSecret(account: string): string | undefined {
 
 export function setKeychainSecret(account: string, value: string): boolean {
   try {
-    // -U updates if the item already exists; otherwise adds. The value is
-    // passed via env to keep it out of `ps`/argv.
-    execFileSync(
-      SECURITY_BIN,
-      ["add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", account, "-w", value, "-U"],
-      { timeout: TIMEOUT_MS, stdio: ["ignore", "ignore", "ignore"] },
-    );
-    return true;
+    // -U updates if the item already exists; otherwise adds. The command goes
+    // to `security -i` on stdin so the value never appears in `ps`/argv.
+    if (/["\\\r\n]/.test(value) || /[^A-Za-z0-9._-]/.test(account)) return false;
+    execFileSync(SECURITY_BIN, ["-i"], {
+      input: `add-generic-password -U -s ${KEYCHAIN_SERVICE} -a ${account} -w "${value}"\n`,
+      timeout: TIMEOUT_MS,
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    return getKeychainSecret(account) === value;
   } catch {
     return false;
   }

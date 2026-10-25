@@ -53,7 +53,9 @@ final class DaemonLifecycleTests: XCTestCase {
         XCTAssertEqual(poll(&descriptor, 1, 150), 0, "Restart caused a duplicate model event")
         server.stop()
         XCTAssertFalse(FileManager.default.fileExists(atPath: path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: credential.path))
+        // The shared credential outlives the daemon: the companion bridge and
+        // the gateway admin socket keep admitting with it.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: credential.path))
     }
 
     private func connectPeer(_ path: String) throws -> Int32 {

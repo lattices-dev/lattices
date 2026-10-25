@@ -1,6 +1,6 @@
 ---
 title: Voice
-description: Voice commands for window management and the lats voice reference, including speech output forwarded to Speech
+description: Voice commands for window management and the lats voice reference, including speech output forwarded to the Voice app
 order: 7
 ---
 
@@ -14,11 +14,11 @@ The `voice` domain has two directions with two owners:
 | Direction | Verbs | Owner | Transport |
 |-----------|-------|-------|------|
 | Input: voice commands | `voice.listen`, `voice.stopListening`, `voice.simulate`, `voice.status` | Lattices menu bar app | `lattices.sock`, `voice.sock` |
-| Output: spoken text | `voice.say`, `voice.stop`, `voice.pause`, `voice.resume`, `voice.skip`, `voice.seek`, `voice.list`, `voice.select`, `voice.lease`, `voice.release` | Speech (`Voice.app`), reached through the Lattices daemon | `lattices.sock`, `speech.sock` |
+| Output: spoken text | `voice.say`, `voice.stop`, `voice.pause`, `voice.resume`, `voice.skip`, `voice.seek`, `voice.list`, `voice.select`, `voice.lease`, `voice.release` | `Voice.app`, reached through the Lattices daemon | `lattices.sock`, `speech.sock` |
 
 This page is the reference for both directions of `lats voice`. Speech output
 itself (providers, queue and playback rules, the direct `speech.*` API) is
-documented in the [Speech docs](/speech/docs/overview).
+documented in the [Voice docs](/voice/docs/overview).
 
 ## Embedded voice runtime
 
@@ -26,7 +26,7 @@ Lattices **hosts** the voice engine inside the menu bar process. You do not
 need a separate `voxd` for normal use. On app boot, Lattices starts an
 in-process live-session server and tears it down on quit.
 
-Lattices 0.15.1 and Speech 0.3.0 use private local connections. Install the
+Lattices 0.15.1 and Voice 0.3.0 use private local connections. Install the
 Lattices app and CLI at the same version.
 
 ### Private connection
@@ -35,7 +35,7 @@ Lattices app and CLI at the same version.
 |---------|-----------------------|
 | Agent API / daemon | `~/.lattices/run/lattices.sock` |
 | Voice runtime | `~/.lattices/run/voice.sock` |
-| Speech's `Voice.app` | `~/.lattices/run/speech.sock` |
+| `Voice.app` | `~/.lattices/run/speech.sock` |
 
 The voice runtime uses Vox's private transport: a Unix socket that accepts only
 same-user peers and requires the `x-lattices-token` header on the WebSocket
@@ -55,7 +55,7 @@ remote voice input is not exposed through the tailnet gateway.
 ## Voice API
 
 The `voice` domain covers listening and speaking. The daemon serves
-listening. Speech's `Voice.app` speaks: the daemon renames each output verb
+listening. `Voice.app` speaks: the daemon renames each output verb
 to its `speech.*` method and forwards it to `Voice.app` through `speech.sock`. Install
 or open `Voice.app` from the Lattices menu under **Apps**.
 
@@ -204,10 +204,17 @@ Hands-off voice uses the shared inference wrapper in `bin/infer.ts`.
 By default it chooses the lowest-latency configured provider and, when
 Groq credentials are present, uses `groq/llama-3.1-8b-instant`.
 
-Credentials are read from process env, `.env.local`, `.env`,
-`~/.lattices/inference.json`, then the macOS Keychain.
-For Groq, either `GROQ_API_KEY` or the common typo `GROK_API_KEY` works
-when the key has Groq's `gsk_` prefix.
+Provider keys are read from the process env (`GROQ_API_KEY`,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`,
+`XAI_API_KEY`, `MINIMAX_API_KEY`), then from the macOS Keychain under the
+service `lattices.inference`, one account per provider. Lattices does not
+read `.env` files. Store a key without putting it on a command line:
+
+```bash
+security add-generic-password -U -s lattices.inference -a groq -w
+```
+
+Every variable Lattices reads is declared in `.env.schema`.
 
 Override the voice engine if needed:
 
@@ -294,5 +301,5 @@ mappings and phrase pattern improvements.
   **Settings > Voice** (optional, voice commands still work without it)
 - **Accessibility** permission: for window tiling and focus
 - **Screen Recording** permission: for window discovery
-- **Speech (`Voice.app`)**: only for the output verbs such as `lats voice say`.
-  See [Speech quickstart](/speech/docs/quickstart)
+- **`Voice.app`**: only for the output verbs such as `lats voice say`.
+  See [Voice quickstart](/voice/docs/quickstart)

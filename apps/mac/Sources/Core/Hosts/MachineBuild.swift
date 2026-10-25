@@ -3,10 +3,12 @@ import Foundation
 struct MachineBuild: Equatable {
     var version: String?
     var commit: String?
+    var platform: String?
     init(_ info: [String: Any]) {
         let build = info["build"] as? [String: Any] ?? [:]
         version = build["version"] as? String ?? info["version"] as? String
         commit = build["commit"] as? String
+        platform = info["platform"] as? String
     }
     static func behind(_ remote: String?, local: String?) -> Bool {
         guard let remote, let local else { return false }
@@ -22,12 +24,20 @@ struct MachineBuild: Equatable {
         }
         return false
     }
-    var label: String {
-        let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let identity = "\(version ?? "?") · \(commit.map { String($0.prefix(8)) } ?? "?")"
-        if Self.behind(version, local: local) { return identity + " · Behind" }
-        if let commit, let current = LatticesRuntime.buildRevision,
-           !commit.hasPrefix(current), !current.hasPrefix(commit) { return identity + " · Different build" }
-        return identity
+    enum Drift: String { case behind = "Behind", different = "Different build" }
+
+    var identity: String {
+        guard version != nil || commit != nil else { return "—" }
+        return "\(version ?? "?") · \(commit.map { String($0.prefix(8)) } ?? "?")"
     }
+    /// How this build differs from the running one, if it does. A Linux host
+    /// ships from its own commits, so only its version is comparable.
+    var drift: Drift? {
+        let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        if Self.behind(version, local: local) { return .behind }
+        if platform != "linux", let commit, let current = LatticesRuntime.buildRevision,
+           !commit.hasPrefix(current), !current.hasPrefix(commit) { return .different }
+        return nil
+    }
+    var label: String { drift.map { "\(identity) · \($0.rawValue)" } ?? identity }
 }

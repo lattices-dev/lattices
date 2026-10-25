@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import LatticesWorkspaceCore
 
 // MARK: - WindowMotionMode
 //
@@ -475,7 +476,7 @@ private final class MotionPanel: NSPanel {
     private let eligible: [WindowEntry]
     private var reticle = 0                          // index of the active window
     private var fillAimWid: UInt32?                  // last click/Tab aim — F fills this window
-    private var group: Set<UInt32> = []             // plucked window ids
+    private var group: Set<UInt32> { selection.members(on: activeSelectionScreenID) }
     private var resolved: [UInt32: AXUIElement] = [:]
     private var animators: [UInt32: RealWindowAnimator] = [:]
     private var borderLayers: [CALayer] = []
@@ -514,9 +515,11 @@ private final class MotionPanel: NSPanel {
     private var rulePanel: LayerRulePanel?       // the "add/edit layer rule" flow, when open
     private var commandPanel: HyperspaceCommandPanel?   // the `/` command bar, when open
 
-    // Selection order — `group` is membership, `pickOrder` is the order picks were
-    // made, which is what the slot numbers (and the gather grid) follow.
-    private var pickOrder: [UInt32] = []
+    // One authority for every display's picks. Active membership and slot order
+    // are read-only views, so switching or clearing another display cannot drift.
+    private var selection = MotionSelectionState()
+    private var pickOrder: [UInt32] { selection.order(on: activeSelectionScreenID) }
+    private var pickOrderByScreen: [String: [UInt32]] { selection.ordersByDisplay }
 
     // Drag & drop "intent layer" (design/hyperspace-drag-drop.md). Each window can
     // be staged across three orthogonal axes; nothing real moves until the gather
@@ -542,7 +545,6 @@ private final class MotionPanel: NSPanel {
     private var exposePanelsByScreenID: [String: HyperspaceScreenPanel] = [:]
     private var canvasByScreenID: [String: ExposeCanvas] = [:]
     private var activeScreenID: String?
-    private var pickOrderByScreen: [String: [UInt32]] = [:]
     private var exposeClustersByScreen: [String: [ExposeCluster]] = [:]
     private var exposeOrderByScreen: [String: [UInt32]] = [:]
     private var exposeAimByScreen: [String: Int] = [:]
@@ -575,6 +577,12 @@ private final class MotionPanel: NSPanel {
             return screen
         }
         return screen(for: activeEntry)
+    }
+
+    /// Follow the effective survey display if the remembered display disconnects.
+    /// Preserve the remembered/empty scope when no screen can be resolved.
+    private var activeSelectionScreenID: String {
+        activeSurveyScreen.map(MotionPanel.screenID) ?? activeScreenID ?? ""
     }
 
     private var activeSurveyMembers: [WindowEntry] {
@@ -1133,18 +1141,12 @@ private final class MotionPanel: NSPanel {
         updateStack()
     }
 
-    /// Toggle a window in/out of the picked set, keeping `pickOrder` in sync so
-    /// slot numbers (and the gather grid) follow the order you picked things.
+    /// Toggle a window in the active display's ordered selection. Slot numbers
+    /// and the gather grid follow that same authoritative order.
     private func togglePicked(_ wid: UInt32) {
-        if group.contains(wid) {
-            group.remove(wid)
-            pickOrder.removeAll { $0 == wid }
-        } else {
-            group.insert(wid)
-            pickOrder.append(wid)
-            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
-        }
-        savePickStateForActiveScreen()
+        if selection.toggle(wid, on: activeSelectionScreenID),
+           let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
+        pruneActivePicks()
     }
 
     /// The picked windows in pick order — the order their slot numbers run and the
@@ -1278,7 +1280,7 @@ private final class MotionPanel: NSPanel {
     }
 
     fileprivate func tileCurrentTarget(to position: TilePosition) -> Bool {
-        let selected = pickOrderByScreen[activeScreenID ?? ""] ?? pickOrder
+        let selected = pickOrder
         let targetWid = inPlaceHoverWid
             ?? fillAimWid
             ?? selected.last
@@ -1569,7 +1571,7 @@ private final class MotionPanel: NSPanel {
             rebuildSurveyState(for: surveyScreen, resetAim: true)
             canvasForScreen(surveyScreen).reset()
         }
-        restorePickState(for: screen)
+        prunePicks(on: screen)
         syncActiveSurveyState(from: screen)
         loadTrace?.mark("survey.state")
         let hostsT0 = CACurrentMediaTime()
@@ -1991,8 +1993,8 @@ private final class MotionPanel: NSPanel {
     /// Swap two windows' live frames in place — no grid staging, no separate flow.
     private func clearPicks(on screen: NSScreen) {
         let id = MotionPanel.screenID(screen)
-        pickOrderByScreen[id] = []
-        restorePickState(for: screen)
+        selection.clear(on: id)
+        prunePicks(on: screen)
         rebuildExposeView(screens: [screen])
         updateLegend()
         refreshBorders()
@@ -2056,9 +2058,9 @@ private final class MotionPanel: NSPanel {
             }
         }
         let id = MotionPanel.screenID(screen)
-        pickOrderByScreen[id]?.removeAll { $0 == widA || $0 == widB }
+        selection.remove([widA, widB], on: id)
         if activeSurveyScreen.map(MotionPanel.screenID) == id {
-            restorePickState(for: screen)
+            prunePicks(on: screen)
         }
         DiagnosticLog.shared.info("Hyperspace swap — \(entryA.app) ↔ \(entryB.app)")
         invalidateLayoutFingerprint(for: screen)
@@ -2176,7 +2178,7 @@ private final class MotionPanel: NSPanel {
 
     private func resetSurveyState(for screens: [NSScreen]) {
         let validIDs = Set(screens.map(MotionPanel.screenID))
-        pickOrderByScreen = pickOrderByScreen.filter { validIDs.contains($0.key) }
+        selection.retainDisplays(validIDs)
         exposeClustersByScreen.removeAll()
         exposeOrderByScreen.removeAll()
         exposeAimByScreen.removeAll()
@@ -2220,7 +2222,7 @@ private final class MotionPanel: NSPanel {
         }
 
         let memberIDs = Set(members.map(\.wid))
-        pickOrderByScreen[id] = (pickOrderByScreen[id] ?? []).filter { memberIDs.contains($0) }
+        selection.retainWindows(memberIDs, on: id)
     }
 
     private func syncActiveSurveyState(from screen: NSScreen) {
@@ -2234,7 +2236,7 @@ private final class MotionPanel: NSPanel {
         clusterHintMap = clusterHintMapByScreen[id] ?? [:]
         exposeTileW = exposeTileWByScreen[id] ?? autoTileWidth(count: surveyMembers(on: screen).count, screen: screen)
         exposeFrames = exposeFramesByScreen[id] ?? [:]
-        restorePickState(for: screen)
+        prunePicks(on: screen)
     }
 
     private func readingHints(for order: [UInt32]) -> ([UInt32: String], [String: UInt32]) {
@@ -2759,19 +2761,14 @@ private final class MotionPanel: NSPanel {
     private func exposeToggle(_ wid: UInt32, on screen: NSScreen) {
         aimWindow(wid, on: screen)
         let id = MotionPanel.screenID(screen)
-        var order = pickOrderByScreen[id] ?? []
-        if order.contains(wid) {
-            order.removeAll { $0 == wid }
-        } else {
-            order.append(wid)
-            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
-        }
+        if selection.toggle(wid, on: id),
+           let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
         let memberIDs = Set(surveyMembers(on: screen).map(\.wid))
-        pickOrderByScreen[id] = order.filter { memberIDs.contains($0) }
+        selection.retainWindows(memberIDs, on: id)
         if activeSurveyScreen.map(MotionPanel.screenID) != id {
             setActiveSurveyScreen(screen)
         } else {
-            restorePickState(for: screen)
+            prunePicks(on: screen)
         }
         if inPlaceMode {
             rebuildExposeView(screens: [screen])
@@ -2791,12 +2788,11 @@ private final class MotionPanel: NSPanel {
         guard let box = exposeClusters.first(where: { $0.id == id }) else { NSSound.beep(); return }
         let wids = box.members.map { $0.wid }
         guard !wids.isEmpty else { return }
-        let allPicked = wids.allSatisfy { group.contains($0) }
-        for wid in wids {
-            let picked = group.contains(wid)
-            if allPicked && picked { togglePicked(wid) }          // clear the whole group
-            else if !allPicked && !picked { togglePicked(wid) }   // fill in the missing members
+        let added = selection.toggleGroup(wids, on: activeSelectionScreenID)
+        for wid in added {
+            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
         }
+        pruneActivePicks()
         rebuildExposeView()
         updateLegend()
         updateStack()
@@ -2810,22 +2806,14 @@ private final class MotionPanel: NSPanel {
         }
         let wids = box.members.map { $0.wid }
         guard !wids.isEmpty else { return }
-        var order = pickOrderByScreen[screenID] ?? []
-        let selected = Set(order)
-        let allPicked = wids.allSatisfy { selected.contains($0) }
-        if allPicked {
-            order.removeAll { wids.contains($0) }
-        } else {
-            for wid in wids where !order.contains(wid) {
-                order.append(wid)
-                if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
-            }
+        let added = selection.toggleGroup(wids, on: screenID)
+        for wid in added {
+            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
         }
-        pickOrderByScreen[screenID] = order
         if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
             setActiveSurveyScreen(screen)
         } else {
-            restorePickState(for: screen)
+            prunePicks(on: screen)
         }
         rebuildExposeForScreenInteraction(on: screen)
         updateLegend()
@@ -2977,18 +2965,16 @@ private final class MotionPanel: NSPanel {
             return
         }
 
-        var order = pickOrderByScreen[screenID] ?? []
-        for wid in matches where !order.contains(wid) {
-            order.append(wid)
+        let added = selection.append(matches, on: screenID)
+        for wid in added {
             if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
         }
-        pickOrderByScreen[screenID] = order
         setClusterSearchQuery("", clusterID: clusterID, screenID: screenID)
         activeClusterSearchByScreen[screenID] = nil
         if activeSurveyScreen.map(MotionPanel.screenID) != screenID {
             setActiveSurveyScreen(screen)
         } else {
-            restorePickState(for: screen)
+            prunePicks(on: screen)
         }
         rebuildExposeForScreenInteraction(on: screen)
         updateLegend()
@@ -3052,14 +3038,12 @@ private final class MotionPanel: NSPanel {
         let members = layerMembers(layer).filter { entry($0, isOn: screen) }
         guard !members.isEmpty else { NSSound.beep(); return }
         let id = MotionPanel.screenID(screen)
-        var order = pickOrderByScreen[id] ?? []
-        for w in members where !order.contains(w.wid) {
-            order.append(w.wid)
-            if let e = eligible.first(where: { $0.wid == w.wid }) { _ = ax(for: e) }
+        let added = selection.append(members.map(\.wid), on: id)
+        for wid in added {
+            if let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
         }
-        pickOrderByScreen[id] = order
         if activeSurveyScreen.map(MotionPanel.screenID) != id { setActiveSurveyScreen(screen) }
-        else { restorePickState(for: screen) }
+        else { prunePicks(on: screen) }
         rebuildExposeForScreenInteraction(on: screen); updateLegend(); refreshBorders(); updateStack()
     }
 
@@ -3091,7 +3075,7 @@ private final class MotionPanel: NSPanel {
         let targetID = MotionPanel.screenID(screen)
         let currentID = activeSurveyScreen.map(MotionPanel.screenID)
         if currentID != targetID {
-            savePickStateForActiveScreen()
+            pruneActivePicks()
             setActiveSurveyScreen(screen)
         }
         if let wid {
@@ -3236,7 +3220,7 @@ private final class MotionPanel: NSPanel {
 
     private func setActiveSurveyScreen(_ screen: NSScreen) {
         if activeSurveyScreen.map(MotionPanel.screenID) != MotionPanel.screenID(screen) {
-            savePickStateForActiveScreen()
+            pruneActivePicks()
         }
         activeScreenID = MotionPanel.screenID(screen)
 
@@ -3248,7 +3232,7 @@ private final class MotionPanel: NSPanel {
         }
 
         lastSide = nil
-        restorePickState(for: screen)
+        prunePicks(on: screen)
 
         if exposed {
             captureCount = allMembers.count
@@ -3269,17 +3253,14 @@ private final class MotionPanel: NSPanel {
         refreshBorders()
     }
 
-    private func savePickStateForActiveScreen() {
+    private func pruneActivePicks() {
         guard let screen = activeSurveyScreen else { return }
-        let memberIDs = Set(eligible.filter { entry($0, isOn: screen) }.map(\.wid))
-        pickOrderByScreen[MotionPanel.screenID(screen)] = pickOrder.filter { memberIDs.contains($0) }
+        prunePicks(on: screen)
     }
 
-    private func restorePickState(for screen: NSScreen) {
+    private func prunePicks(on screen: NSScreen) {
         let memberIDs = Set(eligible.filter { entry($0, isOn: screen) }.map(\.wid))
-        let savedOrder = (pickOrderByScreen[MotionPanel.screenID(screen)] ?? []).filter { memberIDs.contains($0) }
-        pickOrder = savedOrder
-        group = Set(savedOrder)
+        selection.retainWindows(memberIDs, on: MotionPanel.screenID(screen))
     }
 
     private func canvasForScreen(_ screen: NSScreen) -> ExposeCanvas {

@@ -72,6 +72,12 @@ enum MachineInventory {
 final class MachinesModel: ObservableObject {
     @Published var visit = VisitController.Status(armed: false, visiting: nil, hosts: [])
     @Published var screens: [VisitController.Screen] = []
+    /// Virtual displays (Action's agent layer) stay off the canvases unless asked for.
+    @Published var showVirtual = UserDefaults.standard.bool(forKey: "machines.showVirtual") {
+        didSet { UserDefaults.standard.set(showVirtual, forKey: "machines.showVirtual") }
+    }
+    /// The displays the canvases draw.
+    var shownScreens: [VisitController.Screen] { showVirtual ? screens : screens.filter { !$0.virtual } }
     @Published var reachable: [String: Bool] = [:]
     @Published var builds: [String: MachineBuild] = [:]
     @Published var error: String?
@@ -145,6 +151,12 @@ final class MachinesModel: ObservableObject {
     func perform(_ method: String, _ params: JSON? = nil) {
         do { _ = try LatticesApi.shared.dispatch(method: method, params: params); error = nil; refresh() }
         catch { self.error = error.localizedDescription }
+    }
+    /// Says which machine a display shows: this Mac brings it back, any other
+    /// marks it Elsewhere under that machine's name.
+    func show(_ screen: VisitController.Screen, machine: String) {
+        let here = machine == MonitorInputs.here
+        perform(here ? "here" : "elsewhere", .object(["display": .int(screen.number), "name": .string(here ? "" : machine)]))
     }
     func move(_ name: String, to side: VisitTrust.Side) {
         do { try VisitTrust.shared.setSide(name, side); error = nil; refresh() }

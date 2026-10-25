@@ -1,11 +1,11 @@
 ---
 title: CLI
-description: The lats voice commands that reach Speech, how the Lattices daemon forwards them to Voice.app, and what each playback command does.
+description: The lats voice commands that reach Voice, how the Lattices daemon forwards them to Voice.app, and what each playback command does.
 ---
 
-Speech has no CLI of its own. The Lattices CLI sends speech output commands
+Voice has no CLI of its own. The Lattices CLI sends speech output commands
 through the Lattices core daemon. This page describes the commands that reach
-Speech and their playback behavior. For the full `lats voice` reference,
+Voice and their playback behavior. For the full `lats voice` reference,
 including listening and spoken commands, see
 [Lattices voice](/lattices/docs/voice).
 
@@ -14,7 +14,7 @@ including listening and spoken commands, see
 ```text
 lats voice say "…"
   → Lattices core daemon   lattices.sock   voice.say
-  → Voice.app (Speech)     speech.sock   speech.enqueue
+  → Voice.app              speech.sock   speech.enqueue
 ```
 
 The CLI reads the capability token from
@@ -22,14 +22,14 @@ The CLI reads the capability token from
 WebSocket handshake to the daemon. The daemon forwards output verbs only for
 clients that present the token.
 
-In Speech 0.3.0 and Lattices 0.15.1, both hops use private Unix sockets,
+In Voice 0.3.0 and Lattices 0.15.1, both hops use private Unix sockets,
 `~/.lattices/run/lattices.sock` and `~/.lattices/run/speech.sock`. The CLI finds
 them and their tokens for you. The command set does not change.
 
 The CLI binary is also installed as
 `lattices`. Both names run the same commands.
 
-## Commands that reach Speech
+## Commands that reach Voice
 
 | Command | Daemon verb | Voice.app method | Result |
 | --- | --- | --- | --- |
@@ -46,7 +46,7 @@ The CLI binary is also installed as
 Add `--json` to any command for machine-readable output.
 
 `lats voice listen`, `stopListening`, `simulate`, and `intents` do not reach
-Speech. Lattices serves those commands itself.
+Voice. Lattices serves those commands itself.
 
 ## Playback semantics
 
@@ -87,5 +87,5 @@ codes. Lattices does not fall back to another voice.
 | --- | --- | --- |
 | `helper_not_installed` | Voice.app is not on this Mac. | In the Lattices menu, choose **Apps › Voice › Install**. |
 | `helper_unreachable` | Voice.app is installed but not running. | Choose **Apps › Voice › Open**. |
-| `helper_unauthorized` | Voice.app is running, but the client did not send the capability token. | Use `lats`, or send the token from your client. See [API](/speech/docs/api). |
+| `helper_unauthorized` | Voice.app is running, but the client did not send the capability token. | Use `lats`, or send the token from your client. See [API](/voice/docs/api). |
 | `voice_stop_changed` | `voice.stop` was called while Lattices was listening and nothing was speaking. | Use `lats voice stopListening` to stop capture. |

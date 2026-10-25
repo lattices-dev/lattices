@@ -1,36 +1,26 @@
 import AppKit
 import SwiftUI
 
+/// Another machine's state and its windows. The canvas above shows its
+/// monitors; any window here opens on its own in the remote viewer.
 struct MachineHostDetail: View {
     let host: RemoteHostsModel.Host
-    @ObservedObject var model: RemoteHostsModel
+
+    private var online: Bool { host.status == .online }
+    private var canView: Bool { online && host.capabilities.contains("capture.still") }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             header
-            HStack(alignment: .top, spacing: Chrome.inset) {
-                screen
-                    .frame(maxWidth: .infinity)
-                windowList
-                    .frame(width: 260)
+            if let error = host.liveError {
+                Text(error).font(Typo.mono(10)).foregroundColor(Palette.text).textSelection(.enabled)
             }
+            windowList
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Palette.surface)
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Palette.border, lineWidth: Chrome.hairline))
-        )
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(host.status == .online ? Palette.textDim : Palette.textMuted)
-                .frame(width: 6, height: 6)
-            Text(host.name)
-                .font(Typo.heading(13))
-                .foregroundColor(Palette.text)
             Text(detail)
                 .font(Typo.mono(10))
                 .foregroundColor(Palette.textDim)
@@ -64,77 +54,65 @@ struct MachineHostDetail: View {
         return host.stillMilliseconds.map { "\(age) · \($0) ms" } ?? age
     }
 
-    @ViewBuilder
-    private var screen: some View {
-        let canGoLive = host.status == .online && host.capabilities.contains("capture.live")
-        Button {
-            model.openLive(host.name)
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: Chrome.controlRadius)
-                    .fill(Color.black.opacity(0.3))
-                if let still = host.still {
-                    Image(nsImage: still)
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .opacity(host.status == .online ? 1 : 0.45)
-                } else {
-                    Text(host.status == .online ? "Capturing" : "No screen")
-                        .font(Typo.mono(11))
-                        .foregroundColor(Palette.textMuted)
+    private var windowList: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(host.windows) { window in
+                RemoteWindowRow(window: window, enabled: canView) {
+                    RemoteViewerWindows.shared.show(host, target: .window(wid: window.id, app: window.app, title: window.title))
                 }
             }
-            .aspectRatio(stillAspect, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: Chrome.controlRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: Chrome.controlRadius)
-                    .strokeBorder(Palette.border, lineWidth: Chrome.hairline)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!canGoLive)
-        .help(canGoLive ? "Open \(host.name) live" : "")
-        .overlay(alignment: .bottomLeading) {
-            if let error = host.liveError {
-                Text(error)
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.text)
-                    .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.7)))
-                    .padding(8)
+            if host.windows.isEmpty {
+                Text(online ? "No windows" : "—")
+                    .font(Typo.body(11))
+                    .foregroundColor(Palette.textMuted)
+                    .padding(.vertical, 4)
             }
         }
     }
+}
 
-    private var stillAspect: CGFloat {
-        guard let size = host.still?.size, size.height > 0 else { return 16.0 / 9.0 }
-        return size.width / size.height
-    }
+/// A window on another machine. Clicking opens just that app's window.
+private struct RemoteWindowRow: View {
+    let window: RemoteHostsModel.Window
+    let enabled: Bool
+    let open: () -> Void
+    @State private var hovering = false
 
-    private var windowList: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(host.windows) { window in
-                HStack(spacing: 6) {
-                    Text(window.app)
-                        .font(Typo.mono(10))
-                        .foregroundColor(window.isFocused ? Palette.text : Palette.textDim)
-                        .frame(width: 70, alignment: .leading)
-                    Text(window.title.isEmpty ? "—" : window.title)
-                        .font(Typo.body(11))
-                        .foregroundColor(window.isFocused ? Palette.text : Palette.textDim)
-                    Spacer(minLength: 0)
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                Text(window.app)
+                    .font(Typo.mono(10))
+                    .foregroundColor(window.isFocused ? Palette.text : Palette.textDim)
+                    .frame(width: 76, alignment: .leading)
+                Text(window.title.isEmpty ? "—" : window.title)
+                    .font(Typo.body(11))
+                    .foregroundColor(window.isFocused ? Palette.text : Palette.textDim)
+                Spacer(minLength: 0)
+                ZStack(alignment: .trailing) {
                     if let space = window.space {
                         Text("\(space)")
                             .font(Typo.mono(10))
                             .foregroundColor(Palette.textMuted)
+                            .opacity(hovering && enabled ? 0 : 1)
                     }
+                    Image(systemName: "arrow.up.forward.square")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Palette.textDim)
+                        .opacity(hovering && enabled ? 1 : 0)
                 }
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.vertical, 3)
+                .frame(width: 18, alignment: .trailing)
             }
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 6)
+            .frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 5).fill(hovering && enabled ? Palette.surfaceHov : .clear))
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .onHover { hovering = $0 }
+        .help(enabled ? "View \(window.app) on its own" : "")
     }
 }

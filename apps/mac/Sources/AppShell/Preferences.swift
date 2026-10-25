@@ -180,6 +180,12 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(spaceSwitchGlideEnabled, forKey: "spaceSwitchKeys.glide") }
     }
 
+    /// Passing light strength, relative to the original effect. Zero is off.
+    static let defaultSpaceSwitchShimmerIntensity = 0.15
+    @Published var spaceSwitchShimmerIntensity: Double {
+        didSet { UserDefaults.standard.set(spaceSwitchShimmerIntensity, forKey: "spaceSwitchKeys.shimmerIntensity") }
+    }
+
     /// How long letting go of ⌘⌥ on another layer waits for Return before
     /// staying put (`LayerAim`). 0 switches at once; below 0 waits for a key.
     @Published var layerSwitchConfirmSeconds: Double {
@@ -381,6 +387,15 @@ class Preferences: ObservableObject {
             self.spaceSwitchGlideEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.glide")
         } else {
             self.spaceSwitchGlideEnabled = false
+        }
+        if let saved = UserDefaults.standard.object(forKey: "spaceSwitchKeys.shimmerIntensity") as? Double,
+           saved.isFinite {
+            self.spaceSwitchShimmerIntensity = min(1, max(0, saved))
+        } else if UserDefaults.standard.object(forKey: "spaceSwitchKeys.passingLight") as? Bool == false {
+            // Preserve an explicit opt-out from the old hidden switch.
+            self.spaceSwitchShimmerIntensity = 0
+        } else {
+            self.spaceSwitchShimmerIntensity = Self.defaultSpaceSwitchShimmerIntensity
         }
         if UserDefaults.standard.object(forKey: "layers.confirmSeconds") != nil {
             self.layerSwitchConfirmSeconds = UserDefaults.standard.double(forKey: "layers.confirmSeconds")

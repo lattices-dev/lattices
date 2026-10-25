@@ -60,6 +60,7 @@ Machines and displays:
   lats hosts [--discover] Reachable lattices hosts (Macs, Linux lattices-host)
   lats --host <name> ...  Send daemon calls to another host
   lats --host <name> pair [--read-only | --drive]  Pair with a gateway (approve on the host)
+  lats --host <name> pair --read-only --screen     Also see the screen; --shell runs commands
   lats --host <name> pair --grant <product:method>  Request exact permissions (repeatable)
   lats mouse              Find mouse — sonar pulse at cursor position
   lats mouse summon       Summon mouse to screen center
@@ -185,7 +186,6 @@ Usage:
 ${process.platform === "linux" ? "  lats app overview|mission|console  Open Flight Deck, Mission Control or Operator Console\n  lats app status [--json]  Read app state\n  lats app quit|restart     Close/reopen the window; host and tray stay running" : "  lats app update         Swap in the latest app release only (not the CLI)\n  lats app build          Rebuild the menu bar app\n  lats app restart        Rebuild and relaunch the menu bar app\n  lats app quit           Stop the menu bar app"}
   lats canvas <cmd>       Forward to the installed Canvas CLI (alias: lats blink)
   lats action             Action product status (install, agent, checkout)
-  lats canvas <cmd>       Forward to the installed Canvas CLI (alias: lats blink)
   lats action install     Download the latest Action.app release to /Applications
   lats action launch      Open Action.app (--launch with install)
   lats gateway start --tailnet  Enable the separate remote gateway

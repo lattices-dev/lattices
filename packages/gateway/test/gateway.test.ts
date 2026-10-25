@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { GatewayPairing } from "../src/pairing.ts";
 import { gatewayHandlers, startGateway } from "../src/server.ts";
-import { authorizeMethod, canonicalProduct, grantsForScope, isTailnetAddress, requestedGrants, validGrant } from "../src/policy.ts";
+import { authorizeMethod, canonicalProduct, grantsForScope, isTailnetAddress, requestedGrants, scopesHeld, validGrant } from "../src/policy.ts";
+import { PAIRING_COOLDOWN_MS, PairingLimits, pairingIdentity } from "../src/pairing-limits.ts";
 import { PairingApprovals } from "../../host-linux/src/bridge/approval.ts";
 import { canonicalRequest, deriveKeys, publicKeyFromBase64, rawPublicKey, sign, HEADERS } from "../../host-linux/src/bridge/security.ts";
 import { privateToken, privateWebSocket, prepareSocket } from "../../host-linux/src/private-ipc.ts";
@@ -56,6 +57,10 @@ test("gateway grants are exact, scoped to products, and fail closed on aliases a
     expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", method)).toContain("method_denied");
   }
   expect(authorizeMethod(grantsForScope("lattices", "act"), "lattices", "layers.activate")).toContain("scope_denied");
+  // Reading a monitor's input is harmless; switching it takes the screen away from another host.
+  expect(authorizeMethod(read, "lattices", "display.input.get")).toBeNull();
+  expect(authorizeMethod(grantsForScope("lattices", "act"), "lattices", "display.input.set")).toContain("scope_denied");
+  expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "display.input.set")).toBeNull();
   for (const method of ["drive.begin", "drive.touch", "drive.release", "workspace.dragFile", "workspace.cancelOperation"]) {
     // A trust record from an earlier gateway must not revive unsupported leases.
     expect(authorizeMethod([`action:${method}`], "action", method)).toContain("method_denied");
@@ -353,3 +358,117 @@ test("audit metadata has a private bounded file and rejects linked targets", () 
     expect(() => appendAudit(join(root, "audit-link.jsonl"), {})).toThrow();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("capture.stream keeps one private lattices socket per client and relays its binary frames", () => fixture(async f => {
+  f.product.stop();
+  const token = privateToken(f.local.tokenFile!);
+  const daemon = { opened: 0, closed: 0, acks: 0, socket: undefined as any };
+  const fake = Bun.serve({ unix: f.local.socketPath!, fetch(req, server) {
+    if (req.headers.get("x-lattices-token") !== token) return new Response("no", { status: 403 });
+    if (server.upgrade(req)) return; return new Response("upgrade", { status: 426 });
+  }, websocket: {
+    open(ws) { daemon.opened++; daemon.socket ??= ws; },
+    close(ws) { if (ws === daemon.socket) daemon.closed++; },
+    message(ws, raw) {
+      const request = JSON.parse(String(raw));
+      const reply = (result: unknown, error: string | null = null) => ws.send(JSON.stringify({ id: request.id, result, error }));
+      if (request.method === "capture.stream.start") { reply({ streamId: 7, codec: "h264", width: 4, height: 2 }); ws.send(new Uint8Array([0x4c, 0x56, 0x46, 0x31, 7])); return; }
+      if (request.method === "capture.stream.ack") { daemon.acks++; reply({ ok: true }); return; }
+      reply({ ok: true });
+    },
+  } });
+  const { protectSocket } = await import("../../host-linux/src/private-ipc.ts"); const remove = protectSocket(f.local.socketPath!);
+  try {
+    await f.pair(["lattices:capture.stream.start", "lattices:capture.stream.ack", "lattices:capture.stream.stop", "lattices:windows.list"]);
+    const socket = await f.connect(f.signed());
+    socket.binaryType = "arraybuffer";
+    expect((await rpc(socket, "capture.stream.ack", { streamId: 7, seq: 1 })).error).toContain("Unknown stream");
+    const frame = new Promise<ArrayBuffer>(resolve => socket.addEventListener("message", (event: MessageEvent) => { if (typeof event.data !== "string") resolve(event.data); }));
+    expect((await rpc(socket, "capture.stream.start", { displayIndex: 0 })).result.streamId).toBe(7);
+    expect(new Uint8Array(await frame)).toEqual(new Uint8Array([0x4c, 0x56, 0x46, 0x31, 7]));
+    // Acks bypass the 600/min request budget.
+    for (let seq = 1; seq <= 700; seq++) socket.send(JSON.stringify({ id: `a${seq}`, method: "capture.stream.ack", params: { streamId: 7, seq } }));
+    await waitFor(() => daemon.acks === 700);
+    expect((await rpc(socket, "windows.list")).error).toBeNull();
+    const ended = new Promise<any>(resolve => socket.addEventListener("message", (event: MessageEvent) => { if (typeof event.data === "string" && JSON.parse(event.data).event) resolve(JSON.parse(event.data)); }));
+    daemon.socket.send(JSON.stringify({ event: "windows.changed", data: {} }));
+    daemon.socket.send(JSON.stringify({ event: "capture.stream.ended", data: { streamId: 7, reason: "ack-timeout" } }));
+    expect(await ended).toEqual({ event: "capture.stream.ended", data: { streamId: 7, reason: "ack-timeout" } });
+    expect(daemon.opened).toBe(2); // the stream socket, then one per-request call
+    socket.close();
+    await waitFor(() => daemon.closed === 1);
+  } finally { fake.stop(true); remove(); }
+}), 8000);
+
+test("screen and shell are separate scopes; shorthands keep their former reach", () => {
+  const read = grantsForScope("lattices", "read");
+  for (const method of ["capture.still", "capture.screenshot", "terminals.capture", "ocr.search", "computer.observe", "files.read"]) expect(read).not.toContain(`lattices:${method}`);
+  expect(read).toContain("lattices:windows.list");
+  const act = grantsForScope("lattices", "act");
+  expect(act).toContain("lattices:capture.still");
+  expect(act).toContain("lattices:windows.place");
+  expect(act).not.toContain("lattices:apps.open");
+  const drive = grantsForScope("lattices", "drive");
+  for (const method of ["computer.click", "computer.typeText", "apps.open", "sessions.launch", "capture.still"]) expect(drive).toContain(`lattices:${method}`);
+  expect(requestedGrants({ scope: "read", scopes: ["screen"] }).sort()).toEqual(grantsForScope("lattices", "read", ["screen"]).sort());
+  expect(requestedGrants({ scope: "read", scopes: ["screen"] })).toContain("lattices:capture.still");
+  expect(requestedGrants({ scope: "read", scopes: ["shell"] })).toContain("lattices:computer.typeText");
+  expect(requestedGrants({ scope: "read", scopes: ["shell"] })).not.toContain("lattices:capture.still");
+  expect(() => requestedGrants({ scope: "read", scopes: ["admin"] })).toThrow("Invalid pairing scopes");
+  expect(() => requestedGrants({ scope: "read", scopes: "screen" })).toThrow("Invalid pairing scopes");
+  expect(scopesHeld(grantsForScope("lattices", "read"))).toEqual(["read"]);
+  expect(scopesHeld(grantsForScope("lattices", "act"))).toEqual(["read", "screen", "act"]);
+  expect(scopesHeld(grantsForScope("lattices", "drive"))).toEqual(["read", "screen", "act", "drive", "shell"]);
+  expect(scopesHeld(["lattices:windows.list"])).toEqual([]);
+  // A client stored with grants from before the split keeps every exact method it holds.
+  const legacyRead = [...read, "lattices:capture.still", "lattices:terminals.capture"];
+  expect(authorizeMethod(legacyRead, "lattices", "capture.still")).toBeNull();
+  expect(authorizeMethod(legacyRead, "lattices", "terminals.capture")).toBeNull();
+  expect(authorizeMethod(read, "lattices", "capture.still")).toContain("scope_denied");
+});
+
+test("pairing limits: one prompt per machine, joined repeats, cooldown only after a denial", async () => {
+  let now = 0;
+  const limits = new PairingLimits<string>(PAIRING_COOLDOWN_MS, () => now);
+  let answer!: (value: string) => void;
+  let started = 0;
+  const start = () => { started++; return new Promise<string>(resolve => { answer = resolve; }); };
+  const first = limits.enter("gateway", "node:mini", "device-a", start);
+  const repeat = limits.enter("gateway", "node:mini", "device-a", start);
+  expect(started).toBe(1);
+  expect(() => limits.enter("gateway", "node:mini", "device-b", start)).toThrow("pairing_pending");
+  const other = limits.enter("gateway", "node:air", "device-b", async () => "other");
+  expect(await other.result).toBe("other");
+  expect(limits.pendingIdentity("device-a")).toBe("node:mini");
+  expect(repeat.leave()).toBe(false);
+  expect(first.leave()).toBe(true);
+  answer("timed out");
+  expect(await first.result).toBe("timed out");
+  // A timeout starts no cooldown.
+  expect(await limits.enter("gateway", "node:mini", "device-b", async () => "again").result).toBe("again");
+  limits.deny("node:mini");
+  expect(() => limits.enter("gateway", "node:mini", "device-a", start)).toThrow("pairing_cooldown");
+  expect(() => limits.enter("companion", "node:mini", "device-a", start)).toThrow("try again in 5 min");
+  now += PAIRING_COOLDOWN_MS + 1;
+  expect(await limits.enter("gateway", "node:mini", "device-a", async () => "after").result).toBe("after");
+  expect(pairingIdentity({ user: "u", node: "Mini" } as any, "100.64.0.1")).toBe("node:mini");
+  expect(pairingIdentity({ user: "u", node: "unknown" } as any, "100.64.0.1")).toBe("ip:100.64.0.1");
+});
+
+test("the gateway holds one pairing prompt per machine and cools down after an operator denial", () => fixture(async f => {
+  const request = async (clientID: string) => {
+    const socket = await f.connect();
+    const key = generateKeyPairSync("x25519");
+    return { socket, reply: rpc(socket, "clients.pair", { clientID, clientName: "test-client", platform: "test", publicKey: rawPublicKey(key.publicKey).toString("base64"), scope: "read" }) };
+  };
+  const first = await request(f.clientID);
+  await waitFor(() => f.approvals.list().length > 0);
+  const second = await request(crypto.randomUUID());
+  expect((await second.reply).error).toContain("pairing_pending");
+  expect(f.approvals.list()).toHaveLength(1);
+  await daemonCallTo(f.admin, "clients.deny", { clientID: f.clientID });
+  await first.reply;
+  const third = await request(crypto.randomUUID());
+  expect((await third.reply).error).toContain("pairing_cooldown");
+  expect(f.approvals.list()).toHaveLength(0);
+}), 8000);

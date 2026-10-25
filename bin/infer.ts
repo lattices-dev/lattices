@@ -3,15 +3,14 @@
  *
  * Features:
  *  - Multi-provider: groq, openai, anthropic, google, xai, minimax
- *  - Credential loading: env vars → .env.local/.env → ~/.lattices/inference.json → macOS Keychain
+ *  - Credential loading: one env var per provider, else the macOS Keychain
+ *    (service `lattices.inference`); both are declared in `.env.schema`
  *  - Instrumented: every call logged with timing, model, token usage
  *  - Simple API: `await infer("do something", { provider: "groq" })`
  */
 
-import { readFileSync, existsSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
 import { getKeychainSecret } from "./keychain";
+import { redact, registerSecret } from "./redact";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -81,58 +80,8 @@ interface CredentialStore {
 }
 
 let _cachedCreds: CredentialStore | null = null;
-let _cachedLocalEnv: Record<string, string> | null = null;
-
-function parseDotEnv(content: string): Record<string, string> {
-  const env: Record<string, string> = {};
-
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-
-    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!match) continue;
-
-    const [, key, rawValue] = match;
-    let value = rawValue.trim();
-    const quote = value[0];
-    if ((quote === `"` || quote === `'`) && value.endsWith(quote)) {
-      value = value.slice(1, -1);
-    } else {
-      value = value.replace(/\s+#.*$/, "").trim();
-    }
-
-    env[key] = value;
-  }
-
-  return env;
-}
-
-function loadLocalEnv(): Record<string, string> {
-  if (_cachedLocalEnv) return _cachedLocalEnv;
-
-  const repoRoot = join(import.meta.dir, "..");
-  const candidates = [
-    join(repoRoot, ".env"),
-    join(repoRoot, ".env.local"),
-    join(process.cwd(), ".env"),
-    join(process.cwd(), ".env.local"),
-  ];
-
-  const env: Record<string, string> = {};
-  for (const file of Array.from(new Set(candidates))) {
-    if (!existsSync(file)) continue;
-    try {
-      Object.assign(env, parseDotEnv(readFileSync(file, "utf-8")));
-    } catch {}
-  }
-
-  _cachedLocalEnv = env;
-  return env;
-}
-
 export function getInferenceEnv(name: string): string | undefined {
-  return process.env[name] || loadLocalEnv()[name];
+  return process.env[name] || undefined;
 }
 
 function firstInferenceEnv(names: string[]): string | undefined {
@@ -147,65 +96,31 @@ function normalizeProvider(value: string | undefined): ProviderName | undefined 
   return PROVIDER_NAMES.includes(provider as ProviderName) ? (provider as ProviderName) : undefined;
 }
 
-function assignGrokAlias(creds: CredentialStore) {
-  const key = getInferenceEnv("GROK_API_KEY");
-  if (!key) return;
-
-  // People often say/type "Grok" when they mean Groq. Use the key shape to
-  // route the alias without making xAI and Groq credentials interchangeable.
-  if (!creds.groq && key.startsWith("gsk_")) creds.groq = key;
-  if (!creds.xai && key.startsWith("xai-")) creds.xai = key;
-}
+/**
+ * The one env var each provider reads, and its Keychain account under
+ * `lattices.inference`. `.env.schema` declares the same names.
+ */
+export const PROVIDER_CREDENTIALS: Record<ProviderName, { env: string; account: string }> = {
+  groq: { env: "GROQ_API_KEY", account: "groq" },
+  openai: { env: "OPENAI_API_KEY", account: "openai" },
+  anthropic: { env: "ANTHROPIC_API_KEY", account: "anthropic" },
+  google: { env: "GOOGLE_GENERATIVE_AI_API_KEY", account: "google" },
+  xai: { env: "XAI_API_KEY", account: "xai" },
+  minimax: { env: "MINIMAX_API_KEY", account: "minimax" },
+};
 
 function loadCredentials(): CredentialStore {
   if (_cachedCreds) return _cachedCreds;
 
+  // Env wins (for one-off overrides and tests); otherwise the Keychain, one
+  // read per provider, cached for the process lifetime.
   const creds: CredentialStore = {};
-
-  // Layer 1: env vars (highest priority)
-  const groqKey = getInferenceEnv("GROQ_API_KEY");
-  const openaiKey = getInferenceEnv("OPENAI_API_KEY");
-  const anthropicKey = getInferenceEnv("ANTHROPIC_API_KEY");
-  const googleKey = getInferenceEnv("GOOGLE_GENERATIVE_AI_API_KEY");
-  // SUPERGROK_API_KEY (SuperGrok Heavy tier) takes precedence over the
-  // standard XAI_API_KEY when both are present.
-  const xaiKey =
-    getInferenceEnv("SUPERGROK_API_KEY") || getInferenceEnv("XAI_API_KEY");
-  const minimaxKey = getInferenceEnv("MINIMAX_API_KEY");
-  if (groqKey) creds.groq = groqKey;
-  if (openaiKey) creds.openai = openaiKey;
-  if (anthropicKey) creds.anthropic = anthropicKey;
-  if (googleKey) creds.google = googleKey;
-  if (xaiKey) creds.xai = xaiKey;
-  if (minimaxKey) creds.minimax = minimaxKey;
-  assignGrokAlias(creds);
-
-  // Layer 2: ~/.lattices/inference.json
-  const latticesConfig = join(homedir(), ".lattices", "inference.json");
-  if (existsSync(latticesConfig)) {
-    try {
-      const cfg = JSON.parse(readFileSync(latticesConfig, "utf-8"));
-      if (cfg.keys) {
-        if (!creds.groq && cfg.keys.groq) creds.groq = cfg.keys.groq;
-        if (!creds.openai && cfg.keys.openai) creds.openai = cfg.keys.openai;
-        if (!creds.anthropic && cfg.keys.anthropic) creds.anthropic = cfg.keys.anthropic;
-        if (!creds.google && cfg.keys.google) creds.google = cfg.keys.google;
-        if (!creds.xai && cfg.keys.xai) creds.xai = cfg.keys.xai;
-        if (!creds.minimax && cfg.keys.minimax) creds.minimax = cfg.keys.minimax;
-      }
-    } catch {}
+  for (const provider of PROVIDER_NAMES) {
+    const { env, account } = PROVIDER_CREDENTIALS[provider];
+    const key = getInferenceEnv(env) ?? getKeychainSecret(account);
+    registerSecret(key);
+    if (key) creds[provider] = key;
   }
-
-  // Layer 3 — macOS keychain via built-in `/usr/bin/security` under the
-  // `lattices.inference` service. One read per missing provider, cached
-  // in `_cachedCreds` for the process lifetime. Keys never touch disk.
-  // Portable across machines (no external CLI dep).
-  if (!creds.xai) creds.xai = getKeychainSecret("xai");
-  if (!creds.groq) creds.groq = getKeychainSecret("groq");
-  if (!creds.openai) creds.openai = getKeychainSecret("openai");
-  if (!creds.anthropic) creds.anthropic = getKeychainSecret("anthropic");
-  if (!creds.google) creds.google = getKeychainSecret("google");
-  if (!creds.minimax) creds.minimax = getKeychainSecret("minimax");
 
   _cachedCreds = creds;
   return creds;
@@ -214,7 +129,6 @@ function loadCredentials(): CredentialStore {
 /** Clear cached credentials (call if config changes at runtime) */
 export function clearCredentialCache() {
   _cachedCreds = null;
-  _cachedLocalEnv = null;
 }
 
 /** List which providers have credentials available */
@@ -301,7 +215,7 @@ async function postJSON(
 
   if (!response.ok) {
     const detail = data?.error?.message ?? data?.error ?? data?.message ?? raw;
-    throw new Error(`HTTP ${response.status}: ${String(detail || response.statusText)}`);
+    throw new Error(redact(`HTTP ${response.status}: ${String(detail || response.statusText)}`));
   }
   return data;
 }
@@ -463,7 +377,7 @@ async function callProvider(
 
 function log(tag: string, msg: string) {
   const ts = new Date().toISOString().slice(11, 23);
-  console.error(`[${ts}] infer${tag ? `/${tag}` : ""}: ${msg}`);
+  console.error(redact(`[${ts}] infer${tag ? `/${tag}` : ""}: ${msg}`));
 }
 
 // ── Main inference function ────────────────────────────────────────
@@ -503,7 +417,7 @@ export async function infer(
   const creds = loadCredentials();
   if (!creds[provider]) {
     throw new Error(
-      `No API key for provider "${provider}". Set it in env, .env.local, ~/.lattices/inference.json, or the macOS Keychain`
+      `No API key for provider "${provider}". Set ${PROVIDER_CREDENTIALS[provider].env}, or store it with: security add-generic-password -U -s lattices.inference -a ${PROVIDER_CREDENTIALS[provider].account} -w`
     );
   }
 

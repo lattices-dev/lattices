@@ -5,42 +5,53 @@ import UniformTypeIdentifiers
 
 struct MachinesPageView: View {
     @ObservedObject private var hosts = RemoteHostsModel.shared
+    @ObservedObject private var trial = DisplayArrangement.shared
+    @ObservedObject private var inputs = MonitorInputs.shared
+    @ObservedObject private var deskStore = DeskStore.shared
     @StateObject private var model = MachinesModel()
     @State private var selection: String?
     @State private var pairing = false
+    @AppStorage("machines.canvas") private var canvasMode = "desk"
+    /// This Mac's monitors, read on appear and when the displays change.
+    @State private var identities: [CGDirectDisplayID: MonitorIdentity] = [:]
 
     private var machines: [MachineInventory.Machine] { model.machines(hosts.hosts) }
     private var selected: MachineInventory.Machine? { machines.first { $0.id == selection } ?? machines.first }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("Arrangement").font(Typo.heading(13))
-                    Spacer()
-                    Button(model.visit.armed ? "Disarm visiting" : "Arm visiting") {
-                        VisitController.shared.arm(!model.visit.armed)
-                    }.disabled(model.visit.hosts.isEmpty && !model.visit.armed)
-                    Button("End visit") { VisitController.shared.end(because: "ended") }
-                        .disabled(model.visit.visiting == nil)
-                    Button("Add machine") { pairing = true }
+        GeometryReader { page in
+            let machines = machines
+            VStack(spacing: 0) {
+                Group {
+                    if canvasMode == "hosts" {
+                        let bounds = MachineCanvasScene(screens: model.shownScreens, machines: machines, monitors: { MachineCanvasScene.monitors($0) }).bounds
+                        MachineArrangementCanvas(model: model, machines: machines,
+                                                 selection: Binding(get: { selected?.id }, set: { selection = $0 }),
+                                                 onlineNames: Set(hosts.hosts.filter { $0.status == .online }.map(\.name)))
+                            .frame(height: MachineCanvasCamera.bandHeight(content: bounds, width: page.size.width - Chrome.inset * 2, available: page.size.height))
+                    } else {
+                        let desk = desk(machines)
+                        DeskCanvas(desk: desk, image: { host, key in image(host, key, machines) }, inputs: inputs, store: deskStore)
+                            .frame(height: MachineCanvasCamera.bandHeight(content: desk.bounds, width: page.size.width - Chrome.inset * 2,
+                                                                          available: page.size.height) + DeskCanvas.legendHeight)
+                    }
                 }
-                MachineArrangementCanvas(model: model, machines: machines, onlineNames: Set(hosts.hosts.filter { $0.status == .online }.map(\.name)))
-                HudDivider(color: Palette.border)
-                machineList
-                HudDivider(color: Palette.border)
-                displays
-                #if LATTICES_BUNDLE
-                Toggle("Let other machines visit this Mac", isOn: Binding(
-                    get: { MacVisitHost.enabled }, set: { MacVisitHost.setEnabled($0); model.refresh() }
-                )).toggleStyle(.checkbox)
-                #endif
-                if let selected { detail(selected) }
-                if let error = model.error {
-                    Text(error).font(Typo.body(11)).foregroundStyle(Palette.text).textSelection(.enabled)
+                .overlay(alignment: .topTrailing) { MachinesCanvasModePicker(mode: $canvasMode).padding(10) }
+                .padding([.horizontal, .top], Chrome.inset)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        ForEach(Array(Set([model.error, trial.error, inputs.error].compactMap { $0 })).sorted(), id: \.self) { error in
+                            Text(error).font(Typo.body(11)).foregroundStyle(Palette.text).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10).outlinedBox()
+                        }
+                        machineList(machines)
+                        if let selected { inspector(selected) }
+                        thisMac
+                    }
+                    .padding(Chrome.inset)
                 }
             }
-            .padding(Chrome.inset)
         }
         .font(Typo.body(11))
         .foregroundStyle(Palette.text)
@@ -48,89 +59,168 @@ struct MachinesPageView: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .background(PanelBackground())
-        .pageActions([PageAction(id: "machines-refresh", title: "Refresh", icon: "arrow.clockwise") {
-            model.refresh()
-            for host in hosts.hosts {
-                if host.status == .online { hosts.refresh(host.name) } else { hosts.reconnect(host.name) }
-            }
-        }])
-        .onAppear { hosts.retain(); model.appear() }
+        .pageActions(pageActions)
+        .onAppear { hosts.retain(); model.appear(); inputs.appear(); identities = DeskCanvas.identities(model.screens) }
+        .onChange(of: model.screens.map(\.displayID)) { _, _ in identities = DeskCanvas.identities(model.screens) }
+        // Hosts report their monitors after they connect; read each once as it arrives.
+        .onChange(of: hosts.hosts.map { "\($0.name):\($0.status == .online):\($0.monitors.compactMap(\.key))" }) { _, _ in inputs.readNew() }
         .onDisappear { model.disappear(); hosts.release() }
         .onReceive(NotificationCenter.default.publisher(for: VisitController.changed)) { _ in model.refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in model.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            model.refresh(); inputs.refreshLocal(); inputs.readNew()
+        }
         .sheet(isPresented: $pairing) { MachinePairSheet { model.refresh(); hosts.reload() } }
     }
 
-    private var machineList: some View {
-        VStack(spacing: 0) {
-            if machines.isEmpty {
-                Text("No machines").foregroundStyle(Palette.textMuted).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+    private var pageActions: [PageAction] {
+        var actions = [
+            PageAction(id: "machines-add", title: "Add machine", icon: "plus") { pairing = true },
+            PageAction(id: "machines-arm", title: model.visit.armed ? "Disarm visiting" : "Arm visiting",
+                       isEnabled: !model.visit.hosts.isEmpty || model.visit.armed) {
+                VisitController.shared.arm(!model.visit.armed)
+            },
+        ]
+        if model.visit.visiting != nil {
+            actions.append(PageAction(id: "machines-end-visit", title: "End visit") { VisitController.shared.end(because: "ended") })
+        }
+        actions.append(PageAction(id: "machines-refresh", title: "Refresh", icon: "arrow.clockwise") {
+            model.refresh()
+            inputs.readAll()
+            for host in hosts.hosts {
+                if host.status == .online { hosts.refresh(host.name) } else { hosts.reconnect(host.name) }
             }
-            ForEach(machines) { machine in
-                MachineRow(name: machine.name, address: machine.address, reachability: reachability(machine),
-                    build: build(machine).label, paired: machine.visit != nil,
-                    placement: machine.visit.flatMap { MachineArrangementStore.side(for: $0, displays: model.screens.map(\.frame)) }?.rawValue ?? "Unplaced",
-                    visiting: model.visit.visiting == machine.visit?.name && machine.visit != nil,
-                    selected: selected?.id == machine.id, canVisit: machine.visit != nil && model.visit.visiting == nil,
-                    canOpen: machine.remote != nil,
-                    select: { selection = machine.id },
-                    visit: { model.perform("visit.start", .object(["host": .string(machine.name)])) },
-                    open: { selection = machine.id })
+        })
+        return actions
+    }
+
+    // MARK: Desk
+
+    private func desk(_ machines: [MachineInventory.Machine]) -> Desk {
+        DeskLayout.stitch(hosts: DeskCanvas.hosts(screens: model.shownScreens, identities: identities,
+                                                  machines: machines.map { ($0.name, MachineCanvasScene.monitors($0)) }),
+                          origins: deskStore.origins)
+    }
+    /// The picture a remote host last sent of that monitor; this Mac draws none.
+    private func image(_ host: String, _ key: String, _ machines: [MachineInventory.Machine]) -> NSImage? {
+        guard let machine = machines.first(where: { $0.name == host }), let remote = remoteHost(machine),
+              let index = remote.monitors.firstIndex(where: { $0.key == key || ($0.key == nil && $0.builtin == true && key == DeskCanvas.builtinKey(host)) })
+        else { return nil }
+        return remote.thumbnails[index] ?? (index == 0 ? remote.still : nil)
+    }
+
+    private func section<Content: View, Accessory: View>(_ title: String, count: Int? = nil,
+                                                         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
+                                                         @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).font(Typo.heading(13))
+                if let count { Text("\(count)").font(Typo.mono(11)).foregroundStyle(Palette.textMuted) }
+                Spacer(minLength: 0)
+                accessory()
+            }
+            content()
+        }
+    }
+
+    // MARK: Machines
+
+    private func machineList(_ machines: [MachineInventory.Machine]) -> some View {
+        section("Machines", count: machines.count) {
+            MachineTable {
+                if machines.isEmpty {
+                    Text("No machines").foregroundStyle(Palette.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).frame(height: MachineRow.height)
+                }
+                ForEach(Array(machines.enumerated()), id: \.element.id) { index, machine in
+                    let host = remoteHost(machine)
+                    let build = build(machine)
+                    if index > 0 { MachineColumn.divider }
+                    MachineRow(name: machine.name, address: machine.address, platform: host?.platform,
+                        status: status(machine), build: build.identity, drift: build.drift,
+                        displays: host.map(\.monitors.count).flatMap { $0 > 0 ? $0 : nil },
+                        visiting: model.visit.visiting == machine.visit?.name && machine.visit != nil,
+                        selected: selected?.id == machine.id,
+                        canVisit: machine.visit.map { _ in model.visit.visiting == nil },
+                        canView: host.map { $0.status == .online && $0.capabilities.contains("capture.still") } ?? false,
+                        select: { selection = machine.id },
+                        visit: { model.perform("visit.start", .object(["host": .string(machine.name)])) },
+                        view: {
+                            guard let host else { return }
+                            RemoteViewerWindows.shared.show(host, target: .display(index: 0, name: host.monitors.first?.name ?? "Display"))
+                        })
+                }
             }
         }
     }
-    private func build(_ machine: MachineInventory.Machine) -> MachineBuild {
-        if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }) { return host.build }
-        return model.builds[machine.name] ?? MachineBuild([:])
+    private func remoteHost(_ machine: MachineInventory.Machine) -> RemoteHostsModel.Host? {
+        machine.remote.flatMap { name in hosts.hosts.first { $0.name == name } }
     }
-    private func reachability(_ machine: MachineInventory.Machine) -> String {
-        if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }), host.status == .online { return "Reachable" }
+    private func build(_ machine: MachineInventory.Machine) -> MachineBuild {
+        remoteHost(machine)?.build ?? model.builds[machine.name] ?? MachineBuild([:])
+    }
+    private func status(_ machine: MachineInventory.Machine) -> String {
+        if let host = remoteHost(machine), host.status == .online { return "Reachable" }
         if let visit = machine.visit {
             return model.reachable[visit.name].map { $0 ? "Reachable" : "Unreachable" } ?? "Checking"
         }
-        if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }) {
+        if let host = remoteHost(machine) {
             return host.status == .connecting ? "Connecting" : "Unreachable"
         }
         return "Unknown"
     }
-    private func displayParams(_ screen: VisitController.Screen) -> JSON {
-        .object(["display": .int(screen.number)])
-    }
-    private var displays: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Displays").font(Typo.heading(13))
-            ForEach(model.screens, id: \.number) { screen in
-                HStack {
-                    Text("\(screen.number) · \(screen.name)").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(Int(screen.frame.width)) × \(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                    Button("Bring everything here") { model.perform("bring", displayParams(screen)) }.frame(width: 140)
-                    Button("Make main") { model.perform("main", displayParams(screen)) }
-                    .buttonStyle(.borderless).font(Typo.body(11))
-                    .opacity(screen.main ? 0 : 1).disabled(screen.main || DisplayArrangement.shared.pending)
-                    .frame(width: 80)
-                    Toggle("Elsewhere", isOn: Binding(get: { screen.elsewhere }, set: {
-                        model.perform($0 ? "elsewhere" : "here", displayParams(screen))
-                    })).toggleStyle(.checkbox).frame(width: 100)
-                }.frame(height: 28)
-            }
-        }
-    }
-    @ViewBuilder private func detail(_ machine: MachineInventory.Machine) -> some View {
-        HudDivider(color: Palette.border)
-        HStack {
-            Text(machine.name).font(Typo.heading(13))
+
+    /// The selected machine: who it is, and its windows to open one by one.
+    private func inspector(_ machine: MachineInventory.Machine) -> some View {
+        let host = remoteHost(machine)
+        return section(machine.name) {
             if let visit = machine.visit {
-                Text(visit.bridgeFingerprint).font(Typo.mono(10)).foregroundStyle(Palette.textDim).textSelection(.enabled)
-                Spacer()
-                Picker("Side", selection: Binding(get: { MachineArrangementStore.side(for: visit, displays: model.screens.map(\.frame)) ?? visit.side }, set: { model.move(visit.name, to: $0) })) {
-                    ForEach(VisitTrust.Side.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
-                }.frame(width: 150)
+                Text(visit.bridgeFingerprint).font(Typo.mono(10)).foregroundStyle(Palette.textMuted).textSelection(.enabled)
                 Button("Forget") { model.forget(visit.name) }
             }
+        } content: {
+            if let host { MachineHostDetail(host: host) }
         }
-        if let name = machine.remote, let host = hosts.hosts.first(where: { $0.name == name }) {
-            MachineHostDetail(host: host, model: hosts)
+    }
+
+    // MARK: This Mac
+
+    private var thisMac: some View {
+        section("This Mac", count: model.screens.count) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(model.screens, id: \.number) { screen in
+                    HStack(spacing: 10) {
+                        Text("\(screen.number) · \(screen.name)").frame(maxWidth: .infinity, alignment: .leading)
+                            .foregroundStyle(screen.virtual ? Palette.textDim : Palette.text)
+                        Text("\(Int(screen.frame.width)) × \(Int(screen.frame.height))").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                        if screen.virtual {
+                            Text("Virtual").font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+                                .frame(width: 140 + 80 + 110 + 20, alignment: .leading)
+                        } else {
+                            Button("Bring everything here") { model.perform("bring", displayParams(screen)) }.frame(width: 140)
+                            Button("Make main") { model.perform("main", displayParams(screen)) }
+                                .opacity(screen.main ? 0 : 1).disabled(screen.main || trial.pending)
+                                .frame(width: 80)
+                            DisplayShowingChip(screen: screen, machines: [MonitorInputs.here] + machines.map(\.name)) {
+                                model.show(screen, machine: $0)
+                            }.frame(width: 110, alignment: .leading)
+                        }
+                    }
+                    .padding(.horizontal, 8).frame(height: 32)
+                }
+                if model.screens.contains(where: \.virtual) {
+                    Toggle("Show virtual displays", isOn: $model.showVirtual)
+                        .toggleStyle(.checkbox).padding(.horizontal, 8).padding(.top, 8)
+                }
+                #if LATTICES_BUNDLE
+                Toggle("Let other machines visit this Mac", isOn: Binding(
+                    get: { MacVisitHost.enabled }, set: { MacVisitHost.setEnabled($0); model.refresh() }
+                )).toggleStyle(.checkbox).padding(.horizontal, 8).padding(.top, 8)
+                #endif
+            }
         }
+    }
+    private func displayParams(_ screen: VisitController.Screen) -> JSON {
+        .object(["display": .int(screen.number)])
     }
 }
 
@@ -203,47 +293,139 @@ private struct MachinePairSheet: View {
     }
 }
 
-/// Fixed two-line rows keep long identities readable at the page's narrow width.
+/// Fixed column widths shared by the header and every row.
+enum MachineColumn {
+    static let status: CGFloat = 112
+    static let build: CGFloat = 176
+    static let displays: CGFloat = 64
+    static let actions: CGFloat = 116
+    static var divider: some View { Rectangle().fill(Palette.border).frame(height: Chrome.hairline) }
+}
+
+/// The machines as one framed table: a column header, then rows split by
+/// hairlines. Columns are fixed so every row lines up with the header.
+struct MachineTable<Rows: View>: View {
+    @ViewBuilder let rows: () -> Rows
+    private typealias Column = MachineColumn
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                label("Machine").frame(maxWidth: .infinity, alignment: .leading)
+                label("Status").frame(width: Column.status, alignment: .leading)
+                label("Build").frame(width: Column.build, alignment: .leading)
+                label("Displays").frame(width: Column.displays, alignment: .trailing)
+                Color.clear.frame(width: Column.actions, height: 1)
+            }
+            .padding(.horizontal, 12).frame(height: 28)
+            MachineColumn.divider
+            VStack(spacing: 0, content: rows).padding(4)
+        }
+        .outlinedBox(Palette.surface.opacity(0.6), radius: 8)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text.uppercased()).font(Typo.caption(9)).tracking(0.8).foregroundStyle(Palette.textMuted)
+    }
+}
+
+/// One machine on one line: who and where, state, build, displays, then the
+/// actions. The Visit slot is reserved on every row so the buttons line up.
 struct MachineRow: View {
+    static let height: CGFloat = 46
+
     let name: String
     let address: String
-    let reachability: String
+    var platform: String? = nil
+    let status: String
     let build: String
-    let paired: Bool
-    let placement: String
+    var drift: MachineBuild.Drift? = nil
+    var displays: Int? = nil
     let visiting: Bool
     let selected: Bool
-    let canVisit: Bool
-    let canOpen: Bool
+    /// Nil when the machine isn't paired for visits.
+    let canVisit: Bool?
+    let canView: Bool
     let select: () -> Void
     let visit: () -> Void
-    let open: () -> Void
+    let view: () -> Void
+    @State private var hovering = false
+
+    private typealias Column = MachineColumn
 
     var body: some View {
         HStack(spacing: 12) {
             Button(action: select) {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 10) {
-                        Text(name).font(Typo.heading(12)).frame(width: 120, alignment: .leading)
-                        Text(address).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                        Spacer(minLength: 0)
-                        Text(visiting ? "Visiting" : "—")
-                            .foregroundStyle(visiting ? Long.coral : Palette.textMuted).frame(width: 52, alignment: .leading)
-                    }
-                    HStack(spacing: 10) {
-                        Text(reachability).frame(width: 120, alignment: .leading)
-                        Text(build).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
-                        Spacer(minLength: 0)
-                        Text(paired ? "Paired" : "Unpaired").frame(width: 58, alignment: .leading)
-                        Text(placement).frame(width: 58, alignment: .leading)
-                    }
-                }.contentShape(Rectangle())
+                HStack(spacing: 12) {
+                    identity.frame(maxWidth: .infinity, alignment: .leading)
+                    state.frame(width: Column.status, alignment: .leading)
+                    buildCell.frame(width: Column.build, alignment: .leading)
+                    Text(displays.map(String.init) ?? "—").font(Typo.mono(11))
+                        .foregroundStyle(displays == nil ? Palette.textMuted : Palette.textDim)
+                        .frame(width: Column.displays, alignment: .trailing)
+                }
+                .contentShape(Rectangle())
             }.buttonStyle(.plain)
-            Button("Visit now", action: visit).disabled(!canVisit).frame(width: 72)
-            Button("Open", action: open).disabled(!canOpen).frame(width: 48)
+            HStack(spacing: 6) {
+                Button("Visit", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1)
+                Button("View", action: view).disabled(!canView)
+            }
+            .frame(width: Column.actions, alignment: .trailing)
         }
         .font(Typo.body(11)).lineLimit(1)
-        .padding(.horizontal, 8).frame(height: 56)
-        .background(selected ? Palette.surface : Color.clear)
+        .padding(.horizontal, 8).frame(height: Self.height)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(selected ? Palette.surfaceHov : hovering ? Palette.surfaceHov.opacity(0.5) : .clear))
+        .onHover { hovering = $0 }
+    }
+
+    /// The address only when it says more than the name.
+    private var detail: String {
+        let shown = address.caseInsensitiveCompare(name) == .orderedSame ? nil : address
+        return [platform.map(Self.platformName), shown].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private var identity: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(name).font(Typo.heading(12)).foregroundStyle(Palette.text)
+            if !detail.isEmpty {
+                Text(detail).font(Typo.mono(10)).foregroundStyle(Palette.textMuted).truncationMode(.middle)
+            }
+        }
+    }
+
+    private var state: some View {
+        let label = visiting ? "Visiting" : status
+        return HStack(spacing: 6) {
+            Circle().fill(dot).frame(width: 6, height: 6)
+            Text(label).foregroundStyle(visiting ? Long.coral : Palette.textDim)
+        }
+    }
+    /// Hue only where it asks for attention; healthy and pending stay neutral.
+    private var dot: Color {
+        if visiting { return Long.coral }
+        switch status {
+        case "Reachable": return Palette.textDim
+        case "Unreachable": return Palette.kill
+        default: return Palette.textMuted.opacity(0.6)
+        }
+    }
+
+    private var buildCell: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(build).font(Typo.mono(10)).foregroundStyle(Palette.textDim)
+            if let drift {
+                Text(drift.rawValue).font(Typo.caption(10))
+                    .foregroundStyle(drift == .behind ? Palette.detach : Palette.textMuted)
+            }
+        }
+    }
+
+    static func platformName(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "macos", "darwin": return "macOS"
+        case "linux": return "Linux"
+        default: return raw
+        }
     }
 }

@@ -44,7 +44,7 @@ export default function LatencyJourney() {
   return (
     <div style={{ margin: '32px 0', fontFamily: ff }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 20 }}>
-        <span style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#33c773' }}>
+        <span style={{ fontSize: 12, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ef6a47' }}>
           Performance journey
         </span>
         <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.2)' }}>Click to explore</span>
@@ -61,8 +61,8 @@ export default function LatencyJourney() {
               onClick={() => setActive(isActive ? null : iter.id)}
               style={{
                 padding: '10px 14px', borderRadius: 8,
-                border: `1px solid ${isActive ? 'rgba(51,199,115,0.2)' : 'rgba(255,255,255,0.03)'}`,
-                background: isActive ? 'rgba(51,199,115,0.03)' : 'transparent',
+                border: `1px solid ${isActive ? 'rgba(239,106,71,0.2)' : 'rgba(255,255,255,0.03)'}`,
+                background: isActive ? 'rgba(239,106,71,0.03)' : 'transparent',
                 cursor: 'pointer', transition: 'all 0.2s',
               }}
             >
@@ -83,9 +83,9 @@ export default function LatencyJourney() {
                 {iter.saved && (
                   <span style={{
                     fontSize: 10, fontWeight: 400, fontFamily: mono,
-                    color: 'rgba(51,199,115,0.6)',
+                    color: 'rgba(239,106,71,0.6)',
                     padding: '1px 5px', borderRadius: 3,
-                    background: 'rgba(51,199,115,0.06)',
+                    background: 'rgba(239,106,71,0.06)',
                   }}>
                     {iter.saved}
                   </span>
@@ -115,8 +115,8 @@ export default function LatencyJourney() {
                     <div style={{
                       marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
                       padding: '3px 8px', borderRadius: 5,
-                      background: 'rgba(51,199,115,0.05)', border: '1px solid rgba(51,199,115,0.1)',
-                      fontSize: 11, fontWeight: 400, color: '#33c773', fontFamily: mono,
+                      background: 'rgba(239,106,71,0.05)', border: '1px solid rgba(239,106,71,0.1)',
+                      fontSize: 11, fontWeight: 400, color: '#ef6a47', fontFamily: mono,
                     }}>
                       {iter.fix}
                     </div>
@@ -131,13 +131,13 @@ export default function LatencyJourney() {
       {/* Summary */}
       <div style={{
         marginTop: 10, padding: '10px 14px', borderRadius: 8,
-        background: 'rgba(51,199,115,0.03)', border: '1px solid rgba(51,199,115,0.08)',
+        background: 'rgba(239,106,71,0.03)', border: '1px solid rgba(239,106,71,0.08)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <span style={{ fontSize: 12, fontWeight: 400, color: 'rgba(255,255,255,0.35)' }}>Total improvement</span>
-        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 400, color: '#33c773' }}>
+        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 400, color: '#ef6a47' }}>
           ~7s {'→'} ~2s{'  '}
-          <span style={{ color: 'rgba(51,199,115,0.5)', fontSize: 11 }}>(first response at ~1s)</span>
+          <span style={{ color: 'rgba(239,106,71,0.5)', fontSize: 11 }}>(first response at ~1s)</span>
         </span>
       </div>
     </div>

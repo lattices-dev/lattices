@@ -749,6 +749,37 @@ struct SettingsContentView: View {
                             SettingsSwitch(isOn: $prefs.spaceSwitchGlideEnabled)
                         }
 
+                        cardDivider
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            settingsPrefRow(
+                                "Desktop shimmer",
+                                caption: "A faint passing light when you switch desktops. Changes apply on the next switch; zero turns it off."
+                            ) {
+                                Text(prefs.spaceSwitchShimmerIntensity == 0 ? "Off" : "\(Int((prefs.spaceSwitchShimmerIntensity * 100).rounded()))%")
+                                    .font(Typo.mono(11))
+                                    .foregroundColor(Palette.textMuted)
+                            }
+                            Slider(value: $prefs.spaceSwitchShimmerIntensity, in: 0...1, step: 0.05)
+                                .controlSize(.small)
+                                .tint(Palette.running)
+                                .accessibilityLabel("Desktop shimmer intensity")
+                                .accessibilityValue(prefs.spaceSwitchShimmerIntensity == 0 ? "Off" : "\(Int((prefs.spaceSwitchShimmerIntensity * 100).rounded())) percent")
+                            HStack {
+                                Text("Off")
+                                Spacer()
+                                Button("Subtle") {
+                                    prefs.spaceSwitchShimmerIntensity = Preferences.defaultSpaceSwitchShimmerIntensity
+                                }
+                                .buttonStyle(.link)
+                                .help("Reset shimmer intensity to 15%")
+                                Spacer()
+                                Text("Original strength")
+                            }
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                        }
+
                         if !permChecker.accessibility {
                             cardDivider
 
@@ -1880,20 +1911,29 @@ struct SettingsContentView: View {
 
     private var voiceModelCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            settingsPrefRow("Provider") {
-                SettingsChoiceBar(
-                    selection: $assistantSession.authProviderID,
-                    options: assistantSession.providerOptions.map { ($0.id, $0.name) }
-                )
+            settingsPrefRow("Command model") {
+                Picker("Command model", selection: $assistantSession.commandModelPreference) {
+                    ForEach(CommandModelPreference.allCases, id: \.rawValue) { preference in
+                        Text(preference.label).tag(preference.rawValue)
+                    }
+                }.labelsHidden().frame(width: 220)
             }
-
-            Text(assistantSession.currentProvider.helpText)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textMuted)
+            Text(assistantSession.commandModelStatus)
+                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-
-            assistantCredentialControls
-            assistantAuthMessage
+            Text("Automatic uses Codex Luna, Claude Code Haiku, then connected Grok or Flash models through Pi, with configured API connections as fallbacks. Clear commands run locally. Your assistant model stays unchanged.")
+                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup("API connection") {
+                settingsPrefRow("Provider") {
+                    SettingsChoiceBar(selection: $assistantSession.authProviderID,
+                        options: assistantSession.providerOptions.map { ($0.id, $0.name) })
+                }
+                Text(assistantSession.currentProvider.helpText)
+                    .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
+                assistantCredentialControls
+                assistantAuthMessage
+            }
         }
     }
 

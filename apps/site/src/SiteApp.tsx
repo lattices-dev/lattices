@@ -3,6 +3,7 @@ import { BlogIndex, BlogPostPage } from './components/Blog'
 import ActionPage from './components/ActionPage'
 import BlinkPage from './components/BlinkPage'
 import SpeechPage from './components/SpeechPage'
+import LinuxPage from './components/LinuxPage'
 import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
@@ -133,6 +134,7 @@ export default function SiteApp() {
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'speech') return <SpeechPage />
+  if (route.kind === 'linux') return <LinuxPage />
   if (route.kind === 'products') return <ProductsPage />
   if (route.kind === 'brand') return <BrandPage />
   if (route.kind === 'docs') return <DocsPage product={route.product} slug={route.slug} />
@@ -157,7 +159,7 @@ export default function SiteApp() {
               <a href="/lattices/docs/quickstart">Quickstart</a> — running workspaces in 2 minutes
             </li>
             <li>
-              <a href="/products">Products</a> — Lattices, Action, Canvas, and Speech
+              <a href="/products">Products</a> — Lattices, Action, Canvas, and Voice
             </li>
             <li>
               <a href="/lattices/docs/api">Agent API</a> — WebSocket reference for agents and scripts
@@ -186,6 +188,7 @@ type Route =
   | { kind: 'action'; title: string; description: string }
   | { kind: 'blink'; title: string; description: string }
   | { kind: 'speech'; title: string; description: string }
+  | { kind: 'linux'; title: string; description: string }
   | { kind: 'products'; title: string; description: string }
   | { kind: 'brand'; title: string; description: string }
   | { kind: 'docs'; product: ProductId; slug?: string; title: string; description: string }
@@ -208,7 +211,8 @@ function resolveRoute(path: string): Route {
 
   if (path === '/') return { kind: 'home', ...copyFor('/') }
   if (path === '/action') return { kind: 'action', ...copyFor('/action') }
-  if (path === '/speech') return { kind: 'speech', ...copyFor('/speech') }
+  if (path === '/voice' || path === '/speech') return { kind: 'speech', ...copyFor('/voice') }
+  if (path === '/linux') return { kind: 'linux', ...copyFor('/linux') }
   if (path === '/products') return { kind: 'products', ...copyFor('/products') }
   if (path === '/family') return { kind: 'products', ...copyFor('/products') }
   if (path === '/brand') return { kind: 'brand', ...copyFor('/brand') }

@@ -6,7 +6,7 @@ import { createServer as createHTTPServer, type IncomingHttpHeaders } from "node
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { daemonCallTo, daemonEndpoint } from "../packages/desktop-client/daemon-client.ts";
-import { localEndpoint } from "../packages/desktop-client/local-ipc.ts";
+import { legacyTokenFile, localEndpoint, localTokenFile, sharedTokenFile } from "../packages/desktop-client/local-ipc.ts";
 import { localEvents } from "../packages/desktop-client/local-events.ts";
 import { localHTTPGet } from "../packages/desktop-client/local-http.ts";
 import { parsePairOptions } from "../bin/cli/hosts.ts";
@@ -233,4 +233,23 @@ test("HTTP companion health uses private credentials and rejects unsafe token pe
     await new Promise<void>(resolve => server.close(() => resolve()));
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("Lattices endpoints share lattices.token; a live legacy per-service token is used during the transition", () => {
+  const directory = mkdtempSync("/tmp/lats-shared-");
+  chmodSync(directory, 0o700);
+  const env = { LATTICES_RUNTIME_DIR: directory };
+  try {
+    const shared = join(directory, "lattices.token");
+    expect(sharedTokenFile(env)).toBe(shared);
+    for (const product of ["lattices", "gateway", "companion"]) expect(localEndpoint(product, env).tokenFile).toBe(shared);
+    // Separately shipped products keep their own credential.
+    for (const product of ["action", "action-chrome", "speech", "voice"]) expect(localTokenFile(product, env)).toBe(join(directory, `${product}.token`));
+    // An older companion bridge or gateway still owns its per-service file.
+    for (const product of ["companion", "gateway"]) {
+      writeFileSync(legacyTokenFile(product, env), token, { mode: 0o600 });
+      expect(localEndpoint(product, env).tokenFile).toBe(join(directory, `${product}.token`));
+    }
+    expect(localEndpoint("lattices", env).tokenFile).toBe(shared);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

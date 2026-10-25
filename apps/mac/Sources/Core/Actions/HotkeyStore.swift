@@ -31,6 +31,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case gridPlacement
     case commandBar
     case focusMode
+    case stageMode
     // Layers
     case layer1, layer2, layer3, layer4, layer5, layer6, layer7, layer8, layer9
     case layerNext, layerPrev, layerUp, layerDown, layerTag
@@ -63,6 +64,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .gridPlacement:   return "Grid Placement"
         case .commandBar:      return "Command Bar"
         case .focusMode:       return "Focus Mode"
+        case .stageMode:       return "Stage"
         case .layer1:          return "Layer 1"
         case .layer2:          return "Layer 2"
         case .layer3:          return "Layer 3"
@@ -102,7 +104,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .focusMode, .inPlaceMode, .chordHints: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .focusMode, .stageMode, .inPlaceMode, .chordHints: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerUp, .layerDown, .layerTag: return .layers
@@ -129,6 +131,7 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .gridPlacement:   return 213
         case .commandBar:      return 214
         case .focusMode:       return 215
+        case .stageMode:       return 220
         case .layer1:          return 101
         case .layer2:          return 102
         case .layer3:          return 103
@@ -300,6 +303,7 @@ class HotkeyStore: ObservableObject {
         bind(.gridPlacement, 5, ctrlOpt)   // Ctrl+Opt+G (4x4 placement target)
         bind(.commandBar, 49, ctrlOpt)     // Ctrl+Opt+Space (THE command bar — browse/search/commands)
         bind(.focusMode, 6, hyper)         // Hyper+Z — reversible window spotlight
+        bind(.stageMode, 7, hyper)         // Hyper+X — grow the window you are in (Hyper+S is Talkie screenshots)
 
         // Layers: Cmd+Option+1-9, one per slot of the pad; 5 shows the current one
         let layerKeyCodes: [UInt32] = [18, 19, 20, 21, 23, 22, 26, 28, 25]

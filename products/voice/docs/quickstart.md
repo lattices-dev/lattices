@@ -43,7 +43,7 @@ Otherwise it shows one of these error codes:
 | --- | --- | --- |
 | `helper_not_installed` | Voice.app is not on this Mac. | Choose **Apps › Voice › Install** in the Lattices menu. |
 | `helper_unreachable` | Voice.app is installed but not running. | Choose **Apps › Voice › Open**. |
-| `helper_unauthorized` | Voice.app is running, but the request did not carry the capability token. | Retry through `lats`, which sends the token. A custom client must send the token. See [API](/speech/docs/api). |
+| `helper_unauthorized` | Voice.app is running, but the request did not carry the capability token. | Retry through `lats`, which sends the token. A custom client must send the token. See [API](/voice/docs/api). |
 
 ## Speak
 

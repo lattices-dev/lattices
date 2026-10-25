@@ -384,6 +384,19 @@ final class VoiceIntentResolver {
             )
         }
 
+        // Explicit launch syntax identifies the intent independently of the
+        // target's vocabulary. Sentence embeddings can otherwise reject an
+        // unfamiliar proper name even in an unambiguous "open <name>" request.
+        // The launch handler still validates the target before opening it.
+        if let target = exactLaunchTarget(for: input) {
+            return IntentMatch(
+                intentName: "launch",
+                slots: ["project": .string(target)],
+                confidence: 0.98,
+                matchedPhrase: input
+            )
+        }
+
         if let app = exactFocusApp(for: input) {
             return IntentMatch(
                 intentName: "focus",
@@ -414,7 +427,7 @@ final class VoiceIntentResolver {
         return nil
     }
 
-    /// True when some intent other than `search` declares this exact utterance
+    /// True when another intent declares this exact utterance
     /// as one of its own examples.
     ///
     /// The search shortcuts below are *shape* heuristics — "starts with find",
@@ -430,11 +443,21 @@ final class VoiceIntentResolver {
     /// Yielding here doesn't hand the utterance to the other intent — it just
     /// stops short-circuiting, and lets the semantic scorer below decide on the
     /// merits.
-    private func isDeclaredByOtherIntent(_ input: String) -> Bool {
+    private func isDeclaredByOtherIntent(_ input: String, excluding intent: String = "search") -> Bool {
         IntentEngine.shared.definitions().contains { def in
-            def.name != "search"
+            def.name != intent
                 && def.examples.contains { normalizeUtterance($0) == input }
         }
+    }
+
+    private func exactLaunchTarget(for input: String) -> String? {
+        guard !isDeclaredByOtherIntent(input, excluding: "launch"),
+              let target = extractEntity(in: input, prefixes: [
+                "open up ", "open my ", "open the ", "open ",
+                "launch the ", "launch my ", "launch ",
+              ]) else { return nil }
+        let cleaned = cleanEntity(target)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     private func exactSearchQuery(for input: String) -> String? {

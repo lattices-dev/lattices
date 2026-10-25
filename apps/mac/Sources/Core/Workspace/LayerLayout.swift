@@ -1,7 +1,9 @@
 import CoreGraphics
+import LatticesLayoutKit
 
 /// Where a layer's windows go on its display, for the layer's `layout`, as
-/// unit rects with y = 0 at the top. Pure, so it's tested without windows.
+/// unit rects with y = 0 at the top. Native names and app classification adapt
+/// to the value-only planner in LatticesLayoutKit.
 ///
 /// `auto` sorts windows into lanes by app type: terminals and chat on the
 /// left, editors and design in the middle, browsers and the rest on the
@@ -62,16 +64,11 @@ enum LayerLayout {
         return Kind(name)?.title ?? name
     }
 
-    enum Lane: CaseIterable {
-        case left, middle, right
-    }
+    typealias Lane = LayerLayoutPlanner.Lane
 
-    /// 21:9 and wider.
-    static let ultrawide: CGFloat = 2.0
-    /// The master's share of the width, as in grid.json's master-stack layouts.
-    static let masterRatio: CGFloat = 0.62
-    /// Lane widths on an ultrawide when all three lanes are used.
-    static let laneWidths: [CGFloat] = [0.3, 0.4, 0.3]
+    static let ultrawide = LayerLayoutPlanner.ultrawide
+    static let masterRatio = LayerLayoutPlanner.masterRatio
+    static let laneWidths = LayerLayoutPlanner.laneWidths
 
     static func lane(for type: AppType) -> Lane {
         switch type {
@@ -81,124 +78,43 @@ enum LayerLayout {
         }
     }
 
-    /// One unit rect per window, in the order of `types`: the layer's entry
-    /// order, its main window first. `aspect` is the display's width over its
-    /// height.
     static func frames(_ kind: Kind, types: [AppType], aspect: CGFloat) -> [CGRect] {
-        guard !types.isEmpty else { return [] }
-        let wide = aspect >= ultrawide
-        let whole = CGRect(x: 0, y: 0, width: 1, height: 1)
-        if types.count == 1 {
-            return [wide ? CGRect(x: 0.25, y: 0, width: 0.5, height: 1) : whole]
-        }
-        var frames = Array(repeating: whole, count: types.count)
-        let all = Array(types.indices)
+        LayerLayoutPlanner.frames(plannerKind(kind), lanes: types.map { lane(for: $0) }, aspect: aspect)
+    }
+
+    private static func plannerKind(_ kind: Kind) -> LayerLayoutPlanner.Kind {
         switch kind {
-        case .auto:
-            let lanes = Lane.allCases
-                .map { lane in all.filter { self.lane(for: types[$0]) == lane } }
-                .filter { !$0.isEmpty }
-            if wide {
-                switch lanes.count {
-                case 1:
-                    columns(lanes[0], count: 4, in: whole, into: &frames)
-                case 2:
-                    stack(lanes[0], in: CGRect(x: 0, y: 0, width: 0.5, height: 1), into: &frames)
-                    stack(lanes[1], in: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), into: &frames)
-                default:
-                    var x: CGFloat = 0
-                    for (lane, width) in zip(lanes, laneWidths) {
-                        stack(lane, in: CGRect(x: x, y: 0, width: width, height: 1), into: &frames)
-                        x += width
-                    }
-                }
-            } else {
-                // The editor leads when there is one.
-                let main = all.first { lane(for: types[$0]) == .middle } ?? lanes[0][0]
-                frames[main] = CGRect(x: 0, y: 0, width: 0.5, height: 1)
-                let rest = lanes.joined().filter { $0 != main }
-                stack(Array(rest), in: CGRect(x: 0.5, y: 0, width: 0.5, height: 1), into: &frames)
-            }
-        case .columns:
-            columns(all, count: wide ? 4 : 3, in: whole, into: &frames)
-        case .masterStack:
-            frames[0] = CGRect(x: 0, y: 0, width: masterRatio, height: 1)
-            stack(Array(all.dropFirst()), in: CGRect(x: masterRatio, y: 0, width: 1 - masterRatio, height: 1), into: &frames)
-        }
-        return frames
-    }
-
-    /// `members` in up to `count` equal columns of `area`, the leftmost
-    /// columns taking any extra, each stacked.
-    private static func columns(_ members: [Int], count: Int, in area: CGRect, into frames: inout [CGRect]) {
-        let count = max(1, min(count, members.count))
-        let width = area.width / CGFloat(count)
-        var next = 0
-        for column in 0..<count {
-            let size = members.count / count + (column < members.count % count ? 1 : 0)
-            let rect = CGRect(x: area.minX + CGFloat(column) * width, y: area.minY, width: width, height: area.height)
-            stack(Array(members[next..<next + size]), in: rect, into: &frames)
-            next += size
+        case .auto: return .auto
+        case .columns: return .columns
+        case .masterStack: return .masterStack
         }
     }
 
-    /// `members` stacked in `area`: up to three as rows, more as a grid two
-    /// wide, where a last one on its own spans its row.
-    private static func stack(_ members: [Int], in area: CGRect, into frames: inout [CGRect]) {
-        guard !members.isEmpty else { return }
-        if members.count <= 3 {
-            let height = area.height / CGFloat(members.count)
-            for (row, member) in members.enumerated() {
-                frames[member] = CGRect(x: area.minX, y: area.minY + CGFloat(row) * height, width: area.width, height: height)
-            }
-            return
-        }
-        let rows = (members.count + 1) / 2
-        let height = area.height / CGFloat(rows)
-        let width = area.width / 2
-        for (position, member) in members.enumerated() {
-            let (row, column) = (position / 2, position % 2)
-            let alone = column == 0 && position == members.count - 1
-            frames[member] = CGRect(
-                x: area.minX + CGFloat(column) * width,
-                y: area.minY + CGFloat(row) * height,
-                width: alone ? area.width : width,
-                height: height
-            )
-        }
-    }
-}
-
-/// Read-only planning shared by native arrange and the Editor projection.
-/// All external state (including AX eligibility) is supplied as immutable inputs.
-extension LayerLayout {
     struct PlannedWindow {
         let entry: WindowEntry
         let frame: CGRect
     }
 
+    /// Native arrange, forecast and Editor preview share this adapter. Only
+    /// immutable values cross the module boundary; no live desktop reads occur.
     static func plan(_ kind: Kind, members: [LayerMembership.Member], excluding: Set<UInt32>,
                      main: CGRect, otherDisplays: [CGRect], currentSpace: Int,
                      visibleFrame: CGRect, standardWindows: Set<UInt32>) -> [PlannedWindow] {
-        guard currentSpace > 0, visibleFrame.width > 0, visibleFrame.height > 0,
-              [visibleFrame.minX, visibleFrame.minY, visibleFrame.width, visibleFrame.height].allSatisfy(\.isFinite) else { return [] }
-        let candidates = members.compactMap { member -> WindowEntry? in
+        let candidates = members.map { member in
             let entry = member.entry
-            guard !member.placed, !excluding.contains(entry.wid), entry.hasTitle,
-                  entry.spaceIds.contains(currentSpace), standardWindows.contains(entry.wid) else { return nil }
-            let rect = CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h)
-            let centre = CGPoint(x: rect.midX, y: rect.midY)
-            if main.contains(centre) { return entry }
-            if otherDisplays.contains(where: { $0.contains(centre) }) { return nil }
-            return rect.minX >= main.maxX - 40 || main.intersects(rect) ? entry : nil
+            return LayerLayoutPlanner.Candidate(
+                windowID: entry.wid,
+                frame: CGRect(x: entry.frame.x, y: entry.frame.y, width: entry.frame.w, height: entry.frame.h),
+                spaceIDs: entry.spaceIds, isPlaced: member.placed, hasTitle: entry.hasTitle,
+                lane: lane(for: AppTypeClassifier.classify(entry.app))
+            )
         }
-        let boxes = frames(kind, types: candidates.map { AppTypeClassifier.classify($0.app) },
-                           aspect: visibleFrame.width / visibleFrame.height)
-        return zip(candidates, boxes).map { entry, box in
-            let raw = WindowTiler.tileFrame(fractions: (box.minX, box.minY, box.width, box.height), inDisplay: visibleFrame)
-            let x = raw.minX.rounded(), y = raw.minY.rounded()
-            return PlannedWindow(entry: entry, frame: CGRect(x: x, y: y,
-                width: raw.maxX.rounded() - x, height: raw.maxY.rounded() - y))
+        let context = LayerLayoutPlanner.Context(
+            mainBounds: main, otherDisplayBounds: otherDisplays, currentSpaceID: currentSpace,
+            visibleFrame: visibleFrame, excludedWindowIDs: excluding, standardWindowIDs: standardWindows
+        )
+        return LayerLayoutPlanner.plan(plannerKind(kind), candidates: candidates, context: context).map {
+            PlannedWindow(entry: members[$0.inputIndex].entry, frame: $0.frame)
         }
     }
 }

@@ -167,6 +167,15 @@ final class WorkspaceAssistantSession: ObservableObject {
     // the retired `dev.lattices.app.ai` keychain item (whose legacy ACL can
     // trigger a macOS password prompt after a dev bundle identity changes).
     private let voiceVault = HudVault(service: "dev.lattices.app.voice")
+    private let commandRouter = CommandModelRouter()
+    @Published var commandModelPreference: String = UserDefaults.standard.string(forKey: "commandModelPreference") ?? "automatic" {
+        didSet {
+            UserDefaults.standard.set(commandModelPreference, forKey: "commandModelPreference")
+            commandModelStatus = "Selected when the next command needs inference"
+        }
+    }
+    @Published private(set) var commandModelStatus = "Selected when the next command needs inference"
+
     private let scoutTransport = ScoutAssistantTransport()
     private var scoutBindingRef: String? {
         didSet {
@@ -207,7 +216,6 @@ final class WorkspaceAssistantSession: ObservableObject {
     @Published private(set) var agentRuntimeHarnessLabel: String?
     /// Model the harness reported for the last successful turn.
     @Published private(set) var agentRuntimeModel: String?
-    private static let voiceInferenceTimeout: TimeInterval = 45
     private static let voiceAppendSystemPrompt = """
         You are the Workspace Assistant for Lattices voice surfaces.
         Respond concisely. Follow the response format requested in each prompt exactly.
@@ -284,7 +292,14 @@ final class WorkspaceAssistantSession: ObservableObject {
     }
 
     var isProviderInferenceReady: Bool {
-        !needsProviderSetup
+        let preference = CommandModelPreference(rawValue: commandModelPreference) ?? .automatic
+        if preference == .api { return !needsProviderSetup }
+        switch preference {
+        case .codex: return CommandModelRouter.executable("codex") != nil
+        case .claude: return CommandModelRouter.executable("claude") != nil
+        case .grok, .flash: return CommandModelRouter.executable("pi") != nil
+        default: return CommandModelRouter.hasRuntime || !storedCredentialKinds.isEmpty
+        }
     }
 
     var providerOptions: [AssistantProvider] {
@@ -1091,36 +1106,31 @@ final class WorkspaceAssistantSession: ObservableObject {
         label: String,
         callback: @escaping (String?) -> Void
     ) {
-        guard !needsProviderSetup else {
-            DiagnosticLog.shared.info("Assistant inference[\(label)]: selected provider needs credentials")
-            callback(nil)
-            return
-        }
-
-        let provider = currentProvider
-        let client = HudAIClient(
-            provider: provider.makeAdapter(),
-            model: provider.modelID,
-            hudVault: voiceVault,
-            defaults: HudAIDefaults(maxOutputTokens: 1_024, timeout: Self.voiceInferenceTimeout),
-            routeDefault: .local
-        )
-        let request = HudAIRequest(
-            model: provider.modelID,
-            messages: [.user(prompt)],
-            system: Self.voiceAppendSystemPrompt
-        )
-        let timer = DiagnosticLog.shared.startTimed("Assistant inference[\(label)] via HudsonAI · \(provider.name)")
-
+        let preference = CommandModelPreference(rawValue: commandModelPreference) ?? .automatic
+        let credentials = storedCredentialKinds
+        let explicitProvider = currentProvider
+        let prompt = Self.voiceAppendSystemPrompt + "\n\n" + prompt
+        let providers = preference == .api ? [explicitProvider] : AssistantProvider.supported
+        let available = providers.filter { credentials[$0.id] != nil }
         Task {
             do {
-                let response = try await client.complete(request)
-                DiagnosticLog.shared.finish(timer)
-                DispatchQueue.main.async { callback(response.text) }
+                let (text, route) = try await commandRouter.complete(prompt: prompt, preference: preference,
+                    apiProviders: available.map(\.id)) { providerID, model, timeout in
+                    let provider = AssistantProvider.provider(id: providerID)
+                    let client = HudAIClient(provider: provider.makeAdapter(), model: model, hudVault: self.voiceVault,
+                        defaults: HudAIDefaults(maxOutputTokens: 1_024, timeout: timeout), routeDefault: .local)
+                    return try await client.complete(HudAIRequest(model: model, messages: [.user(prompt)])).text
+                }
+                DispatchQueue.main.async {
+                    self.commandModelStatus = route
+                    callback(text)
+                }
             } catch {
-                DiagnosticLog.shared.fail(timer, message: error.localizedDescription)
-                DiagnosticLog.shared.info("Assistant inference[\(label)]: \(error.localizedDescription)")
-                DispatchQueue.main.async { callback(nil) }
+                DiagnosticLog.shared.warn("Command inference[\(label)] unavailable")
+                DispatchQueue.main.async {
+                    self.commandModelStatus = error.localizedDescription
+                    callback(nil)
+                }
             }
         }
     }

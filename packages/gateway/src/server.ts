@@ -2,17 +2,22 @@ import type { Server, ServerWebSocket } from "bun";
 import { join } from "node:path";
 import { identify, type Identity, type Policy } from "../../host-linux/src/auth.ts";
 import { BridgeSecurityError } from "../../host-linux/src/bridge/security.ts";
-import { authorizeLocalRequest, prepareSocket, privateDirectory, privateToken, protectSocket } from "../../host-linux/src/private-ipc.ts";
-import { localEndpoint } from "../../desktop-client/local-ipc.ts";
+import { authorizeLocalRequest, prepareSocket, privateDirectory, privateToken, protectSocket, removeLegacyToken, type LocalCredential } from "../../host-linux/src/private-ipc.ts";
+import { legacyTokenFile, localEndpoint, sharedTokenFile } from "../../desktop-client/local-ipc.ts";
 import { localEvents } from "../../desktop-client/local-events.ts";
 import { GatewayPairing } from "./pairing.ts";
+import { PairingLimits, pairingIdentity } from "./pairing-limits.ts";
 import { appendAudit } from "./audit.ts";
-import { authorizeMethod, canonicalProduct, isTailnetAddress, validateRemoteRequest, type Product } from "./policy.ts";
-import { callProduct, COMPANION_ROUTES, proxyCompanion, connectCompanionVisit, type ProductCall, type CompanionVisit } from "./products.ts";
+import { authorizeMethod, canonicalMethod, canonicalProduct, isTailnetAddress, validateRemoteRequest, type Product } from "./policy.ts";
+import { callProduct, COMPANION_ROUTES, proxyCompanion, connectCompanionVisit, connectLatticesStream, type ProductCall, type CompanionVisit, type ProductStream, type StreamConnect } from "./products.ts";
+
+const STREAM_METHODS = new Set(["capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop"]);
 
 interface Connection {
   local: boolean;
   identity: Identity;
+  /** Remote address, for pairing limits when the tailnet node is unknown. */
+  address?: string;
   clientID: string | null;
   clientKey?: string;
   active: Set<AbortController>;
@@ -21,15 +26,22 @@ interface Connection {
   visit?: CompanionVisit;
   events?: { close(): void };
   eventNames?: string[];
+  /** Private lattices socket holding this client's capture streams. */
+  stream?: Promise<ProductStream>;
+  streamIDs?: Set<number>;
 }
 export interface GatewayOptions {
   pairing: GatewayPairing;
   allowedHosts: Set<string>;
   policy: Policy;
-  localToken: string;
+  /** Admin socket credential; a function is read at each admission. */
+  localToken: LocalCredential;
   call?: ProductCall;
+  streamConnect?: StreamConnect;
   identify?: (address: string, policy: Policy) => Promise<Identity | null>;
   companion?: typeof proxyCompanion;
+  /** One pending prompt per machine and a cooldown after a denial. */
+  pairingLimits?: PairingLimits;
   audit: (record: Record<string, unknown>) => void;
   shutdown: () => void;
 }
@@ -40,19 +52,74 @@ export function gatewayHandlers(options: GatewayOptions) {
   let admissions = 0;
   const attempts = new Map<string, { at: number; count: number }>();
   const call = options.call ?? callProduct;
+  const streamConnect = options.streamConnect ?? connectLatticesStream;
+  const limits = options.pairingLimits ?? new PairingLimits();
+  const companion = options.companion ?? proxyCompanion;
+  /** The companion decides its own pairing; the gateway only limits how often it is asked. */
+  const companionPairing = async (req: Request, who: string): Promise<Response> => {
+    const raw = await req.arrayBuffer();
+    let deviceID = "";
+    try { const body = JSON.parse(new TextDecoder().decode(raw)); if (typeof body?.deviceID === "string") deviceID = body.deviceID.slice(0, 128); } catch {}
+    let entry: ReturnType<typeof limits.enter>;
+    try {
+      entry = limits.enter("companion", who, deviceID, async () => {
+        const response = await companion(new Request(req.url, { method: "POST", headers: req.headers, body: raw, signal: req.signal }));
+        const body = await response.arrayBuffer();
+        if (response.status === 403) {
+          try {
+            const answer = JSON.parse(new TextDecoder().decode(body));
+            if (answer?.disposition === "denied" && /denied on the/i.test(String(answer.detail ?? ""))) limits.deny(who);
+          } catch {}
+        }
+        return { status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body };
+      });
+    } catch (error) {
+      return Response.json({ error: (error as Error).message }, { status: 429, headers: { "cache-control": "no-store" } });
+    }
+    try {
+      const shared = await entry.result as { status: number; contentType: string; body: ArrayBuffer };
+      return new Response(shared.body.slice(0), { status: shared.status, headers: { "content-type": shared.contentType, "cache-control": "no-store" } });
+    } catch { return new Response("Companion product unavailable", { status: 503 }); }
+    finally { entry.leave(); }
+  };
+  const openStream = (ws: ServerWebSocket<Connection>) => {
+    const conn = ws.data;
+    conn.streamIDs ??= new Set();
+    const ended = (data: unknown) => { if (ws.readyState === 1) ws.send(JSON.stringify({ event: "capture.stream.ended", data })); };
+    const stream = streamConnect({
+      binary(data) {
+        if (ws.readyState !== 1) return;
+        if (ws.getBufferedAmount() > 8 * 1024 * 1024) { ws.close(1009, "Backpressure limit"); return; }
+        ws.send(data);
+      },
+      event(name, data) {
+        if (name !== "capture.stream.ended") return;
+        conn.streamIDs!.delete(Number((data as { streamId?: unknown })?.streamId));
+        ended(data);
+      },
+      closed() {
+        if (conn.stream === stream) conn.stream = undefined;
+        for (const streamId of conn.streamIDs!) ended({ streamId, reason: "product-closed" });
+        conn.streamIDs!.clear();
+      },
+    });
+    stream.catch(() => { if (conn.stream === stream) conn.stream = undefined; });
+    return stream;
+  };
   const audit = (conn: Connection, method: string, disposition: string, product?: Product) => options.audit({ at: new Date().toISOString(), client: conn.clientID, node: conn.identity.node, product, method, disposition });
   const route = async (local: boolean, req: Request, server: Server<Connection>): Promise<Response | undefined> => {
     const path = new URL(req.url).pathname;
     let identity: Identity | null;
     let clientID: string | null = null;
     let clientKey: string | undefined;
+    let address = "";
     if (local) {
       if (!authorizeLocalRequest(req, options.localToken) || path !== "/" || req.method !== "GET") return new Response("Forbidden", { status: 403 });
       identity = { user: "local", node: "localhost", local: true };
     } else {
       const denied = validateRemoteRequest(req, options.allowedHosts);
       if (denied) return new Response(denied, { status: 403 });
-      const address = server.requestIP(req)?.address ?? "";
+      address = server.requestIP(req)?.address ?? "";
       identity = await (options.identify ?? identify)(address, options.policy);
       // Loopback never inherits the host's authority through the gateway.
       if (!identity || identity.local) return new Response("Tailnet identity required", { status: 403 });
@@ -65,7 +132,8 @@ export function gatewayHandlers(options: GatewayOptions) {
       }
       if (COMPANION_ROUTES.has(`${req.method} ${path}`)) {
         options.audit({ at: new Date().toISOString(), node: identity.node, method: `${req.method} ${path}`, disposition: "companion_forward" });
-        return (options.companion ?? proxyCompanion)(req);
+        if (req.method === "POST" && path === "/pairing/request") return companionPairing(req, pairingIdentity(identity, address));
+        return companion(req);
       }
       if (path !== "/" || req.method !== "GET") return new Response("Unknown route", { status: 404 });
       try { const client = options.pairing.authenticate(req.headers); clientID = client?.id ?? null; clientKey = client?.publicKey; }
@@ -74,7 +142,7 @@ export function gatewayHandlers(options: GatewayOptions) {
         return new Response("Authentication failed", { status: 403 });
       }
     }
-    if (server.upgrade(req, { data: { local, identity, clientID, clientKey, active: new Set(), requests: 0, windowStart: Date.now() } })) return;
+    if (server.upgrade(req, { data: { local, identity, address, clientID, clientKey, active: new Set(), requests: 0, windowStart: Date.now() } })) return;
     return new Response("WebSocket upgrade required", { status: 426 });
   };
   const fetchRequest = (local: boolean) => async (req: Request, server: Server<Connection>) => {
@@ -115,7 +183,7 @@ export function gatewayHandlers(options: GatewayOptions) {
           }, () => ws.close(1000, "Companion closed"));
         }
       },
-      close(ws: ServerWebSocket<Connection>) { sockets.delete(ws); ws.data.events?.close(); ws.data.visit?.socket.close(); for (const abort of ws.data.active) abort.abort(); },
+      close(ws: ServerWebSocket<Connection>) { sockets.delete(ws); ws.data.events?.close(); ws.data.visit?.socket.close(); ws.data.stream?.then(stream => stream.close(), () => {}); for (const abort of ws.data.active) abort.abort(); },
       async message(ws: ServerWebSocket<Connection>, raw: string | Buffer) {
         if (ws.data.visit) {
           if (ws.data.visit.socket.bufferedAmount > 8 * 1024 * 1024) { ws.close(1009, "Backpressure limit"); return; }
@@ -126,20 +194,27 @@ export function gatewayHandlers(options: GatewayOptions) {
         const conn = ws.data;
         let controller: AbortController | undefined;
         try {
-          if (Date.now() - conn.windowStart > 60_000) { conn.requests = 0; conn.windowStart = Date.now(); }
-          if (++conn.requests > 600 || conn.active.size >= 8) throw new Error("rate_limited: gateway request limit");
           const request = JSON.parse(String(raw));
           if (!request || typeof request !== "object" || Array.isArray(request)) throw new Error("Invalid request");
           id = String(request.id ?? "?"); method = request.method;
           if (id.length > 128 || typeof method !== "string" || !/^[a-zA-Z][a-zA-Z0-9_.]{0,127}$/.test(method)) throw new Error("Invalid request");
+          // A live stream acks every frame; the daemon bounds those itself.
+          if (method !== "capture.stream.ack") {
+            if (Date.now() - conn.windowStart > 60_000) { conn.requests = 0; conn.windowStart = Date.now(); }
+            if (++conn.requests > 600 || conn.active.size >= 8) throw new Error("rate_limited: gateway request limit");
+          }
           const params = request.params ?? {};
           if (typeof params !== "object" || Array.isArray(params)) throw new Error("Invalid params");
           if (method === "clients.pair" && !conn.local) {
             if (conn.active.size > 0) throw new Error("Pairing already pending");
-            controller = new AbortController(); conn.active.add(controller);
             const pendingID = params.clientID;
-            controller.signal.addEventListener("abort", () => { if (typeof pendingID === "string") options.pairing.approvals.decide(pendingID, false); }, { once: true });
-            const result = await options.pairing.pair(params, conn.identity);
+            // A repeat from the same client waits on the prompt already showing.
+            const entry = limits.enter("gateway", pairingIdentity(conn.identity, conn.address ?? ""), typeof pendingID === "string" ? pendingID : "", () => options.pairing.pair(params, conn.identity));
+            controller = new AbortController(); conn.active.add(controller);
+            // Withdraw the prompt only when no connection still waits on it.
+            controller.signal.addEventListener("abort", () => { if (entry.leave() && typeof pendingID === "string") options.pairing.approvals.decide(pendingID, false); }, { once: true });
+            let result: Awaited<ReturnType<GatewayPairing["pair"]>>;
+            try { result = await entry.result as typeof result; } finally { entry.leave(); }
             const approvedKey = typeof pendingID === "string" ? options.pairing.client(pendingID)?.publicKey : undefined;
             for (const socket of sockets) if (!socket.data.visit && socket.data.clientID === pendingID && socket.data.clientKey !== approvedKey) {
               for (const active of socket.data.active) active.abort(); socket.close(4001, "Client key changed");
@@ -156,8 +231,10 @@ export function gatewayHandlers(options: GatewayOptions) {
             if (["clients.approve", "clients.deny", "clients.revoke"].includes(method)) {
               if (typeof params.clientID !== "string" || params.clientID.length > 128) throw new Error("Invalid clientID");
               const clientID = params.clientID;
+              const denier = method === "clients.deny" ? limits.pendingIdentity(clientID) : undefined;
               const pendingDenied = method === "clients.revoke" && options.pairing.approvals.decide(clientID, false);
               const ok = method === "clients.revoke" ? options.pairing.security.revoke(clientID) || pendingDenied : options.pairing.approvals.decide(clientID, method === "clients.approve");
+              if (ok && denier) limits.deny(denier);
               if (method === "clients.revoke") for (const socket of sockets) if (socket.data.clientID === clientID) { for (const active of socket.data.active) active.abort(); socket.close(4001, "revoked"); }
               audit(conn, method, ok ? "approved" : "not_found"); reply({ ok }); return;
             }
@@ -193,6 +270,17 @@ export function gatewayHandlers(options: GatewayOptions) {
           // directly for local administration, never a gateway wildcard bypass.
           const denied = authorizeMethod(client?.capabilities ?? [], product, targetMethod);
           if (denied) throw new Error(denied);
+          const streamMethod = product === "lattices" ? canonicalMethod(product, targetMethod) : "";
+          if (STREAM_METHODS.has(streamMethod)) {
+            if (streamMethod !== "capture.stream.start" && !conn.stream) throw new Error("Unknown stream");
+            conn.stream ??= openStream(ws);
+            const result = await (await conn.stream).call(streamMethod, targetParams, streamMethod === "capture.stream.start" ? 10_000 : 5_000);
+            const streamId = Number((targetParams as { streamId?: unknown }).streamId);
+            if (streamMethod === "capture.stream.start") conn.streamIDs!.add(Number((result as { streamId?: unknown })?.streamId));
+            if (streamMethod === "capture.stream.stop") conn.streamIDs!.delete(streamId);
+            if (streamMethod !== "capture.stream.ack") audit(conn, targetMethod, "success", product);
+            reply(result); return;
+          }
           const deadline = request.deadline ?? Date.now() + 30_000;
           if (!Number.isSafeInteger(deadline) || deadline <= Date.now()) throw new Error("Request deadline exceeded");
           controller = new AbortController(); conn.active.add(controller);
@@ -204,7 +292,7 @@ export function gatewayHandlers(options: GatewayOptions) {
         } finally { if (controller) conn.active.delete(controller); }
       },
     },
-    stop() { for (const socket of sockets) { socket.data.events?.close(); socket.data.visit?.socket.close(); for (const active of socket.data.active) active.abort(); socket.close(1001, "Gateway stopping"); } options.pairing.stop(); },
+    stop() { for (const socket of sockets) { socket.data.events?.close(); socket.data.visit?.socket.close(); socket.data.stream?.then(stream => stream.close(), () => {}); for (const active of socket.data.active) active.abort(); socket.close(1001, "Gateway stopping"); } options.pairing.stop(); },
   };
 }
 
@@ -213,6 +301,11 @@ export async function startGateway(config: { address: string; port: number; name
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error("Invalid gateway port");
   const local = localEndpoint("gateway");
   await prepareSocket(local.socketPath!);
+  // The admin socket shares lattices.token. No other gateway holds the socket
+  // now, so the pre-consolidation gateway.token is stale.
+  removeLegacyToken(legacyTokenFile("gateway"));
+  const tokenFile = sharedTokenFile();
+  privateToken(tokenFile);
   privateDirectory(config.stateDir);
   const auditPath = join(config.stateDir, "audit.jsonl");
   appendAudit(auditPath, { at: new Date().toISOString(), method: "gateway.start", disposition: "starting" });
@@ -226,7 +319,7 @@ export async function startGateway(config: { address: string; port: number; name
     if (stopped) return; stopped = true;
     handlers.stop(); remote?.stop(true); admin?.stop(true); removeSocket(); config.onStop?.();
   };
-  const handlers = gatewayHandlers({ pairing, allowedHosts, policy: config.policy, localToken: privateToken(local.tokenFile!), shutdown: stop,
+  const handlers = gatewayHandlers({ pairing, allowedHosts, policy: config.policy, localToken: () => privateToken(tokenFile), shutdown: stop,
     audit: record => appendAudit(auditPath, record),
   });
   try {

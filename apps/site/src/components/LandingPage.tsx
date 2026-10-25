@@ -5,16 +5,13 @@ import { ThemeToggle } from "./ThemeToggle";
 import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu, SiteFooter } from "./SiteChrome";
-import { heroDesktopMaps, heroLayer, heroOverlapCount, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
+import { heroLayer, heroOverlapCount, heroSearchResults, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
 import type { HeroDesktopPhase, HeroWindowId } from "./heroDesktopMap";
-import { tideNow, tidePaths, tideToday, tideTomorrowFirstHigh } from "./heroTide";
-import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion } from "../seo/routes";
+import { tideNow, tidePaths, tideToday } from "./heroTide";
+import { latticesDownloadUrl as latticesDownloadURL, latticesAppVersion, linuxInstallCommand } from "../seo/routes";
 
 const latticesCliVersion = "0.15.1";
 const latticesDownloadMeta = `Apple Silicon · .dmg · ${latticesAppVersion}`;
-// Public entry point documented in docs/install-linux.md.
-const linuxInstallerUrl = "https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh";
-const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`;
 
 declare global {
   interface Window {
@@ -220,7 +217,6 @@ function DownloadIcon() {
 }
 
 type PaneLayout = 1 | 2 | 3;
-type CuaStepId = "observe" | "stage" | "execute" | "verify";
 
 const configExamples: Record<PaneLayout, string> = {
   1: `{
@@ -267,74 +263,6 @@ const agentExample = `<span class="hl-kw">import</span> { daemonCall } <span cla
   title: <span class="hl-str">'Tideline'</span>,
   placement: <span class="hl-str">'right'</span>,
 })`;
-
-const cuaSteps: Array<{
-  id: CuaStepId;
-  number: string;
-  title: string;
-  heading: string;
-  caption: string;
-  filename: string;
-  code: string;
-}> = [
-  {
-    id: "observe",
-    number: "01",
-    title: "Observe",
-    heading: "Read the app before acting",
-    caption: "Read the Accessibility tree and optional screenshot so the agent chooses from stable element ids.",
-    filename: "observe.ts",
-    code: `<span class="hl-kw">const</span> ui = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.windowState'</span>, {
-  app: <span class="hl-str">'Safari'</span>,
-  title: <span class="hl-str">'Tideline'</span>,
-  mode: <span class="hl-str">'ax'</span>,
-})`,
-  },
-  {
-    id: "stage",
-    number: "02",
-    title: "Stage",
-    heading: "Prepare a reviewable action",
-    caption: "Bind the next move to a snapshot element while nothing has run yet.",
-    filename: "stage.ts",
-    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
-  snapshotId: ui.snapshotId,
-  elementId: <span class="hl-str">'e14'</span>, <span class="hl-cmt">// "Tomorrow"</span>
-  action: <span class="hl-str">'press'</span>,
-  treatment: <span class="hl-str">'stage'</span>,
-})`,
-  },
-  {
-    id: "execute",
-    number: "03",
-    title: "Execute",
-    heading: "Run the exact staged command",
-    caption: "Click, type, hotkey, or set a value on-device after the same safety checks.",
-    filename: "execute.ts",
-    code: `<span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.elementAction'</span>, {
-  snapshotId: ui.snapshotId,
-  elementId: <span class="hl-str">'e14'</span>, <span class="hl-cmt">// "Tomorrow"</span>
-  action: <span class="hl-str">'press'</span>,
-  treatment: <span class="hl-str">'execute'</span>,
-})`,
-  },
-  {
-    id: "verify",
-    number: "04",
-    title: "Verify",
-    heading: "Check the result on-device",
-    caption: "Confirm the outcome with OCR or AX, then feed that receipt into the next observation.",
-    filename: "verify.ts",
-    code: `<span class="hl-kw">const</span> receipt = <span class="hl-kw">await</span> daemonCall(<span class="hl-str">'computer.verify'</span>, {
-  app: <span class="hl-str">'Safari'</span>,
-  title: <span class="hl-str">'Tideline'</span>,
-  mode: <span class="hl-str">'ocr'</span>,
-  contains: <span class="hl-str">'${tideTomorrowFirstHigh}'</span>,
-})`,
-  },
-];
-
-const showLatsDevTeaser = import.meta.env.PUBLIC_SHOW_LATS_DEV_TEASER === "true";
 
 function HeroWindowContent({ id }: { id: HeroWindowId }) {
   if (id === "session") {
@@ -532,25 +460,38 @@ function HeroLayerBezel() {
 }
 
 const heroWindowIds = Object.keys(heroWindowMeta) as HeroWindowId[];
+const heroPlaced = heroWindowMeta[heroSearchResults[0].id];
+
+/**
+ * The hero loop, one step at a time. The agent finds tideline and places its
+ * top result, then you press ⌘⌥1 and the layer puts the rest back.
+ */
+const heroSteps: Array<{ phase: HeroDesktopPhase; driver: "agent" | "you"; hold: number }> = [
+  { phase: "messy", driver: "agent", hold: 4600 },
+  { phase: "placed", driver: "agent", hold: 3800 },
+  { phase: "placed", driver: "you", hold: 1900 },
+  { phase: "organized", driver: "you", hold: 4600 },
+];
 
 function HeroWorkspaceStage() {
   const prefersReducedMotion = useReducedMotion() ?? false;
-  const [phaseChoice, setPhaseChoice] = useState<HeroDesktopPhase>("messy");
-  // The loop alternates who restores the layer: your shortcut, then the agent.
-  const [driver, setDriver] = useState<"you" | "agent">("you");
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [manualPhase, setManualPhase] = useState<HeroDesktopPhase | null>(null);
   const [inView, setInView] = useState(true);
   // Counts layer switches, so the bezel plays once for each.
   const [layerSwitches, setLayerSwitches] = useState(0);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  // Reduced-motion visitors land on the organized result instead of the loop.
-  const phase = prefersReducedMotion && autoPlay ? "organized" : phaseChoice;
+  const autoPlay = manualPhase === null;
+  const step = heroSteps[stepIndex];
+  // Reduced-motion visitors land on the placed result with the whole
+  // transcript, instead of the loop.
+  const phase: HeroDesktopPhase = manualPhase ?? (prefersReducedMotion ? "placed" : step.phase);
+  const placed = phase !== "messy";
   const organized = phase === "organized";
-  const agentTurn = driver === "agent";
-  const keycastOn = !organized && autoPlay && driver === "you";
-  // The agent ran `lattices map` before it asked for the layer, so its map
-  // stays the scattered one. On your turn the map follows the desktop.
-  const mapPhase: HeroDesktopPhase = agentTurn ? "messy" : phase;
+  const keycastOn = autoPlay && !prefersReducedMotion && step.driver === "you" && step.phase === "placed";
+  // On the first step the transcript types itself out. After that it stays
+  // complete until the loop starts over.
+  const typing = autoPlay && !prefersReducedMotion && stepIndex === 0;
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -565,31 +506,27 @@ function HeroWorkspaceStage() {
 
   useEffect(() => {
     if (!autoPlay || prefersReducedMotion || !inView) return;
-    // Linger on the organized result, longest after the agent's turn so the
-    // tiled desktop and the full transcript sit together. The scattered beat
-    // holds long enough to read, and longer on the agent's turn, where the
-    // request and the command appear before the switch.
-    const delay = organized
-      ? agentTurn ? 7200 : 4600
-      : agentTurn ? 4200 : 3000;
     const timer = window.setTimeout(() => {
-      if (organized) {
-        setDriver(agentTurn ? "you" : "agent");
-        setPhaseChoice("messy");
-      } else {
-        setPhaseChoice("organized");
-        setLayerSwitches((count) => count + 1);
-      }
-    }, delay);
+      const next = (stepIndex + 1) % heroSteps.length;
+      if (heroSteps[next].phase === "organized") setLayerSwitches((count) => count + 1);
+      setStepIndex(next);
+    }, step.hold);
     return () => window.clearTimeout(timer);
-  }, [autoPlay, organized, agentTurn, prefersReducedMotion, inView]);
+  }, [autoPlay, prefersReducedMotion, inView, stepIndex, step.hold]);
 
   const selectPhase = (next: HeroDesktopPhase) => {
-    setAutoPlay(false);
-    setDriver("you");
     if (next === "organized" && !organized) setLayerSwitches((count) => count + 1);
-    setPhaseChoice(next);
+    setManualPhase(next);
   };
+
+  // One transcript line: fades in at `delay` while typing, otherwise shown.
+  const line = (delay: number) => ({
+    initial: typing ? { opacity: 0 } : false,
+    animate: { opacity: 1 },
+    transition: { duration: typing ? 0.3 : 0, delay: typing ? delay : 0 },
+  });
+  // The receipt appears once the window has moved.
+  const receiptOn = !typing;
 
   return (
     <div className="hero-desktop-demo" id="workspace-demo">
@@ -601,8 +538,8 @@ function HeroWorkspaceStage() {
         <div className="hero-desktop-comparison" role="group" aria-label="Compare the desktop without and with Lattices">
           <button
             type="button"
-            className={!organized ? "is-active" : ""}
-            aria-pressed={!organized}
+            className={!placed ? "is-active" : ""}
+            aria-pressed={!placed}
             onClick={() => selectPhase("messy")}
           >
             <span aria-hidden="true">○</span>
@@ -610,8 +547,8 @@ function HeroWorkspaceStage() {
           </button>
           <button
             type="button"
-            className={organized ? "is-active" : ""}
-            aria-pressed={organized}
+            className={placed ? "is-active" : ""}
+            aria-pressed={placed}
             onClick={() => selectPhase("organized")}
           >
             <span aria-hidden="true">●</span>
@@ -626,7 +563,9 @@ function HeroWorkspaceStage() {
         role="img"
         aria-label={organized
           ? "A simulated Mac desktop with the tideline layer applied: a tmux session running Claude and a dev server on the left half, the tide chart in Safari and format.ts in Zed stacked on the right"
-          : "A simulated Mac desktop with three overlapping windows: a tmux session running Claude, the tideline tide chart in Safari, and format.ts in Zed"}
+          : phase === "placed"
+            ? "A simulated Mac desktop after lats place tideline right: the tideline terminal session fills the right half, with format.ts in Zed on the left"
+            : "A simulated Mac desktop with three overlapping windows: a tmux session running Claude, the tideline tide chart in Safari, and format.ts in Zed"}
       >
         <div className="hero-desktop-screen">
           <div className="hero-macos-bar">
@@ -649,7 +588,7 @@ function HeroWorkspaceStage() {
             aria-hidden="true"
             initial={false}
             animate={{ opacity: keycastOn ? 1 : 0 }}
-            transition={keycastOn ? { duration: 0.26, delay: 1.4 } : { duration: 0.18 }}
+            transition={keycastOn ? { duration: 0.26, delay: 0.5 } : { duration: 0.18 }}
           >
             <kbd>⌘</kbd>
             <kbd>⌥</kbd>
@@ -674,65 +613,49 @@ function HeroWorkspaceStage() {
       </div>
 
       <div className="hero-understage">
-        <div className="hero-agent-harness" role="group" aria-label="A coding agent reading the same desktop through Lattices">
+        <div className="hero-agent-harness" role="group" aria-label="A coding agent finding the tideline windows and placing one with the lats CLI">
           <div className="hero-harness-head">
             <span className="hero-harness-dot" aria-hidden="true" />
             <span>claude</span>
             <span className="hero-harness-cwd">~/dev/{heroLayer.name}</span>
             <span className="hero-harness-transport">Local workspace API</span>
           </div>
-          <div className="hero-harness-body">
-            <span className="hero-harness-user">
-              <b>&gt;</b> what&apos;s on my screen?
-            </span>
-            <span className="hero-harness-tool">
-              <i aria-hidden="true">⏺</i> Bash(lattices map)
-            </span>
-            <motion.div
-              key={agentTurn ? "agent" : phase}
-              className="hero-harness-result hero-harness-map-result"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.6 }}
-            >
-              <span className="hero-harness-summary">
-                <b aria-hidden="true">⎿</b> {heroWindowIds.length} windows · {heroOverlapCount[mapPhase]} overlaps ·{" "}
-                {mapPhase === "organized" ? `layer: ${heroLayer.name}` : "focused: Terminal"}
-              </span>
-              <pre className="hero-harness-map" aria-hidden="true">{heroDesktopMaps[mapPhase]}</pre>
-            </motion.div>
-            <motion.span
-              className="hero-harness-user"
-              initial={false}
-              animate={{ opacity: agentTurn ? 1 : 0 }}
-              transition={{ duration: agentTurn ? 0.3 : 0.2, delay: agentTurn ? 0.9 : 0 }}
-              style={{ visibility: agentTurn ? "visible" : "hidden" }}
-              aria-hidden={!agentTurn}
-            >
-              <b>&gt;</b> put my {heroLayer.name} layer back
+          <div className="hero-harness-body" key={typing ? "typing" : "done"}>
+            <motion.span className="hero-harness-user" {...line(0.2)}>
+              <b>&gt;</b> where&apos;s {heroLayer.name}? put it on the right
             </motion.span>
-            <motion.span
-              className="hero-harness-tool"
-              initial={false}
-              animate={{ opacity: agentTurn ? 1 : 0 }}
-              transition={{ duration: agentTurn ? 0.3 : 0.2, delay: agentTurn ? 2.1 : 0 }}
-              style={{ visibility: agentTurn ? "visible" : "hidden" }}
-              aria-hidden={!agentTurn}
-            >
-              <i aria-hidden="true">⏺</i> Bash(lattices layer {heroLayer.name})
+            <motion.span className="hero-harness-tool" {...line(0.9)}>
+              <i aria-hidden="true">⏺</i> Bash(lats search {heroLayer.name} --deep)
+            </motion.span>
+            <motion.div className="hero-harness-result hero-harness-search" {...line(1.6)}>
+              {heroSearchResults.map((result, index) => {
+                const meta = heroWindowMeta[result.id];
+                return (
+                  <span key={result.id} className="hero-harness-hit">
+                    <b aria-hidden="true">{index === 0 ? "⎿" : ""}</b>
+                    <span>
+                      <strong>{meta.app}</strong> &quot;{meta.title}&quot; wid:{meta.wid} score:{result.score}{" "}
+                      <em>({result.reasons.join(", ")})</em>
+                      {result.tab && (
+                        <span className="hero-harness-tab">
+                          tab 1: {result.tab.cwd} <i aria-hidden="true">●</i> [{result.tab.tmux}]
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                );
+              })}
+            </motion.div>
+            <motion.span className="hero-harness-tool" {...line(3.0)}>
+              <i aria-hidden="true">⏺</i> Bash(lats place {heroLayer.name} right)
             </motion.span>
             <motion.span
               className="hero-harness-result"
               initial={false}
-              animate={{ opacity: agentTurn && organized ? 1 : 0 }}
-              transition={{
-                duration: agentTurn && organized ? 0.3 : 0.2,
-                delay: agentTurn && organized ? 0.9 : 0,
-              }}
-              style={{ visibility: agentTurn && organized ? "visible" : "hidden" }}
-              aria-hidden={!agentTurn || !organized}
+              animate={{ opacity: receiptOn ? 1 : 0 }}
+              transition={{ duration: 0.3, delay: receiptOn && autoPlay && !prefersReducedMotion ? 0.5 : 0 }}
             >
-              <b aria-hidden="true">⎿</b> Activated layer &quot;{heroLayer.name}&quot;
+              <b aria-hidden="true">⎿</b> {heroPlaced.app} &quot;{heroPlaced.title}&quot; (wid:{heroPlaced.wid}) → right
             </motion.span>
           </div>
         </div>
@@ -744,7 +667,9 @@ function HeroWorkspaceStage() {
         <span className="hero-plinth-state">
           {organized
             ? `layer ${heroLayer.index + 1} · ${heroLayer.name}`
-            : `${heroWindowIds.length} windows · ${heroOverlapCount.messy} overlaps`}
+            : phase === "placed"
+              ? `wid:${heroPlaced.wid} → right`
+              : `${heroWindowIds.length} windows · ${heroOverlapCount.messy} overlaps`}
         </span>
         <PixelMascot />
       </div>
@@ -867,7 +792,7 @@ function PlacementFilm() {
         <source src="/hands/placement-hud.mp4" type="video/mp4" />
       </video>
       <figcaption>
-        Hold ⌃⌥ and point at a side or a corner, then let go to put the front
+        Enable Tile HUD in Settings, hold ⌃⌥ and point at a side or a corner, then let go to put the front
         window there. The centre fills the screen; dead centre cancels.
       </figcaption>
     </figure>
@@ -879,7 +804,7 @@ function HandsOnSection() {
     <section className="home-sec fade-in" id="hands">
       <SectionHead title="Shape the workspace as you work.">
         <p className="sec-lede">
-          On macOS, tile windows with ⌃⌥, use Caps Lock as Hyper, or hold a mouse button,
+          On macOS, tile halves with ⌘⌥⇧ and an arrow, use Caps Lock as Hyper, or hold a mouse button,
           draw a gesture, and release. Explore the paths in the 3×3
           gesture matrix below.
         </p>
@@ -905,7 +830,7 @@ function HandsOnSection() {
               </li>
             ))}
           </ul>
-          <p className="hands-note">Hold Caps Lock for Hyper. Defaults — change them in Settings.</p>
+          <p className="hands-note">Hold Caps Lock for Hyper. These are defaults; change them in Settings.</p>
         </div>
 
         <div className="hands-panel">
@@ -940,9 +865,9 @@ const tickerMethods = [
   "desktop.snapshot",
   "session.launch",
   "tabStacks.create",
-  "computer.windowState",
-  "computer.elementAction",
-  "computer.verify",
+  "history.list",
+  "history.undo",
+  "states.restore",
 ];
 
 export default function App() {
@@ -972,14 +897,12 @@ export default function App() {
     } catch { setInstallCopy("Select to copy"); }
   }
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(2);
-  const [cuaStep, setCuaStep] = useState<CuaStepId>("observe");
   // Initial theme is set synchronously by the inline script in index.html
   // (saved choice → system preference → dark). This re-syncs on toggle.
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof document === "undefined") return "dark";
     return (document.documentElement.getAttribute("data-theme") as "light" | "dark") || "dark";
   });
-  const activeCuaStep = cuaSteps.find((step) => step.id === cuaStep) ?? cuaSteps[0];
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -1057,6 +980,9 @@ export default function App() {
                 <path d="M4 12h16m-6-6 6 6-6 6" />
               </svg>
             </a>
+            <a href="/linux" className="hero-linux-link">
+              Also on Linux, with Hyprland and Omarchy <span aria-hidden="true">&rarr;</span>
+            </a>
           </div>
 
           <div className="hero-stage">
@@ -1089,163 +1015,48 @@ export default function App() {
               to extend that control beyond the one in front of you. You choose
               which machines and actions your agents can access.
             </p>
+            <p>
+              A placement made through <code>lats</code> or the API returns a
+              receipt: which window moved, from which frame to which, and
+              whether it landed. <code>history.undo</code> puts it back. After
+              every change settles, Lattices also saves a map of each display,
+              desktop and window frame, kept for 72 hours, so you can restore
+              the whole desktop from before the agent touched it.
+            </p>
           </div>
-          <div className="operator-rows fade-in fade-in-delay-1" aria-label="The same workspace request from a person or an agent">
-            <div className="operator-row is-you">
-              <span className="operator-row-label">You</span>
-              <span className="operator-row-action">
-                <span>&ldquo;Put the tide chart on the right half.&rdquo;</span>
-              </span>
-            </div>
+          <div className="operator-rows fade-in fade-in-delay-1" aria-label="An agent's placement, its receipt, and the undo">
             <div className="operator-row is-agent">
               <span className="operator-row-label">Your agent</span>
               <span className="operator-row-action">
-                <code>window.place {'{'} app: &apos;Safari&apos;, title: &apos;Tideline&apos;, placement: &apos;right&apos; {'}'}</code>
+                <code>lats place tideline right</code>
+              </span>
+            </div>
+            <div className="operator-row is-receipt">
+              <span className="operator-row-label">Receipt</span>
+              <span className="operator-row-action">
+                <code>verified · undoable · wid:4127 → right</code>
+              </span>
+            </div>
+            <div className="operator-row is-you">
+              <span className="operator-row-label">You</span>
+              <span className="operator-row-action">
+                <code>lats call history.undo</code>
               </span>
             </div>
             <p className="operator-result">
-              <i aria-hidden="true" /> The same window, in the same place, however you ask.
+              <i aria-hidden="true" />
+              <span>
+                The terminal is back where it was. Need more?{" "}
+                <code>lats state restore</code> picks any snapshot from the
+                last three days.
+              </span>
             </p>
           </div>
          </div>
         </section>
 
         <div className="shell">
-        <section className="home-sec omarchy-section" id="omarchy" aria-labelledby="omarchy-title">
-          <div className="omarchy-heading">
-            <span className="omarchy-mark omarchy-mark-large" aria-hidden="true">
-              <img src="/brand/omarchy/logo.svg" alt="" width="64" height="64" />
-            </span>
-            <h2 id="omarchy-title">Your workspace,<br />on Omarchy.</h2>
-          </div>
-          <div className="omarchy-copy">
-            <p>
-              Omarchy is a Linux desktop built on Arch and Hyprland,
-              with a tiling workflow at its heart.
-            </p>
-            <p>
-              Lattices brings your windows into named layers, helps you find
-              what’s open, and gives your tools and agents an API to work with.
-              Keep each project together, then switch focus when you’re ready.
-            </p>
-            <div className="omarchy-install">
-              <h3>Install from your terminal</h3>
-              <p>Run in your Omarchy desktop. Installs the app, CLI, host, and tray.</p>
-              <div className="install-command install-copy-command">
-                <code>{linuxInstallCommand}</code>
-                <button type="button" onClick={copyLinuxInstall} aria-label="Copy Linux install command">{linuxCopy}</button>
-              </div>
-              <span className="sr-only" role="status">{linuxCopy === "Copied" ? "Linux install command copied" : ""}</span>
-              <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
-            </div>
-            <div className="omarchy-links">
-              <a href="/lattices/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
-              <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
-            </div>
-          </div>
-        </section>
-
         <HandsOnSection />
-
-        {/* Computer use (CUA) */}
-        <section className="home-sec" id="cua">
-          <div className="fade-in">
-            <SectionHead title="Computer use you can control">
-              <p className="sec-lede">
-                Action is the focused computer-use product in the Lattices family.
-                Observe the screen, stage each action for review, execute on-device,
-                then verify the result.
-              </p>
-            </SectionHead>
-          </div>
-
-          <div className="cua-showcase fade-in fade-in-delay-1">
-            <div className="cua-loop-rail" aria-label="Computer use safety loop">
-              {cuaSteps.map((step) => (
-                <button
-                  key={step.id}
-                  type="button"
-                  className={`cua-stage-chip${cuaStep === step.id ? " active" : ""}`}
-                  onClick={() => setCuaStep(step.id)}
-                  aria-pressed={cuaStep === step.id}
-                >
-                  <span className="cua-stage-number">{step.number}</span>
-                  <span className="cua-stage-chip-copy">
-                    <span>{step.title}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="cua-stage-panel">
-              <div className="cua-stage-copy">
-                <h3>{activeCuaStep.heading}</h3>
-                <p>{activeCuaStep.caption}</p>
-              </div>
-
-              <div className="code-block">
-                <div className="code-header">
-                  <span className="code-dot code-dot-red" />
-                  <span className="code-dot code-dot-yellow" />
-                  <span className="code-dot code-dot-green" />
-                  <span className="code-filename">{activeCuaStep.filename}</span>
-                </div>
-                <pre
-                  className="code-pre"
-                  dangerouslySetInnerHTML={{ __html: activeCuaStep.code }}
-                />
-              </div>
-
-              <div className="cua-stage-footer">
-                <div className="cua-action-tags" aria-label="Supported computer use actions">
-                  <span>mouse</span>
-                  <span>keyboard</span>
-                  <span>browser</span>
-                  <span>local verify</span>
-                </div>
-                <div className="cua-stage-links">
-                  <a href="/action" className="agent-api-link cua-stage-api-link">
-                    Meet Action &rarr;
-                  </a>
-                  <a href="/lattices/docs/api" className="agent-api-link cua-stage-api-link cua-stage-api-secondary">
-                    Computer-use API &rarr;
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {showLatsDevTeaser && (
-          <section className="home-sec next-section fade-in fade-in-delay-2">
-            <div className="next-card">
-              <div className="next-copy">
-                <h2>Lats.dev for iPad</h2>
-                <p>
-                  Opening for TestFlight. A new app and domain for controlling
-                  your Mac workspace from beside the keyboard: trackpad gestures,
-                  window actions, live state, and shortcuts tuned for iPad.
-                </p>
-              </div>
-              <div className="next-preview" aria-hidden="true">
-                <div className="deck-shell">
-                  <div className="deck-top">
-                    <span>lats.dev</span>
-                    <span>mac · live</span>
-                  </div>
-                  <div className="deck-trackpad">
-                    <div className="deck-crosshair" />
-                  </div>
-                  <div className="deck-actions">
-                    {["tile", "focus", "voice", "agent", "spaces", "keys"].map((label) => (
-                      <div className="deck-action" key={label}>{label}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
 
         {/* macOS app */}
         <section className="home-sec" id="app">
@@ -1401,15 +1212,17 @@ export default function App() {
                 find windows, arrange layouts, activate project layers, and
                 inspect the result. Use the API locally, or enable remote
                 access on a connected computer with the permissions you choose.
+                For clicking and typing inside apps, use{" "}
+                <a href="/action">Action</a>.
               </p>
               <ul className="agent-methods">
-                <li><code>lattices.search</code> — title, app, session, or cwd</li>
-                <li><code>window.place</code> — tile by session, app, or window id</li>
-                <li><code>layer.activate</code> — launch or focus a workspace</li>
-                <li><code>space.optimize</code> — rebalance visible windows</li>
-                <li><code>computer.windowState</code> — AX snapshot, element ids</li>
-                <li><code>computer.elementAction</code> — stage or execute those ids</li>
-                <li><code>computer.verify</code> — confirm via OCR or AX</li>
+                <li><code>lattices.search</code>: title, app, session, or cwd</li>
+                <li><code>window.place</code>: tile by session, app, or window id</li>
+                <li><code>layer.activate</code>: launch or focus a workspace</li>
+                <li><code>space.optimize</code>: rebalance visible windows</li>
+                <li><code>history.list</code>: receipts for recent placements</li>
+                <li><code>history.undo</code>: put the last placement back</li>
+                <li><code>states.restore</code>: return to a saved desktop map</li>
               </ul>
               <a href="/lattices/docs/api" className="agent-api-link">
                 Full API reference &rarr;
@@ -1439,6 +1252,7 @@ export default function App() {
             <p>
               Workspace control and action history stay on your computers.
               Remote access is opt-in, with permissions you approve.
+              Screen text reading is off until you turn it on.
               Optional vision-model features may send screen context to the
               provider you choose. Lattices is open source, so you can inspect
               how it works.
@@ -1446,10 +1260,45 @@ export default function App() {
           </div>
         </section>
 
+        <section className="home-sec omarchy-section" id="linux" aria-labelledby="omarchy-title">
+          <div className="omarchy-heading">
+            <span className="omarchy-mark omarchy-mark-large" aria-hidden="true">
+              <img src="/brand/omarchy/logo.svg" alt="" width="64" height="64" />
+            </span>
+            <h2 id="omarchy-title">Your workspace,<br />on Omarchy.</h2>
+          </div>
+          <div className="omarchy-copy">
+            <p>
+              Omarchy is a Linux desktop built on Arch and Hyprland,
+              with tiling windows at its heart.
+            </p>
+            <p>
+              Lattices brings your windows into named layers, helps you find
+              what’s open, and gives your tools and agents an API to work with.
+              Keep each project together, then switch focus when you’re ready.
+            </p>
+            <div className="omarchy-install">
+              <h3>Install from your terminal</h3>
+              <p>Run in your Omarchy desktop. Installs the app, CLI, host, and tray.</p>
+              <div className="install-command install-copy-command">
+                <code>{linuxInstallCommand}</code>
+                <button type="button" onClick={copyLinuxInstall} aria-label="Copy Linux install command">{linuxCopy}</button>
+              </div>
+              <span className="sr-only" role="status">{linuxCopy === "Copied" ? "Linux install command copied" : ""}</span>
+              <p className="omarchy-requirements">Arch/Omarchy · Hyprland · systemd user session · x86-64 or ARM64</p>
+            </div>
+            <div className="omarchy-links">
+              <a href="/linux">Lattices for Linux <span aria-hidden="true">→</span></a>
+              <a href="/lattices/docs/install-linux">Linux setup guide <span aria-hidden="true">→</span></a>
+              <a href="https://omarchy.org/">Meet Omarchy <span aria-hidden="true">↗</span></a>
+            </div>
+          </div>
+        </section>
+
         <section className="home-sec install-chooser fade-in" id="install">
           <div className="install-chooser-head">
             <h2>Build your workspace.</h2>
-            <p>Download the Mac app, or <a href="#omarchy">explore Lattices on Omarchy</a>.</p>
+            <p>Download the Mac app, or <a href="#linux">install on Linux</a>.</p>
           </div>
           <div className="install-main">
             <div className="install-download">
@@ -1516,7 +1365,7 @@ export default function App() {
             </a>
           </div>
           <div className="cta-actions">
-            <a href="#omarchy" className="btn btn-secondary">Explore Omarchy</a>
+            <a href="#linux" className="btn btn-secondary">Install on Linux</a>
             <a
               href="https://github.com/lattices-dev/lattices"
               target="_blank"

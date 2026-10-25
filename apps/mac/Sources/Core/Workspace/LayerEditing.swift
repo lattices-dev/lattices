@@ -16,6 +16,7 @@ extension WorkspaceManager {
         case emptyName
         case write(String)
         case changedOnDisk
+        case undoFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -24,6 +25,7 @@ extension WorkspaceManager {
             case .emptyName: return "A layer needs a name"
             case .write(let why): return "Couldn't save workspace.json: \(why)"
             case .changedOnDisk: return "workspace.json changed on disk; reloaded it, try again"
+            case .undoFailed(let reason): return "Couldn't undo: \(reason)"
             }
         }
     }
@@ -34,6 +36,7 @@ extension WorkspaceManager {
     /// it did, as the bezel says it. An edit keeps the layers before it; a
     /// switch keeps where the main screen's windows sat, back to front.
     struct LayerUndo {
+        let id = UUID()
         enum Kind {
             case edit(layers: [Layer])
             case switched(windows: [(wid: UInt32, pid: Int32, frame: CGRect)])
@@ -48,6 +51,7 @@ extension WorkspaceManager {
     /// the layer you were on and puts its windows where they sat.
     private static var undoStack: [LayerUndo] = []
     private static let undoLimit = 30
+    private static var switchUndoInProgress = false
 
     var canUndoLayerEdit: Bool { !Self.undoStack.isEmpty }
 
@@ -435,6 +439,9 @@ extension WorkspaceManager {
         if !Thread.isMainThread {
             return try DispatchQueue.main.sync { try self.undoLayerEdit() }
         }
+        guard !Self.switchUndoInProgress else {
+            throw LayerEditError.undoFailed("Another switch undo is still in progress.")
+        }
         guard let last = Self.undoStack.last else { return nil }
         switch last.kind {
         case .edit(let layers):
@@ -443,19 +450,22 @@ extension WorkspaceManager {
             activeLayerIndex = min(max(last.activeIndex, 0), max(layers.count - 1, 0))
             UserDefaults.standard.set(activeLayerIndex, forKey: activeLayerKey)
         case .switched(let windows):
-            Self.undoStack.removeLast()
-            undoSwitch(to: last.activeIndex, windows: windows)
+            Self.switchUndoInProgress = true
+            defer { Self.switchUndoInProgress = false }
+            try undoSwitch(to: last.activeIndex, windows: windows)
+            // A reentrant forward operation may have appended a newer entry.
+            Self.undoStack.removeAll { $0.id == last.id }
         }
         DiagnosticLog.shared.info("Layers: undid \(last.summary)")
         return last.summary
     }
 
-    /// Before a switch away from the layer you're on: where the main
-    /// screen's windows sit, back to front, for undo.
-    func noteSwitch(to index: Int, in layers: [Layer]) {
+    /// Capture the outgoing desktop before staging. Record it only after the
+    /// switch commits, so blocked or superseded preparation creates no undo.
+    func prepareSwitchUndo(to index: Int, in layers: [Layer]) -> LayerUndo? {
         guard let activeIndex = activeLayerSelection,
               index != activeIndex, layers.indices.contains(index),
-              let stage = LayerStage.Stage.current() else { return }
+              let stage = LayerStage.Stage.current() else { return nil }
         let showing = DesktopModel.shared.allWindows()
             .filter { LayerStage.isShowing($0, on: stage) }
             .sorted { $0.zIndex > $1.zIndex }
@@ -463,25 +473,39 @@ extension WorkspaceManager {
         let windows = showing.filter { seen.insert($0.wid).inserted }.map {
             (wid: $0.wid, pid: $0.pid, frame: CGRect(x: $0.frame.x, y: $0.frame.y, width: $0.frame.w, height: $0.frame.h))
         }
-        Self.undoStack.append(LayerUndo(
+        return LayerUndo(
             kind: .switched(windows: windows), activeIndex: activeIndex,
             summary: "switching to '\(layers[index].label)'"
-        ))
+        )
+    }
+
+    func recordSwitchUndo(_ undo: LayerUndo?) {
+        guard let undo else { return }
+        Self.undoStack.append(undo)
         if Self.undoStack.count > Self.undoLimit { Self.undoStack.removeFirst() }
     }
 
     /// Back to layer `index` as it was: stage it again, then put `windows`
     /// where they sat, back to front.
-    private func undoSwitch(to index: Int, windows: [(wid: UInt32, pid: Int32, frame: CGRect)]) {
+    private func undoSwitch(to index: Int, windows: [(wid: UInt32, pid: Int32, frame: CGRect)]) throws {
         let layers = self.layers
-        guard layers.indices.contains(index) else { return }
-        stageSwitch(to: index, in: layers, persistRebinds: false)
-        let live = Set(DesktopModel.shared.refreshNow().map(\.wid))
-        WindowTiler.batchMoveAndRaiseWindows(windows.filter { live.contains($0.wid) }, activation: .frontmostOnly)
-        activeLayerIndex = index
-        classicShowing = false
-        UserDefaults.standard.set(index, forKey: activeLayerKey)
-        EventBus.shared.post(.layerSwitched(index: index))
+        guard layers.indices.contains(index) else { throw LayerEditError.unknownLayer("#\(index)") }
+        let operation = layerOperations.begin()
+        guard let outcome = stageSwitch(to: index, in: layers, persistRebinds: false, operation: operation) else {
+            throw LayerEditError.undoFailed("A newer layer operation superseded it.")
+        }
+        guard !outcome.blockedBeforeEffects else {
+            throw LayerEditError.undoFailed(outcome.persistenceError ?? "Couldn't save layer recovery before restoring the switch.")
+        }
+        var live = Set<UInt32>()
+        guard layerOperations.execute(operation, steps: [
+            { live = Set(DesktopModel.shared.refreshNow().map(\.wid)) },
+            { WindowTiler.batchMoveAndRaiseWindows(windows.filter { live.contains($0.wid) }, activation: .frontmostOnly) },
+            { self.activeLayerIndex = index },
+            { self.classicShowing = false },
+            { UserDefaults.standard.set(index, forKey: self.activeLayerKey) },
+            { EventBus.shared.post(.layerSwitched(index: index)) }
+        ]) else { throw LayerEditError.undoFailed("A newer layer operation superseded it.") }
     }
 
     /// ⌘⌥Z: undo, said on the bezel.

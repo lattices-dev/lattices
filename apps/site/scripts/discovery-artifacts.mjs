@@ -228,17 +228,17 @@ function presentProductSkill(source, product) {
 
 function onboardingSkill(definition, product, products, docs, absolute) {
   const description = definition.name === 'voice'
-    ? 'Use Lattices voice input and Speech spoken output with the matching local runtimes. Read ownership and capability checks before listening, simulating commands, or controlling playback.'
+    ? 'Use Lattices voice commands and Voice spoken output with the matching local runtimes. Read ownership and capability checks before listening, simulating commands, or controlling playback.'
     : `Use ${product.title} for ${product.description.replace(/\.$/, '').replace(/^./, (letter) => letter.toLowerCase())}. Read current product instructions and check the installed runtime before acting.`
   const related = definition.name === 'voice' ? products.filter((entry) => ['lattices', 'speech'].includes(entry.id)) : [product]
   const guide = docs.find((entry) => entry.url === product.agent?.guide)
   return [
     '---', `name: ${definition.name}`, `description: ${JSON.stringify(description)}`, '---', '',
-    `# ${definition.name === 'voice' ? 'Lattices voice input and Speech output' : product.title}`, '',
+    `# ${definition.name === 'voice' ? 'Lattices voice commands and Voice output' : product.title}`, '',
     product.agent?.boundary || product.description, '',
     ...(definition.name === 'voice' ? [
-      'Lattices owns listening, spoken commands, and the voice input runtime. Speech owns spoken output, voices, the queue, and playback in a separate app. Shared `lats voice` commands do not combine their lifecycles.', '',
-      'Start with the Speech status check below. Read Lattices voice input documentation before listening or simulating a command. Stopping speech output is different from stopping listening.', '',
+      'Lattices owns listening, spoken commands, and the voice input runtime. Voice owns spoken output, voices, the queue, and playback in a separate app. Shared `lats voice` commands do not combine their lifecycles.', '',
+      'Start with the Voice status check below. Read Lattices voice input documentation before listening or simulating a command. Stopping speech output is different from stopping listening.', '',
     ] : []),
     '## Start here', '',
     ...related.flatMap((entry) => [

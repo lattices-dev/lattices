@@ -29,6 +29,11 @@ final class RemoteHostConnection: @unchecked Sendable {
     /// Called on the main queue.
     var onReady: (() -> Void)?
     var onEvent: ((String) -> Void)?
+    /// Called on the main queue with the event's `data`, after `onEvent`.
+    var onEventData: ((String, [String: Any]?) -> Void)?
+    /// Binary messages (`capture.stream` frames), called on the connection's
+    /// own queue so decoding stays off the main thread.
+    var onBinary: (@Sendable (Data) -> Void)?
     var onClose: ((String?) -> Void)?
 
     private let queue = DispatchQueue(label: "com.arach.lattices.remote-host")
@@ -149,7 +154,7 @@ final class RemoteHostConnection: @unchecked Sendable {
                 case .success(let message):
                     switch message {
                     case .string(let text): self.handle(Data(text.utf8))
-                    case .data(let data): self.handle(data)
+                    case .data(let data): self.onBinary?(data)
                     @unknown default: break
                     }
                     if !self.closed { self.receive(on: task) }
@@ -193,7 +198,11 @@ final class RemoteHostConnection: @unchecked Sendable {
     private func handle(_ data: Data) {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         if let event = object["event"] as? String {
-            DispatchQueue.main.async { [weak self] in self?.onEvent?(event) }
+            nonisolated(unsafe) let payload = object["data"] as? [String: Any]
+            DispatchQueue.main.async { [weak self] in
+                self?.onEvent?(event)
+                self?.onEventData?(event, payload)
+            }
             return
         }
         guard let id = object["id"] as? String, let continuation = pending.removeValue(forKey: id) else { return }
@@ -205,7 +214,7 @@ final class RemoteHostConnection: @unchecked Sendable {
     }
 
     static func gatewayError(_ message: String) -> String {
-        if message.hasPrefix("pairing_required:") { return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only." }
+        if message.hasPrefix("pairing_required:") { return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only --screen." }
         if message.hasPrefix("scope_denied:") { return "Gateway permission denied: \(message.dropFirst("scope_denied:".count).trimmingCharacters(in: .whitespaces))" }
         if message.hasPrefix("method_denied:") { return "This operation is unavailable through the gateway: \(message.dropFirst("method_denied:".count).trimmingCharacters(in: .whitespaces))" }
         return message
@@ -254,7 +263,7 @@ enum RemoteHostGatewayCredentials {
         case invalid(String)
         var errorDescription: String? {
             switch self {
-            case .unpaired: return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only; companion pairing is separate."
+            case .unpaired: return "Gateway pairing required. Pair this Mac with lats --host <name> pair --read-only --screen; companion pairing is separate."
             case .invalid(let detail): return "Gateway credentials are invalid: \(detail). Pair this Mac again with the gateway."
             }
         }

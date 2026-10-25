@@ -198,6 +198,10 @@ enum BrowseMenu {
                        subtitle: "Spotlight the frontmost window (Hyper+Z)", icon: "viewfinder", score: 0) {
                 FocusModeController.shared.toggle()
             },
+            OmniResult(kind: .action, title: "Toggle Stage",
+                       subtitle: "Grow the window you are in and keep the grid behind it (Hyper+X)", icon: "rectangle.grid.2x2", score: 0) {
+                StageModeController.shared.toggle()
+            },
             OmniResult(kind: .action, title: "Settings",
                        subtitle: "Terminal, scan root, keyboard, shortcuts, voice, and OCR", icon: "gearshape", score: 0) {
                 SettingsWindowController.shared.show()

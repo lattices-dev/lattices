@@ -19,7 +19,7 @@ not stop another.
 | **Lattices** | Windows, tiling, spaces, workspace layers, tmux sessions, screen text, voice commands, the `lats` CLI and the `lats mcp` server | macOS menu bar app; on Linux, `lattices-host` plus a Quickshell app | [/lattices/docs/overview](/lattices/docs/overview) |
 | **Action** | Native observe, resolve, act and record; private agent layers; Action-owned browsers | `Action.app` and its local agent | [/action/docs/overview](/action/docs/overview) |
 | **Canvas** | Spatial notes: each note is a floating panel backed by a Markdown file | `Canvas.app` and the `canvas` CLI | [/canvas/docs/overview](/canvas/docs/overview) |
-| **Speech** | Spoken output: synthesis, the playback queue and the playback HUD | `Voice.app` (bundle ID `dev.lattices.Speech`) | [/speech/docs/overview](/speech/docs/overview) |
+| **Voice** | Spoken output: synthesis, the playback queue and the playback HUD | `Voice.app` (bundle ID `dev.lattices.Speech`) | [/voice/docs/overview](/voice/docs/overview) |
 
 Canvas 2.3.0 ships `Canvas.app` and the `canvas` CLI. `Blink.app` and `blink`
 remain compatibility names. Existing storage, bundle identity and `blink.sock`
@@ -43,7 +43,7 @@ destination table below names the process that does the work.
 
 ## Processes and ports
 
-**Lattices 0.15.1, Action 0.4.0 and Speech 0.3.0 use private IPC for local APIs.** Remote
+**Lattices 0.15.1, Action 0.4.0 and Voice 0.3.0 use private IPC for local APIs.** Remote
 access uses a separate, opt-in gateway on the verified Tailscale address,
 port 9399 by default. Starting a product does not start that gateway.
 
@@ -65,7 +65,7 @@ application-support directories.
 | `companion.sock` | Companion bridge in the menu bar app | Lattices | Companion listener on 5287 and its Bonjour advertisement |
 | `action.sock` | Action local agent | Action | Agent API on 4319 |
 | `action-chrome.sock` | Chrome extension bridge | Action | Chrome companion HTTP/WebSocket listener on 4321 |
-| `speech.sock` | Voice.app RPC server | Speech | Speech API on 9397 |
+| `speech.sock` | Voice.app RPC server | Voice | Voice API on 9397 |
 | `blink.sock` in `CANVAS_HOME` (then `BLINK_HOME`, then the existing default) | Canvas.app | Canvas | Unchanged private socket |
 | `runtime/companion.sock` in Action's application support | Durable job service: jobs, artifacts and timeline | Action | Existing Unix socket; no fixed TCP port |
 | `gateway.sock` | Separate gateway process, local control | Lattices | New endpoint |
@@ -105,14 +105,14 @@ Linux or physical iOS runtime verification.
 
 ### Published-release ports
 
-This table applies to Lattices 0.14.1, Action 0.3.1 and Speech 0.2.0.
+This table applies to Lattices 0.14.1, Action 0.3.1 and Voice 0.2.0.
 It is retained for upgrade reference. Binding and authorization are separate boundaries.
 
 | Port | Process | Binding and authorization in earlier releases |
 |------|---------|-------------------------------------------------|
 | 9399 | Lattices `DaemonServer` on macOS | Loopback; core methods have no token check. Speaking verbs require the Voice capability token, which `lats` sends |
 | 9398 | Embedded Lattices voice runtime | Wildcard listener; non-loopback peers rejected after accept. Requests require the token in `~/Library/Application Support/Lattices/Voice/hudson-voice-runtime.json` |
-| 9397 | Voice.app RPC server (Speech) | Loopback; token from `~/Library/Application Support/Speech/RPC/capability` in `x-lattices-speech-token`; browser origins refused |
+| 9397 | Voice.app RPC server | Loopback; token from `~/Library/Application Support/Speech/RPC/capability` in `x-lattices-speech-token`; browser origins refused |
 | 4319 | Action local agent | Loopback; token required for attention-mode `drive.begin`, `workspace.dragFile` and `workspace.cancelOperation`. Other methods have no token check |
 | 4321 | Action Chrome companion bridge | HTTP/WebSocket listener; the Chrome extension connected directly to the bridge |
 | 5287 | Lattices companion bridge on macOS | All IPv4 interfaces with Bonjour discovery; human-approved pairing and signed requests |
@@ -125,13 +125,13 @@ number alone does not make clients compatible.
 
 ## Private IPC and the gateway
 
-> **Versions:** Lattices 0.15.1, Action 0.4.0 and Speech 0.3.0 use private IPC.
+> **Versions:** Lattices 0.15.1, Action 0.4.0 and Voice 0.3.0 use private IPC.
 > The [process table](#processes-and-ports) lists the default
 > endpoints. Local clients connect directly to each product. Remote clients
 > use the gateway and its approved method grants.
 
 **Local services use private Unix sockets.** The main Lattices, Action and
-Speech APIs use `~/.lattices/run`; Canvas keeps its socket in its own data directory,
+Voice APIs use `~/.lattices/run`; Canvas keeps its socket in its own data directory,
 `~/Library/Application Support/Blink` by default. A nonempty `CANVAS_HOME`
 overrides that path, followed by a nonempty `BLINK_HOME`.
 Socket directories are mode `0700`, and sockets are mode `0600`. Services in `~/.lattices/run`
@@ -140,7 +140,7 @@ write a random capability token beside the socket, also mode `0600`.
 WebSocket services require the token in `x-lattices-token` during the upgrade.
 The companion bridge requires that header on its HTTP requests too. These
 services refuse browser `Origin` headers and unexpected `Host` headers. The
-macOS core, companion and Speech servers also check the connected peer's user
+macOS core, companion and Voice servers also check the connected peer's user
 ID. Action and the Bun services rely on the private directory and token.
 Canvas uses a peer-user-ID check and private filesystem permissions without a
 token. This is an account boundary, not isolation between programs running as
@@ -167,7 +167,7 @@ has no TCP compatibility listener.
 | Product | Variable | Port | Token still required |
 |---------|----------|------|----------------------|
 | Lattices on macOS | `LATTICES_ALLOW_LOOPBACK_TCP=1` | 9399 | Yes |
-| Speech | `LATTICES_SPEECH_TCP=1` | 9397 | Yes |
+| Voice | `LATTICES_SPEECH_TCP=1` | 9397 | Yes |
 | Action | `ACTION_ALLOW_TCP=1` | 4319 | Yes |
 
 **Each product keeps its own lifecycle.** Launching or quitting Lattices,
@@ -204,7 +204,11 @@ lats gateway revoke CLIENT_ID
 ```
 
 Every stored grant names one exact `product:method`. `--read-only` requests
-the reviewed core Lattices read methods. Repeated `--grant` flags request
+the reviewed core Lattices read methods, which exclude screen contents. Add
+`--screen` for screenshots, streams, OCR and terminal contents, or `--shell`
+for typing and launching commands. Plain `pair` covers read, screen and act;
+`--drive` adds desktop input and shell. Clients paired earlier keep their
+exact grants. Repeated `--grant` flags request
 exactly the listed methods, from any product, instead of a scope. You cannot
 combine them with `--read-only` or `--drive`. A request for a new capability
 needs another local approval. Re-pairing with the same client key adds approved
@@ -218,7 +222,7 @@ These stay local and the gateway does not forward them:
 
 - raw computer action events and Canvas event streams;
 - Action's connection-owned drive leases and workspace drag/cancel operations;
-- Speech's native playback reservation and event streams;
+- Voice's native playback reservation and event streams;
 - the embedded voice-input runtime and core `voice.*` forwarding;
 - the VNC `capture.live` listener. The gateway exposes no VNC.
 
@@ -269,7 +273,7 @@ Read these before choosing an interface.
    `voice.say` becomes `speech.enqueue`) and forwards it to Voice.app through
    `speech.sock`. If Voice.app is not running, the speaking verbs fail. There is no fallback
    inside Lattices. See [Voice](/lattices/docs/voice) and
-   [Speech](/speech/docs/overview).
+   [Voice](/voice/docs/overview).
 
 The Hands-Off worker is a separate case. It speaks its replies through the
 embedded voice runtime on `voice.sock`. It does not use Voice.app.

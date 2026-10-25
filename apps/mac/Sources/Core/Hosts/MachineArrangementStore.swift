@@ -31,6 +31,14 @@ enum MachineArrangementStore {
     struct Monitor: Codable, Equatable {
         var name: String
         var frame: MachineGeometry.Placement
+        /// The physical monitor (`model|serial`), the same on every host it is cabled to.
+        var key: String? = nil
+        var model: String? = nil
+        /// Physical size from EDID, in millimetres; absent in older caches and unsized panels.
+        var widthMm: Int? = nil
+        var heightMm: Int? = nil
+        /// The host's own panel (a laptop screen): on the desk, never shared.
+        var builtin: Bool? = nil
     }
     private struct MonitorCache: Codable {
         var version = 1
@@ -61,7 +69,14 @@ enum MachineArrangementStore {
                   let h = f["h"] as? Double else { return nil }
             let frame = MachineGeometry.Placement(x: f["x"] as? Double ?? 0, y: f["y"] as? Double ?? 0, width: w, height: h)
             guard frame.valid else { return nil }
-            return Monitor(name: item["displayId"] as? String ?? item["name"] as? String ?? "Display", frame: frame)
+            let builtin = item["builtin"] as? [String: Any]
+            let monitor = item["monitor"] as? [String: Any] ?? builtin
+            func mm(_ k: String) -> Int? { (monitor?[k] as? NSNumber).map(\.intValue).flatMap { $0 > 0 ? $0 : nil } }
+            let (widthMm, heightMm) = (mm("widthMm"), mm("heightMm"))
+            let sized = widthMm != nil && heightMm != nil
+            return Monitor(name: item["displayId"] as? String ?? item["name"] as? String ?? "Display", frame: frame,
+                           key: monitor?["key"] as? String, model: monitor?["model"] as? String,
+                           widthMm: sized ? widthMm : nil, heightMm: sized ? heightMm : nil, builtin: builtin == nil ? nil : true)
         }
     }
     static func cache(_ monitors: [Monitor], for name: String, defaults: UserDefaults = .standard) {

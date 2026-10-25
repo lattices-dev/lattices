@@ -20,6 +20,9 @@ protocol AudioProvider: AnyObject {
     /// Stop listening and return the final transcription.
     func stopListening(completion: @escaping (Transcription?) -> Void)
 
+    /// Discard the capture and any pending transcript without executing it.
+    func cancelListening()
+
     /// Check if the provider service is reachable.
     func checkHealth(completion: @escaping (Bool) -> Void)
 }
@@ -38,6 +41,7 @@ final class AudioLayer: ObservableObject {
     static let shared = AudioLayer()
 
     @Published var isListening = false
+    @Published private(set) var isTranscribing = false
     @Published var lastTranscript: String?
     @Published var matchedIntent: String?
     @Published var matchedSlots: [String: String] = [:]
@@ -51,6 +55,7 @@ final class AudioLayer: ObservableObject {
     @Published var assistantHandoffPrompt: String?
 
     private var pendingVoiceStart = false
+    private var captureID: UUID?
     private var voiceConnectionRetry: DispatchWorkItem?
     /// Capture was requested but the provider is still warming up.
     var isWarmingUp: Bool { pendingVoiceStart && !isListening }
@@ -69,7 +74,7 @@ final class AudioLayer: ObservableObject {
 
     /// Start a voice command capture. Transcription is piped to the intent engine.
     func startVoiceCommand() {
-        guard !isListening else { return }
+        guard !pendingVoiceStart, !isListening, !isTranscribing else { return }
 
         // Clear previous state
         lastTranscript = nil
@@ -90,12 +95,14 @@ final class AudioLayer: ObservableObject {
         }
 
         pendingVoiceStart = true
+        let id = UUID()
+        captureID = id
         voiceConnectionRetry?.cancel()
-        startVoiceCommandWhenReady(provider: provider, attempt: 0)
+        startVoiceCommandWhenReady(provider: provider, attempt: 0, captureID: id)
     }
 
-    private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int) {
-        guard pendingVoiceStart, !isListening else { return }
+    private func startVoiceCommandWhenReady(provider: any AudioProvider, attempt: Int, captureID: UUID) {
+        guard self.captureID == captureID, pendingVoiceStart, !isListening else { return }
 
         if attempt == 0 {
             executionResult = "Connecting to voice runtime..."
@@ -103,44 +110,45 @@ final class AudioLayer: ObservableObject {
 
         guard attempt < 40 else {
             pendingVoiceStart = false
+            self.captureID = nil
             DiagnosticLog.shared.warn("AudioLayer: voice runtime not reachable before voice start")
             setFinalResult(provider.lastErrorMessage ?? "Voice runtime unavailable", warning: true)
             return
         }
 
         guard provider.isAvailable else {
-            scheduleVoiceStartRetry(provider: provider, attempt: attempt)
+            scheduleVoiceStartRetry(provider: provider, attempt: attempt, captureID: captureID)
             return
         }
 
         provider.checkHealth { [weak self] ok in
-            guard let self, self.pendingVoiceStart, !self.isListening else { return }
+            guard let self, self.captureID == captureID, self.pendingVoiceStart, !self.isListening else { return }
             guard ok else {
-                self.scheduleVoiceStartRetry(provider: provider, attempt: attempt)
+                self.scheduleVoiceStartRetry(provider: provider, attempt: attempt, captureID: captureID)
                 return
             }
             self.pendingVoiceStart = false
             DiagnosticLog.shared.info("AudioLayer: voice provider ready")
-            self.beginVoiceCommand(provider: provider)
+            self.beginVoiceCommand(provider: provider, captureID: captureID)
         }
     }
 
-    private func scheduleVoiceStartRetry(provider: any AudioProvider, attempt: Int) {
+    private func scheduleVoiceStartRetry(provider: any AudioProvider, attempt: Int, captureID: UUID) {
         let retry = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.startVoiceCommandWhenReady(provider: provider, attempt: attempt + 1)
+            self.startVoiceCommandWhenReady(provider: provider, attempt: attempt + 1, captureID: captureID)
         }
         voiceConnectionRetry = retry
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: retry)
     }
 
-    private func beginVoiceCommand(provider: any AudioProvider) {
+    private func beginVoiceCommand(provider: any AudioProvider, captureID: UUID) {
         isListening = true
         DiagnosticLog.shared.info("AudioLayer: listening for voice command")
 
         provider.startListening { [weak self] transcription in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self, self.captureID == captureID else { return }
 
                 if transcription.isPartial {
                     self.lastTranscript = transcription.text
@@ -150,6 +158,8 @@ final class AudioLayer: ObservableObject {
                 // Final transcript (e.g. from streaming providers)
                 self.lastTranscript = transcription.text
                 self.isListening = false
+                self.isTranscribing = false
+                self.captureID = nil
 
                 // Empty transcript = transcription failed, don't try to execute
                 guard !transcription.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -171,23 +181,23 @@ final class AudioLayer: ObservableObject {
 
     func stopVoiceCommand() {
         if pendingVoiceStart, !isListening {
-            pendingVoiceStart = false
-            voiceConnectionRetry?.cancel()
-            voiceConnectionRetry = nil
-            setFinalResult("Voice cancelled")
+            cancelVoiceCommand()
             return
         }
 
-        guard let provider = provider, isListening else { return }
+        guard let provider, isListening, let captureID else { return }
 
         pendingVoiceStart = false
         isListening = false
+        isTranscribing = true
         executionResult = "Transcribing..."
         DiagnosticLog.shared.info("AudioLayer: voice capture stopping; waiting for transcript")
 
         provider.stopListening { [weak self] transcription in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self, self.captureID == captureID else { return }
+                self.isTranscribing = false
+                self.captureID = nil
                 if let t = transcription,
                    !t.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self.lastTranscript = t.text
@@ -202,6 +212,21 @@ final class AudioLayer: ObservableObject {
                 }
             }
         }
+    }
+
+    func cancelVoiceCommand() {
+        let hadCapture = captureID != nil
+        // Invalidate callbacks before asking the provider to tear down its stream.
+        captureID = nil
+        pendingVoiceStart = false
+        voiceConnectionRetry?.cancel()
+        voiceConnectionRetry = nil
+        isListening = false
+        isTranscribing = false
+        lastTranscript = nil
+        executionResult = nil
+        executionError = nil
+        if hadCapture { provider?.cancelListening() }
     }
 
     private func executeVoiceIntent(_ transcription: Transcription) {
@@ -607,15 +632,16 @@ final class HudVoxAudioProvider: AudioProvider {
     private var session: HudVoxLiveSession?
     private var pumpTask: Task<Void, Never>?
     private var stopTimeoutTask: Task<Void, Never>?
+    private var cleanupTask: Task<Void, Never>?
+    private var captureID: UUID?
     private var onTranscript: ((Transcription) -> Void)?
     private var stopCompletion: ((Transcription?) -> Void)?
     private var _isListening = false
     private var finalDelivered = false
     private var lastProviderError: String?
     private var listeningStartedAt: Date?
-    /// Match WorkspaceVoiceInput: short taps produce empty WAVs; stop needs a deadline.
+    /// Measure the minimum from the recorder's acknowledgement, not the request.
     private static let minimumRecordingNanoseconds: UInt64 = 700_000_000
-    private static let stopTimeoutNanoseconds: UInt64 = 10_000_000_000
 
     var isAvailable: Bool {
         LatticesVoiceRuntime.ensureRunning()
@@ -656,14 +682,18 @@ final class HudVoxAudioProvider: AudioProvider {
     func startListening(onTranscript: @escaping (Transcription) -> Void) {
         guard session == nil else { return }
         self.onTranscript = onTranscript
+        let captureID = UUID()
+        self.captureID = captureID
         _isListening = true
         finalDelivered = false
-        listeningStartedAt = Date()
+        listeningStartedAt = nil
+        lastProviderError = nil
 
         _ = LatticesVoiceRuntime.ensureRunning()
         guard let runtime = HudsonVoiceRuntimeResolver.resolve(clientId: "lattices") else {
             DiagnosticLog.shared.warn("HudVoxAudioProvider: cannot start because HudsonVoice runtime is unavailable")
             _isListening = false
+            self.captureID = nil
             listeningStartedAt = nil
             self.onTranscript = nil
             lastProviderError = "Voice runtime unavailable"
@@ -679,53 +709,121 @@ final class HudVoxAudioProvider: AudioProvider {
         )
         self.session = session
 
-        pumpTask = Task { [weak self] in
+        let previousCleanup = cleanupTask
+        pumpTask = Task { @MainActor [weak self] in
+            await previousCleanup?.value
+            guard self?.captureID == captureID, !Task.isCancelled else { return }
             do {
                 let stream = try await session.start()
-                for try await event in stream {
-                    await MainActor.run { [weak self] in self?.handle(event) }
+                guard self?.captureID == captureID, !Task.isCancelled else {
+                    try? await session.cancel()
+                    session.close()
+                    return
                 }
-                await MainActor.run { [weak self] in self?.streamEnded(error: nil) }
+                for try await event in stream {
+                    guard self?.captureID == captureID else { return }
+                    self?.handle(event)
+                }
+                guard self?.captureID == captureID else { return }
+                self?.streamEnded(error: nil)
             } catch {
-                await MainActor.run { [weak self] in self?.streamEnded(error: error) }
+                guard self?.captureID == captureID else { return }
+                self?.streamEnded(error: error)
             }
         }
     }
 
     func stopListening(completion: @escaping (Transcription?) -> Void) {
-        guard _isListening, let session else {
-            completion(nil)
-            return
-        }
+        guard _isListening, session != nil, let captureID else { return }
         DiagnosticLog.shared.info("HudVoxAudioProvider: stopping session")
+        _isListening = false
         self.stopCompletion = completion
 
-        // Pad short captures so the mic buffer is not empty; then hard-stop
-        // if the runtime never delivers a final transcript.
-        let started = listeningStartedAt ?? Date()
+        if listeningStartedAt != nil {
+            commitRecording(captureID: captureID)
+        } else {
+            // A quick release can arrive before the microphone is ready. Wait
+            // for .recording before submitting, with a separate startup limit.
+            stopTimeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard !Task.isCancelled, let self, self.captureID == captureID else { return }
+                self.failCapture("Microphone did not start")
+            }
+        }
+    }
+
+    private func commitRecording(captureID: UUID) {
+        guard let session, let started = listeningStartedAt else { return }
         let elapsedNs = UInt64(max(0, Date().timeIntervalSince(started)) * 1_000_000_000)
         let padNs = elapsedNs < Self.minimumRecordingNanoseconds
             ? Self.minimumRecordingNanoseconds - elapsedNs
             : 0
 
         stopTimeoutTask?.cancel()
-        stopTimeoutTask = Task { [weak self] in
+        stopTimeoutTask = Task { @MainActor [weak self] in
             if padNs > 0 {
                 try? await Task.sleep(nanoseconds: padNs)
             }
-            guard !Task.isCancelled else { return }
-            try? await session.stop()
+            guard !Task.isCancelled, self?.captureID == captureID else { return }
+            do {
+                try await session.stop()
+            } catch {
+                guard self?.captureID == captureID else { return }
+                self?.streamEnded(error: error)
+                return
+            }
 
-            try? await Task.sleep(nanoseconds: Self.stopTimeoutNanoseconds)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard let self, !self.finalDelivered else { return }
-                DiagnosticLog.shared.warn("HudVoxAudioProvider: stop timed out waiting for final transcript")
-                self.lastProviderError = "Transcription timed out"
-                AudioLayer.shared.setFinalResult("Transcription timed out", error: "Transcription timed out", warning: true)
-                self.streamEnded(error: nil)
+            var deadline = VoiceTranscriptionDeadline(startedAt: Date())
+            while !Task.isCancelled {
+                let ready = await LatticesVoiceRuntime.isTranscriptionModelReady(session.options.modelId)
+                guard !Task.isCancelled, let self, self.captureID == captureID else { return }
+                if deadline.hasExpired(at: Date(), modelReady: ready) {
+                    self.failCapture(ready == false ? "Speech model startup timed out" : "Transcription timed out")
+                    return
+                }
+                AudioLayer.shared.executionResult = ready == false ? "Loading speech model..." : "Transcribing..."
+                try? await Task.sleep(nanoseconds: 250_000_000)
             }
         }
+    }
+
+    func cancelListening() {
+        let session = session
+        let pump = pumpTask
+        let previousCleanup = cleanupTask
+        captureID = nil
+        finalDelivered = true
+        _isListening = false
+        listeningStartedAt = nil
+        stopTimeoutTask?.cancel()
+        stopTimeoutTask = nil
+        onTranscript = nil
+        stopCompletion = nil
+        self.session = nil
+        pumpTask = nil
+        cleanupTask = Task {
+            await previousCleanup?.value
+            if let session {
+                try? await session.cancel()
+                session.close()
+            }
+            pump?.cancel()
+            // The pump may still be inside start(). Let it close that session
+            // before the next capture opens a new microphone stream.
+            await pump?.value
+        }
+    }
+
+    @MainActor
+    private func failCapture(_ message: String) {
+        DiagnosticLog.shared.warn("HudVoxAudioProvider: \(message)")
+        lastProviderError = message
+        AudioLayer.shared.setFinalResult(message, error: message, warning: true)
+        let transcript = onTranscript
+        let completion = stopCompletion
+        cancelListening()
+        transcript?(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
+        completion?(nil)
     }
 
     // MARK: - Event handling (main actor)
@@ -735,6 +833,10 @@ final class HudVoxAudioProvider: AudioProvider {
         switch event {
         case .state(let s):
             DiagnosticLog.shared.info("HudVoxAudioProvider: session → \(s.state)")
+            if s.state == .recording, listeningStartedAt == nil {
+                listeningStartedAt = Date()
+                if stopCompletion != nil, let captureID { commitRecording(captureID: captureID) }
+            }
         case .partial(let p):
             // Live preview — non-final, just updates the draft echo.
             onTranscript?(Transcription(text: p.text, confidence: 0.5, source: "hudson-voice", isPartial: true, durationMs: nil))
@@ -759,6 +861,7 @@ final class HudVoxAudioProvider: AudioProvider {
         // AudioLayer guards against double-execution, so firing both is safe.
         onTranscript?(t)
         stopCompletion?(t)
+        onTranscript = nil
         stopCompletion = nil
         // Stop the pump as well as the session: if close() doesn't end the event
         // stream the for-await would suspend forever, leaking the task + session.
@@ -766,6 +869,8 @@ final class HudVoxAudioProvider: AudioProvider {
         pumpTask?.cancel()
         session?.close()
         session = nil
+        captureID = nil
+        pumpTask = nil
     }
 
     @MainActor
@@ -780,8 +885,9 @@ final class HudVoxAudioProvider: AudioProvider {
                 lastProviderError = message
                 DiagnosticLog.shared.warn("HudVoxAudioProvider: session error — \(message)")
                 AudioLayer.shared.setFinalResult(message, error: message, warning: true)
-                onTranscript?(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
             }
+            onTranscript?(Transcription(text: "", confidence: 0, source: "hudson-voice", isPartial: false, durationMs: nil))
+            onTranscript = nil
             stopCompletion?(nil)
             stopCompletion = nil
             finalDelivered = true
@@ -790,6 +896,7 @@ final class HudVoxAudioProvider: AudioProvider {
         session?.close()
         session = nil
         pumpTask = nil
+        captureID = nil
     }
 
     private static func voiceRuntimeMessage(for error: Error, endpoint: HudVoxEndpoint? = nil) -> String {
@@ -810,3 +917,19 @@ final class HudVoxAudioProvider: AudioProvider {
     }
 }
 #endif
+
+/// Cold Core ML initialization has a different budget from ready-model inference.
+/// Unknown/external runtimes retain the normal transcription deadline.
+struct VoiceTranscriptionDeadline {
+    let startedAt: Date
+    private var readyAt: Date?
+
+    init(startedAt: Date) { self.startedAt = startedAt }
+
+    mutating func hasExpired(at now: Date, modelReady: Bool?) -> Bool {
+        if now.timeIntervalSince(startedAt) >= 180 { return true }
+        if modelReady == false { return false }
+        if readyAt == nil { readyAt = modelReady == nil ? startedAt : now }
+        return now.timeIntervalSince(readyAt!) >= 10
+    }
+}

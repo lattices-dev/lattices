@@ -50,6 +50,8 @@ let voxDependency: Package.Dependency? = voiceEnabled ? {
 
 var latticesDependencies: [Target.Dependency] = [
     .product(name: "DeckKit", package: "swift"),
+    .product(name: "LatticesLayoutKit", package: "swift"),
+    .product(name: "LatticesWorkspaceCore", package: "swift"),
     .product(name: "HudsonObservability", package: "hudson"),
     .product(name: "HudsonUI", package: "hudson"),
     .product(name: "HudsonAI", package: "hudson"),

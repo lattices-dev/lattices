@@ -39,7 +39,32 @@ export interface PairedHost {
   hostFingerprint: string;
   /** "mutate" in files written before the act/drive split; read it as act. */
   scope: "read" | "act" | "drive" | "mutate";
+  /** Core scopes the gateway granted. Absent in files written before screen
+   * and shell were split out; pairedScopes reads those by the old meaning. */
+  scopes?: string[];
   pairedAt: string;
+}
+
+export const PAIRING_SCOPES = ["read", "screen", "act", "drive", "shell"] as const;
+export type PairingScope = typeof PAIRING_SCOPES[number];
+
+/** The core scopes a pairing holds. Before the split, read also saw the
+ * screen and drive also ran commands, so older entries keep that meaning. */
+export function pairedScopes(entry: PairedHost): PairingScope[] {
+  if (Array.isArray(entry.scopes)) return PAIRING_SCOPES.filter((s) => entry.scopes!.includes(s));
+  if (entry.scope === "drive") return [...PAIRING_SCOPES];
+  if (entry.scope === "act" || entry.scope === "mutate") return ["read", "screen", "act"];
+  return ["read", "screen"];
+}
+
+/** One word for a pairing: its shorthand, plus any extra scope. */
+export function pairingLabel(entry: PairedHost): string {
+  const held = pairedScopes(entry);
+  const base = held.includes("drive") ? "drive" : held.includes("act") ? "act" : held.includes("read") ? "read" : "grants";
+  const implied: Record<string, PairingScope[]> = { drive: ["read", "screen", "act", "drive", "shell"], act: ["read", "screen", "act"], read: ["read"], grants: [] };
+  const extra = held.filter((s) => !implied[base]!.includes(s));
+  const missing = implied[base]!.filter((s) => !held.includes(s));
+  return [base, ...extra.map((s) => `+${s}`), ...missing.map((s) => `-${s}`)].join("");
 }
 
 interface ClientIdentity {
@@ -137,10 +162,10 @@ export function pairingHeaders(endpoint: { host: string; port: number }, path = 
 }
 
 /** clients.pair parameters for this machine. */
-export function pairingRequest(scope: "read" | "act" | "drive") {
+export function pairingRequest(scope: "read" | "act" | "drive", scopes: PairingScope[] = []) {
   const client = clientIdentity();
   return {
-    params: { clientID: client.id, clientName: client.name, publicKey: client.publicKey, platform: platform(), scope },
+    params: { clientID: client.id, clientName: client.name, publicKey: client.publicKey, platform: platform(), scope, ...(scopes.length ? { scopes } : {}) },
     fingerprint: fingerprint(client.publicKey),
   };
 }

@@ -10,7 +10,7 @@
         "guide": "/lattices/docs/agents",
         "firstCheck": "lats call api.schema",
         "expect": "The daemon method list. Then read `lats call desktop.snapshot` before you move any window.",
-        "boundary": "Lattices owns windows, tiling, spaces, workspace layers, tmux sessions, screen text, and voice input. Native app control is Action; notes are Canvas; spoken output is Speech."
+        "boundary": "Lattices owns windows, tiling, spaces, workspace layers, tmux sessions, screen text, and voice input. Native app control is Action; notes are Canvas; spoken output is Voice."
       },
       "docsHome": "/lattices/docs"
     },
@@ -42,16 +42,16 @@
     },
     {
       "id": "speech",
-      "title": "Speech",
+      "title": "Voice",
       "description": "Queue text, choose voices, and control playback.",
-      "home": "/speech",
+      "home": "/voice",
       "agent": {
-        "guide": "/speech/docs/agents",
+        "guide": "/voice/docs/agents",
         "firstCheck": "lats voice status --json",
         "expect": "A `helper` section with the Voice.app queue, or an error code with a recovery step. This check makes no sound.",
-        "boundary": "Speech owns spoken output: the queue, voices, and playback. Listening and spoken commands are Lattices voice input."
+        "boundary": "Voice owns spoken output: the queue, voices, and playback. Listening and spoken commands are Lattices voice commands."
       },
-      "docsHome": "/speech/docs"
+      "docsHome": "/voice/docs"
     }
   ],
   "pages": [
@@ -73,6 +73,44 @@
       "rawAliases": [
         "/docs/markdown/overview.md",
         "/agent/raw/docs/overview.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:what-is-lattices",
+      "product": "lattices",
+      "slug": "what-is-lattices",
+      "source": "docs/what-is-lattices.md",
+      "title": "What Lattices is",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/what-is-lattices",
+      "aliases": [
+        "/docs/what-is-lattices"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/what-is-lattices.md",
+        "/agent/raw/docs/what-is-lattices.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:getting-started",
+      "product": "lattices",
+      "slug": "getting-started",
+      "source": "docs/getting-started.md",
+      "title": "Getting started",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/getting-started",
+      "aliases": [
+        "/docs/getting-started"
+      ],
+      "navGroup": "Start here",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/getting-started.md",
+        "/agent/raw/docs/getting-started.md"
       ],
       "ownership": "lattices"
     },
@@ -130,6 +168,120 @@
       "rawAliases": [
         "/docs/markdown/concepts.md",
         "/agent/raw/docs/concepts.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-sessions",
+      "product": "lattices",
+      "slug": "guide-sessions",
+      "source": "docs/guide-sessions.md",
+      "title": "Sessions",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-sessions",
+      "aliases": [
+        "/docs/guide-sessions"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-sessions.md",
+        "/agent/raw/docs/guide-sessions.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-tiling",
+      "product": "lattices",
+      "slug": "guide-tiling",
+      "source": "docs/guide-tiling.md",
+      "title": "Tiling and placement",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-tiling",
+      "aliases": [
+        "/docs/guide-tiling"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-tiling.md",
+        "/agent/raw/docs/guide-tiling.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-search",
+      "product": "lattices",
+      "slug": "guide-search",
+      "source": "docs/guide-search.md",
+      "title": "Finding windows",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-search",
+      "aliases": [
+        "/docs/guide-search"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-search.md",
+        "/agent/raw/docs/guide-search.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-layers",
+      "product": "lattices",
+      "slug": "guide-layers",
+      "source": "docs/guide-layers.md",
+      "title": "Layers",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-layers",
+      "aliases": [
+        "/docs/guide-layers"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-layers.md",
+        "/agent/raw/docs/guide-layers.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-machines",
+      "product": "lattices",
+      "slug": "guide-machines",
+      "source": "docs/guide-machines.md",
+      "title": "Working across machines",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-machines",
+      "aliases": [
+        "/docs/guide-machines"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-machines.md",
+        "/agent/raw/docs/guide-machines.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
+      "id": "lattices:guide-agents",
+      "product": "lattices",
+      "slug": "guide-agents",
+      "source": "docs/guide-agents.md",
+      "title": "Lattices for AI agents",
+      "kind": "guide",
+      "canonicalPath": "/lattices/docs/guide-agents",
+      "aliases": [
+        "/docs/guide-agents"
+      ],
+      "navGroup": "Guides",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/guide-agents.md",
+        "/agent/raw/docs/guide-agents.md"
       ],
       "ownership": "lattices"
     },
@@ -386,13 +538,13 @@
       "slug": "cluster-verbs",
       "source": "docs/cluster-verbs.md",
       "title": "Paired hosts",
-      "kind": "guide",
-      "canonicalPath": "/lattices/docs/cluster-verbs",
+      "kind": "proposal",
+      "canonicalPath": "/lattices/docs/archive/cluster-verbs",
       "aliases": [
         "/docs/cluster-verbs"
       ],
-      "navGroup": "Agents and integrations",
-      "agent": true,
+      "navGroup": null,
+      "agent": false,
       "rawAliases": [
         "/docs/markdown/cluster-verbs.md",
         "/agent/raw/docs/cluster-verbs.md"
@@ -2337,8 +2489,10 @@
       "source": "products/voice/docs/overview.md",
       "title": "Overview",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/overview",
+      "canonicalPath": "/voice/docs/overview",
       "aliases": [
+        "/speech/docs/overview",
+        "/voice/docs",
         "/speech/docs"
       ],
       "navGroup": "Start here",
@@ -2353,8 +2507,10 @@
       "source": "products/voice/docs/quickstart.md",
       "title": "Quickstart",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/quickstart",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/quickstart",
+      "aliases": [
+        "/speech/docs/quickstart"
+      ],
       "navGroup": "Start here",
       "agent": true,
       "rawAliases": [],
@@ -2367,8 +2523,10 @@
       "source": "products/voice/docs/agents.md",
       "title": "For agents",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/agents",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/agents",
+      "aliases": [
+        "/speech/docs/agents"
+      ],
       "navGroup": "Start here",
       "agent": true,
       "rawAliases": [],
@@ -2381,8 +2539,10 @@
       "source": "products/voice/docs/cli.md",
       "title": "CLI reference",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/cli",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/cli",
+      "aliases": [
+        "/speech/docs/cli"
+      ],
       "navGroup": "Reference",
       "agent": true,
       "rawAliases": [],
@@ -2395,8 +2555,10 @@
       "source": "products/voice/docs/api.md",
       "title": "API reference",
       "kind": "guide",
-      "canonicalPath": "/speech/docs/api",
-      "aliases": [],
+      "canonicalPath": "/voice/docs/api",
+      "aliases": [
+        "/speech/docs/api"
+      ],
       "navGroup": "Reference",
       "agent": true,
       "rawAliases": [],

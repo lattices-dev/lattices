@@ -4,9 +4,8 @@
 
 <h1 align="center">Lattices</h1>
 
-<p align="center"><strong>Workspaces for agents (and you)</strong><br />
-Find the right window. Bring a project back into view.<br />
-Give your agents the same desktop controls you use.</p>
+<p align="center"><strong>Find any project's windows. Put them in place, for you or your agent.</strong><br />
+A window manager that knows about projects.</p>
 
 <p align="center">
   <a href="#get-started"><strong>Get started</strong></a> ·
@@ -180,10 +179,15 @@ These are the default bindings. Hyper means Control+Option+Shift+Command.
 | --- | --- |
 | **Control+Left / Right** | Switch Spaces |
 | **Control+Option+arrows** | Tile the frontmost window to a half |
-| **Control+Option+1–9** | Place the window in a cell of the 3×3 matrix |
+| **Control+Option+Return** | Maximize |
+| **Control+Option+U / I / J / K** | Tile to a quarter |
+| **Hold Control+Option, press 1–9** | Place the window in that cell of the 3×3 matrix; 5 maximizes |
 | **Control+Option+Shift+1 / 2 / 3** | Tile thirds |
 | **Control+Option+Space** | Open the command bar |
 | **Command+Option+1–9** | Aim a workspace layer; release to switch. Slot 5 shows the current layer |
+| **Command+Option+arrows** | Move across the layer pad |
+| **Command+Option+T** | Add the front window to the active layer |
+| **Command+Option+0** | Classic: every window back |
 | **Hyper+1** | Workspace home |
 | **Hyper+L** | Overview |
 

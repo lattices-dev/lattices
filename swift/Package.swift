@@ -9,7 +9,9 @@ let package = Package(
     ],
     products: [
         .library(name: "DeckKit", targets: ["DeckKit"]),
-        .library(name: "LatticesTerminalKit", targets: ["LatticesTerminalKit"])
+        .library(name: "LatticesTerminalKit", targets: ["LatticesTerminalKit"]),
+        .library(name: "LatticesLayoutKit", targets: ["LatticesLayoutKit"]),
+        .library(name: "LatticesWorkspaceCore", targets: ["LatticesWorkspaceCore"])
     ],
     targets: [
         .target(
@@ -19,6 +21,8 @@ let package = Package(
             ]
         ),
         .target(name: "LatticesTerminalKit"),
+        .target(name: "LatticesLayoutKit"),
+        .target(name: "LatticesWorkspaceCore"),
         .testTarget(
             name: "DeckKitTests",
             dependencies: ["DeckKit"]
@@ -26,6 +30,14 @@ let package = Package(
         .testTarget(
             name: "LatticesTerminalKitTests",
             dependencies: ["LatticesTerminalKit"]
+        ),
+        .testTarget(
+            name: "LatticesLayoutKitTests",
+            dependencies: ["LatticesLayoutKit"]
+        ),
+        .testTarget(
+            name: "LatticesWorkspaceCoreTests",
+            dependencies: ["LatticesWorkspaceCore"]
         )
     ]
 )

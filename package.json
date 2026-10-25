@@ -1,7 +1,7 @@
 {
   "name": "@lattices/lattices",
   "version": "0.15.1",
-  "description": "A native Mac workspace for you and your agents. Tile windows, find project context, and return to running terminal sessions with a shared local API.",
+  "description": "Find any project's windows. Put them in place, for you or your agent. A window manager for macOS and Linux that knows about projects, with a CLI and a local API.",
   "homepage": "https://lattices.dev",
   "bugs": {
     "url": "https://github.com/lattices-dev/lattices/issues"
@@ -62,13 +62,16 @@
     "blink:check": "bun run canvas:check",
     "blink:build": "bun run canvas:build",
     "docs:agent": "bun --cwd apps/site agent-docs",
-    "check": "bun run check:types && bun run check:app",
+    "check": "bun run check:types && bun run test && bun run test:swift && bun run test:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
-    "test": "node --experimental-strip-types --test tests/cli.test.mjs tests/cli-subprocess.test.mjs tests/standalone-ipc-clients.test.mjs && bun test tests/dependency-free.test.ts tests/skills.test.ts tests/linux-hints.test.ts tests/linux-search.test.ts tests/linux-desktop-cli.test.ts tests/linux-app-backend.test.ts tests/linux-viewer-cli.test.ts tests/linux-install.test.ts apps/linux/test tests/desktop-client.test.ts tests/private-ipc-client.test.ts tests/vox-tts-ipc.test.ts",
+    "test": "bun run test:cli && bun run test:unit",
     "test:linux-app": "bun apps/linux/check.ts",
-    "test:cli": "node --experimental-strip-types --test tests/cli.test.mjs tests/cli-subprocess.test.mjs",
-    "test:dependencies": "bun test tests/dependency-free.test.ts",
+    "test:cli": "node --experimental-strip-types --test ./tests/cli.test.mjs ./tests/cli-subprocess.test.mjs ./tests/standalone-ipc-clients.test.mjs",
+    "test:unit": "bun test ./tests/*.test.ts ./apps/linux/test",
+    "test:swift": "swift test --package-path swift",
+    "test:app": "bash scripts/test-app.sh",
+    "test:dependencies": "bun test ./tests/dependency-free.test.ts",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
     "test:e2e:voice": "node --experimental-strip-types tests/eval-voice.js",
     "typecheck": "bun run check:types",
@@ -79,7 +82,7 @@
     "prepack": "bash ./bin/lattices-build package",
     "linux:app": "bun apps/linux/main.ts",
     "linux:install": "bun apps/linux/install.ts",
-    "test:linux-install": "bun test tests/linux-install.test.ts"
+    "test:linux-install": "bun test ./tests/linux-install.test.ts"
   },
   "type": "module",
   "os": ["darwin"],
@@ -102,6 +105,7 @@
   ],
   "devDependencies": {
     "bun-types": "^1.3.10",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "varlock": "1.16.0"
   }
 }

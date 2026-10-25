@@ -23,10 +23,13 @@ final class PrivateLocalEndpoint {
         }
     }
 
-    init(socketPath: String?, tokenURL: URL) throws {
+    /// `lockPath` defaults to the credential path plus `.lock`. Endpoints that
+    /// share a credential pass their own lock so their leases stay separate.
+    init(socketPath: String?, tokenURL: URL, lockPath: String? = nil) throws {
         let directory = tokenURL.deletingLastPathComponent().path
         try Self.prepareDirectory(directory)
-        let lockPath = tokenURL.path + ".lock"
+        let lockPath = lockPath ?? tokenURL.path + ".lock"
+        guard (lockPath as NSString).deletingLastPathComponent == directory else { throw Self.failure("IPC lock and credential must share a private directory") }
         lockFD = open(lockPath, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard lockFD >= 0 else { throw Self.failure("open IPC lock") }
         var info = stat()
@@ -60,18 +63,74 @@ final class PrivateLocalEndpoint {
         guard chmod(path, 0o600) == 0 else { throw Self.failure("protect IPC socket") }
     }
 
-    func publishToken(at url: URL) throws -> String {
+    /// Write a fresh credential, replacing any previous one atomically.
+    /// A shared credential (`removeOnClose: false`) outlives this lease
+    /// because other endpoints and processes admit with it.
+    func publishToken(at url: URL, removeOnClose: Bool = true) throws -> String {
+        let token = try Self.writeToken(at: url, replace: true)
+        if removeOnClose { credentialPath = url.path }
+        return token
+    }
+
+    /// Remove a pre-consolidation per-service credential. Call only while this
+    /// lease is held, so no live endpoint still owns the file.
+    func removeLegacyToken(at url: URL) {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, info.st_uid == getuid(),
+              info.st_mode & S_IFMT == S_IFREG || info.st_mode & S_IFMT == S_IFLNK else { return }
+        unlink(url.path)
+    }
+
+    private static func writeToken(at url: URL, replace: Bool) throws -> String {
         var random = [UInt8](repeating: 0, count: 32)
-        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { throw Self.failure("generate IPC capability") }
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { throw failure("generate IPC capability") }
         let token = random.map { String(format: "%02x", $0) }.joined()
         let temporary = url.path + "." + UUID().uuidString
         let fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw Self.failure("create IPC capability") }
+        guard fd >= 0 else { throw failure("create IPC capability") }
         defer { close(fd); unlink(temporary) }
         let data = Array(token.utf8)
-        guard data.withUnsafeBytes({ write(fd, $0.baseAddress, $0.count) }) == data.count,
-              fsync(fd) == 0, rename(temporary, url.path) == 0 else { throw Self.failure("publish IPC capability") }
-        credentialPath = url.path
+        guard data.withUnsafeBytes({ write(fd, $0.baseAddress, $0.count) }) == data.count, fsync(fd) == 0 else {
+            throw failure("publish IPC capability")
+        }
+        if replace {
+            guard rename(temporary, url.path) == 0 else { throw failure("publish IPC capability") }
+        } else {
+            // link() never replaces a credential another endpoint published.
+            guard link(temporary, url.path) == 0 || errno == EEXIST else { throw failure("publish IPC capability") }
+        }
+        return token
+    }
+
+    /// The current shared credential, created if absent. Endpoints that share
+    /// `lattices.token` call this at each admission, so a rotation by any
+    /// writer, or a replacement to revoke, applies everywhere at once.
+    static func currentToken(at url: URL) throws -> String {
+        if let token = try readToken(at: url) { return token }
+        try prepareDirectory(url.deletingLastPathComponent().path)
+        _ = try writeToken(at: url, replace: false)
+        guard let token = try readToken(at: url) else { throw failure("read IPC capability") }
+        return token
+    }
+
+    /// Nil when the file does not exist. Refuses links and non-private files.
+    static func readToken(at url: URL) throws -> String? {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard fd >= 0 else {
+            if errno == ENOENT { return nil }
+            throw failure("open IPC capability")
+        }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
+              info.st_nlink == 1, info.st_mode & 0o077 == 0, info.st_size <= 256 else {
+            throw failure("IPC capability must be a private, user-owned regular file")
+        }
+        var bytes = [UInt8](repeating: 0, count: 257)
+        let count = read(fd, &bytes, 256)
+        guard count > 0 else { throw failure("read IPC capability") }
+        let token = String(decoding: bytes.prefix(count), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.utf8.count >= 32, token.utf8.count <= 256 else { throw failure("invalid IPC capability") }
         return token
     }
 

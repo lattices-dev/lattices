@@ -15,8 +15,9 @@
   --text: rgba(255, 255, 255, 0.92);
   --text-dim: rgba(255, 255, 255, 0.5);
   --text-muted: rgba(255, 255, 255, 0.3);
-  --green: #33c773;
-  --green-glow: rgba(51, 199, 115, 0.15);
+  --ui-accent: #ef6a47;
+  --ui-accent-glow: rgba(239, 106, 71, 0.15);
+  --on-ui-accent: #111113;
   --amber: #f5a623;
 
   font-family: "Space Grotesk", -apple-system, sans-serif;
@@ -170,7 +171,7 @@ button.nav-link {
 }
 
 .hero h1 .accent {
-  color: var(--green);
+  color: var(--ui-accent);
 }
 
 .hero-sub {
@@ -251,7 +252,7 @@ button.nav-link {
 
 .install-tab.active {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--green);
+  color: var(--ui-accent);
 }
 
 .install-cmd {
@@ -271,7 +272,7 @@ button.nav-link {
 }
 
 .install-cmd .prompt {
-  color: var(--green);
+  color: var(--ui-accent);
   margin-right: 8px;
 }
 
@@ -340,7 +341,7 @@ button.nav-link {
 }
 
 .docs-link:hover {
-  color: var(--green);
+  color: var(--ui-accent);
 }
 
 /* ── Coming soon ───────────────────────────────────── */
@@ -356,9 +357,9 @@ button.nav-link {
   align-items: center;
   padding: 24px;
   border-radius: 14px;
-  border: 1px solid rgba(51, 199, 115, 0.22);
+  border: 1px solid rgba(239, 106, 71, 0.22);
   background:
-    linear-gradient(135deg, rgba(51, 199, 115, 0.10), rgba(245, 166, 35, 0.05)),
+    linear-gradient(135deg, rgba(239, 106, 71, 0.10), rgba(245, 166, 35, 0.05)),
     var(--surface);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
 }
@@ -369,7 +370,7 @@ button.nav-link {
   margin-bottom: 10px;
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
-  color: var(--green);
+  color: var(--ui-accent);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -415,7 +416,7 @@ button.nav-link {
   position: relative;
   height: 128px;
   border-radius: 12px;
-  border: 1px solid rgba(51, 199, 115, 0.26);
+  border: 1px solid rgba(239, 106, 71, 0.26);
   background:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
@@ -431,7 +432,7 @@ button.nav-link {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  border: 1px solid rgba(51, 199, 115, 0.55);
+  border: 1px solid rgba(239, 106, 71, 0.55);
   transform: translate(-50%, -50%);
 }
 
@@ -439,7 +440,7 @@ button.nav-link {
 .deck-crosshair::after {
   content: "";
   position: absolute;
-  background: rgba(51, 199, 115, 0.45);
+  background: rgba(239, 106, 71, 0.45);
 }
 
 .deck-crosshair::before {
@@ -543,7 +544,7 @@ button.nav-link {
 }
 
 .code-pre .hl-key { color: #7ec8e3; }
-.code-pre .hl-str { color: var(--green); }
+.code-pre .hl-str { color: var(--ui-accent); }
 .code-pre .hl-num { color: var(--amber); }
 .code-pre .hl-comment { color: var(--text-muted); font-style: italic; }
 .code-pre .hl-brace { color: var(--text-muted); }
@@ -568,7 +569,7 @@ button.nav-link {
 }
 
 .layout-card.active {
-  border-color: var(--green);
+  border-color: var(--ui-accent);
 }
 
 .layout-card h3 {
@@ -617,8 +618,8 @@ button.nav-link {
 }
 
 .layout-pane.main {
-  border-color: rgba(51, 199, 115, 0.25);
-  color: var(--green);
+  border-color: rgba(239, 106, 71, 0.25);
+  color: var(--ui-accent);
 }
 
 .layout-3 .layout-pane.main {
@@ -656,7 +657,7 @@ button.nav-link {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--green);
+  color: var(--ui-accent);
   margin-bottom: 12px;
 }
 
@@ -712,7 +713,7 @@ button.nav-link {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--ui-accent);
   flex-shrink: 0;
 }
 
@@ -721,14 +722,14 @@ button.nav-link {
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.06);
-  color: var(--green);
+  color: var(--ui-accent);
 }
 
 .agent-api-link {
   display: inline-block;
   font-size: 13px;
   font-weight: 500;
-  color: var(--green);
+  color: var(--ui-accent);
   transition: opacity 0.15s;
 }
 
@@ -806,7 +807,7 @@ button.nav-link {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--ui-accent);
   flex-shrink: 0;
   margin-top: 7px;
 }
@@ -827,9 +828,9 @@ button.nav-link {
 }
 
 .app-download:hover {
-  border-color: var(--green);
+  border-color: var(--ui-accent);
   background: var(--surface-hover);
-  box-shadow: 0 0 20px var(--green-glow);
+  box-shadow: 0 0 20px var(--ui-accent-glow);
 }
 
 .app-download svg {
@@ -900,8 +901,8 @@ button.nav-link {
 }
 
 .btn-primary {
-  background: var(--green);
-  color: #0a1f12;
+  background: var(--ui-accent);
+  color: var(--on-ui-accent);
 }
 
 .btn-primary:hover {

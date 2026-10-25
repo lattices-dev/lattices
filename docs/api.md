@@ -164,6 +164,8 @@ lats gateway start --tailnet
 
 # On the client: request access, then wait for approval on the host
 lats --host HOST pair --read-only
+# A viewer also needs screen contents (screenshots, streams, OCR):
+lats --host HOST pair --read-only --screen
 # Or request exactly these methods instead of the read-only scope:
 lats --host HOST pair --grant lattices:windows.list --grant speech:speech.enqueue
 
@@ -178,7 +180,14 @@ Core method names do not change. Methods of other products go through
 Each grant names one exact `product:method`, and only reviewed methods can be
 granted. Re-pairing with the same client key adds approved grants to the existing
 set. To reduce access, revoke the client and pair again. `--grant` cannot be
-combined with `--read-only` or `--drive`. Clients paired directly with a host before this
+combined with `--read-only`, `--drive`, `--screen` or `--shell`.
+
+Core scopes are `read`, `screen` (screenshots, streams, OCR, terminal
+contents), `act`, `drive` (desktop input) and `shell` (typing text and
+launching commands). `--read-only` requests `read`, plain `pair` requests
+`read`, `screen` and `act`, and `--drive` requests all five. Stored grants are
+exact methods, so clients paired before `screen` and `shell` were split out keep
+what they had. Clients paired directly with a host before this
 change must pair again with the gateway.
 
 The native Machines/Hosts view reuses this CLI gateway pairing and signs its
@@ -314,6 +323,11 @@ methods write into the Lattices run store under
 | `runs.artifacts` | read | List artifacts for one run |
 | `capture.screenshotWindow` | write | Capture a window screenshot as a run artifact |
 | `capture.screenshotDisplay` | write | Capture one complete display as a run artifact and optional clipboard image |
+| `capture.still` | read | One inline JPEG of a display, window or region for remote viewers; nothing is saved |
+| `capture.stream.start` | read | Stream a display, window or region as H.264 binary frames on this connection |
+| `capture.stream.ack` | read | Acknowledge frames up to `seq`; the host keeps at most 4 unacknowledged |
+| `capture.stream.keyframe` | read | Make the stream's next frame a keyframe |
+| `capture.stream.stop` | read | Stop a stream |
 | `capture.screenshotRegion` | write | Capture a screen region as a run artifact |
 | `capture.zoomArtifact` | write | Crop and zoom an image artifact into a linked artifact |
 | `vision.analyzeWindow` | write | Capture a window and run local OCR-based visual analysis |
@@ -1864,6 +1878,9 @@ lats search vox
 lats search vox --deep
 
 # Same as --deep (all search sources)
+# A TTY matched only at app level (see terminals.list) adds 1 point to each
+# window of its terminal app, with the source "terminal-app". `lats place`
+# does not act on a result that has only that source.
 lats search vox --all
 
 # Pipeable output
@@ -2602,10 +2619,35 @@ List all discovered terminal instances with their processes, tabs, and tmux asso
     "tmuxSession": "myapp-a1b2c3",
     "tmuxPaneId": "%0",
     "hasClaude": true,
-    "displayName": "Terminal — myapp"
+    "displayName": "Terminal — myapp",
+    "windowId": 4211,
+    "windowAttribution": "terminal"
   }
 ]
 ```
+
+Terminal coverage. With `refresh: true`, Lattices reads tab data from these
+terminal apps, and only from apps that are already running:
+
+| Terminal | Tab data | Window match | What the terminal needs |
+|----------|----------|--------------|-------------------------|
+| iTerm2 | AppleScript | Window ID | Automation access |
+| Terminal.app | AppleScript | Window ID | Automation access |
+| Ghostty 1.3+ | AppleScript (tab title, terminal ID, cwd) | Window title, when one window has it | Automation access that you already granted. Lattices does not ask for it. |
+| kitty | `kitty @ ls` | Window ID | `allow_remote_control` and `listen_on` in `kitty.conf` |
+| Warp, Alacritty, others | None | Process tree only | Nothing |
+
+Ghostty reports no TTY, so Lattices joins each Ghostty terminal to a TTY by
+its working directory. It skips a terminal when two shells share that
+directory. When tab data is not available, Lattices finds the terminal
+process that owns the TTY. It picks that process's window when the process
+has one titled window, or when exactly one window title contains the shell's
+cwd. Otherwise the TTY has no `windowId`. It has `windowAttribution: "app"`,
+and `windowCandidates` lists the windows of that process, frontmost first.
+
+`windowAttribution` values: `tag` (the window title has the `[lattices:…]`
+tag), `terminal` (the terminal reported the window ID), `terminal-title`,
+`position`, `cwd-title`, `single-window`, `app`.
 
 #### `terminals.search`
 

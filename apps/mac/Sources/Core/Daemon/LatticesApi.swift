@@ -260,6 +260,15 @@ final class LatticesApi {
 
     static func setup() {
         let api = LatticesApi.shared
+        let spaceOptimization = SpaceOptimizationService(
+            allWindows: { DesktopModel.shared.allWindows() },
+            frontmostAppName: { NSWorkspace.shared.frontmostApplication?.localizedName },
+            enqueueDistribution: { targets, region in
+                DispatchQueue.main.async {
+                    WindowTiler.batchRaiseAndDistribute(windows: targets, region: region)
+                }
+            }
+        )
 
         // ── Models ──────────────────────────────────────────────
 
@@ -885,6 +894,7 @@ final class LatticesApi {
                         if let title = inst.tabTitle { tab["tabTitle"] = .string(title) }
                         tab["hasClaude"] = .bool(inst.hasClaude)
                         if let session = inst.tmuxSession { tab["tmuxSession"] = .string(session) }
+                        if let attribution = inst.windowAttribution { tab["attribution"] = .string(attribution.rawValue) }
                         if processMatch {
                             let matched = inst.processes.filter {
                                 $0.comm.lowercased().contains(query) || $0.args.lowercased().contains(query)
@@ -921,6 +931,29 @@ final class LatticesApi {
                                     ocrSnippet: nil, tabs: [tabJson],
                                     lastInteraction: desktop.lastInteractionDate(for: wid)
                                 )
+                            }
+                        } else if !inst.windowCandidates.isEmpty {
+                            // The TTY belongs to a terminal app but not to a known
+                            // window of it (Warp, Ghostty without Automation, kitty
+                            // without remote control). Each of the app's windows
+                            // gets a small, uncertain boost, once, with no recency
+                            // boost, so a title or cwd match elsewhere still wins.
+                            for wid in inst.windowCandidates {
+                                if var acc = byWid[wid] {
+                                    if !acc.sources.contains("terminal-app") {
+                                        acc.score += 1
+                                        acc.sources.append("terminal-app")
+                                    }
+                                    acc.tabs.append(tabJson)
+                                    byWid[wid] = acc
+                                } else if let entry = desktop.windows[wid] {
+                                    guard passesTimeFilter(wid: wid, entry: entry) else { continue }
+                                    byWid[wid] = Accum(
+                                        entry: entry, score: 1, sources: ["terminal-app"],
+                                        ocrSnippet: nil, tabs: [tabJson],
+                                        lastInteraction: desktop.lastInteractionDate(for: wid)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1111,7 +1144,7 @@ final class LatticesApi {
             description: "Exit Layers: turn layer focus off, restore parked windows and unhide apps; retry unavailable windows when their desktop is shown",
             access: .mutate,
             params: [],
-            returns: .custom("Object with 'focusActive': false, 'active': null, 'unparked', 'stillParked', 'rescued', 'unhidden', 'stillHidden', 'recoveryPending' and 'stage'"),
+            returns: .custom("Object with 'focusActive': false, 'active': null, 'unparked', 'stillParked', 'rescued', 'unhidden', 'stillHidden', 'recoveryPending', nullable 'persistenceWarning' and 'stage'"),
             handler: { _ in
                 Self.onMain {
                 let outcome = WorkspaceManager.shared.exitLayers(showFeedback: false)
@@ -1124,7 +1157,8 @@ final class LatticesApi {
                     "rescued": .int(outcome.rescued),
                     "unhidden": .array(outcome.unhiddenApps.map { .string($0) }),
                     "stillHidden": .array(outcome.stillHiddenApps.map { .string($0) }),
-                    "recoveryPending": .bool(outcome.remainingToRestore > 0),
+                    "recoveryPending": .bool(outcome.remainingToRestore > 0 || outcome.persistenceError != nil),
+                    "persistenceWarning": outcome.persistenceError.map { .string($0) } ?? .null,
                     "stage": Self.layerStageStatus()
                 ])
                 }
@@ -1334,6 +1368,90 @@ final class LatticesApi {
                     active = FocusModeController.shared.isActive
                 }
                 return .object(["ok": .bool(true), "active": .bool(active)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.status",
+            description: "Check whether Stage is active",
+            access: .read,
+            params: [],
+            returns: .custom("Object with active state and member count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.enter",
+            description: "Enter Stage for the windows on the display you are using",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok, active, and count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    StageModeController.shared.enter()
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["ok": .bool(active), "active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.exit",
+            description: "Exit Stage and restore the windows",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok and active state"),
+            handler: { _ in
+                Self.runOnMain { StageModeController.shared.exit() }
+                return .object(["ok": .bool(true), "active": .bool(false)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.toggle",
+            description: "Toggle Stage for the windows on the display you are using",
+            access: .mutate,
+            params: [],
+            returns: .custom("Object with ok, active, and count"),
+            handler: { _ in
+                var active = false
+                var count = 0
+                Self.runOnMain {
+                    StageModeController.shared.toggle()
+                    active = StageModeController.shared.isActive
+                    count = StageModeController.shared.memberCount
+                }
+                return .object(["ok": .bool(true), "active": .bool(active), "count": .int(count)])
+            }
+        ))
+
+        api.register(Endpoint(
+            method: "stage.cycle",
+            description: "Move Stage to the next or previous window in the set",
+            access: .mutate,
+            params: [
+                Param(name: "by", type: "int", required: false, description: "Steps to move. Defaults to 1. Negative moves backward."),
+            ],
+            returns: .custom("Object with ok and active state"),
+            handler: { params in
+                let by = params?["by"]?.intValue ?? 1
+                var active = false
+                Self.runOnMain {
+                    StageModeController.shared.cycle(by: by)
+                    active = StageModeController.shared.isActive
+                }
+                return .object(["ok": .bool(active), "active": .bool(active)])
             }
         ))
 
@@ -1729,6 +1847,27 @@ final class LatticesApi {
                 try CaptureController.shared.screenshotDisplay(params: params)
             }
         ))
+
+        api.register(Endpoint(
+            method: "capture.still",
+            description: "One compressed frame of a display, window or region, returned inline for remote viewers. Nothing is saved.",
+            access: .read,
+            params: [
+                Param(name: "displayIndex", type: "int", required: false, description: "Display to capture; defaults to the display under the pointer"),
+                Param(name: "wid", type: "int", required: false, description: "Window to capture instead of a display"),
+                Param(name: "x", type: "double", required: false, description: "Region left edge, with y/width/height"),
+                Param(name: "y", type: "double", required: false, description: "Region top edge"),
+                Param(name: "width", type: "double", required: false, description: "Region width"),
+                Param(name: "height", type: "double", required: false, description: "Region height"),
+                Param(name: "maxWidth", type: "int", required: false, description: "Largest pixel width to return (default 1600)"),
+                Param(name: "quality", type: "int", required: false, description: "JPEG quality 20-95 (default 70)"),
+            ],
+            returns: .custom("Object with format, width, height, base64 data, and the captured frame in layout coordinates"),
+            handler: { params in
+                try CaptureController.shared.still(params: params)
+            }
+        ))
+        VideoStreamer.registerEndpoints(api)
 
         api.register(Endpoint(
             method: "capture.zoomArtifact",
@@ -3030,20 +3169,7 @@ final class LatticesApi {
             ],
             returns: .ok,
             handler: { params in
-                var dict: [String: JSON] = [:]
-                if case .object(let obj) = params {
-                    dict = obj
-                }
-                // Explicit filters select the matching scope automatically.
-                if dict["app"] != nil && dict["scope"] == nil {
-                    dict["scope"] = .string("app")
-                } else if dict["type"] != nil && dict["scope"] == nil {
-                    dict["scope"] = .string("type")
-                } else {
-                    dict["scope"] = dict["scope"] ?? .string("visible")
-                }
-                dict["strategy"] = dict["strategy"] ?? .string("balanced")
-                return try Self.executeSpaceOptimization(params: .object(dict))
+                try spaceOptimization.distribute(params: params)
             }
         ))
 
@@ -3061,7 +3187,7 @@ final class LatticesApi {
             ],
             returns: .custom("Execution receipt with scope, strategy, resolved windows, and trace"),
             handler: { params in
-                try Self.executeSpaceOptimization(params: params)
+                try spaceOptimization.optimize(params: params)
             }
         ))
 
@@ -3565,10 +3691,10 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "settings.spaceBezel.get",
-            description: "Return the space-switch bezel placement",
+            description: "Return the space-switch bezel placement and desktop shimmer intensity",
             access: .read,
             params: [],
-            returns: .custom("Object with position and supported options"),
+            returns: .custom("Object with position, supported options, and shimmerIntensity (0–1; zero is off)"),
             handler: { _ in
                 Self.spaceBezelSettingsResponse()
             }
@@ -3576,10 +3702,11 @@ final class LatticesApi {
 
         api.register(Endpoint(
             method: "settings.spaceBezel.set",
-            description: "Update space-switch bezel placement (Ctrl+arrow confirmation tray)",
+            description: "Update space-switch bezel placement and desktop shimmer intensity without restarting",
             access: .mutate,
             params: [
                 Param(name: "position", type: "string", required: false, description: "Bezel placement: top, bottom, center, or travelEdge (docks at the screen edge the desktop moves toward)"),
+                Param(name: "shimmerIntensity", type: "double", required: false, description: "Passing light strength from 0 (off) to 1 (original strength). Default is 0.15. Applies on the next switch."),
             ],
             returns: .custom("Updated space bezel settings"),
             handler: { params in
@@ -3992,6 +4119,7 @@ final class LatticesApi {
         ))
 
         DisplayGather.registerEndpoints(api)
+        MonitorDDC.registerEndpoints(api)
         ClusterVerbs.register(api)
         StateHistory.registerEndpoints(api)
         BundleModules.registerEndpoints(api)
@@ -4583,6 +4711,7 @@ private extension LatticesApi {
         return .object([
             "ok": .bool(true),
             "position": .string(prefs.spaceSwitchBezelPosition.rawValue),
+            "shimmerIntensity": .double(prefs.spaceSwitchShimmerIntensity),
             "positionOptions": .array(SpaceSwitchBezelPosition.allCases.map { position in
                 .object([
                     "id": .string(position.rawValue),
@@ -4593,14 +4722,25 @@ private extension LatticesApi {
     }
 
     static func updateSpaceBezelSettings(_ params: JSON?) throws -> JSON {
-        guard let raw = params?["position"]?.stringValue, !raw.isEmpty else {
-            return spaceBezelSettingsResponse()
+        var position: SpaceSwitchBezelPosition?
+        if let raw = params?["position"]?.stringValue, !raw.isEmpty {
+            guard let parsed = SpaceSwitchBezelPosition(rawValue: raw) else {
+                let options = SpaceSwitchBezelPosition.allCases.map(\.rawValue).joined(separator: ", ")
+                throw RouterError.custom("Unsupported bezel position: \(raw). Use \(options).")
+            }
+            position = parsed
         }
-        guard let parsed = SpaceSwitchBezelPosition(rawValue: raw) else {
-            let options = SpaceSwitchBezelPosition.allCases.map(\.rawValue).joined(separator: ", ")
-            throw RouterError.custom("Unsupported bezel position: \(raw). Use \(options).")
+        var intensity: Double?
+        if let value = params?["shimmerIntensity"] {
+            guard let parsed = value.numericDouble, parsed.isFinite, (0...1).contains(parsed) else {
+                throw RouterError.custom("shimmerIntensity must be a number from 0 (off) to 1 (original strength).")
+            }
+            intensity = parsed
         }
-        let apply = { Preferences.shared.spaceSwitchBezelPosition = parsed }
+        let apply = {
+            if let position { Preferences.shared.spaceSwitchBezelPosition = position }
+            if let intensity { Preferences.shared.spaceSwitchShimmerIntensity = intensity }
+        }
         if Thread.isMainThread {
             apply()
         } else {
@@ -4901,54 +5041,6 @@ private extension LatticesApi {
         "Desktop \(index)"
     }
 
-    static func executeSpaceOptimization(params: JSON?) throws -> JSON {
-        let scope = try parseOptimizationScope(from: params)
-        let strategy = try parseOptimizationStrategy(params?["strategy"]?.stringValue)
-        var trace: [JSON] = [.string("resolved scope \(scope)"), .string("resolved strategy \(strategy)")]
-        let windows = resolveOptimizationTargets(scope: scope, params: params, trace: &trace)
-
-        // Resolve optional region constraint (e.g. "right" → right half of screen)
-        var region: (CGFloat, CGFloat, CGFloat, CGFloat)? = nil
-        if let regionStr = params?["region"]?.stringValue {
-            if let spec = PlacementSpec(string: regionStr) {
-                region = spec.fractions
-                trace.append(.string("region \(regionStr) → fractions \(spec.fractions)"))
-            } else {
-                trace.append(.string("unknown region \(regionStr), using full screen"))
-            }
-        }
-
-        if strategy == "mosaic" {
-            trace.append(.string("strategy mosaic currently uses the smart-grid distributor"))
-        }
-
-        guard !windows.isEmpty else {
-            trace.append(.string("no eligible windows resolved"))
-            return .object([
-                "ok": .bool(true),
-                "scope": .string(scope),
-                "strategy": .string(strategy),
-                "windowCount": .int(0),
-                "wids": .array([]),
-                "trace": .array(trace),
-            ])
-        }
-
-        let targets = windows.map { (wid: $0.wid, pid: $0.pid) }
-        DispatchQueue.main.async {
-            WindowTiler.batchRaiseAndDistribute(windows: targets, region: region)
-        }
-
-        return .object([
-            "ok": .bool(true),
-            "scope": .string(scope),
-            "strategy": .string(strategy),
-            "windowCount": .int(windows.count),
-            "wids": .array(windows.map { .int(Int($0.wid)) }),
-            "trace": .array(trace),
-        ])
-    }
-
     static func parseLayerActivationMode(_ raw: String?) throws -> String {
         let mode = normalizeToken(raw ?? "focus")
         switch mode {
@@ -4961,149 +5053,9 @@ private extension LatticesApi {
         }
     }
 
-    static func parseOptimizationScope(from params: JSON?) throws -> String {
-        if params?["windowIds"] != nil {
-            return "selection"
-        }
-        if params?["app"] != nil {
-            return "app"
-        }
-        if params?["type"] != nil {
-            return "type"
-        }
-
-        let scope = normalizeToken(params?["scope"]?.stringValue ?? "visible")
-        switch scope {
-        case "visible", "selection", "app", "type",
-             "active-app", "frontmost-app", "current-app",
-             "active-type", "frontmost-type", "current-type":
-            return scope
-        default:
-            throw RouterError.custom("Unsupported optimization scope: \(params?["scope"]?.stringValue ?? scope)")
-        }
-    }
-
-    static func parseOptimizationStrategy(_ raw: String?) throws -> String {
-        let strategy = normalizeToken(raw ?? "balanced")
-        switch strategy {
-        case "balanced", "mosaic":
-            return strategy
-        default:
-            throw RouterError.custom("Unsupported optimization strategy: \(raw ?? strategy)")
-        }
-    }
-
-    static func resolveOptimizationTargets(scope: String, params: JSON?, trace: inout [JSON]) -> [WindowEntry] {
-        let visible = distributableWindows()
-        let titleFilter = params?["title"]?.stringValue
-
-        switch scope {
-        case "selection":
-            let ids = selectedWindowIds(from: params?["windowIds"])
-            trace.append(.string("selection size \(ids.count)"))
-            return dedupeWindows(visible.filter { ids.contains($0.wid) })
-
-        case "app":
-            guard let app = params?["app"]?.stringValue else {
-                trace.append(.string("missing app for app scope"))
-                return []
-            }
-            trace.append(.string("filtered by app \(app)"))
-            if let titleFilter {
-                trace.append(.string("title contains \(titleFilter)"))
-            }
-            return dedupeWindows(visible.filter {
-                $0.app.localizedCaseInsensitiveCompare(app) == .orderedSame &&
-                (titleFilter == nil || $0.titleContains(titleFilter!))
-            })
-
-        case "type":
-            guard let typeName = params?["type"]?.stringValue,
-                  let appType = parseOptimizationAppType(typeName) else {
-                trace.append(.string("missing or unknown type for type scope"))
-                return []
-            }
-            trace.append(.string("filtered by type \(appType.rawValue)"))
-            if let titleFilter {
-                trace.append(.string("title contains \(titleFilter)"))
-            }
-            return dedupeWindows(visible.filter {
-                AppTypeClassifier.matches($0.app, type: appType) &&
-                (titleFilter == nil || $0.titleContains(titleFilter!))
-            })
-
-        case "active-app", "frontmost-app", "current-app":
-            let activeApp = params?["app"]?.stringValue ?? frontmostOptimizableApp()
-            guard let activeApp else {
-                trace.append(.string("no active app available"))
-                return []
-            }
-            trace.append(.string("resolved active app \(activeApp)"))
-            if let titleFilter {
-                trace.append(.string("title contains \(titleFilter)"))
-            }
-            return dedupeWindows(visible.filter {
-                $0.app.localizedCaseInsensitiveCompare(activeApp) == .orderedSame &&
-                (titleFilter == nil || $0.titleContains(titleFilter!))
-            })
-
-        case "active-type", "frontmost-type", "current-type":
-            let activeApp = params?["app"]?.stringValue ?? frontmostOptimizableApp()
-            guard let activeApp else {
-                trace.append(.string("no active app available"))
-                return []
-            }
-            let grouping = AppTypeClassifier.grouping(for: activeApp)
-            trace.append(.string("resolved active type \(grouping.label) from \(activeApp)"))
-            if let titleFilter {
-                trace.append(.string("title contains \(titleFilter)"))
-            }
-            return dedupeWindows(visible.filter {
-                AppTypeClassifier.matches($0.app, grouping: grouping) &&
-                (titleFilter == nil || $0.titleContains(titleFilter!))
-            })
-
-        default:
-            trace.append(.string("using visible window scope"))
-            return dedupeWindows(visible)
-        }
-    }
-
-    static func parseOptimizationAppType(_ raw: String) -> AppType? {
-        let normalized = normalizeToken(raw)
-        return AppType.allCases.first { $0.rawValue == normalized }
-    }
-
     static func selectedWindowIds(from json: JSON?) -> [UInt32] {
         guard case .array(let values) = json else { return [] }
         return values.compactMap(\.uint32Value)
-    }
-
-    static func distributableWindows() -> [WindowEntry] {
-        DesktopModel.shared.allWindows().filter { entry in
-            entry.isOnScreen &&
-            entry.app != "Lattices" &&
-            entry.frame.w > 50 &&
-            entry.frame.h > 50
-        }
-    }
-
-    static func dedupeWindows(_ windows: [WindowEntry]) -> [WindowEntry] {
-        var seen: Set<UInt32> = []
-        var result: [WindowEntry] = []
-        for window in windows where !seen.contains(window.wid) {
-            seen.insert(window.wid)
-            result.append(window)
-        }
-        return result
-    }
-
-    static func frontmostOptimizableApp() -> String? {
-        if let app = NSWorkspace.shared.frontmostApplication?.localizedName,
-           !app.localizedCaseInsensitiveContains("lattices") {
-            return app
-        }
-        return distributableWindows().first?.app
     }
 
     static func onMain<T>(_ body: () throws -> T) rethrows -> T {
@@ -5165,7 +5117,7 @@ enum Encoders {
                     "h": .double(converted.height),
                 ])
             }
-            return .object([
+            var obj: [String: JSON] = [
                 "displayIndex": .int(display.displayIndex),
                 "displayId": .string(display.displayId),
                 "name": .string(screen?.localizedName ?? display.displayId),
@@ -5184,7 +5136,11 @@ enum Encoders {
                         })
                     ])
                 })
-            ])
+            ]
+            // The physical monitor's EDID identity; omitted for panels with no serial.
+            if let monitor = MonitorIdentity.forDisplay(uuid: display.displayId) { obj["monitor"] = monitor.json }
+            else if let builtin = MonitorIdentity.builtinJSON(uuid: display.displayId) { obj["builtin"] = builtin }
+            return .object(obj)
         })
     }
 
@@ -5326,6 +5282,10 @@ enum Encoders {
         if let p = inst.tmuxPaneId { obj["tmuxPaneId"] = .string(p) }
         if let w = inst.windowId { obj["windowId"] = .int(Int(w)) }
         if let t = inst.windowTitle { obj["windowTitle"] = .string(t) }
+        if let a = inst.windowAttribution { obj["windowAttribution"] = .string(a.rawValue) }
+        if !inst.windowCandidates.isEmpty {
+            obj["windowCandidates"] = .array(inst.windowCandidates.map { .int(Int($0)) })
+        }
         return .object(obj)
     }
 

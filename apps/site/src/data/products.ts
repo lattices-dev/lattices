@@ -11,7 +11,7 @@ export const productLinks: ProductLink[] = [
   {
     href: '/',
     title: 'Lattices',
-    description: 'The programmable workspace for macOS and Linux',
+    description: "Find any project's windows. Put them in place, for you or your agent.",
     meta: 'Core app + API',
   },
   {
@@ -27,9 +27,19 @@ export const productLinks: ProductLink[] = [
     meta: 'macOS app',
   },
   {
-    href: '/speech',
-    title: 'Speech',
+    href: '/voice',
+    title: 'Voice',
     description: 'A standalone player for queued text',
     meta: 'Menu bar app',
   },
 ]
+
+/** Products-menu-only entries, shown after the product they belong to. */
+export const productMenuExtras: Record<string, ProductLink> = {
+  '/': {
+    href: '/linux',
+    title: 'Lattices for Linux',
+    description: 'The same workspace on Omarchy and Hyprland',
+    meta: 'Linux app',
+  },
+}

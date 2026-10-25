@@ -6,7 +6,7 @@
   --text: rgba(255, 255, 255, 0.92);
   --text-dim: rgba(255, 255, 255, 0.5);
   --text-muted: rgba(255, 255, 255, 0.3);
-  --green: #33c773;
+  --ui-accent: #ef6a47;
   --amber: #f5a623;
 }
 
@@ -280,7 +280,7 @@ code { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
   transition: color 0.15s;
 }
 
-.blog-post-title:hover { color: var(--green); }
+.blog-post-title:hover { color: var(--ui-accent); }
 
 .blog-post-meta {
   font-size: 0.85rem;

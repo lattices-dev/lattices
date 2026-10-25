@@ -10,11 +10,14 @@ export const latticesDownloadUrl =
   `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =
   'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+// Public Linux entry point documented in docs/install-linux.md.
+export const linuxInstallerUrl = 'https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh'
+export const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`
 
 export interface SoftwareFacts {
   name: string
   applicationCategory: 'DeveloperApplication' | 'ProductivityApplication'
-  operatingSystem: 'macOS'
+  operatingSystem: 'macOS' | 'Linux'
   downloadUrl: string
   softwareVersion?: string
   /** The product page says the download is free. */
@@ -63,6 +66,23 @@ const canvasRoute: RouteMeta = {
   },
 }
 
+// The speech app is Voice; /speech stays as an alias. The download keeps its
+// Speech.dmg release asset.
+const voiceRoute: RouteMeta = {
+  path: '/voice',
+  title: 'Voice — a standalone player from Lattices',
+  description: 'Queue text, choose a voice, and control playback independently.',
+  priority: '0.9',
+  jsonLd: 'software',
+  software: {
+    name: 'Voice',
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'macOS',
+    downloadUrl: speechDownloadUrl,
+    softwareVersion: '0.2.0',
+  },
+}
+
 export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/',
@@ -106,24 +126,27 @@ export const staticRoutes: readonly RouteMeta[] = [
   },
   canvasRoute,
   { ...canvasRoute, path: '/blink', canonicalPath: canvas.home, sitemap: false },
+  voiceRoute,
+  { ...voiceRoute, path: '/speech', canonicalPath: voiceRoute.path, sitemap: false },
   {
-    path: '/speech',
-    title: 'Speech — a standalone player from Lattices',
-    description: 'Queue text, choose a voice, and control playback independently.',
+    path: '/linux',
+    title: 'Lattices for Linux — the same workspace, on Hyprland',
+    description:
+      'Install Lattices on Omarchy and Hyprland with one command: the app, the lats CLI, a local host and a tray menu. Pair a Mac and a Linux machine into one desk.',
     priority: '0.9',
     jsonLd: 'software',
     software: {
-      name: 'Speech',
-      applicationCategory: 'ProductivityApplication',
-      operatingSystem: 'macOS',
-      downloadUrl: speechDownloadUrl,
-      softwareVersion: '0.2.0',
+      name: 'Lattices for Linux',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Linux',
+      downloadUrl: linuxInstallerUrl,
+      free: true,
     },
   },
   {
     path: '/products',
     title: 'Products — Lattices',
-    description: 'Find each product and its documentation: Lattices, Action, Canvas, and Speech.',
+    description: 'Find each product and its documentation: Lattices, Action, Canvas, and Voice.',
     priority: '0.9',
     jsonLd: 'none',
   },
@@ -140,7 +163,7 @@ export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/brand',
     title: 'Brand — Lattices',
-    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Canvas and Speech.',
+    description: 'Marks, app icons, favicons and social cards for Lattices, Action, Canvas and Voice.',
     priority: '0.6',
     jsonLd: 'none',
   },

@@ -14,7 +14,7 @@ export function BlogIndex() {
           <h1>Notes on workspaces, agents, and the Mac.</h1>
           <p>
             Short posts about what we are building across Lattices, Action, Canvas,
-            and Speech.
+            and Voice.
           </p>
         </header>
 

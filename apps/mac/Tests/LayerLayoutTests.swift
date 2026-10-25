@@ -98,6 +98,42 @@ final class LayerLayoutTests: XCTestCase {
         ])
     }
 
+    func testPlannerClassifiesNativeAppsAndPreservesMemberOrder() {
+        let entries = ["Safari", "Xcode", "Ghostty"].enumerated().map { index, app in
+            WindowEntry(wid: UInt32(index + 1), app: app, pid: Int32(index + 10), title: app,
+                        frame: WindowFrame(x: 50, y: 50, w: 400, h: 300), spaceIds: [1],
+                        isOnScreen: true, latticesSession: nil)
+        }
+        let members: [LayerMembership.Member] = entries.enumerated().map {
+            (entry: $0.element, placed: false, project: $0.offset)
+        }
+        let display = CGRect(x: 0, y: 0, width: 3440, height: 1440)
+        let plan = LayerLayout.plan(.auto, members: members, excluding: [], main: display,
+            otherDisplays: [], currentSpace: 1, visibleFrame: display, standardWindows: [1, 2, 3])
+        XCTAssertEqual(plan.map(\.entry), entries)
+        XCTAssertEqual(plan.map(\.frame), [CGRect(x: 2408, y: 0, width: 1032, height: 1440),
+                                          CGRect(x: 1032, y: 0, width: 1376, height: 1440),
+                                          CGRect(x: 0, y: 0, width: 1032, height: 1440)])
+    }
+
+    func testPlannerUsesFullTitleAndPreservesDistinctEntriesWithRepeatedWindowIDs() {
+        func entry(_ fullTitle: String) -> WindowEntry {
+            var entry = WindowEntry(wid: 1, app: "Safari", pid: 10, title: "",
+                frame: WindowFrame(x: 50, y: 50, w: 400, h: 300), spaceIds: [1],
+                isOnScreen: true, latticesSession: nil)
+            entry.fullTitle = fullTitle
+            return entry
+        }
+        let entries = [entry("First full title"), entry("Second full title")]
+        let members: [LayerMembership.Member] = entries.map { (entry: $0, placed: false, project: 0) }
+        let display = CGRect(x: 0, y: 0, width: 1000, height: 600)
+        let plan = LayerLayout.plan(.columns, members: members, excluding: [], main: display,
+            otherDisplays: [], currentSpace: 1, visibleFrame: display, standardWindows: [1])
+        XCTAssertEqual(plan.map(\.entry), entries)
+        XCTAssertEqual(plan.map(\.frame), [CGRect(x: 0, y: 0, width: 500, height: 600),
+                                          CGRect(x: 500, y: 0, width: 500, height: 600)])
+    }
+
     private func assertEqual(_ actual: [CGRect], _ expected: [CGRect], file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(actual.count, expected.count, file: file, line: line)
         for (a, e) in zip(actual, expected) {

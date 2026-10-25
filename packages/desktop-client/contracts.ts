@@ -17,6 +17,17 @@ export interface Window {
   latticesSession?: string;
 }
 
+/** The physical panel behind a display, by EDID. `key` names it across every host it is cabled to. */
+export interface Monitor {
+  make?: string;
+  model: string;
+  serial: string;
+  key: string;
+  /** Physical image size in millimetres; omitted when the panel doesn't report one. */
+  widthMm?: number;
+  heightMm?: number;
+}
+
 export interface Display {
   displayIndex: number;
   displayId: string;
@@ -28,4 +39,6 @@ export interface Display {
   virtual: boolean;
   currentSpaceId: number;
   spaces: { id: number; index: number; name: string; display: number; isCurrent: boolean; windowCount: number }[];
+  /** Omitted on headless outputs and panels without a serial. */
+  monitor?: Monitor;
 }

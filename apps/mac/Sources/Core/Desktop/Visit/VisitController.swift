@@ -141,6 +141,7 @@ final class VisitController {
         var elsewhere: Bool
         var displayID: CGDirectDisplayID = 0
         var machine: String? = nil
+        var virtual = false
     }
 
     /// Main first then left to right, numbered with the shared display inventory.
@@ -159,7 +160,8 @@ final class VisitController {
         return sorted.enumerated().map { i, pair in
             Screen(number: inventory.first { $0.frame == CGDisplayBounds(pair.1) }?.index ?? i, name: pair.0.localizedName, frame: CGDisplayBounds(pair.1),
                    main: pair.1 == main, elsewhere: gone.contains(uuid(pair.1)), displayID: pair.1,
-                   machine: (UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String])?[uuid(pair.1)])
+                   machine: (UserDefaults.standard.dictionary(forKey: "visit.displayMachines") as? [String: String])?[uuid(pair.1)],
+                   virtual: MonitorIdentity.isVirtual(pair.1))
         }
     }
 

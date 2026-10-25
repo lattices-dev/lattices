@@ -68,7 +68,7 @@ The CLI has a tiered search system for finding windows across the desktop:
 Calls the daemon's `windows.search` API. Searches window titles, app names, session tags, and OCR content. Fast — uses already-indexed data. Returns scored results (title/session: 3, app: 2, ocr: 1).
 
 ### `lats search <query> --deep` / `--all` — Deep search
-Both flags request all search sources (`sources: ["all"]`). Starts with index search, then **inspects** candidates live using terminal process data (`terminals.search`). Discovers windows the index missed (e.g. an iTerm window where 4/4 tabs have `~/dev/vox` in their cwd but "vox" doesn't appear in the window title). Each matching tab adds score weight, so terminal windows with many matching tabs rank highest.
+Both flags request all search sources (`sources: ["all"]`). Starts with index search, then **inspects** candidates live using terminal process data (`terminals.search`). Discovers windows the index missed (e.g. an iTerm window where 4/4 tabs have `~/dev/vox` in their cwd but "vox" doesn't appear in the window title). Each matching tab adds score weight, so terminal windows with many matching tabs rank highest. Tab data comes from iTerm2, Terminal.app, Ghostty (AppleScript, only when Automation is already granted) and kitty (`kitty @ ls` with remote control on). Other terminals, such as Warp, are matched from the process tree. A TTY that can't be pinned to one window adds 1 point (`terminal-app`) to each window of its app, and `place` won't act on that alone.
 
 ### `lats place <query> [position]` — Search + act
 Runs deep search, takes the top result, focuses it by wid, and tiles it to a position. Default position: `bottom-right`.

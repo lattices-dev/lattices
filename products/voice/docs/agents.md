@@ -1,22 +1,22 @@
 ---
 title: For agents
-description: How an agent should give spoken updates through Speech, check that Voice.app is reachable, and stay inside the output boundary.
+description: How an agent should give spoken updates through Voice, check that Voice.app is reachable, and stay inside the output boundary.
 ---
 
-Speech plays text out loud for agents and scripts. Use it for short spoken
+Voice plays text out loud for agents and scripts. Use it for short spoken
 updates, such as a finished build or a question that needs the user's
-attention. Speech does not listen. Dictation and spoken commands belong to
+attention. Voice does not listen. Dictation and spoken commands belong to
 [Lattices voice](/lattices/docs/voice).
 
 ## Scope
 
-| Owned by Speech | Not owned by Speech |
+| Owned by Voice | Not owned by Voice |
 | --- | --- |
 | The speech queue, job state, and playback | The microphone, dictation, and spoken commands |
 | Voice and provider choice | Window, session, and workspace control |
 | The playback HUD | Visible notes. Use [Canvas](/canvas/docs/agents) |
 
-Speech has no CLI of its own. Agents use `lats voice` output commands. The
+Voice has no CLI of its own. Agents use `lats voice` output commands. The
 Lattices daemon forwards them to Voice.app.
 
 ## First check
@@ -75,15 +75,15 @@ only the active job. `lats voice stop` does not stop listening. Use
 | Need | Use |
 | --- | --- |
 | Speak from a shell or agent terminal | `lats voice say` |
-| Speak from a client that already uses the Lattices agent API | `voice.say` on the Lattices daemon. See [API](/speech/docs/api#choose-a-path). |
-| Speak without the Lattices daemon | `speech.enqueue` directly on Voice.app, with the capability token. See [API](/speech/docs/api#authentication). |
-| Speak from another machine | Use the opt-in tailnet gateway with a grant such as `speech:speech.enqueue`. See [API](/speech/docs/api#private-connection). |
+| Speak from a client that already uses the Lattices agent API | `voice.say` on the Lattices daemon. See [API](/voice/docs/api#choose-a-path). |
+| Speak without the Lattices daemon | `speech.enqueue` directly on Voice.app, with the capability token. See [API](/voice/docs/api#authentication). |
+| Speak from another machine | Use the opt-in tailnet gateway with a grant such as `speech:speech.enqueue`. See [API](/voice/docs/api#private-connection). |
 
-Speech 0.3.0 and Lattices 0.15.1 use private sockets in `~/.lattices/run`.
+Voice 0.3.0 and Lattices 0.15.1 use private sockets in `~/.lattices/run`.
 Install matching app and CLI versions. `lats` handles authentication for you.
 
 ## Read next
 
-- [Quickstart](/speech/docs/quickstart): install Voice.app and speak a first line.
-- [CLI](/speech/docs/cli): every command that reaches Speech and its playback semantics.
-- [API](/speech/docs/api): the `speech.*` RPC, authentication, and events.
+- [Quickstart](/voice/docs/quickstart): install Voice.app and speak a first line.
+- [CLI](/voice/docs/cli): every command that reaches Voice and its playback semantics.
+- [API](/voice/docs/api): the `speech.*` RPC, authentication, and events.

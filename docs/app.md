@@ -366,40 +366,76 @@ Shows assistant readiness and the selected provider's authentication state.
 
 ### Shortcuts
 
-Shows keyboard shortcut reference. These are defaults; you can change them
-from Settings > Shortcuts.
+Shows keyboard shortcut reference. These are the defaults; change them from
+Settings > Shortcuts. Hyper means Control+Option+Shift+Command. With
+keyboard remaps on, holding Caps Lock is Hyper.
 
-| Shortcut          | Action              |
-|-------------------|----------------------|
-| Control+Option+Space       | Open command palette |
-| Hyper+1            | Workspace home       |
-| Hyper+L            | Studio / screen map  |
-| Hyper+2            | Window bezel         |
-| Hyper+3            | HUD                  |
-| Ctrl+Cmd+M         | Hands-off mode       |
-| Hyper+Space        | Hyperspace window survey |
-| Hyper+G            | In-place window tools |
-| Hold Ctrl+Option + pointer | Optional Spatial Lens placement; release to commit |
-| Hyper+H            | Window navigation hints |
-| Hyper+5            | Omni search          |
-| Hyper+6            | Cheat sheet          |
-| Ctrl+Option+Space  | Command bar          |
-| Ctrl+Option+G      | 4x4 grid placement   |
-| Ctrl+Option+V      | Fill open 3x2 cell   |
-| Cmd+Option+Shift+arrows | Tile halves     |
-| Ctrl+Option+arrows | Available for custom shortcuts |
-| Ctrl+Option+mouse  | Optional Tile HUD; off by default |
-| Ctrl+Option+Shift+1/2/3 | Tile thirds     |
-| Ctrl+Left/Right    | Instant Space switch |
-| Cmd+Option+1–9    | Switch to the layer in that slot; 5 shows the current one |
-| Cmd+Option+arrows | Move across the layer pad |
-| Ctrl+B  D         | Detach from session  |
-| Ctrl+B  X         | Kill current pane    |
-| Ctrl+B  Left/Right| Move between panes   |
-| Ctrl+B  Z         | Zoom pane (toggle)   |
-| Ctrl+B  [         | Scroll mode          |
+Tiling and placement:
 
-Hyper+L opens Studio; close it with Escape or `q` when the map owns keyboard
+| Shortcut | Action |
+|----------|--------|
+| Command+Option+Shift+arrows | Tile the front window to a half |
+| Control+Option+arrows | Available for custom shortcuts |
+| Control+Option+Return | Maximize |
+| Control+Option+C | Center |
+| Control+Option+U / I / J / K | Top-left, top-right, bottom-left, bottom-right quarter |
+| Control+Option+Shift+1 / 2 / 3 | Left, center, right third |
+| Hold Control+Option, press 1–9 | With Tile HUD enabled, tile to that cell of the 3×3 matrix; 5 maximizes. Number row and numpad both work |
+| Hold Control+Option, move the pointer | With Tile HUD enabled, aim a placement; release to tile, stay centered to cancel |
+| Control+Option+D | Distribute visible windows |
+| Control+Option+O | Organize the front app's windows |
+| Control+Option+V | Fill an open 3x2 cell |
+| Control+Option+G | 4x4 grid placement |
+| Hyper+Y | Grid the visible windows by the front window's type |
+| Hyper+Space | Hyperspace window survey |
+| Hyper+G | In-place window tools |
+| Hyper+H | Window navigation hints |
+| Hyper+Z | Focus mode |
+| Hyper+X | Stage |
+
+Control+Option pointer controls are off by default. Choose Tile HUD or Spatial
+Lens in Settings to enable one of those placement modes.
+
+Spaces and layers:
+
+| Shortcut | Action |
+|----------|--------|
+| Control+Left / Right | Instant Space switch |
+| Command+Option+1–9 | Aim the layer in that pad slot; release to switch. 5 shows the current layer |
+| Command+Option+arrows | Move across the layer pad |
+| Command+Option+T | Add the front window to the active layer |
+| Command+Option+0 | Classic: every window back, as if Lattices were not running |
+| Command+Option+Z | Undo the last layer edit |
+
+Windows and panels:
+
+| Shortcut | Action |
+|----------|--------|
+| Control+Option+Space | Command bar: browse, search, and slash commands |
+| Hyper+1 | Workspace home |
+| Hyper+2 | Window bezel |
+| Hyper+3 | HUD |
+| Hyper+6 | Shortcuts settings |
+| Hyper+7 | Find the mouse |
+| Hyper+L | Overview |
+| Control+Command+M | Hands-off mode |
+| Command+Shift+A | Workspace assistant |
+| Command+Shift+L | Activity log |
+
+Voice Command and Search have no default binding. Assign one in
+Settings > Shortcuts.
+
+Inside tmux:
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+B  D | Detach from session |
+| Ctrl+B  X | Kill current pane |
+| Ctrl+B  Left/Right | Move between panes |
+| Ctrl+B  Z | Zoom pane (toggle) |
+| Ctrl+B  [ | Scroll mode |
+
+Hyper+L opens Studio on its Overview page; close it with Escape or `q` when the map owns keyboard
 focus, or use the window close button. Hyper+3 opens or dismisses the HUD and
 its miniature workspace map. The Scattered and Full HUD presets intentionally
 retain a faint, non-interactive ambient surface after dismissal. Neither UI is
@@ -528,23 +564,32 @@ More in the [Agent API reference](/docs/api#ocrsnapshot).
 - **Screen Recording** permission — required to capture window and display images
 - Granted via System Settings > Privacy & Security > Screen Recording
 
-## Local loopback services
+## Local services
 
-The menu bar process owns fixed loopback ports (see `LatticesLocalEndpoints`):
+The menu bar process hosts its services on private Unix sockets in
+`~/.lattices/run` (see `LatticesLocalEndpoints`). `LATTICES_RUNTIME_DIR`
+moves that directory for isolated tests.
 
-| Service | Port | Endpoint |
-|---------|------|----------|
-| Agent API / daemon | **9399** | `ws://127.0.0.1:9399` |
-| Voice runtime (Hudson Voice / Vox) | **9398** | `ws://127.0.0.1:9398` |
+| Service | Socket | Credential |
+|---------|--------|------------|
+| Agent API / daemon | `lattices.sock` | `lattices.token` |
+| Companion bridge | `companion.sock` | `lattices.token` |
+| Voice runtime | `voice.sock` | `voice.token` |
+| Speech | `speech.sock` | `speech.token` |
 
-Both start automatically when the app launches and stop when the app quits.
-Voice does not require an external `voxd` for normal operation.
+The sockets open when the app launches and close when it quits. Voice does
+not require an external `voxd` for normal operation.
+
+Each WebSocket service requires its token in the `x-lattices-token` header
+during the upgrade. `lats`, `daemonCall()` and the MCP server read the token
+for you. Loopback TCP (9399 for the daemon, 9398 for voice, 9397 for
+speech) is a compatibility switch, off by default; see
+[Private IPC and the gateway](/docs/concepts#private-ipc-and-the-gateway).
 
 ## Agent API server
 
-The menu bar app runs a WebSocket server on `ws://127.0.0.1:9399`.
-It starts automatically when the app launches and stops when the app
-quits.
+The menu bar app serves the agent API on `lattices.sock`. It starts when the
+app launches and stops when the app quits.
 
 ### Checking status
 
@@ -565,7 +610,7 @@ if (await isDaemonRunning()) {
 
 ### What it provides
 
-- 35+ RPC methods for reading windows, sessions, projects, spaces, layers,
+- RPC methods for reading windows, sessions, projects, spaces, layers,
   processes, terminals, and OCR. Also launching/killing sessions, tiling
   windows, switching layers, and managing tab groups.
 - 5 real-time events (`windows.changed`, `tmux.changed`, `processes.changed`,
@@ -576,9 +621,13 @@ if (await isDaemonRunning()) {
 
 ### Security
 
-The server binds to localhost only (`127.0.0.1:9399`). Not accessible
-from the network. No authentication, so any local process can connect.
-This is intentional — it's for local automation, not remote access.
+The socket directory is mode `0700` and the socket and token are mode
+`0600`, so only your user account can connect. The daemon also checks the
+connected peer's user id. Any program running as your user can read the
+token; this is an account boundary, not isolation between programs. The
+daemon is not reachable from the network. Remote access goes through the
+separate gateway (`lats gateway start --tailnet`) and its approved method
+grants.
 
 Full method list in the [Agent API reference](/docs/api).
 

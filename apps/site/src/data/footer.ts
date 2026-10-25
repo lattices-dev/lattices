@@ -21,6 +21,7 @@ export const footerColumns: FooterColumn[] = [
     title: 'Products',
     links: [
       ...productLinks.map(({ title, href }) => ({ label: title, href })),
+      { label: 'Lattices for Linux', href: '/linux' },
       { label: 'All products', href: '/products' },
     ],
   },
@@ -36,7 +37,7 @@ export const footerColumns: FooterColumn[] = [
       { label: 'Embedded SDK', href: '/lattices/docs/embedded-sdk' },
       { label: 'Action for agents', href: '/action/docs/agent-setup' },
       { label: `${docsProduct('blink').title} for agents`, href: docsProduct('blink').agent.guide },
-      { label: 'Speech for agents', href: '/speech/docs/agents' },
+      { label: 'Voice for agents', href: '/voice/docs/agents' },
       { label: 'llms.txt', href: '/llms.txt' },
       { label: 'AGENTS.md', href: '/AGENTS.md' },
     ],

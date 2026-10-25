@@ -32,9 +32,18 @@ final class LatticesCompanionBridgeServer: NSObject {
     private let requestQueue = DispatchQueue(label: "lattices.companion.admission", attributes: .concurrent)
     private let requestSlots = DispatchSemaphore(value: 16)
 
-    init(socketPath: String = LatticesLocalEndpoints.companionSocketPath, tokenURL: URL = LatticesLocalEndpoints.companionTokenURL) {
+    private let lockPath: String
+    private let legacyTokenURL: URL
+
+    /// The bridge admits with the shared `lattices.token`. It keeps the
+    /// `companion.token.lock` lease, so an older bridge and this one still
+    /// exclude each other during an upgrade.
+    init(socketPath: String = LatticesLocalEndpoints.companionSocketPath, tokenURL: URL = LatticesLocalEndpoints.agentTokenURL) {
         self.socketPath = socketPath
         self.tokenURL = tokenURL
+        let directory = tokenURL.deletingLastPathComponent()
+        legacyTokenURL = directory.appendingPathComponent("companion.token")
+        lockPath = directory.appendingPathComponent("companion.token.lock").path
         super.init()
     }
 
@@ -44,12 +53,14 @@ final class LatticesCompanionBridgeServer: NSObject {
         guard acceptSource == nil else { return }
         let diag = DiagnosticLog.shared
         do {
-            let lease = try PrivateLocalEndpoint(socketPath: socketPath, tokenURL: tokenURL)
+            let lease = try PrivateLocalEndpoint(socketPath: socketPath, tokenURL: tokenURL, lockPath: lockPath)
             serverFd = socket(AF_UNIX, SOCK_STREAM, 0)
             guard serverFd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
             guard PrivateLocalEndpoint.preventInheritance(serverFd) else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
             try lease.bindSocket(serverFd, path: socketPath)
-            token = try lease.publishToken(at: tokenURL)
+            // This lease excludes any older bridge, so companion.token is stale.
+            if legacyTokenURL != tokenURL { lease.removeLegacyToken(at: legacyTokenURL) }
+            token = try PrivateLocalEndpoint.currentToken(at: tokenURL)
             guard listen(serverFd, 8) == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
             endpointLease = lease
         } catch {
@@ -139,7 +150,8 @@ private extension LatticesCompanionBridgeServer {
             }
 
             let acceptedGeneration = generation
-            let admissionToken = token
+            let running = !token.isEmpty
+            let credential = tokenURL
             requestQueue.async { [weak self] in
                 guard let self else { close(clientFd); return }
                 defer { self.requestSlots.signal() }
@@ -147,6 +159,9 @@ private extension LatticesCompanionBridgeServer {
                     self.sendError(status: 400, message: "Invalid HTTP request", to: clientFd)
                     close(clientFd); return
                 }
+                // The shared credential is read at admission: the daemon
+                // rotates it when it starts, and replacing it revokes at once.
+                let admissionToken = running ? ((try? PrivateLocalEndpoint.currentToken(at: credential)) ?? "") : ""
                 guard LocalHTTPAdmission.allows(request.headers, token: admissionToken) else {
                     self.sendError(status: 403, message: "Local authentication required", to: clientFd)
                     close(clientFd); return

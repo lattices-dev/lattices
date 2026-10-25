@@ -191,7 +191,7 @@ const products: Product[] = [
   },
   {
     slug: 'speech',
-    name: 'Speech',
+    name: 'Voice',
     source: 'src/components/SpeechMark.tsx',
     viewBox: [0, 0, 20, 20],
     mark: (theme) => h(SpeechMark, { theme, size: 512 }),

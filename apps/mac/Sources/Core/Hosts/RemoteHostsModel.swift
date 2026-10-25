@@ -36,6 +36,8 @@ final class RemoteHostsModel: ObservableObject {
         var windows: [Window] = []
         var monitors: [MachineArrangementStore.Monitor] = []
         var still: NSImage?
+        /// One picture per monitor, by its position in `monitors`.
+        var thumbnails: [Int: NSImage] = [:]
         var stillAt: Date?
         /// Round trip of the last still, so a slow link shows itself.
         var stillMilliseconds: Int?
@@ -53,6 +55,8 @@ final class RemoteHostsModel: ObservableObject {
     private var refreshing: Set<String> = []
     private var dirty: Set<String> = []
     private var viewers = 0
+    /// Failed attempts since each host was last online, for the retry backoff.
+    private var retries: [String: Int] = [:]
 
     // MARK: - Lifecycle
 
@@ -68,6 +72,7 @@ final class RemoteHostsModel: ObservableObject {
         for connection in connections.values { connection.cancel() }
         connections.removeAll()
         dirty.removeAll()
+        retries.removeAll()
     }
 
     func reconnect(_ name: String) {
@@ -188,6 +193,7 @@ final class RemoteHostsModel: ObservableObject {
         let connection = RemoteHostConnection(address: host.address, port: host.port)
         connection.onReady = { [weak self] in
             guard let self, self.connections[name] === connection else { return }
+            self.retries[name] = nil
             self.update(name) { $0.status = .online }
             Task {
                 await self.describe(name)
@@ -203,9 +209,28 @@ final class RemoteHostsModel: ObservableObject {
             guard let self, self.connections[name] === connection else { return }
             self.connections.removeValue(forKey: name)
             self.update(name) { $0.status = .offline(reason ?? "Disconnected") }
+            self.retry(name)
         }
         connections[name] = connection
         connection.start()
+    }
+
+    /// A host that restarts or sleeps comes back on its own while the page is
+    /// open: 2 s, then doubling to a minute.
+    private func retry(_ name: String) {
+        let attempt = retries[name, default: 0]
+        retries[name] = attempt + 1
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(min(60, 2 << min(attempt, 5))))
+            guard let self, self.viewers > 0, self.connections[name] == nil else { return }
+            self.connect(name)
+        }
+    }
+
+    /// One call on a connected host, for actions the page takes on request.
+    func call(_ name: String, _ method: String, params: [String: Any]? = nil, timeout: TimeInterval = 10) async throws -> Any {
+        guard let connection = connections[name] else { throw RemoteHostConnection.Failure.remote("\(name) is not connected") }
+        return try await connection.call(method, params: params, timeout: timeout)
     }
 
     private func describe(_ name: String) async {
@@ -247,20 +272,26 @@ final class RemoteHostsModel: ObservableObject {
         guard connections[name] === connection,
               hosts.first(where: { $0.name == name })?.capabilities.contains("capture.still") == true else { return }
         let started = Date()
-        do {
-            let result = try await connection.call("capture.still", params: ["maxWidth": 1600, "quality": 70], timeout: 15) as? [String: Any]
-            guard connections[name] === connection,
-                  let encoded = result?["data"] as? String,
-                  let data = Data(base64Encoded: encoded),
-                  let image = NSImage(data: data) else { return }
-            let elapsed = Int(Date().timeIntervalSince(started) * 1000)
-            update(name) {
-                $0.still = image
-                $0.stillAt = Date()
-                $0.stillMilliseconds = elapsed
+        let count = max(1, hosts.first(where: { $0.name == name })?.monitors.count ?? 1)
+        var thumbnails: [Int: NSImage] = [:]
+        for index in 0..<count {
+            do {
+                let result = try await connection.call("capture.still", params: ["displayIndex": index, "maxWidth": 1280, "quality": 68], timeout: 15) as? [String: Any]
+                guard connections[name] === connection else { return }
+                if let encoded = result?["data"] as? String, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+                    thumbnails[index] = image
+                }
+            } catch {
+                DiagnosticLog.shared.warn("Hosts: still \(index) from \(name) failed — \(error.localizedDescription)")
             }
-        } catch {
-            DiagnosticLog.shared.warn("Hosts: still from \(name) failed — \(error.localizedDescription)")
+        }
+        guard !thumbnails.isEmpty else { return }
+        let elapsed = Int(Date().timeIntervalSince(started) * 1000) / thumbnails.count
+        update(name) {
+            $0.thumbnails = thumbnails
+            $0.still = thumbnails[0] ?? thumbnails.values.first
+            $0.stillAt = Date()
+            $0.stillMilliseconds = elapsed
         }
     }
 
