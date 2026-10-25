@@ -505,7 +505,7 @@
       "aliases": [
         "/docs/remote-streaming"
       ],
-      "navGroup": "Reference",
+      "navGroup": "Agents and integrations",
       "agent": true,
       "rawAliases": [
         "/docs/markdown/remote-streaming.md",
