@@ -37,7 +37,9 @@ jobs:
         run: bun run check:types
 
       - name: Package npm dry run
-        run: npm publish --dry-run --access public
+        run: |
+          npm publish --dry-run --access public
+          bun run test:package
 
       - name: Build unsigned macOS DMG
         run: LATTICES_SKIP_SIGN=1 LATTICES_SKIP_NOTARIZE=1 bash tools/release/build-dmg.sh

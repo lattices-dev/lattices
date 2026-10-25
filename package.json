@@ -1,6 +1,6 @@
 {
   "name": "@lattices/lattices",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Find any project's windows. Put them in place, for you or your agent. A window manager for macOS and Linux that knows about projects, with a CLI and a local API.",
   "homepage": "https://lattices.dev",
   "bugs": {
@@ -65,7 +65,8 @@
     "check": "bun run check:types && bun run test && bun run test:swift && bun run test:app",
     "check:types": "tsc --noEmit",
     "check:app": "env CLANG_MODULE_CACHE_PATH=/tmp/lattices-clang-cache SWIFTPM_TESTS_MODULECACHE=/tmp/lattices-swiftpm-cache swift build --package-path apps/mac",
-    "test": "bun run test:cli && bun run test:unit",
+    "test": "bun run test:cli && bun run test:unit && bun run test:mcp",
+    "test:mcp": "bun test ./bin/mcp/*.test.ts ./bin/mcp/toolsets/*/*.test.ts",
     "test:linux-app": "bun apps/linux/check.ts",
     "test:cli": "node --experimental-strip-types --test ./tests/cli.test.mjs ./tests/cli-subprocess.test.mjs ./tests/standalone-ipc-clients.test.mjs",
     "test:unit": "bun test ./tests/*.test.ts ./apps/linux/test",
@@ -82,7 +83,8 @@
     "prepack": "bash ./bin/lattices-build package",
     "linux:app": "bun apps/linux/main.ts",
     "linux:install": "bun apps/linux/install.ts",
-    "test:linux-install": "bun test ./tests/linux-install.test.ts"
+    "test:linux-install": "bun test ./tests/linux-install.test.ts",
+    "test:package": "bun tools/release/verify-mcp-package.ts"
   },
   "type": "module",
   "os": ["darwin"],
@@ -101,7 +103,9 @@
     "assets/AppIcon.icns",
     "assets/Assets.car",
     "docs",
-    "tools/release/companion-signing.json"
+    "tools/release/companion-signing.json",
+    "products/action/packages/chrome-companion/scripts/chrome-cookies.mjs",
+    "products/action/packages/chrome-companion/scripts/action-profiles.mjs"
   ],
   "devDependencies": {
     "bun-types": "^1.3.10",

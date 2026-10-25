@@ -82,7 +82,9 @@ jobs:
 
       - name: Package dry run
         if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
-        run: npm publish --dry-run --access public
+        run: |
+          npm publish --dry-run --access public
+          bun run test:package
 
       - name: Verify npm credentials
         if: ${{ github.event_name == 'push' || inputs.publish }}
@@ -138,6 +140,7 @@ jobs:
           # Publish the same payload under all supported names. Never replace
           # legacy packages with wrappers: installs, imports and startup paths stay valid.
           trap 'npm pkg set name=@lattices/lattices; hdiutil detach "${mount_dir:-/nonexistent}" >/dev/null 2>&1 || true' EXIT
+          bun run test:package
           for package in @lattices/lattices @arach/lattices @lattices/cli; do
             npm pkg set "name=$package"
             npm publish --ignore-scripts --provenance --access public
