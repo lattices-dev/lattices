@@ -33,7 +33,7 @@ final class LayerChordMonitor {
     private var subscription: AnyCancellable?
 
     // Main thread only.
-    private var holding = false
+    private var chord = LayerChordState()
     private var flipped = false
     private var pending: DispatchWorkItem?
 
@@ -51,9 +51,19 @@ final class LayerChordMonitor {
 
     // MARK: Chord
 
+    private func modifiersChanged(_ flags: CGEventFlags) {
+        let preservesDecision = LayerAim.shared.ownsShortcutDecision
+        let change = chord.update(flags, preservingShortcutDecision: preservesDecision)
+        if preservesDecision { clearTracking() }
+        switch change {
+        case .pressed: pressed()
+        case .released: released()
+        case .cancelled: cancelled()
+        case nil: break
+        }
+    }
+
     private func pressed() {
-        guard !holding else { return }
-        holding = true
         if LayerAim.shared.resume() {
             flipped = true
             LayerPreview.shared.arm()
@@ -64,7 +74,9 @@ final class LayerChordMonitor {
         // Space works from the first moment, not once the pad shows.
         LayerPreview.shared.arm()
         let show = DispatchWorkItem { [weak self] in
-            guard let self, self.holding, !self.flipped, !LayerPreview.shared.holdsKeys() else { return }
+            guard let self else { return }
+            if LayerAim.shared.ownsShortcutDecision { self.clearTracking(); return }
+            guard self.chord.holding, !self.flipped, !LayerPreview.shared.holdsKeys() else { return }
             HotkeyBootstrap.showCurrentLayer()
         }
         pending = show
@@ -72,8 +84,6 @@ final class LayerChordMonitor {
     }
 
     private func released() {
-        guard holding else { return }
-        holding = false
         pending?.cancel()
         pending = nil
         // Asking keeps the pad up until Return or Escape.
@@ -81,19 +91,35 @@ final class LayerChordMonitor {
         LayerBezel.shared.release(after: flipped ? Self.lingerAfterFlip : 0)
     }
 
-    private func key(_ code: Int64) {
-        guard holding else { return }
+    private func clearTracking() {
+        chord.cancel()
+        flipped = false
+        pending?.cancel()
+        pending = nil
+    }
+
+    private func cancelled() {
+        clearTracking()
+        LayerAim.shared.cancel()
+        LayerPreview.shared.dismiss()
+        LayerBezel.shared.release(after: 0)
+    }
+
+    private func key(_ code: Int64, flags: CGEventFlags) {
+        if LayerAim.shared.ownsShortcutDecision { clearTracking(); return }
+        guard chord.holding else { return }
+        // A missed flagsChanged must not let a tiling key extend the aim.
+        guard LayerChordState.mode(flags) == .browse else {
+            cancelled()
+            return
+        }
         if Self.arrowsAndDigits.contains(code) {
             // The hotkey shows the bezel itself; don't show it twice.
             flipped = true
             pending?.cancel()
         } else if !Self.layerKeys.contains(code) {
             // Someone else's ⌘⌥ shortcut, or Escape: nothing moves.
-            LayerAim.shared.cancel()
-            holding = false
-            pending?.cancel()
-            pending = nil
-            LayerBezel.shared.release(after: 0)
+            cancelled()
         }
     }
 
@@ -131,16 +157,56 @@ final class LayerChordMonitor {
             if let tap = monitor.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
         case .flagsChanged:
             let flags = event.flags
-            // Exactly ⌘⌥: the Caps-to-Hyper chord carries all four.
-            let chord = flags.contains(.maskCommand) && flags.contains(.maskAlternate)
-                && !flags.contains(.maskControl) && !flags.contains(.maskShift)
-            DispatchQueue.main.async { chord ? monitor.pressed() : monitor.released() }
+            DispatchQueue.main.async { monitor.modifiersChanged(flags) }
         case .keyDown:
             let code = event.getIntegerValueField(.keyboardEventKeycode)
-            DispatchQueue.main.async { monitor.key(code) }
+            let flags = event.flags
+            DispatchQueue.main.async { monitor.key(code, flags: flags) }
         default:
             break
         }
         return Unmanaged.passUnretained(event)
     }
+}
+
+/// The layer chord owns exactly ⌘⌥. Adding Shift hands arrows to tiling;
+/// adding Control hands them to another shortcut. Neither is a release
+/// that can confirm a layer switch.
+struct LayerChordState {
+    enum Mode: Equatable { case browse, cancel, release }
+    enum Change: Equatable { case pressed, cancelled, released }
+
+    private(set) var holding = false
+
+    static func hasBaseModifiers(_ flags: CGEventFlags) -> Bool {
+        flags.contains(.maskCommand) && flags.contains(.maskAlternate)
+    }
+
+    static func mode(_ flags: CGEventFlags) -> Mode {
+        if !flags.intersection([.maskShift, .maskControl]).isEmpty { return .cancel }
+        return hasBaseModifiers(flags) ? .browse : .release
+    }
+
+    mutating func update(_ flags: CGEventFlags, preservingShortcutDecision: Bool = false) -> Change? {
+        // Carbon can dispatch a custom action before an earlier modifier
+        // event reaches main. Its decision owns the bezel until resolved.
+        if preservingShortcutDecision { holding = false; return nil }
+        switch Self.mode(flags) {
+        case .browse:
+            guard !holding else { return nil }
+            holding = true
+            return .pressed
+        case .cancel:
+            // A frozen preview can still be open after the chord came up.
+            guard holding || Self.hasBaseModifiers(flags) else { return nil }
+            holding = false
+            return .cancelled
+        case .release:
+            guard holding else { return nil }
+            holding = false
+            return .released
+        }
+    }
+
+    mutating func cancel() { holding = false }
 }

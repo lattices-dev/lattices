@@ -133,25 +133,26 @@ struct DeskCanvas: View {
                                    onlyShowing: m.hosts.count == 1 ? inputs.showing(m.key, machine: m.hosts[0]) : nil)
         let picture = current.flatMap { image($0, m.key) }
         let outlined = highlighted.map { h in m.hosts.contains { MonitorInputs.same($0, h) } } ?? false
-        return ZStack {
-            Rectangle().fill(MachineTone.tile)
-            if let picture {
-                Image(nsImage: picture).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+        // Tiles touch, so a host's outline stays inside the tile's own border.
+        return MachineMonitorFrame(size: r.size,
+                                   edge: outlined ? Palette.text.opacity(0.85) : MachineTone.tileEdge,
+                                   stroke: StrokeStyle(lineWidth: outlined ? 1.5 : 1)) {
+            ZStack {
+                Rectangle().fill(MachineTone.tile)
+                if let picture {
+                    Image(nsImage: picture).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                }
             }
         }
-        .frame(width: r.width, height: r.height)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-        // Tiles touch, so a host's outline stays inside the tile's own border.
-        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .strokeBorder(outlined ? Palette.text.opacity(0.85) : MachineTone.tileEdge, lineWidth: outlined ? 1.5 : 1))
         .overlay(alignment: .bottomLeading) {
             if r.width > 70 && r.height > 32 {
-                Text(m.model ?? m.key).font(Typo.body(11)).foregroundStyle(MachineTone.label).lineLimit(1).padding(6)
+                Text(m.model ?? m.key).font(Typo.body(11)).foregroundStyle(MachineTone.label).lineLimit(1)
+                    .padding(.horizontal, 7).padding(.bottom, 11)
                     .allowsHitTesting(false)
             }
         }
         .overlay(alignment: .topLeading) {
-            if r.width > 90 && r.height > 40 { strip(m, current: current).padding(5) }
+            if r.width > 90 && r.height > 40 { strip(m, current: current).padding(7) }
         }
         .offset(x: r.minX, y: r.minY)
         .gesture(DragGesture(minimumDistance: 3).updating($gesturing) { _, s, _ in s = true }.onChanged { value in

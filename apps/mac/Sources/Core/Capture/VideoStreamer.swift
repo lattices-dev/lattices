@@ -78,6 +78,166 @@ enum VideoStreamMath {
     }
 }
 
+/// Motion is decided by the capturing host, independently of ACK progress.
+/// Silence alone is not evidence: ScreenCaptureKit may be stalled or suspended.
+struct VideoCaptureActivity: Equatable {
+    enum State: String { case active, idle, unknown }
+
+    static let settleInterval: TimeInterval = 1
+    private(set) var state: State = .unknown
+    private var lastChangeAt: TimeInterval?
+    private var hasUnchangedEvidence = false
+
+    mutating func changed(now: TimeInterval) {
+        state = .active
+        lastChangeAt = now
+        hasUnchangedEvidence = false
+    }
+
+    mutating func unchanged(now: TimeInterval) {
+        guard lastChangeAt != nil else { return }
+        hasUnchangedEvidence = true
+        advance(now: now)
+    }
+
+    mutating func advance(now: TimeInterval) {
+        guard hasUnchangedEvidence, let lastChangeAt,
+              now - lastChangeAt >= Self.settleInterval else { return }
+        state = .idle
+    }
+
+    mutating func unavailable() {
+        state = .unknown
+        lastChangeAt = nil
+        hasUnchangedEvidence = false
+    }
+
+    static func report(state: State, fps: Int, revision: Int) -> JSON {
+        .object([
+            "state": .string(state.rawValue), "source": .string("host"), "revision": .int(revision),
+            "activeFPS": .int(fps), "idleFPS": .int(0),
+        ])
+    }
+}
+
+/// An exact copy of the visible pixels, not a fingerprint or a sampled grid.
+/// ScreenCaptureKit dirty rectangles include redraws, which can leave identical
+/// pixels. Comparing both NV12 planes avoids encoding those duplicate frames.
+/// Row padding is deliberately excluded: it is not part of the picture.
+struct VideoPixelSnapshot {
+    private struct Plane {
+        var rowBytes: Int
+        var height: Int
+        var bytes: Data
+    }
+
+    private var format: OSType?
+    private var planes: [Plane] = []
+
+    mutating func reset() { format = nil; planes = [] }
+
+    mutating func hasChanged(_ pixels: CVPixelBuffer) -> Bool {
+        guard CVPixelBufferLockBaseAddress(pixels, .readOnly) == kCVReturnSuccess else {
+            reset()
+            return true
+        }
+        defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+
+        let pixelFormat = CVPixelBufferGetPixelFormatType(pixels)
+        var source: [(base: UnsafeRawPointer, stride: Int, rowBytes: Int, height: Int)] = []
+        if (pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+            pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange),
+           CVPixelBufferGetPlaneCount(pixels) == 2 {
+            for index in 0..<2 {
+                guard let base = CVPixelBufferGetBaseAddressOfPlane(pixels, index) else {
+                    reset()
+                    return true
+                }
+                source.append((UnsafeRawPointer(base), CVPixelBufferGetBytesPerRowOfPlane(pixels, index),
+                               CVPixelBufferGetWidthOfPlane(pixels, index) * (index == 0 ? 1 : 2),
+                               CVPixelBufferGetHeightOfPlane(pixels, index)))
+            }
+        } else if pixelFormat == kCVPixelFormatType_32BGRA,
+                  let base = CVPixelBufferGetBaseAddress(pixels) {
+            source.append((UnsafeRawPointer(base), CVPixelBufferGetBytesPerRow(pixels),
+                           CVPixelBufferGetWidth(pixels) * 4, CVPixelBufferGetHeight(pixels)))
+        } else {
+            // An unknown layout must never hide an update.
+            reset()
+            return true
+        }
+        guard source.allSatisfy({ $0.rowBytes > 0 && $0.height > 0 && $0.stride >= $0.rowBytes }) else {
+            reset()
+            return true
+        }
+
+        var changed = format != pixelFormat || planes.count != source.count
+        if !changed {
+            for (old, current) in zip(planes, source) {
+                guard old.rowBytes == current.rowBytes, old.height == current.height else {
+                    changed = true
+                    break
+                }
+                let equal = old.bytes.withUnsafeBytes { previous in
+                    (0..<current.height).allSatisfy { row in
+                        memcmp(previous.baseAddress!.advanced(by: row * current.rowBytes),
+                               current.base.advanced(by: row * current.stride), current.rowBytes) == 0
+                    }
+                }
+                if !equal { changed = true; break }
+            }
+        }
+        guard changed else { return false }
+
+        planes = source.map { current in
+            var bytes = Data(count: current.rowBytes * current.height)
+            bytes.withUnsafeMutableBytes { destination in
+                for row in 0..<current.height {
+                    memcpy(destination.baseAddress!.advanced(by: row * current.rowBytes),
+                           current.base.advanced(by: row * current.stride), current.rowBytes)
+                }
+            }
+            return Plane(rowBytes: current.rowBytes, height: current.height, bytes: bytes)
+        }
+        format = pixelFormat
+        return true
+    }
+}
+
+/// A captured update stays owed until the encoder accepts an attempt. If that
+/// attempt fails, keep it owed even when the source becomes completely static.
+/// The backoff is driven by capture/ACK/health callbacks, never a retry loop.
+struct VideoFrameFeed {
+    static let initialRetryDelay: TimeInterval = 0.1
+    static let maximumRetryDelay: TimeInterval = 1
+    private(set) var pendingFresh = false
+    private(set) var retryAt: TimeInterval?
+    private var nextRetryDelay = Self.initialRetryDelay
+
+    mutating func captured(changed: Bool) {
+        if changed { pendingFresh = true }
+    }
+
+    mutating func request() { pendingFresh = true }
+
+    mutating func take(now: TimeInterval) -> Bool {
+        guard pendingFresh, retryAt.map({ now >= $0 }) ?? true else { return false }
+        pendingFresh = false
+        return true
+    }
+
+    mutating func failed(now: TimeInterval) {
+        pendingFresh = true
+        retryAt = now + nextRetryDelay
+        nextRetryDelay = min(Self.maximumRetryDelay, nextRetryDelay * 2)
+    }
+
+    mutating func succeeded() {
+        retryAt = nil
+        nextRetryDelay = Self.initialRetryDelay
+    }
+}
+
 /// Flow control for one stream: at most `limit` frames encoding or sent but
 /// unacked. Encoded frames are never dropped, so the window gates what is fed
 /// to the encoder.
@@ -217,6 +377,7 @@ final class VideoStreamer {
             "height": .int(stream.height),
             "frame": .object(["x": .double(plan.frame.minX), "y": .double(plan.frame.minY), "w": .double(plan.frame.width), "h": .double(plan.frame.height)]),
             "display": plan.display,
+            "activity": stream.activityInfo,
         ])
     }
 
@@ -225,7 +386,7 @@ final class VideoStreamer {
         guard let stream = try? owned(params) else { return .object(["ok": .bool(false)]) }
         guard let seq = params?["seq"]?.intValue, seq >= 0, seq <= Int(UInt32.max) else { throw RouterError.missingParam("seq") }
         stream.ack(UInt32(seq))
-        return .object(["ok": .bool(true)])
+        return .object(["ok": .bool(true), "activity": stream.activityInfo])
     }
 
     func keyframe(params: JSON?) throws -> JSON {
@@ -365,10 +526,17 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     private var session: VTCompressionSession?
     private var sessionSize = (width: 0, height: 0)
     private var flow = VideoFlowWindow()
+    private var activity = VideoCaptureActivity()
+    private var pixelSnapshot = VideoPixelSnapshot()
+    // Request handling must not wait for this stream's capture/encoder/socket
+    // queue just to read its state. ACK processing remains asynchronous.
+    private let activityLock = NSLock()
+    private var reportedActivity: VideoCaptureActivity.State = .unknown
+    private var reportedActivityRevision = 0
     private var frame: CGRect
     private var configuredPoints: CGSize
     private var latest: (buffer: CVPixelBuffer, frame: CGRect)?
-    private var pendingFresh = false
+    private var frameFeed = VideoFrameFeed()
     private var live = false
     private var ended = false
     private var forceKeyframe = true
@@ -429,13 +597,34 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
             guard !ended else { return }
             live = true
             forceKeyframe = true
+            reportActivity(force: true)
             feedLatest()
         }
     }
 
+    var activityInfo: JSON {
+        activityLock.lock()
+        let state = reportedActivity
+        let revision = reportedActivityRevision
+        activityLock.unlock()
+        return VideoCaptureActivity.report(state: state, fps: fps, revision: revision)
+    }
+
+    private func reportActivity(force: Bool = false) {
+        activityLock.lock()
+        let changed = reportedActivity != activity.state
+        if changed { reportedActivityRevision += 1 }
+        reportedActivity = activity.state
+        activityLock.unlock()
+        guard live, changed || force else { return }
+        owner.sendEvent(DaemonEvent(event: "capture.stream.activity", data: .object([
+            "streamId": .int(Int(id)), "activity": activityInfo,
+        ])))
+    }
+
     func ack(_ seq: UInt32) {
         queue.async { [self] in
-            guard !ended, flow.ack(seq, now: Self.now()), pendingFresh else { return }
+            guard !ended, flow.ack(seq, now: Self.now()), frameFeed.pendingFresh else { return }
             feedLatest()
         }
     }
@@ -445,7 +634,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         queue.async { [self] in
             guard !ended else { return }
             forceKeyframe = true
-            pendingFresh = true
+            frameFeed.request()
             feedLatest()
         }
     }
@@ -458,6 +647,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
             watchdog?.cancel()
             watchdog = nil
             latest = nil
+            pixelSnapshot.reset()
             if let capture {
                 Task { try? await capture.stopCapture() }
             }
@@ -479,14 +669,41 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, !ended, sampleBuffer.isValid,
               let info = (CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
-              let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
-              let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+              let raw = info[.status] as? Int, let status = SCFrameStatus(rawValue: raw) else { return }
+        let now = Self.now()
+        switch status {
+        case .idle:
+            // This is explicit host evidence that the display did not change.
+            activity.unchanged(now: now)
+            reportActivity()
+            return
+        case .blank, .suspended, .stopped:
+            activity.unavailable()
+            pixelSnapshot.reset()
+            reportActivity()
+            return
+        case .complete:
+            break
+        default:
+            return
+        }
+        guard let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let previousFrame = frame
         if windowID != nil, let screenRect = info[.screenRect].flatMap({ Self.rect($0 as CFTypeRef) }), !screenRect.isEmpty {
             frame = screenRect
             followWindowSize(screenRect.size)
         }
-        latest = (pixels, frame)
-        pendingFresh = true
+        let pixelsChanged = pixelSnapshot.hasChanged(pixels)
+        let changed = pixelsChanged || previousFrame != frame
+        frameFeed.captured(changed: changed)
+        if changed {
+            activity.changed(now: now)
+            latest = (pixels, frame)
+        } else {
+            activity.unchanged(now: now)
+            // A duplicate must not erase a changed frame waiting for an ACK.
+        }
+        reportActivity()
         feedLatest()
     }
 
@@ -512,6 +729,8 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     private func checkHealth() {
         guard !ended else { return }
         let now = Self.now()
+        activity.advance(now: now)
+        reportActivity()
         if flow.timedOut(now: now) {
             end(reason: "ack-timeout", notify: true)
             return
@@ -519,15 +738,19 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         if let windowID, now - lastWindowCheck >= 1 {
             lastWindowCheck = now
             let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]] ?? []
-            if list.isEmpty { end(reason: "window-closed", notify: true) }
+            if list.isEmpty {
+                end(reason: "window-closed", notify: true)
+                return
+            }
         }
+        // A failed encode still needs a retry if the screen is now static.
+        feedLatest()
     }
 
     // MARK: Encode
 
     private func feedLatest() {
-        guard live, !ended, pendingFresh, flow.canFeed, let latest else { return }
-        pendingFresh = false
+        guard live, !ended, flow.canFeed, let latest, frameFeed.take(now: Self.now()) else { return }
         encode(latest.buffer, frame: latest.frame)
     }
 
@@ -561,24 +784,28 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
             presentationTimeStamp: CMTime(value: CMTimeValue(pts), timescale: 1_000_000),
             duration: .invalid, frameProperties: properties, infoFlagsOut: nil
         ) { [weak self] status, _, sample in
-            self?.queue.async { self?.emit(status: status, sample: sample, frame: frame, forced: keyframe) }
+            self?.queue.async { self?.emit(status: status, sample: sample, frame: frame) }
         }
         if status != noErr {
             flow.dropped()
-            if keyframe { forceKeyframe = true }
+            frameFeed.failed(now: Self.now())
+            forceKeyframe = true
             DiagnosticLog.shared.warn("VideoStreamer: encode failed \(status)")
         }
     }
 
-    private func emit(status: OSStatus, sample: CMSampleBuffer?, frame: CGRect, forced: Bool) {
+    private func emit(status: OSStatus, sample: CMSampleBuffer?, frame: CGRect) {
         guard !ended else { return }
         guard status == noErr, let sample, CMSampleBufferDataIsReady(sample),
               let encoded = Self.encodedFrame(sample) else {
             flow.dropped()
-            if forced { forceKeyframe = true; pendingFresh = true }
-            feedLatest()
+            frameFeed.failed(now: Self.now())
+            // A missing access unit may break inter-frame references. Recover
+            // with an IDR, including when the failed attempt was a P-frame.
+            forceKeyframe = true
             return
         }
+        frameFeed.succeeded()
         let seq = flow.emitted(now: Self.now())
         let message = RemoteVideoFrame(
             streamID: id, seq: seq, keyframe: encoded.keyframe, codec: .h264, pts: encoded.pts,

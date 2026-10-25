@@ -198,14 +198,9 @@ struct CheatSheetView: View {
         VStack(alignment: .leading, spacing: 10) {
             columnHeader("Tiling")
 
-            // Modifier prefix
-            HStack(spacing: 3) {
-                keyBadge("Ctrl")
-                keyBadge("Option")
-                Text("+")
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textMuted)
-            }
+            Text("Add Shift to the layer arrows to tile.")
+                .font(Typo.caption(10))
+                .foregroundColor(Palette.textMuted)
 
             // 3x3 grid
             VStack(spacing: 2) {
@@ -407,12 +402,14 @@ struct CheatSheetView: View {
 
     private func tileCell(action: HotkeyAction, label: String) -> some View {
         let binding = hotkeyStore.bindings[action]
-        let badgeText = binding?.displayParts.last ?? ""
+        let badgeText = binding?.symbolicDisplay ?? ""
         let isHovered = hoveredAction == action
 
         return VStack(spacing: 2) {
             Text(badgeText)
                 .font(Typo.geistMonoBold(12))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .foregroundColor(isHovered ? Color.blue : Palette.text)
             Text(label)
                 .font(Typo.caption(8))

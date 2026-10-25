@@ -4,11 +4,13 @@
 // through wlr-screencopy and writes a raw Annex B stream to stdout; this file
 // cuts it into access units and packs each into the wire header.
 //
-// Flow control: an external encoder can't skip capture, so at 4 unacked
-// frames (or a backed-up socket) frames are dropped until the next IDR. The
-// encoder's keyint brings one within ~2 s; a stream still waiting after a
-// second restarts the encoder, whose first frame is an IDR. Restarting is
-// also the only way to honour capture.stream.keyframe.
+// Flow control: the ACK window holds 200 ms of frames at the requested rate,
+// with a minimum of 4. An external encoder can't skip capture, so short bursts
+// wait in a queue bounded by frames, bytes and 200 ms
+// of age. Only overflowing that queue breaks the decode chain and drops frames
+// until the next IDR. The encoder's keyint brings one within ~2 s; a stream
+// still waiting after a second restarts the encoder, whose first frame is an
+// IDR. Restarting is also the only way to honour capture.stream.keyframe.
 //
 // wf-recorder runs with -D: on Hyprland, damage-driven capture returns no
 // picture at all until the screen changes, so a still screen would never show
@@ -35,6 +37,7 @@ const QUIET_MS = 8;
 const RESTART_SPACING_MS = 2000;
 const WINDOW_CHECK_MS = 2000;
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+const MAX_PENDING_MS = 200;
 const MAX_STREAMS_PER_CONNECTION = 4;
 const VAAPI_DEVICE = "/dev/dri/renderD128";
 
@@ -413,8 +416,13 @@ export function encoderCommand(o: EncoderOptions): { command: string; args: stri
     // so scaling is scale_vaapi on the GPU (its README's -F example is scale_vaapi).
     args.push("-c", "h264_vaapi", "-d", o.device ?? VAAPI_DEVICE, "-F", `scale_vaapi=w=${o.width}:h=${o.height}:format=nv12`);
   } else {
+    // wf-recorder marks its encoder full-range, but the scale filter otherwise
+    // converts RGB to limited-range YUV (black 16, white 235). Keep conversion
+    // and H.264 color metadata consistent so desktop contrast survives decoding.
+    // Scaling changes the YUV matrix, not the SDR desktop's sRGB transfer curve.
     args.push(
-      "-c", "libx264", "-x", "yuv420p", "-F", `scale=${o.width}:${o.height}`,
+      "-c", "libx264", "-x", "yuv420p", "-F", `scale=${o.width}:${o.height}:in_range=full:out_range=full:out_color_matrix=bt709`,
+      "-p", "color_range=pc", "-p", "colorspace=bt709", "-p", "color_primaries=bt709", "-p", "color_trc=iec61966-2-1",
       "-p", "preset=ultrafast", "-p", "tune=zerolatency",
       "-p", `maxrate=${bitrate}`, "-p", `bufsize=${Math.round(bitrate / 2)}`,
     );
@@ -473,14 +481,16 @@ export const defaultStreamDeps: StreamDeps = {
   windowAlive: async (wid) => (await hypr.clients()).some((c) => c.mapped && desktop.widFor(c) === wid),
   // Opt-in: on Archie (AMD, wf-recorder 0.6) h264_vaapi writes nothing and never exits.
   vaapiDevice: () => process.env.LATTICES_STREAM_ENCODER === "vaapi" && existsSync(VAAPI_DEVICE) ? VAAPI_DEVICE : null,
-  tickMs: 250,
+  // Drain recovered sockets before the short pending-frame deadline expires.
+  tickMs: 50,
   quietMs: QUIET_MS,
 };
 
 let nextStreamId = 1;
 
 export class StreamSession {
-  readonly flow = new FlowControl();
+  readonly flow: FlowControl;
+  private readonly pendingFrameLimit: number;
   encoder: EncoderKind;
   private proc: EncoderProcess | null = null;
   private generation = 0;
@@ -493,6 +503,8 @@ export class StreamSession {
   private lastWindowCheck = 0;
   private stderrTail = "";
   private timer: ReturnType<typeof setInterval> | null = null;
+  private pending: { bytes: Uint8Array; keyframe: boolean; at: number }[] = [];
+  private pendingBytes = 0;
   stopped = false;
 
   constructor(
@@ -505,6 +517,11 @@ export class StreamSession {
     private deps: StreamDeps,
     private onEnd: (session: StreamSession) => void,
   ) {
+    this.pendingFrameLimit = Math.max(1, Math.ceil(fps * MAX_PENDING_MS / 1000));
+    // Four in flight would cap 60 fps at an ACK round trip below 67 ms.
+    // Use the pending queue's nominal frame budget (at most 12
+    // in flight at the registry's 60 fps limit), without retaining sent bytes.
+    this.flow = new FlowControl(Math.max(ACK_WINDOW, this.pendingFrameLimit));
     this.encoder = deps.vaapiDevice() ? "vaapi" : "software";
   }
 
@@ -525,6 +542,8 @@ export class StreamSession {
     const generation = ++this.generation;
     this.framesThisProcess = 0;
     this.stderrTail = "";
+    this.clearPending();
+    this.flow.dropping = true;
     const encoder = this.encoder;
     const proc = this.deps.spawn(this.command());
     this.proc = proc;
@@ -583,26 +602,60 @@ export class StreamSession {
     const now = this.deps.now();
     const parameterSets = au.keyframe ? [...this.sps, ...this.pps] : [];
     if (au.keyframe && (!this.sps.length || !this.pps.length)) return;
-    if (!this.flow.admit(au.keyframe, this.sink.buffered() > MAX_BUFFERED_BYTES)) {
+    this.drain(now);
+    // A queued IDR also starts a valid chain, even before its first send.
+    if (this.flow.dropping && this.pending.length === 0 && !au.keyframe) {
       this.wantKeyframeSince ??= now;
       return;
     }
-    const seq = this.flow.sent(now);
+    const byteLength = HEADER_SIZE + (parameterSets.length ? 2 + parameterSets.reduce((n, s) => n + 2 + s.length, 0) : 0)
+      + picture.reduce((n, s) => n + 4 + s.length, 0);
+    if (this.pending.length >= this.pendingFrameLimit || this.pendingBytes + byteLength > MAX_BUFFERED_BYTES) {
+      this.breakChain(now);
+      // A fresh IDR can replace the discarded chain; a dependent frame cannot.
+      if (!au.keyframe || byteLength > MAX_BUFFERED_BYTES) return;
+    }
     const bytes = packFrame({
-      streamId: this.id, seq, keyframe: au.keyframe, pts: this.deps.pts(),
+      streamId: this.id, seq: 0, keyframe: au.keyframe, pts: this.deps.pts(),
       width: this.coded?.width ?? this.width, height: this.coded?.height ?? this.height,
       frame: this.target.frame, parameterSets, nals: picture,
     });
-    if (this.sink.send(bytes) === 0) {
-      this.flow.dropping = true;
-      this.wantKeyframeSince ??= now;
-      return;
+    this.pending.push({ bytes, keyframe: au.keyframe, at: now });
+    this.pendingBytes += bytes.byteLength;
+    this.drain(now);
+  }
+
+  /** Preserve encoded reference order across short ACK/socket delays. */
+  private drain(now: number) {
+    if (this.pending.length && now - this.pending[0].at > MAX_PENDING_MS) {
+      this.breakChain(now);
     }
-    if (au.keyframe) this.wantKeyframeSince = null;
+    while (this.pending.length && this.flow.inFlight < this.flow.window && this.sink.buffered() <= MAX_BUFFERED_BYTES) {
+      const frame = this.pending.shift()!;
+      this.pendingBytes -= frame.bytes.byteLength;
+      if (!this.flow.admit(frame.keyframe)) { this.breakChain(now); return; }
+      const seq = this.flow.sent(now);
+      new DataView(frame.bytes.buffer, frame.bytes.byteOffset).setUint32(8, seq);
+      if (this.sink.send(frame.bytes) === 0) { this.breakChain(now); return; }
+      if (frame.keyframe) this.wantKeyframeSince = null;
+    }
+  }
+
+  private clearPending() {
+    this.pending = [];
+    this.pendingBytes = 0;
+  }
+
+  private breakChain(now: number) {
+    this.clearPending();
+    this.flow.dropping = true;
+    this.wantKeyframeSince ??= now;
   }
 
   ack(seq: number) {
-    this.flow.ack(seq, this.deps.now());
+    const now = this.deps.now();
+    this.flow.ack(seq, now);
+    if (!this.stopped) this.drain(now);
   }
 
   requestKeyframe() {
@@ -613,6 +666,7 @@ export class StreamSession {
     if (this.stopped) return;
     const now = this.deps.now();
     if (this.flow.timedOut(now)) return this.end("ack-timeout");
+    this.drain(now);
     if (this.wantKeyframeSince !== null && now - this.wantKeyframeSince >= KEYFRAME_WAIT_MS
       && now - this.lastRestart >= RESTART_SPACING_MS && this.flow.inFlight < this.flow.window) {
       this.restart(now);
@@ -636,6 +690,7 @@ export class StreamSession {
   stop() {
     if (this.stopped) return;
     this.stopped = true;
+    this.clearPending();
     if (this.timer) clearInterval(this.timer);
     if (this.proc) kill(this.proc);
     this.proc = null;

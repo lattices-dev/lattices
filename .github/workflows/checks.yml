@@ -41,6 +41,17 @@ jobs:
       - name: Test CLI and source fixtures
         run: bun run test
 
+      - name: Install Linux host test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y dbus-daemon ffmpeg
+          bun install --frozen-lockfile --cwd packages/host-linux
+
+      - name: Test gateway and Linux host
+        if: runner.os == 'Linux'
+        run: bun test ./packages/gateway/test ./packages/host-linux/test
+
       - name: Select Xcode 26
         if: runner.os == 'macOS'
         shell: bash

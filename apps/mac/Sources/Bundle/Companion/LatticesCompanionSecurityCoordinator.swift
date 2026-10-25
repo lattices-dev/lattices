@@ -2,7 +2,6 @@ import AppKit
 import CryptoKit
 import DeckKit
 import Foundation
-import Security
 
 enum LatticesCompanionSecurityError: LocalizedError {
     case missingHeader(String)
@@ -76,11 +75,6 @@ final class LatticesCompanionSecurityCoordinator {
         static let trustedDevices = "companion.security.trustedDevices"
     }
 
-    private enum KeychainKey {
-        static let service = "dev.lattices.app.companion.bridge"
-        static let account = "bridge.keyagreement.private"
-    }
-
     private enum Header {
         static let deviceID = "x-lattices-device-id"
         static let timestamp = "x-lattices-timestamp"
@@ -98,7 +92,7 @@ final class LatticesCompanionSecurityCoordinator {
     private var seenNonces: [String: Date] = [:]
 
     private init() {
-        self.bridgePrivateKey = Self.loadOrCreateBridgeKey()
+        self.bridgePrivateKey = Self.loadBridgeKey()
         self.trustedDevices = Self.loadTrustedDevices()
     }
 
@@ -332,37 +326,17 @@ extension LatticesCompanionSecurityCoordinator {
         return Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
     }
 
-    static func loadOrCreateBridgeKey() -> Curve25519.KeyAgreement.PrivateKey {
-        // Preferred store: a 0600 file under ~/.lattices. The key used to live in
-        // the login keychain, whose ACL is bound to the app's code signature — so
-        // every ad-hoc rebuild re-prompted for the keychain password ("enable the
-        // bridge") and, when that read failed, silently regenerated the key and
-        // forced the companion to re-pair. A plain file is signing-independent and
-        // never prompts.
-        if
-            let stored = BridgeKeyFileStore.load(),
-            let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: stored)
-        {
-            return key
+    /// The bridge serves with the machine's device identity, so a paired iPad
+    /// and a visiting Mac pin the same key. When the identity cannot be read
+    /// the bridge runs on a key for this session only, and peers must re-pair.
+    static func loadBridgeKey() -> Curve25519.KeyAgreement.PrivateKey {
+        switch DeviceIdentity.current {
+        case .success(let identity):
+            return identity.privateKey
+        case .failure(let error):
+            DiagnosticLog.shared.warn("Companion · \(error.localizedDescription); the bridge uses a key for this session only")
+            return Curve25519.KeyAgreement.PrivateKey()
         }
-
-        // One-time migration from the old keychain item. Reading it may prompt for
-        // the password one final time; once copied to disk we delete the keychain
-        // copy so it can never prompt again. Preserving the key keeps the device
-        // paired across the upgrade.
-        if
-            let migrated = KeychainBridge.load(service: KeychainKey.service, account: KeychainKey.account),
-            let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: migrated)
-        {
-            if BridgeKeyFileStore.save(migrated) {
-                KeychainBridge.delete(service: KeychainKey.service, account: KeychainKey.account)
-            }
-            return key
-        }
-
-        let key = Curve25519.KeyAgreement.PrivateKey()
-        _ = BridgeKeyFileStore.save(key.rawRepresentation)
-        return key
     }
 
     static func fingerprint(forPublicKeyBase64 value: String) -> String {
@@ -678,69 +652,6 @@ extension LatticesCompanionSecurityCoordinator {
             diff |= lhsData[index] ^ rhsData[index]
         }
         return diff == 0
-    }
-}
-
-/// On-disk store for the bridge key agreement private key.
-///
-/// Lives at `~/.lattices/companion/bridge.key` as raw key bytes. The containing
-/// directory is `0700` and the file itself `0600`, so the key is readable only by
-/// the user — the same posture as the trusted-device list (UserDefaults plist on
-/// disk) and FileVault-encrypted at rest. Unlike the keychain, file access never
-/// depends on the app's code signature, so it never prompts for a password.
-private enum BridgeKeyFileStore {
-    static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".lattices/companion", isDirectory: true)
-            .appendingPathComponent("bridge.key")
-    }
-
-    static func load() -> Data? {
-        guard let data = try? Data(contentsOf: fileURL), data.isEmpty == false else { return nil }
-        PrivateKeyFile.tighten(fileURL)
-        return data
-    }
-
-    @discardableResult
-    static func save(_ data: Data) -> Bool {
-        let url = fileURL
-        let dir = url.deletingLastPathComponent()
-        do {
-            try FileManager.default.createDirectory(
-                at: dir,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            return PrivateKeyFile.write(data, to: url)
-        } catch {
-            return false
-        }
-    }
-}
-
-private enum KeychainBridge {
-    static func load(service: String, account: String) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess else { return nil }
-        return result as? Data
-    }
-
-    static func delete(service: String, account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(query as CFDictionary)
     }
 }
 

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { openSync, closeSync, constants } from "node:fs";
-import { homedir } from "node:os";
+import { LATTICES_DIR } from "../../desktop-client/device-identity.ts";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { daemonCallTo } from "../../desktop-client/daemon-client.ts";
@@ -57,7 +57,7 @@ export async function gatewayMain(argv = process.argv.slice(2)) {
   const self = await selfIdentity();
   const address = self.ips.find(ip => ip.includes("."));
   if (!address) throw new Error("Tailscale is not connected with an IPv4 address");
-  const stateDir = join(homedir(), ".lattices", "gateway");
+  const stateDir = join(LATTICES_DIR, "gateway");
   if (command === "start") {
     try { await control("gateway.status"); throw new Error("Gateway is already running"); }
     catch (error) { if (!["ENOENT", "ECONNREFUSED"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
@@ -75,7 +75,7 @@ export async function gatewayMain(argv = process.argv.slice(2)) {
     child.kill("SIGTERM");
     throw new Error(`Gateway did not start. Inspect ${join(stateDir, "service.log")}`);
   }
-  const server = await startGateway({ address, port, name: self.hostname, dnsName: self.dnsName, policy: { allowUsers: allowUsers.length ? allowUsers : [self.userId], allowTags }, stateDir, verifiedIPs: self.ips });
+  const server = await startGateway({ address, port, name: self.hostname, dnsName: self.dnsName, policy: { allowUsers: allowUsers.length ? allowUsers : [self.userId], allowTags }, stateDir, identityBase: LATTICES_DIR, verifiedIPs: self.ips });
   process.on("SIGINT", server.stop); process.on("SIGTERM", server.stop);
   console.log(JSON.stringify({ service: "lattices-gateway", address: server.address, port: server.port, fingerprint: server.fingerprint }));
 }

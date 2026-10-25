@@ -53,15 +53,15 @@ enum HotkeyBootstrap {
     }
 
     private static func registerLayerHotkeys(store: HotkeyStore) {
-        store.register(action: .layerPrev) { stepLayer(.left) }
-        store.register(action: .layerNext) { stepLayer(.right) }
-        store.register(action: .layerUp) { stepLayer(.up) }
-        store.register(action: .layerDown) { stepLayer(.down) }
+        store.register(action: .layerPrev) { stepLayer(.left, action: .layerPrev) }
+        store.register(action: .layerNext) { stepLayer(.right, action: .layerNext) }
+        store.register(action: .layerUp) { stepLayer(.up, action: .layerUp) }
+        store.register(action: .layerDown) { stepLayer(.down, action: .layerDown) }
         store.register(action: .layerTag) { WorkspaceManager.shared.addFrontmostWindowToActiveLayer() }
 
         for (offset, action) in HotkeyAction.layerActions.enumerated() {
             let slot = offset + 1
-            store.register(action: action) { selectSlot(slot) }
+            store.register(action: action) { selectSlot(slot, action: action) }
         }
 
         // ⌘⌥ + numpad 1–9 reach the same slots: 1 2 3 is the pad's top row,
@@ -103,7 +103,7 @@ enum HotkeyBootstrap {
     /// Cmd+Opt+N aims at the layer in slot N of the pad; letting go of ⌘⌥
     /// asks to switch to it (`LayerAim`). The middle slot, and any slot without a
     /// layer, drops the aim and shows where you are instead.
-    private static func selectSlot(_ slot: Int) {
+    private static func selectSlot(_ slot: Int, action: HotkeyAction? = nil) {
         if LayerPreview.shared.select(slot: slot) { return }
         let workspace = WorkspaceManager.shared
         guard let index = LayerSlots.index(forSlot: slot), workspace.layers.indices.contains(index) else {
@@ -111,7 +111,7 @@ enum HotkeyBootstrap {
             showCurrentLayer()
             return
         }
-        LayerAim.shared.aim(at: index)
+        LayerAim.shared.aim(at: index, binding: action.flatMap { HotkeyStore.shared.bindings[$0] })
         LayerPreview.shared.arm()
     }
 
@@ -129,7 +129,7 @@ enum HotkeyBootstrap {
     /// last aimed at; letting go of ⌘⌥ asks to switch (`LayerAim`). They hop the
     /// middle and don't wrap: at the pad's edge, the lit slot bumps the way
     /// you pushed.
-    private static func stepLayer(_ direction: LayerSlots.Direction) {
+    private static func stepLayer(_ direction: LayerSlots.Direction, action: HotkeyAction) {
         // Frozen on a preview (Space mid-flip), its tap browses instead.
         if LayerPreview.shared.step(direction) { return }
         let workspace = WorkspaceManager.shared
@@ -140,7 +140,7 @@ enum HotkeyBootstrap {
             LayerAim.shared.bump(direction)
             return
         }
-        LayerAim.shared.aim(at: index)
+        LayerAim.shared.aim(at: index, binding: HotkeyStore.shared.bindings[action])
         LayerPreview.shared.arm()
     }
 

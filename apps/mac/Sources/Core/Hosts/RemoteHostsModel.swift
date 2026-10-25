@@ -117,22 +117,10 @@ final class RemoteHostsModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Starts the host's wayvnc and opens it in Screen Sharing.
+    /// Explicit VNC connection, independent of gateway availability.
     func openLive(_ name: String) {
-        guard let connection = connections[name] else { return }
-        update(name) { $0.liveError = nil }
-        Task {
-            do {
-                let result = try await connection.call("capture.live", timeout: 15) as? [String: Any]
-                guard let raw = result?["url"] as? String, let url = URL(string: raw) else {
-                    throw RemoteHostConnection.Failure.remote("No live view URL")
-                }
-                NSWorkspace.shared.open(url)
-            } catch {
-                update(name) { $0.liveError = error.localizedDescription }
-                DiagnosticLog.shared.warn("Hosts: live view on \(name) failed — \(error.localizedDescription)")
-            }
-        }
+        guard let host = hosts.first(where: { $0.name == name }) else { return }
+        RemoteVNCWindows.shared.show(host: host.name, address: host.address, platform: host.platform)
     }
 
     func refresh(_ name: String) {

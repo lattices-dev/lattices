@@ -21,6 +21,7 @@ final class LayerAim {
     /// thread only, the key tap's callback included.
     private(set) var target: Int?
     private var phase = Phase.aiming
+    private var customShortcut = false
     /// How many keys aimed in this hold. Aiming at the layer you're on as
     /// the only key offers to reconcile it, as ⌘⌥N always has; browsing
     /// back to it leaves it be.
@@ -41,6 +42,7 @@ final class LayerAim {
     private init() {}
 
     var isDeciding: Bool { target != nil && phase == .deciding }
+    var ownsShortcutDecision: Bool { isDeciding && customShortcut }
 
     /// Where the next arrow steps from: the layer aimed at, else the one
     /// you're on.
@@ -50,16 +52,23 @@ final class LayerAim {
     }
 
     /// Aims at layer `index` and shows it on the pad. With ⌘⌥ already up,
-    /// it asks at once.
-    func aim(at index: Int) {
+    /// or a shortcut using other modifiers, it asks at once.
+    func aim(at index: Int, binding: KeyBinding? = nil) {
         dispatchPrecondition(condition: .onQueue(.main))
         let workspace = WorkspaceManager.shared
         guard workspace.layers.indices.contains(index) else { return }
         if phase == .deciding { endDeciding() }
         phase = .aiming
         target = index
+        customShortcut = Self.isCustomShortcut(binding)
         steps += 1
-        guard Self.chordHeld() else {
+        let entry = Self.entry(for: CGEventSource.flagsState(.combinedSessionState), binding: binding)
+        guard entry == .browse else {
+            if entry == .cancel {
+                cancel()
+                LayerBezel.shared.release(after: 0)
+                return
+            }
             LayerBezel.shared.hold()
             if !letGo() { LayerBezel.shared.release(after: 0) }
             return
@@ -111,7 +120,7 @@ final class LayerAim {
     /// True when there was a choice open.
     func resume() -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
-        guard isDeciding else { return false }
+        guard isDeciding, !ownsShortcutDecision else { return false }
         endDeciding()
         phase = .aiming
         present()
@@ -177,6 +186,7 @@ final class LayerAim {
 
     private func reset() {
         target = nil
+        customShortcut = false
         steps = 0
         phase = .aiming
         stopWatch()
@@ -193,7 +203,13 @@ final class LayerAim {
     private func watchRelease() {
         guard watch == nil else { return }
         watch = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            guard let self, !Self.chordHeld() else { return }
+            let mode = LayerChordState.mode(CGEventSource.flagsState(.combinedSessionState))
+            guard let self, mode != .browse else { return }
+            if mode == .cancel {
+                self.cancel()
+                LayerBezel.shared.release(after: 0)
+                return
+            }
             if LayerPreview.shared.isFrozen {
                 self.stopWatch()
                 return
@@ -259,23 +275,49 @@ final class LayerAim {
             return Unmanaged.passUnretained(event)
         }
         guard type == .keyDown, aim.isDeciding else { return Unmanaged.passUnretained(event) }
-        let flags = event.flags
-        if flags.contains(.maskCommand), flags.contains(.maskAlternate) { return Unmanaged.passUnretained(event) }
-        switch event.getIntegerValueField(.keyboardEventKeycode) {
-        case 36, 76:
+        switch choice(for: event.getIntegerValueField(.keyboardEventKeycode), flags: event.flags) {
+        case .pass:
+            return Unmanaged.passUnretained(event)
+        case .confirm:
             DispatchQueue.main.async { aim.confirm() }
             return nil
-        case 53:
+        case .cancel:
             DispatchQueue.main.async { aim.cancel() }
             return nil
-        default:
+        case .cancelAndPass:
             DispatchQueue.main.async { aim.cancel() }
             return Unmanaged.passUnretained(event)
         }
     }
 
-    private static func chordHeld() -> Bool {
-        let flags = CGEventSource.flagsState(.combinedSessionState)
-        return flags.contains(.maskCommand) && flags.contains(.maskAlternate)
+    enum Choice: Equatable { case pass, confirm, cancel, cancelAndPass }
+
+    enum Entry: Equatable { case browse, decide, cancel }
+
+    static func entry(for flags: CGEventFlags, binding: KeyBinding?) -> Entry {
+        // The dispatched action identifies an intentional custom shortcut.
+        // Looking only at current flags mistakes its Shift/Control for a
+        // modifier added to an existing Cmd+Option browse.
+        if isCustomShortcut(binding) { return .decide }
+        switch LayerChordState.mode(flags) {
+        case .browse: return .browse
+        case .release: return .decide
+        case .cancel: return .cancel
+        }
+    }
+
+    static func isCustomShortcut(_ binding: KeyBinding?) -> Bool {
+        guard let binding else { return false }
+        return binding.carbonModifiers != KeyBinding.carbonModifiers(from: [.command, .option])
+    }
+
+    static func choice(for key: Int64, flags: CGEventFlags) -> Choice {
+        if LayerChordState.mode(flags) == .browse { return .pass }
+        if LayerChordState.hasBaseModifiers(flags) { return .cancelAndPass }
+        switch key {
+        case 36, 76: return .confirm
+        case 53: return .cancel
+        default: return .cancelAndPass
+        }
     }
 }

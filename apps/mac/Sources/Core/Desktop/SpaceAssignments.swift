@@ -1,8 +1,8 @@
 import AppKit
 
-/// The Dock's "Assign To" setting: an app held to one desktop, or shown on
-/// all of them. macOS returns an assigned app's windows to its desktop, so a
-/// move to any other desktop on that display is undone moments after it lands.
+/// The Dock's "Assign To" preference. This is not a window-movement constraint:
+/// Mission Control can move a window elsewhere while its app's binding stays
+/// unchanged. Use observed window membership to verify an explicit move.
 enum SpaceAssignments {
     enum Binding: Equatable {
         case desktop(spaceId: Int)
@@ -45,16 +45,6 @@ enum SpaceAssignments {
 
     static func binding(forPid pid: pid_t, in assignments: [Assignment] = current()) -> Binding? {
         binding(forBundleId: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier, in: assignments)
-    }
-
-    /// The assigned desktop a move to `spaceId` would fight, or nil when
-    /// macOS lets the window stay there. An assignment only holds on its own
-    /// display; another display keeps the window where it is put.
-    static func conflict(_ binding: Binding?, destinationSpaceId spaceId: Int, displays: [DisplaySpaces]) -> Int? {
-        guard case .desktop(let assigned)? = binding, assigned != spaceId,
-              let display = displays.first(where: { $0.spaces.contains(where: { $0.id == assigned }) }),
-              display.spaces.contains(where: { $0.id == spaceId }) else { return nil }
-        return assigned
     }
 
     static func json(_ assignment: Assignment, displays: [DisplaySpaces]) -> JSON {

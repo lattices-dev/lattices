@@ -2,7 +2,8 @@
 // apps/mac/Sources/Bundle/Companion/LatticesCompanionSecurityCoordinator.swift
 // so the iOS app pairs with a Linux host exactly as it does with a Mac.
 //
-// - Keys: X25519, exchanged as base64 of the raw 32-byte public key.
+// - Keys: X25519, exchanged as base64 of the raw 32-byte public key. The
+//   bridge uses the device identity (desktop-client/device-identity.ts).
 // - Per-device keys: HKDF-SHA256 over the X25519 shared secret, salt
 //   "lattices-bridge-v1", info "signing" or "encryption", 32 bytes.
 // - Requests: HMAC-SHA256 over method, path, device id, timestamp, nonce and
@@ -24,6 +25,7 @@ import {
   type KeyObject,
 } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, ftruncateSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { fingerprint, rawPublicKey } from "../../../desktop-client/device-identity.ts";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { privateDirectory } from "../private-ipc.ts";
@@ -101,12 +103,8 @@ export interface AuthorizedRequest {
 // ── Primitives ────────────────────────────────────────────────────────
 
 const b64url = (b: Buffer) => b.toString("base64url");
-const fromB64url = (s: string) => Buffer.from(s, "base64url");
 
-export function fingerprint(publicKeyBase64: string): string {
-  const hex = createHash("sha256").update(publicKeyBase64, "utf8").digest("hex");
-  return hex.slice(0, 12).toUpperCase().match(/.{1,4}/g)!.join("-");
-}
+export { fingerprint, rawPublicKey };
 
 export function publicKeyFromBase64(value: string): KeyObject | null {
   const raw = Buffer.from(value, "base64");
@@ -116,10 +114,6 @@ export function publicKeyFromBase64(value: string): KeyObject | null {
   } catch {
     return null;
   }
-}
-
-export function rawPublicKey(key: KeyObject): Buffer {
-  return fromB64url(key.export({ format: "jwk" }).x as string);
 }
 
 export function deriveKeys(privateKey: KeyObject, peerPublicKey: KeyObject): { signing: Buffer; encryption: Buffer } {
@@ -223,7 +217,9 @@ function readPrivate(path: string): string {
   finally { closeSync(fd); }
 }
 
-export function loadOrCreateBridgeKey(path = join(STATE_DIR, "bridge-key.json")): KeyObject {
+/** A standalone X25519 key in its own file, for test clients that act as a
+ * separate device (visit-test). Lattices roles use the device identity. */
+export function loadOrCreateKeyFile(path: string): KeyObject {
   if (existsSync(path)) {
     const jwk = JSON.parse(readPrivate(path));
     return createPrivateKey({ key: jwk, format: "jwk" });
@@ -237,7 +233,9 @@ export function loadOrCreateBridgeKey(path = join(STATE_DIR, "bridge-key.json"))
 
 export interface CoordinatorOptions {
   bridgeName: string;
-  privateKey?: KeyObject;
+  /** The device identity key (~/.lattices/identity/device.json); callers pass
+   * it explicitly so no test or tool falls back to the real home directory. */
+  privateKey: KeyObject;
   devicesPath?: string;
   /** Asks a person; resolves true to trust the device. */
   approve: (request: PairingRequest, kind: "pair" | "upgrade", additions: string[]) => Promise<boolean>;
@@ -256,8 +254,8 @@ export class BridgeSecurity {
   private readonly now: () => Date;
 
   constructor(private options: CoordinatorOptions) {
-    this.privateKey = options.privateKey ?? loadOrCreateBridgeKey();
-    this.publicKeyBase64 = rawPublicKey(createPublicKey(this.privateKey)).toString("base64");
+    this.privateKey = options.privateKey;
+    this.publicKeyBase64 = rawPublicKey(this.privateKey).toString("base64");
     this.fingerprint = fingerprint(this.publicKeyBase64);
     this.devicesPath = options.devicesPath ?? join(STATE_DIR, "bridge-devices.json");
     this.now = options.now ?? (() => new Date());

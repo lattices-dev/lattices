@@ -5,7 +5,7 @@ import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BridgeSecurity, BridgeSecurityError, HEADERS, loadOrCreateBridgeKey } from "../src/bridge/security.ts";
+import { BridgeSecurity, BridgeSecurityError, HEADERS, loadOrCreateKeyFile } from "../src/bridge/security.ts";
 import { scopeFor } from "../src/pairing.ts";
 import { Router } from "../src/router.ts";
 import { pairedHost, signUpgrade, signingKey } from "../../../bin/host-pairing.ts";
@@ -32,7 +32,7 @@ describe("CLI signer", () => {
   test("the CLI's signed upgrade authenticates; tampering, replay and skew do not", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lattices-pair-"));
     const security = new BridgeSecurity({
-      bridgeName: "archie", privateKey: loadOrCreateBridgeKey(join(dir, "key.json")), devicesPath: join(dir, "clients.json"),
+      bridgeName: "archie", privateKey: loadOrCreateKeyFile(join(dir, "key.json")), devicesPath: join(dir, "clients.json"),
       approve: async () => true, grant: (requested) => requested ?? [],
     });
     const key = generateKeyPairSync("x25519");

@@ -358,7 +358,9 @@ class Preferences: ObservableObject {
             self.keyboardRemapsEnabled = true
         }
 
-        var holdMode: CtrlOptionHoldMode = .tileHUD
+        // Bare modifiers stay quiet. Pointer tiling is an explicit opt-in;
+        // the default keyboard family is Cmd+Option, with Shift for tiling.
+        var holdMode: CtrlOptionHoldMode = .off
         if let saved = UserDefaults.standard.string(forKey: "ctrlOptionHold.mode"),
            let mode = CtrlOptionHoldMode(rawValue: saved) {
             holdMode = mode
@@ -367,8 +369,8 @@ class Preferences: ObservableObject {
             // An explicit Spatial Lens opt-in survives the single-owner migration.
             holdMode = .spatialLens
         }
-        // A saved Spatial Lens choice falls back to the Tile HUD in the free build.
-        self.ctrlOptionHoldMode = CtrlOptionHoldMode.available.contains(holdMode) ? holdMode : .tileHUD
+        // An unavailable lens must not silently activate a different picker.
+        self.ctrlOptionHoldMode = CtrlOptionHoldMode.available.contains(holdMode) ? holdMode : .off
 
         if UserDefaults.standard.object(forKey: "spaceSwitchKeys.enabled") != nil {
             self.spaceSwitchKeysEnabled = UserDefaults.standard.bool(forKey: "spaceSwitchKeys.enabled")

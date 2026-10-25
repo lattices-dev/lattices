@@ -538,8 +538,8 @@ struct SettingsContentView: View {
                 settingsPrefRow(
                     "Ctrl+Option hold",
                     caption: LatticesTier.isBundle
-                        ? "What holding Control+Option shows. Tile HUD is the gray picker; Spatial Lens places the window under the pointer."
-                        : "What holding Control+Option shows. Tile HUD is the gray picker."
+                        ? "Off by default. Tile HUD enables pointer tiling; Spatial Lens places the window under the pointer."
+                        : "Off by default. Enable Tile HUD to aim a placement with the pointer."
                 ) {
                     SettingsChoiceBar(
                         selection: $prefs.ctrlOptionHoldMode,
@@ -810,7 +810,7 @@ struct SettingsContentView: View {
                                 Spacer()
                                 SettingsSwitch(isOn: Binding(
                                     get: { prefs.ctrlOptionHoldMode == .spatialLens },
-                                    set: { prefs.ctrlOptionHoldMode = $0 ? .spatialLens : .tileHUD }
+                                    set: { prefs.ctrlOptionHoldMode = $0 ? .spatialLens : .off }
                                 ))
                             }
 
@@ -2788,7 +2788,7 @@ struct SettingsContentView: View {
                             shortcutSectionCard(
                                 title: "Tiling",
                                 eyebrow: "Desktop Layout",
-                                summary: "The grid is the placement map. Click a cell to rebind. While Ctrl+Option is held, numpad or number-row 1–9 tile the matrix; arrows aim an edge or corner and apply on release."
+                                summary: "Command+Option+arrows browse layers; add Shift to tile. Click a cell to rebind. The optional Ctrl+Option Tile HUD also supports number keys and arrow aiming."
                             ) {
                                 LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 20) {
                                     shortcutsTilingVisualizer
@@ -2971,7 +2971,7 @@ struct SettingsContentView: View {
                         .font(Typo.caption(10.5))
                         .foregroundColor(Palette.textMuted)
 
-                    Text("While Ctrl+Option is held")
+                    Text("With Tile HUD enabled, hold Ctrl+Option")
                         .font(Typo.caption(9.5))
                         .foregroundColor(Palette.textDim)
 
@@ -3001,7 +3001,7 @@ struct SettingsContentView: View {
                 .padding(8)
                 .background(shortcutsInsetPanel)
 
-                Text("Global shortcuts below fire instantly. HUD keys only apply while Ctrl+Option is held.")
+                Text("Global shortcuts below fire instantly. HUD keys require the optional Ctrl+Option Tile HUD.")
                     .font(Typo.caption(10.5))
                     .foregroundColor(Palette.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3102,13 +3102,7 @@ struct SettingsContentView: View {
     }
 
     private func tileCellBadge(_ binding: KeyBinding?) -> String {
-        guard let binding else { return "Unset" }
-        let parts = binding.displayParts
-        guard let key = parts.last else { return "Unset" }
-        if parts.contains("Shift") {
-            return "⇧\(key)"
-        }
-        return key
+        binding?.symbolicDisplay ?? "Unset"
     }
 
     private func relativeTimestamp(_ date: Date) -> String {

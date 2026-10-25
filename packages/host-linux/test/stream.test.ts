@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  AccessUnitSplitter, FlowControl, NalScanner, StreamRegistry, bitrateFor, encoderCommand, nalType, packFrame,
+  AccessUnitSplitter, FlowControl, NalScanner, StreamRegistry, bitrateFor, defaultStreamDeps, encoderCommand, nalType, packFrame,
   spsSize, splitParameterSets, streamSize, type EncoderProcess, type StreamDeps,
 } from "../src/stream.ts";
 
@@ -128,7 +128,8 @@ describe("encoder command", () => {
     expect(command).toBe("wf-recorder");
     expect(args).toEqual([
       "-o", "DP-1", "-D", "-r", "30",
-      "-c", "libx264", "-x", "yuv420p", "-F", "scale=1920:1080",
+      "-c", "libx264", "-x", "yuv420p", "-F", "scale=1920:1080:in_range=full:out_range=full:out_color_matrix=bt709",
+      "-p", "color_range=pc", "-p", "colorspace=bt709", "-p", "color_primaries=bt709", "-p", "color_trc=iec61966-2-1",
       "-p", "preset=ultrafast", "-p", "tune=zerolatency", "-p", "maxrate=6220800", "-p", "bufsize=3110400",
       "-p", "profile=main", "-p", "bf=0", "-p", "g=60", "-p", "b=6220800",
       "-m", "h264", "-f", "pipe:1",
@@ -234,7 +235,7 @@ describe("session", () => {
     return { proc, push: (b: Uint8Array) => push(b), close: () => close(), exit: (code: number) => exit(code) };
   }
 
-  function harness(opts: { vaapi?: boolean } = {}) {
+  function harness(opts: { vaapi?: boolean; buffered?: () => number; tickMs?: number; onSend?: (bytes: Uint8Array, at: number) => void } = {}) {
     const sent: Uint8Array[] = [];
     const events: { name: string; data: any }[] = [];
     const encoders: ReturnType<typeof fakeEncoder>[] = [];
@@ -257,12 +258,12 @@ describe("session", () => {
       pts: () => BigInt(clock * 1000),
       windowAlive: async () => true,
       vaapiDevice: () => (opts.vaapi ? "/dev/dri/renderD128" : null),
-      tickMs: 1e9,
+      tickMs: opts.tickMs ?? 1e9,
       quietMs: 50,
     };
     const registry = new StreamRegistry({
-      send: (b) => { sent.push(b); return b.length; },
-      buffered: () => 0,
+      send: (b) => { sent.push(b); opts.onSend?.(b, clock); return b.length; },
+      buffered: opts.buffered ?? (() => 0),
       event: (name, data) => events.push({ name, data }),
     }, deps);
     return { registry, sent, events, encoders, commands, setClock: (t: number) => { clock = t; } };
@@ -322,6 +323,142 @@ describe("session", () => {
     expect(h.registry.streams.size).toBe(0);
   });
 
+  test("a transient startup burst waits for acks without breaking the decode chain", async () => {
+    const h = harness();
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    for (let i = 1; i < 16; i++) {
+      h.setClock(i * 4);
+      session.onAccessUnit({ keyframe: false, nals: [bytes(0x41, 0x80, i)] });
+    }
+    expect(h.sent.length).toBe(12);
+    expect(session.flow.inFlight).toBe(12);
+    h.setClock(120);
+    session.ack(12);
+    expect(h.sent.length).toBe(16);
+    expect(session.flow.inFlight).toBe(4);
+    expect(session.flow.dropping).toBe(false);
+    expect(h.sent.map((b) => new DataView(b.buffer).getUint32(8))).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
+    expect(h.sent.slice(1).map((b) => b[b.length - 1])).toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+    // Waiting must not rewrite a frame's capture/encode timestamp.
+    expect(new DataView(h.sent[12].buffer).getBigUint64(16)).toBe(48_000n);
+    h.registry.stopAll();
+  });
+
+  test("the ACK window follows frame rate within the bounded frame budget", async () => {
+    for (const [fps, window] of [[5, 4], [20, 4], [30, 6], [60, 12]]) {
+      const h = harness();
+      const { streamId } = await h.registry.handle("capture.stream.start", { fps }) as any;
+      expect(h.registry.streams.get(streamId)!.flow.window).toBe(window);
+      h.registry.stopAll();
+    }
+  });
+
+  for (const ackMs of [80, 120]) test(`60 fps stays continuous with sustained ${ackMs} ms ACKs`, async () => {
+    const acks: { seq: number; at: number }[] = [];
+    const h = harness({ onSend: (bytes, at) => acks.push({ seq: new DataView(bytes.buffer).getUint32(8), at: at + ackMs }) });
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    let maxFlight = 0;
+    const deliverAcks = (until: number) => {
+      while (acks.length && acks[0].at <= until) {
+        const ack = acks.shift()!;
+        h.setClock(ack.at);
+        session.ack(ack.seq);
+      }
+    };
+    // Five seconds is long enough for the old four-frame window to exhaust
+    // its pending queue, drop references and restart waiting for an IDR.
+    for (let i = 0; i < 300; i++) {
+      const at = Math.round(i * 1000 / 60);
+      deliverAcks(at);
+      h.setClock(at);
+      session.onAccessUnit(i === 0 ? { keyframe: true, nals: [SPS, PPS, IDR_A] } : { keyframe: false, nals: [P1] });
+      maxFlight = Math.max(maxFlight, session.flow.inFlight);
+      if (i % 3 === 0) await session.tick();
+    }
+    deliverAcks(Infinity);
+    expect(h.sent.length).toBe(300);
+    expect(h.sent.map((b) => new DataView(b.buffer).getUint32(8))).toEqual(Array.from({ length: 300 }, (_, i) => i + 1));
+    expect(h.sent.filter((b) => b[12] & 1).length).toBe(1);
+    expect(maxFlight).toBeGreaterThan(4);
+    expect(maxFlight).toBeLessThanOrEqual(12);
+    expect(session.flow.inFlight).toBe(0);
+    expect(session.flow.dropping).toBe(false);
+    expect(h.encoders.length).toBe(1);
+    expect(h.events).toEqual([]);
+    h.registry.stopAll();
+  });
+
+  test("a full pending queue discards its dependent chain and recovers only at an IDR", async () => {
+    const h = harness();
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    // Twelve sent plus at most 200 ms (12 frames at 60 fps) waiting.
+    for (let i = 0; i < 24; i++) session.onAccessUnit({ keyframe: false, nals: [P1] });
+    session.ack(12);
+    expect(h.sent.length).toBe(12);
+    session.onAccessUnit({ keyframe: false, nals: [P2] });
+    expect(h.sent.length).toBe(12);
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    expect(h.sent.length).toBe(13);
+    expect(h.sent[12][12] & 1).toBe(1);
+    h.registry.stopAll();
+  });
+
+  test("the default timer drains a recovered socket before pending frames expire", async () => {
+    let buffered = 4 * 1024 * 1024 + 1;
+    const h = harness({ buffered: () => buffered, tickMs: defaultStreamDeps.tickMs });
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    session.onAccessUnit({ keyframe: false, nals: [P1] });
+    expect(h.sent.length).toBe(0);
+    buffered = 0;
+    h.setClock(defaultStreamDeps.tickMs);
+    await new Promise((resolve) => setTimeout(resolve, defaultStreamDeps.tickMs + 10));
+    expect(h.sent.length).toBe(2);
+    expect(h.sent.map((b) => b[12] & 1)).toEqual([1, 0]);
+    expect(session.flow.inFlight).toBe(2);
+    expect(session.flow.dropping).toBe(false);
+    await session.tick();
+    expect(h.sent.length).toBe(2);
+    h.registry.stopAll();
+  });
+
+  test("frames waiting over 200 ms are never sent after a late ack", async () => {
+    const h = harness();
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    for (let i = 0; i < 13; i++) session.onAccessUnit({ keyframe: false, nals: [P1] });
+    h.setClock(201);
+    session.ack(12);
+    expect(h.sent.length).toBe(12);
+    expect(session.flow.dropping).toBe(true);
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    expect(h.sent.length).toBe(13);
+    h.registry.stopAll();
+  });
+
+  test("the pending byte budget breaks an oversized chain instead of retaining it", async () => {
+    const h = harness();
+    const { streamId } = await h.registry.handle("capture.stream.start", { fps: 60 }) as any;
+    const session = h.registry.streams.get(streamId)!;
+    session.onAccessUnit({ keyframe: true, nals: [SPS, PPS, IDR_A] });
+    for (let i = 0; i < 11; i++) session.onAccessUnit({ keyframe: false, nals: [P1] });
+    const large = new Uint8Array(3 * 1024 * 1024);
+    large.set(P1);
+    session.onAccessUnit({ keyframe: false, nals: [large] });
+    session.onAccessUnit({ keyframe: false, nals: [large] });
+    session.ack(12);
+    expect(h.sent.length).toBe(12);
+    expect(session.flow.dropping).toBe(true);
+    h.registry.stopAll();
+  });
+
   test("a stalled keyframe wait restarts the encoder", async () => {
     const h = harness();
     const { streamId } = await h.registry.handle("capture.stream.start", {}) as any;
@@ -369,8 +506,69 @@ describe("session", () => {
 // Real x264 output, when this machine has ffmpeg with libx264: split, pack,
 // rebuild Annex B from the wire frames and have ffmpeg decode every picture.
 const ffmpeg = Bun.which("ffmpeg");
+const ffprobe = Bun.which("ffprobe");
 const hasX264 = ffmpeg !== null && Bun.spawnSync([ffmpeg, "-hide_banner", "-encoders"]).stdout.toString().includes("libx264");
 describe.skipIf(!hasX264)("x264 round trip", () => {
+  test("the software command preserves desktop contrast and colors", () => {
+    const colors = [
+      [0, 0, 0], [255, 255, 255], [128, 128, 128],
+      [255, 0, 0], [0, 255, 0], [0, 0, 255],
+      [255, 255, 0], [255, 0, 255], [0, 255, 255],
+      [32, 32, 32], [64, 64, 64], [192, 192, 192],
+    ];
+    const patchWidth = 32, width = colors.length * patchWidth, height = 64;
+    const rgb = new Uint8Array(width * 2 * height * 2 * 4);
+    for (let y = 0; y < height * 2; y++) for (let x = 0; x < width * 2; x++) {
+      rgb.set(colors[Math.floor(x / (patchWidth * 2))], (y * width * 2 + x) * 4);
+    }
+    const { args } = encoderCommand({ output: "DP-1", width, height, fps: 30, encoder: "software" });
+    const option = (name: string) => args[args.indexOf(name) + 1];
+    const codecOptions: string[] = [];
+    // wf-recorder sets its encoder to full range independently of the filter.
+    // Keep these stages separate: ffmpeg's combined CLI graph can otherwise
+    // negotiate that tag back into the scaler and conceal the original bug.
+    const frameColorOptions = new Map<string, string>([["color_range", "pc"]]);
+    for (let i = 0; i < args.length; i++) if (args[i] === "-p") {
+      const [key, value] = args[++i].split("=");
+      codecOptions.push(`-${key}:v`, value);
+      if (["color_range", "colorspace", "color_primaries", "color_trc"].includes(key)) frameColorOptions.set(key, value);
+    }
+    const run = (command: string, options: string[], stdin: Uint8Array) => {
+      const result = Bun.spawnSync([command, "-loglevel", "error", ...options], { stdin });
+      expect(result.exitCode, result.stderr.toString()).toBe(0);
+      return result.stdout;
+    };
+    const yuv = run(ffmpeg!, [
+      "-f", "rawvideo", "-pixel_format", "rgb0", "-video_size", `${width * 2}x${height * 2}`, "-i", "-",
+      "-vf", `${option("-F")},format=${option("-x")}`, "-frames:v", "1", "-f", "rawvideo", "-",
+    ], rgb);
+    // Raw YUV has no metadata. Give ffmpeg the codec context's actual tags so
+    // its CLI neither converts the samples again nor overrides them as unknown.
+    const encoded = run(ffmpeg!, [
+      "-f", "rawvideo", "-pixel_format", option("-x"), "-video_size", `${width}x${height}`, "-framerate", option("-r"),
+      ...[...frameColorOptions].flatMap(([key, value]) => [`-${key}`, value]), "-i", "-",
+      "-frames:v", "1", "-c:v", option("-c"), "-color_range:v", "pc", ...codecOptions, "-f", "h264", "-",
+    ], yuv);
+    const decoded = run(ffmpeg!, [
+      "-f", "h264", "-i", "-", "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-",
+    ], encoded);
+    expect(decoded.length).toBe(width * height * 3);
+    for (const [index, color] of colors.entries()) {
+      const center = ((height / 2) * width + index * patchWidth + patchWidth / 2) * 3;
+      for (let channel = 0; channel < 3; channel++) {
+        expect(Math.abs(decoded[center + channel] - color[channel]), `patch ${color}, channel ${channel}`).toBeLessThanOrEqual(4);
+      }
+    }
+    if (ffprobe) {
+      const metadata = JSON.parse(run(ffprobe, [
+        "-show_entries", "stream=color_range,color_space,color_transfer,color_primaries", "-of", "json", "-f", "h264", "-i", "-",
+      ], encoded).toString());
+      expect(metadata.streams[0]).toMatchObject({
+        color_range: "pc", color_space: "bt709", color_transfer: "iec61966-2-1", color_primaries: "bt709",
+      });
+    }
+  });
+
   const encode = (extra: string) => Bun.spawnSync([
     ffmpeg!, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=322x180:rate=30", "-frames:v", "12",
     "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0", "-g", "5",
