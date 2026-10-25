@@ -11,8 +11,8 @@ GitHub release `v<version>`.
 
 There are two valid DMG paths:
 
-1. CI release: push an `app-macos-v<version>` tag or run the
-   **Release App macOS** workflow with `publish=true`.
+1. CI release: manually run the **Release App macOS** workflow with
+   `publish=true`. Pushing a tag does not start this workflow.
 2. Local maintainer release: build and ship from a Mac that has the
    Developer ID certificate and notary profile installed.
 
@@ -30,7 +30,11 @@ DEVELOPER_ID_APPLICATION_CERT_BASE64
 DEVELOPER_ID_APPLICATION_CERT_PASSWORD
 KEYCHAIN_PASSWORD
 APP_STORE_CONNECT_API_KEY_P8
+HUDSON_READ_TOKEN
 ```
+
+`HUDSON_READ_TOKEN` must have read access to the private HudsonKit repository
+used by the app build.
 
 Required environment variable or secret:
 
@@ -62,19 +66,21 @@ gh variable set APP_STORE_CONNECT_KEY_ID --repo lattices-dev/lattices --env rele
 gh variable set APP_STORE_CONNECT_ISSUER_ID --repo lattices-dev/lattices --env release --body ISSUER_UUID
 ```
 
-Release:
+Choose an unpublished version and update `package.json` before dispatching.
+The example below uses `0.15.2`; use the same version for the app and npm
+packages. Commit and push the release changes to `main`, then run:
 
 ```sh
-git tag -a app-macos-v0.5.0 -m "Lattices macOS 0.5.0"
-git push origin app-macos-v0.5.0
+gh workflow run release-app-macos.yml --repo lattices-dev/lattices --ref main \
+  -f version=0.15.2 -f publish=true
 ```
 
 The workflow builds `dist/Lattices.dmg`, signs, notarizes, staples, verifies,
-then creates or updates GitHub release `v0.5.0` with both:
+then creates or updates GitHub release `v0.15.2` with both:
 
 ```text
 Lattices.dmg
-Lattices-0.5.0.dmg
+Lattices-0.15.2.dmg
 ```
 
 If publish is requested and signing/notary configuration is missing, the
@@ -103,11 +109,11 @@ Build a signed, notarized DMG:
 Build and upload to GitHub Releases:
 
 ```sh
-LATTICES_VERSION=0.5.0 ./tools/release/ship.sh dmg
+LATTICES_VERSION=0.15.2 ./tools/release/ship.sh dmg
 ```
 
-The local ship script now mirrors CI: it creates or updates release `v0.5.0`,
-sets the title to `Lattices 0.5.0`, and uploads both the unversioned and
+The local ship script now mirrors CI: it creates or updates release `v0.15.2`,
+sets the title to `Lattices 0.15.2`, and uploads both the unversioned and
 versioned DMG assets.
 
 ### Unsigned checks
