@@ -4461,6 +4461,7 @@ button.nav-link {
 .hero-announcement {
   display: flex;
   width: fit-content;
+  margin-inline: auto;
   align-items: center;
   gap: 10px;
   min-height: 44px;

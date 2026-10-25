@@ -5,11 +5,11 @@ import { docsProduct } from '../lib/docs-catalog'
 export const SITE_ORIGIN = 'https://lattices.dev'
 
 // Published release; repository candidates may be ahead of downloadable builds.
-export const latticesAppVersion = '0.14.1'
+export const latticesAppVersion = '0.15.1'
 export const latticesDownloadUrl =
   `https://github.com/lattices-dev/lattices/releases/download/v${latticesAppVersion}/Lattices.dmg`
 export const speechDownloadUrl =
-  'https://github.com/lattices-dev/lattices/releases/download/speech-v0.2.0/Speech.dmg'
+  'https://github.com/lattices-dev/lattices/releases/download/speech-v0.3.0/Speech.dmg'
 // Public Linux entry point documented in docs/install-linux.md.
 export const linuxInstallerUrl = 'https://raw.githubusercontent.com/lattices-dev/lattices/main/install.sh'
 export const linuxInstallCommand = `curl -fsSL ${linuxInstallerUrl} | bash`
@@ -79,7 +79,7 @@ const voiceRoute: RouteMeta = {
     applicationCategory: 'ProductivityApplication',
     operatingSystem: 'macOS',
     downloadUrl: speechDownloadUrl,
-    softwareVersion: '0.2.0',
+    softwareVersion: '0.3.0',
   },
 }
 

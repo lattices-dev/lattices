@@ -50,7 +50,7 @@ const voices = [
     title: 'Kokoro on-device',
     label: 'local neural · no account',
     description:
-      'The Kokoro-82M model runs on your Mac. It sounds natural and needs no network or API key.',
+      'Kokoro downloads its model and voice assets on first use, then speaks on your Mac without a network connection or an API key.',
   },
   {
     title: 'OpenAI TTS via Vox',
@@ -87,6 +87,7 @@ export default function SpeechPage() {
               <a href="/voice/docs">Read the docs</a>
             </div>
             <p className="speech-platform-note">macOS 26+ · Apple silicon · signed + notarized</p>
+            <p className="speech-platform-note">Speech 0.3.0 downloads as Speech.app and appears as Voice in the menu bar. Use it with Lattices app and CLI 0.15.1.</p>
           </div>
           <div className="family-speech-visual speech-queue-hero" aria-hidden="true">
             <div className="is-playing">
@@ -108,8 +109,8 @@ export default function SpeechPage() {
         </section>
 
         <div className="speech-tech-rail" aria-label="Core surfaces">
-          <span>ws://127.0.0.1:9397</span>
-          <span>Capability-authed RPC</span>
+          <span>speech.sock</span>
+          <span>Authenticated local RPC</span>
           <span>Queue-owned playback</span>
           <span>HUD readalong</span>
         </div>
@@ -125,7 +126,7 @@ export default function SpeechPage() {
             </p>
           </div>
           <div className="speech-terminal" aria-label="Voice RPC example">
-            <div className="speech-terminal-bar">ws://127.0.0.1:9397</div>
+            <div className="speech-terminal-bar">speech.sock</div>
             <pre className="speech-terminal-body">
               <code>
                 <span className="speech-terminal-line"><span className="speech-terminal-prompt">→</span> speech.enqueue {'{ "text": "Release build finished. 34 tests passed.", "voice": "af_heart" }'}</span>
@@ -258,11 +259,17 @@ export default function SpeechPage() {
         <section className="speech-source" aria-labelledby="speech-source-title">
           <div className="speech-source-copy">
             <p className="family-kicker">From source</p>
-            <h2 id="speech-source-title">A signed app you can rebuild.</h2>
+            <h2 id="speech-source-title">Build the next version.</h2>
             <p>
               Voice is written in Swift. The API server, the queue, the panel
-              and the Vox and Kokoro providers are all in{' '}
+              and speech providers are all in{' '}
               <code>products/voice</code>.
+            </p>
+            <p>
+              Upcoming source builds replace Kokoro with Phonon on the Neural
+              Engine. The first use downloads a 137 MB model; speech then runs
+              locally. Phonon uses a fixed speaking rate. This change is not
+              included in the Speech 0.3.0 download above.
             </p>
             <ul className="speech-source-reqs">
               <li>macOS 26+ on Apple silicon</li>
@@ -277,8 +284,8 @@ export default function SpeechPage() {
               <code>
                 <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> swift test --package-path products/voice</span>
                 <span className="speech-terminal-output">Voice tests passed</span>
-                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> tools/package.sh</span>
-                <span className="speech-terminal-output">Speech.dmg signed + notarized</span>
+                <span className="speech-terminal-line"><span className="speech-terminal-prompt">$</span> products/voice/tools/package.sh</span>
+                <span className="speech-terminal-output">Local Voice.app artifact</span>
               </code>
             </pre>
           </div>
