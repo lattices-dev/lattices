@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync }
 import type { Readable } from "node:stream";
 import { join } from "node:path";
 import { Router, num, str, type Json, type Params } from "./router.ts";
+import { verifyVirtualProcessGroup } from "./virtual-process-groups.ts";
 
 const json = (value: unknown) => value as Json;
 export class VirtualSpace {
@@ -91,23 +92,22 @@ export class VirtualSpace {
         this.cleanup = (async () => {
           // The worker's apps have separate process groups. Keep their ownership
           // until the entire lifecycle ends, including unexpected worker death.
-          const members = readdirSync("/proc").filter(name => /^\d+$/.test(name)).flatMap(name => {
+          const observeMembers = () => readdirSync("/proc").filter(name => /^\d+$/.test(name)).flatMap(name => {
             try {
               const stat = readFileSync("/proc/" + name + "/stat", "utf8");
               const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-              if (fields[0] === "Z") return [];
+              if (fields[0] === "Z" || fields[0] === "X") return [];
               let owned = identities.get(Number(name)) === fields[19];
               // Sway may make environ unreadable after dropping privileges.
               try { owned ||= readFileSync("/proc/" + name + "/environ", "utf8").split("\0").includes("XDG_RUNTIME_DIR=" + directory); } catch {}
-              return [{ group: Number(fields[2]), owned }];
+              return [{ pid: Number(name), group: Number(fields[2]), startTime: fields[19], owned }];
             } catch { return []; }
           });
+          const members = observeMembers();
           // Discover launches even if a crash beat their ownership message.
           for (const member of members) if (member.owned) groups.add(member.group);
           for (const group of groups) {
-            const live = members.filter(member => member.group === group);
-            if (!live.length) continue;
-            if (!live.some(member => member.owned)) throw new Error("Virtual process group identity could not be verified: " + group);
+            if (!await verifyVirtualProcessGroup(group, observeMembers)) continue;
             try { process.kill(-group, "SIGKILL"); }
             catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
           }
