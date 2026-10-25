@@ -9,7 +9,7 @@ import Foundation
 // (a worktree); its directory must be named `hudson`. HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
 let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
-    ? .package(url: "git@github.com:arach/hudson.git", revision: "d7647584f85ad2227ed2acc83a6ffcbef6f527df")
+    ? .package(url: "git@github.com:arach/hudson.git", revision: "57e71397163a097c8507a008426bfb5da6fed47b")
     : .package(path: Context.environment["LATTICES_HUDSON_PATH"] ?? "../../../hudson")
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
@@ -45,7 +45,7 @@ let voxDependency: Package.Dependency? = voiceEnabled ? {
     if Context.environment["HUDSON_VOX_GIT_URL"] != nil {
         return .package(url: voxGitURL, branch: "main")
     }
-    return .package(url: voxGitURL, revision: "df744e5403a265bf411003a4d1b931365d2328de")
+    return .package(url: voxGitURL, revision: "e1895152859779f4427296e8c5a8d0e38a16f123")
 }() : nil
 
 var latticesDependencies: [Target.Dependency] = [
