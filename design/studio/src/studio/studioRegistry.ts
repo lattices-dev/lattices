@@ -25,6 +25,19 @@ const studioPages: readonly LatticesPage[] = [
       "Design surface for the Lattices macOS workspace manager — studies land here before SwiftUI gets touched.",
   },
   {
+    href: "/studio/studies/lattice",
+    label: "A more considered lattice.",
+    bucket: "studies",
+    surface: "macos",
+    status: "concept",
+    blurb: "Gallery, Instrument, and Paperlight: three interactive treatments for hosts, physical monitors, and connected lists across Machines, Overview, and Layers.",
+    source: [
+      "design/studio/src/studio/studies/Lattice.tsx",
+      "design/studio/src/studio/studies/lattice/lattice.css",
+      "design/studio/src/studio/studies/lattice/model.ts",
+    ],
+  },
+  {
     href: "/studio/studies/shell",
     label: "Shell redesign — first pass",
     bucket: "studies",
@@ -111,6 +124,31 @@ const studioPages: readonly LatticesPage[] = [
     source: [
       "docs/companion-deck-builder-spec.md",
       "apps/mac/Sources/Core/Companion/LatticesCompanionCockpit.swift",
+    ],
+  },
+  {
+    href: "/studio/studies/space-navigation",
+    label: "Space navigation — filmstrip & canvas",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb: "Eight interactive Codex and Opus studies: rail motion, spatial feedback, desktop previews, the fixed-center filmstrip, pull back, and aperture lens.",
+    source: ["studies/space-navigation-2026-10-13/index.html", "apps/mac/Sources/Core/Overlays/HUD/SpaceFilmstrip.swift", "apps/mac/Sources/Core/Overlays/HUD/SpaceCanvas.swift"],
+  },
+  {
+    href: "/studio/studies/stage",
+    label: "Stage — what appears over the desktop",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb:
+      "Hyper+X. The grid, the engaged window, who joins, the island, the suggestion card and the space switcher, drawn on one fake desktop. Each choice shows what ships today next to one other behavior.",
+    // The study's own files, so /studio/live follows them. The Swift it draws:
+    // apps/mac/Sources/Core/Desktop/StageLayout.swift, Overlays/StageModeController.swift.
+    source: [
+      "design/studio/src/studio/studies/Stage.tsx",
+      "design/studio/src/studio/studies/stage/layout.ts",
+      "design/studio/src/studio/studies/stage/desktop.tsx",
     ],
   },
   {

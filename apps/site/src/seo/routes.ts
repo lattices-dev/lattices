@@ -66,9 +66,9 @@ const canvasRoute: RouteMeta = {
 export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/',
-    title: 'Lattices — the programmable workspace for Mac',
+    title: 'Lattices — the programmable workspace',
     description:
-      'Organize windows, run your tools, and automate your workflow. Lattices puts your Mac workspace in your hands, with shortcuts, mouse gestures, and a local API.',
+      'Take control of windows, terminals, and projects. Give your agents the same workspace controls across every computer you connect. Free and open source.',
     priority: '1.0',
     jsonLd: 'home',
     software: latticesApp,

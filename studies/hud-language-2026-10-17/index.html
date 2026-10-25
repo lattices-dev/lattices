@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lattices · HUD language study</title>
+<style>
+:root{color-scheme:dark;--bg:#131517;--line:#30363b;--muted:#a4adb5;--text:#eef2f5;--coral:#ef6a47;--ink:16,21,24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:1240px;margin:auto;padding:36px 36px 60px}
+header{display:flex;justify-content:space-between;gap:30px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:26px}
+.brand{font-size:12px;color:var(--coral);letter-spacing:1px}
+h1{font-size:30px;letter-spacing:-.8px;font-weight:550;margin:5px 0 10px}
+header p{max-width:700px;color:var(--muted);margin:0 0 8px}
+.tokens{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12px;color:var(--muted);padding-top:8px;min-width:240px}
+.sw{width:18px;height:18px;border-radius:5px;box-shadow:inset 0 0 0 1px #ffffff26}
+h2{font-size:20px;font-weight:550;letter-spacing:-.3px;margin:44px 0 4px}
+.lede{color:var(--muted);max-width:760px;margin:0 0 20px}
+.rule{margin:28px 0 0;padding:18px 20px;border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.rule h3{font-size:13px;font-weight:600;margin:0 0 4px}
+.rule p{margin:0;color:var(--muted);font-size:13px}
+.rule b{color:var(--coral);font-weight:500}
+.state{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;align-items:center;padding:16px 0;border-top:1px solid #23282c}
+.state .txt h4{margin:0 0 4px;font-size:15px;font-weight:550;display:flex;gap:10px;align-items:baseline}
+.state .txt p{margin:0;color:#b6c0c7;max-width:46ch}
+.state .txt .note{margin-top:8px;font-size:12px;color:var(--muted)}
+.id{font:11px ui-monospace,"SF Mono",Menlo,monospace;color:var(--muted);font-weight:400}
+.tag{font-size:10px;font-weight:500;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
+.tag.cur{color:#c9d2d8}
+.tag.no{color:var(--coral);border-color:#ef6a4766}
+.state.rejected .desk{outline:1px solid #ef6a4766;outline-offset:3px}
+button{font:inherit;font-size:12px;color:inherit;background:#23292e;border:1px solid #46515b;border-radius:6px;padding:5px 10px;cursor:pointer;margin-top:10px}
+button:hover{background:#343f47}
+button:focus-visible{outline:2px solid var(--coral);outline-offset:3px}
+
+/* ---------- simulated desktop crop ---------- */
+.desk{position:relative;overflow:hidden;width:640px;border-radius:6px;background:linear-gradient(180deg,#3a4247 0%,#2c3337 100%)}
+.desk .w{position:absolute;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.desk .w .bar{height:28px}
+.desk .w.light{background:#f4f4f2}.desk .w.light .bar{background:#e6e6e3}
+.desk .w.dark{background:#16191c}.desk .w.dark .bar{background:#202428}
+.desk .w i{display:block;height:6px;border-radius:3px;background:rgba(0,0,0,.09);margin:8px 14px}
+.desk .w.dark i{background:rgba(255,255,255,.08)}
+.desk .topedge{position:absolute;left:0;right:0;top:0;border-top:1px solid rgba(0,0,0,.6)}
+.slot{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:300px;height:130px;border:1px dashed rgba(255,255,255,.28);border-radius:12px}
+.slot span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:3px 6px;border-radius:4px;background:rgba(13,16,18,.85);white-space:nowrap;font:10px ui-monospace,"SF Mono",Menlo,monospace;color:rgba(255,255,255,.62)}
+
+/* ---------- Stage pill · as shipped ---------- */
+.pill{position:absolute;top:6px;left:50%;transform:translateX(-50%);height:24px;padding:0 11px;border-radius:12px;display:flex;align-items:center;gap:7px;background:rgba(var(--ink),.86);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);color:rgba(255,255,255,.94);font-size:12px;font-weight:500;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:3px;background:var(--coral)}
+
+/* ---------- Suggestion card · 300×130 ---------- */
+.card{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:300px;height:130px;border-radius:12px;background:rgba(var(--ink),.86);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#fff;overflow:hidden}
+.card .label{position:absolute;left:14px;top:13px;font-size:13px;color:rgba(255,255,255,.92);letter-spacing:-.005em;white-space:nowrap}
+.card .label span{color:rgba(255,255,255,.5)}
+.map{position:absolute;left:14px;top:40px;width:168px;height:70px;border-radius:4px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+.t{position:absolute;border-radius:2.5px;background:rgba(255,255,255,.09);box-shadow:inset 0 0 0 1px rgba(255,255,255,.24);font-size:9.5px;font-weight:500;color:rgba(255,255,255,.78);padding:4px 5px;line-height:1}
+.btns{position:absolute;right:14px;top:46px;width:90px;display:flex;flex-direction:column;gap:8px}
+.btn{height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500}
+.btn.primary{background:rgba(255,255,255,.92);color:#101518}
+.btn.ghost{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);color:rgba(255,255,255,.72)}
+.track{position:absolute;left:14px;right:14px;bottom:8px;height:2px;border-radius:1px;background:rgba(255,255,255,.07)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:var(--coral)}
+.hit{position:absolute;border:1px dashed rgba(239,106,71,.95);border-radius:8px}
+.ann{position:absolute;background:rgba(13,16,18,.92);padding:4px 6px;border-radius:4px;font:10px/1.3 ui-monospace,"SF Mono",Menlo,monospace;color:rgba(255,255,255,.72);white-space:nowrap}
+.ann.c{color:var(--coral)}
+
+/* ---------- Space switcher · restyled ---------- */
+.sw2{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:13px 14px 12px;border-radius:14px;background:rgba(var(--ink),.86);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#fff;transition:opacity .2s}
+.sw2 .head{display:flex;align-items:baseline;gap:6px;font-size:13px;color:rgba(255,255,255,.92);letter-spacing:-.005em;height:18px}
+.sw2 .head .of{color:rgba(255,255,255,.5)}
+.sw2 .head .num{display:inline-block;min-width:8px;font-variant-numeric:tabular-nums}
+.sw2 .chev{margin-left:auto;display:flex;gap:10px;font-size:14px;color:rgba(255,255,255,.5)}
+.sw2 .chev .off{color:rgba(255,255,255,.16)}
+.sw2 .chev .go{color:rgba(255,255,255,.92)}
+.sw2 .row{position:relative;display:flex;gap:8px;margin-top:10px}
+.sp{width:64px;flex:none}
+.sp .m{position:relative;height:40px;border-radius:4px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);transition:box-shadow .18s}
+.sp .m .t{padding:0;border-radius:1.5px}
+.sp .n{font-size:11px;color:rgba(255,255,255,.5);margin-top:5px;text-align:center;font-variant-numeric:tabular-nums;transition:color .18s}
+.sp.cur .m{box-shadow:inset 0 0 0 1px rgba(255,255,255,.62)}
+.sp.cur .n{color:rgba(255,255,255,.94)}
+.sw2 .mark{position:absolute;left:0;top:44px;width:64px;height:2px;border-radius:1px;background:var(--coral);transition:transform .26s cubic-bezier(.2,.8,.2,1)}
+.sw2.rm .mark,.sw2.rm .sp .m,.sw2.rm .sp .n{transition:none}
+.sw2.faded{opacity:.32}
+.ghostmark{position:absolute;top:44px;width:64px;height:2px;border-radius:1px;background:rgba(239,106,71,.3)}
+
+/* ---------- Space switcher · current app (SpaceLandscapeView) ---------- */
+.sw1{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:14px;border-radius:12px;background:linear-gradient(#0e0f12,#060709);box-shadow:inset 0 0 0 .75px rgba(255,255,255,.10),0 8px 36px rgba(0,0,0,.45);font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.sw1 .head{display:flex;align-items:center;gap:8px;height:14px}
+.sw1 .dir{color:#57c7f5;font-weight:700;font-size:13px}
+.sw1 .lbl{color:#e9edf0;font-weight:700;font-size:10px;letter-spacing:.7px}
+.sw1 .tiny{font-weight:700;font-size:6.5px;letter-spacing:1.1px;color:#7d858c}
+.sw1 .row{display:flex;gap:8px;margin-top:8px}
+.sw1 .c{width:64px}
+.sw1 .m{position:relative;height:40px;border-radius:5px;background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 .6px rgba(255,255,255,.12)}
+.sw1 .m b{position:absolute;border-radius:1.5px;background:rgba(255,255,255,.28)}
+.sw1 .c.a .m{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1.25px rgba(87,199,245,.9),0 0 6px rgba(87,199,245,.28)}
+.sw1 .c.a .m b{background:rgba(255,255,255,.55)}
+.sw1 .cl{font-weight:700;font-size:8px;color:#7d858c;text-align:center;margin-top:5px}
+.sw1 .c.a .cl{color:#57c7f5}
+
+footer{margin-top:44px;border-top:1px solid var(--line);padding-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:40px;color:var(--muted);font-size:12px}
+footer h3{font-size:13px;color:#e5edf2;margin:0 0 8px}
+footer p{margin:0 0 8px}
+
+@media (prefers-reduced-motion: reduce){.sw2 .mark,.sp .m,.sp .n,.sw2{transition:none!important}}
+@media(max-width:1000px){.state{grid-template-columns:1fr}.rule{grid-template-columns:1fr}footer{grid-template-columns:1fr;gap:18px}}
+@media(max-width:700px){main{padding:20px 16px}header{display:block}.desk{zoom:.52}}
+</style></head><body><main>
+
+<header>
+  <div>
+    <div class="brand">LATTICES / HUD LANGUAGE STUDY</div>
+    <h1>One language for the things that appear over your work.</h1>
+    <p>The Stage pill, the layout suggestion card and the space switcher, drawn as one set: ink #101518 at 86%, a thin white keyline, light system type, and coral only where something is live. Every state is drawn and labeled. These are simulated overlays on a simulated desktop; nothing here touches your Mac.</p>
+    <p>The space switcher is the piece that changes. Today it is the gray filmstrip with a cyan edge. It is shown once as the current app, then restyled in each state.</p>
+  </div>
+  <div class="tokens" aria-label="Shared tokens">
+    <div class="sw" style="background:#101518"></div><div>Ink #101518 · 86% · 1pt white 12% keyline</div>
+    <div class="sw" style="background:#ef6a47"></div><div>Coral #ef6a47 · the live thing only</div>
+    <div class="sw" style="background:rgba(255,255,255,.92)"></div><div>Text 92% · secondary 50%</div>
+    <div class="sw" style="background:rgba(255,255,255,.09);box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)"></div><div>Window block · 9% fill · 24% keyline</div>
+    <div></div><div>System type, regular and medium, no tracked caps, no green</div>
+  </div>
+</header>
+
+<div class="rule">
+  <div><h3>Stage and the card share one slot</h3><p>Top centre, 6pt under the visible frame. When Stage is on, the pill holds the slot and no suggestion is offered. When Stage is off, the slot is empty until a suggestion arrives. <b>One owner at a time.</b></p></div>
+  <div><h3>The switcher is its own moment</h3><p>It answers a keypress you just made, sits where you set it (centre by default), and leaves within a second. It never docks into the top-centre slot, so it never competes with the pill or a pending suggestion.</p></div>
+  <div><h3>So the three never stack</h3><p>The pill and the card are ambient: they wait for you. The switcher is a reply: it follows you. Mixing a waiting thing with a reply in one place makes both harder to read.</p></div>
+</div>
+
+<h2>Stage</h2>
+<p class="lede">The pill as shipped: coral dot, the word Stage. Nothing else.</p>
+<div id="stage"></div>
+
+<h2>Suggestion card · Stage off, same top-centre slot</h2>
+<p class="lede">About 300×130. A one-line decision, a map of what will move, two buttons, and a coral decision line that drains as the offer times out.</p>
+<div id="card"></div>
+
+<h2>Space switcher</h2>
+<p class="lede">Six desktops, each a small map in the card's window-block style. The current desktop gets a brighter keyline, a bright number and the coral line under it. The header says where you are in plain words.</p>
+<div id="switch"></div>
+
+<h2>Rejected</h2>
+<p class="lede">Kept on the page so the reasons stay visible.</p>
+<div id="rejected"></div>
+
+<footer>
+  <div><h3>What stays the same across the set</h3><p>One surface (ink 86%, white 12% keyline, 12–14pt radius, the same soft shadow), one window-block style for any map, one accent. Coral marks the thing that is live right now: Stage running, the offer's remaining time, the desktop you are on.</p></div>
+  <div><h3>Notes</h3><p>Browser motion and timings are illustrative; native timing is decided in the app. The earlier PNG frames in docs/designs/layout-suggestions/ are reference for the pill and card. HUD language study · October 17, 2026.</p></div>
+</footer>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const backdrop=(h,mode)=>{
+  // light window left, dark window right, so the ink reads over both
+  const y=mode==='mid'?-10:22;
+  return `<div class="topedge"></div>
+  <div class="w light" style="left:-40px;top:${y}px;width:330px;height:400px"><div class="bar"></div><i style="width:70%"></i><i style="width:85%"></i><i style="width:55%"></i><i style="width:78%"></i><i style="width:62%"></i><i style="width:80%"></i><i style="width:58%"></i><i style="width:72%"></i></div>
+  <div class="w dark" style="left:298px;top:${y}px;width:420px;height:400px"><div class="bar"></div><i style="width:40%"></i><i style="width:66%"></i><i style="width:52%"></i><i style="width:74%"></i><i style="width:35%"></i><i style="width:60%"></i><i style="width:48%"></i><i style="width:70%"></i></div>`};
+const desk=(h,inner,mode)=>`<div class="desk" style="height:${h}px">${backdrop(h,mode)}${inner}</div>`;
+const state=(id,title,frame,text,{tag,cls,extra}={})=>`<section class="state ${cls||''}">${frame}<div class="txt"><h4><span class="id">${id}</span>${title}${tag||''}</h4><p>${text}</p>${extra||''}</div></section>`;
+
+/* ---------- card ---------- */
+const card4=(drain=100)=>`<div class="card"><div class="label">Tile 4 windows <span>·</span> 2×2</div><div class="map">
+<div class="t" style="left:3px;top:3px;width:79px;height:30px">fab</div><div class="t" style="left:86px;top:3px;width:79px;height:30px">lattices</div>
+<div class="t" style="left:3px;top:37px;width:79px;height:30px">talkie</div><div class="t" style="left:86px;top:37px;width:79px;height:30px">grok</div></div>
+<div class="btns"><div class="btn primary">Tile</div><div class="btn ghost">Not now</div></div><div class="track"><i style="width:${drain}%"></i></div></div>`;
+const card1=`<div class="card"><div class="label">Center talkie <span>·</span> ⅔ width</div><div class="map"><div class="t" style="left:29px;top:3px;width:110px;height:64px">talkie</div></div>
+<div class="btns"><div class="btn primary">Tile</div><div class="btn ghost">Not now</div></div><div class="track"><i style="width:100%"></i></div></div>`;
+const emptySlot=`<div class="slot"><span>top-centre slot · empty</span></div>`;
+
+$('stage').innerHTML=
+ state('S1','Off',desk(72,`<div class="slot" style="width:120px;height:24px;border-radius:12px"><span>empty</span></div>`),
+  'Stage is not running. Nothing is drawn in the top-centre slot; the dashed outline only marks where the pill would sit.')+
+ state('S2','On',desk(72,`<div class="pill">Stage</div>`),
+  'Stage is running. The pill holds the slot alone: coral dot, the word Stage, nothing else. While it is up, no suggestion card is offered.');
+
+$('card').innerHTML=
+ state('C1','Four windows · 2×2 · decision line full',desk(176,card4(100)),
+  'A fresh offer to tile four windows into a 2×2. The map shows which window lands where; the coral line is full because the offer has just arrived.')+
+ state('C2','One window',desk(176,card1),
+  'The same card for a single window. Same size, same map, same buttons, so a one-window offer never looks like a different kind of thing.')+
+ state('C3','Decision line drained · about to dismiss',desk(176,card4(12)),
+  'The offer is nearly out of time. The coral line has drained to the left; at zero the card leaves on its own, which counts as Not now.')+
+ state('C4','Hit areas',desk(176,card4(100)+`<div class="hit" style="left:366px;top:49px;width:94px;height:32px"></div><div class="hit" style="left:366px;top:85px;width:94px;height:32px"></div>
+  <div class="ann c" style="left:470px;top:58px">Tile · Not now</div><div class="ann" style="left:470px;top:74px">take clicks (+2pt slop)</div>
+  <div class="ann" style="left:16px;top:56px">rest of the card<br>passes clicks through<br>to the window below</div>`),
+  'Only Tile and Not now take clicks. The label, map and line are display only, so a click aimed at the window under the card still reaches it.')+
+ state('C5','Dismissed',desk(176,emptySlot),
+  'After Tile, Not now or a drained line, the slot is empty again and free for the pill or the next offer.');
+
+/* ---------- switcher ---------- */
+// six desktops, window rects as fractions of the desktop
+const spaces=[
+ [[.04,.08,.44,.84],[.52,.08,.44,.84]],
+ [[.18,.1,.64,.8]],
+ [[.03,.06,.46,.42],[.51,.06,.46,.42],[.03,.52,.46,.42],[.51,.52,.46,.42]],
+ [[.05,.1,.6,.8],[.68,.1,.27,.38]],
+ [],
+ [[.1,.12,.8,.76]]];
+const total=spaces.length;
+const maps=cur=>spaces.map((ws,i)=>`<div class="sp${i+1===cur?' cur':''}"><div class="m">${ws.map(r=>`<div class="t" style="left:${r[0]*64}px;top:${r[1]*40}px;width:${r[2]*64}px;height:${r[3]*40}px"></div>`).join('')}</div><div class="n">${i+1}</div></div>`).join('');
+const sw2=(cur,{dir=0,edge='',cls='',ghost=null,id=''}={})=>{
+  const prev=cur===1?'off':(dir<0?'go':''), next=cur===total?'off':(dir>0?'go':'');
+  return `<div class="sw2 ${cls}" ${id?`id="${id}"`:''}><div class="head"><span>Desktop <span class="num">${cur}</span></span><span class="of">of ${total}</span>
+  <span class="chev"><span class="${prev}">‹</span><span class="${next}">›</span></span></div>
+  <div class="row">${maps(cur)}${ghost?`<div class="ghostmark" style="left:${(ghost-1)*72}px"></div>`:''}<div class="mark" style="transform:translateX(${(cur-1)*72}px)"></div></div></div>`};
+const sw1=cur=>`<div class="sw1"><div class="head"><span class="dir">›</span><span class="lbl">DESKTOP ${cur}</span><span style="flex:1"></span><span class="tiny">${total} SPACES</span><span class="tiny" style="letter-spacing:1.2px">LATTICES</span></div>
+ <div class="row">${spaces.map((ws,i)=>`<div class="c${i+1===cur?' a':''}"><div class="m">${ws.map(r=>`<b style="left:${r[0]*64}px;top:${r[1]*40}px;width:${r[2]*64}px;height:${r[3]*40}px"></b>`).join('')}</div><div class="cl">DESKTOP ${i+1}</div></div>`).join('')}</div></div>`;
+const H=200;
+
+$('switch').innerHTML=
+ state('W0','Current app',desk(H,sw1(3),'mid'),
+  'The switcher as it ships today: a near-black gradient, white-opacity window blocks, a cyan edge and glow on the active desktop, and "6 SPACES" and "LATTICES" in tiny tracked monospace. It reads gray and dark next to the pill and the card.',{tag:'<span class="tag cur">Current app</span>'})+
+ state('W1','Just arrived · current desktop marked',desk(H,sw2(3),'mid'),
+  'You pressed a key and landed on desktop 3. The header says so in words, the map for 3 gets the brighter keyline and the coral line sits under it.')+
+ state('W2','Moving to the next desktop',desk(H,sw2(4,{dir:1,ghost:3,id:'mover'}),'mid'),
+  'Next was pressed. The coral line travels from 3 to 4 and settles without bounce; the › chevron brightens to show direction. A second press retargets mid-travel.',
+  {extra:'<button id="replay">Replay 3 → 4</button><div class="note">The faint coral mark is where it left from.</div>'})+
+ state('W3','At the first desktop · previous does nothing',desk(H,sw2(1,{dir:-1}),'mid'),
+  'On desktop 1 the ‹ chevron is dimmed. Pressing previous changes nothing on screen: no bounce, no flash, no edge label.')+
+ state('W4','At the last desktop · next does nothing',desk(H,sw2(6,{dir:1}),'mid'),
+  'The mirror case on desktop 6: › is dimmed and next is a no-op. The empty map for desktop 5 still shows as a desktop, just without blocks.')+
+ state('W5','Fading after a pause',desk(H,sw2(4,{cls:'faded'}),'mid'),
+  'About a second after the last press the whole surface fades out together. Any new press brings it straight back at full strength, already on the new desktop.')+
+ state('W6','Reduce motion',desk(H,sw2(4,{cls:'rm',dir:1,id:'rm'}),'mid'),
+  'The same information with no travel: the coral line jumps to the new desktop and the header number swaps in place. Nothing slides.',
+  {extra:'<button id="replayrm">Replay 3 → 4 without travel</button>'});
+
+/* ---------- rejected ---------- */
+$('rejected').innerHTML=
+ state('R1','Stage pill and suggestion card sharing the slot',desk(176,card4(100)+`<div class="pill">Stage</div><div class="ann c" style="left:478px;top:14px">pill sits on<br>the card's label</div>`),
+  'Both claim top centre, so one covers the other: the pill lands on the card\'s label, and it is unclear whether the offer belongs to Stage. Stage on means no offer.',{tag:'<span class="tag no">Rejected</span>',cls:'rejected'})+
+ state('R2','Old gray switcher beside the new language',`<div class="desk" style="height:280px">${backdrop(280,'mid')}<div class="pill">Stage</div><div style="position:absolute;inset:44px 0 0 0">${sw1(3).replace('class="sw1"','class="sw1" style="top:50%"')}</div><div class="ann c" style="left:16px;top:40px">two inks, two accents,<br>two type systems</div></div>`,
+  'The shipped gray filmstrip under the new pill, as if they were a pair. Cyan against coral, tracked monospace against system type, gradient black against ink: it reads as two products. It also crowds the switcher up toward the slot it should never enter.',{tag:'<span class="tag no">Rejected</span>',cls:'rejected'});
+
+/* ---------- replay ---------- */
+function replay(id,reduced){
+  const el=$(id);const mark=el.querySelector('.mark'),num=el.querySelector('.num'),sps=el.querySelectorAll('.sp');
+  el.classList.add('rm');mark.style.transform='translateX(144px)';num.textContent='3';sps.forEach((s,i)=>s.classList.toggle('cur',i===2));
+  void mark.offsetWidth;
+  setTimeout(()=>{
+    if(!reduced&&!matchMedia('(prefers-reduced-motion: reduce)').matches)el.classList.remove('rm');
+    mark.style.transform='translateX(216px)';num.textContent='4';sps.forEach((s,i)=>s.classList.toggle('cur',i===3));
+  },500);
+}
+$('replay').onclick=()=>replay('mover',false);
+$('replayrm').onclick=()=>replay('rm',true);
+</script>
+</body></html>

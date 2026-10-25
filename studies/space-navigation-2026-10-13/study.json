@@ -109,5 +109,11 @@
     "status": "Interactive illustrative study; no native implementation",
     "inspiration": "Window atlas draws on the window-outline idea in the Opus spatial study",
     "budget": "One build and one correction pass"
+  },
+  "studio": {
+    "route": "/studio/studies/space-navigation",
+    "workspace": "design/studio",
+    "registry": "design/studio/src/studio/lib/spaceNavigationStudies.ts",
+    "sourcePolicy": "Studio serves these original study files directly. Edit them here; do not create a second copy."
   }
 }

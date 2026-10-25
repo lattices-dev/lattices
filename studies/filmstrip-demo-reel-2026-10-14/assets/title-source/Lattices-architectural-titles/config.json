@@ -1,0 +1,11 @@
+{
+  "topic": "Overview",
+  "endingText": "",
+  "canvas": {
+    "width": 3440,
+    "height": 1440
+  },
+  "introDuration": 2.5,
+  "outroDuration": 2.5,
+  "fps": 30
+}

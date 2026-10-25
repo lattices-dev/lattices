@@ -22,7 +22,7 @@ export default function Hero() {
           <div className="rise-in rise-1">
             <h1 className="text-balance">
               <span className="font-display block text-[66px] md:text-[86px] font-semibold tracking-[-0.025em] leading-[0.84] text-[var(--text)]">
-                blink
+                Canvas
               </span>
               <span className="font-display mt-6 block max-w-md text-[32px] md:text-[40px] font-medium tracking-[-0.012em] leading-[0.98] text-[var(--text)]">
                 spatial notes for your Mac
@@ -48,13 +48,13 @@ export default function Hero() {
             </div>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <PrimaryButton href="https://github.com/arach/blink/releases/latest">
+              <PrimaryButton href="https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/Canvas.dmg">
                 <span className="text-[15px] leading-none" aria-hidden>
                   ↓
                 </span>{' '}
                 download for macOS
               </PrimaryButton>
-              <GhostButton href="https://github.com/arach/lattices/tree/main/products/blink">
+              <GhostButton href="https://github.com/lattices-dev/lattices/tree/main/products/blink">
                 github <span className="text-faintx" aria-hidden>↗</span>
               </GhostButton>
             </div>

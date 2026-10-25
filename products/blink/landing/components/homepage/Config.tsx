@@ -46,7 +46,7 @@ export function ConfigSection() {
               Configured by a file, <span className="text-acc">not a settings pane</span>.
             </>
           }
-          sub="Theme, hotkeys, motion, sheets — one JSON file. Any process can edit it; Blink watches the directory and hot-applies changes to every panel. The settings window is just a view over it."
+          sub="Theme, hotkeys, motion, sheets — one JSON file. Any process can edit it; Canvas watches the directory and hot-applies changes to every panel. The settings window is just a view over it."
         />
 
         <div className="grid gap-8 lg:grid-cols-[1.35fr_1fr] lg:gap-12 items-start">
@@ -87,7 +87,7 @@ export function ConfigSection() {
               },
               {
                 k: 'scriptable by anything',
-                v: 'Your dotfiles manager, an agent, a sed one-liner. If it can write a file, it can reconfigure Blink.',
+                v: 'Your dotfiles manager, an agent, a sed one-liner. If it can write a file, it can reconfigure Canvas.',
               },
               {
                 k: 'atomic + watched',

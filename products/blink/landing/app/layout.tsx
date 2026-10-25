@@ -39,21 +39,21 @@ const themeBootScript = `try{
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://blink.arach.dev"),
-  title: "Blink — Spatial notes for your Mac",
+  title: "Canvas — Spatial notes for your Mac",
   description:
     "A native macOS menubar app. Summon a borderless glass note anywhere with a keystroke, place it in space, and it stays. Plain markdown you own — open to your agents.",
   keywords:
     "macOS notes, menubar app, spatial notes, floating notes, markdown, keyboard-first, agent-first, native app",
-  authors: [{ name: "Blink" }],
+  authors: [{ name: "Canvas" }],
   alternates: {
     canonical: "/",
     types: {
-      "text/plain": [{ url: "/llms.txt", title: "Blink for language models" }],
-      "text/markdown": [{ url: "/agents.md", title: "Blink agent instructions" }],
+      "text/plain": [{ url: "/llms.txt", title: "Canvas for language models" }],
+      "text/markdown": [{ url: "/agents.md", title: "Canvas agent instructions" }],
     },
   },
   openGraph: {
-    title: "Blink — Spatial notes for your Mac",
+    title: "Canvas — Spatial notes for your Mac",
     description:
       "Summon a borderless glass note anywhere with a keystroke, place it in space, and it stays. Plain markdown you own — open to your agents.",
     type: "website",

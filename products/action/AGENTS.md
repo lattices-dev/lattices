@@ -4193,8 +4193,15 @@ Notes:
 Package: `packages/chrome-companion`
 
 - Manifest V3 extension with DOM observe / resolve / act helpers
-- Localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
+- In published releases, a localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
 - One-time **Load unpacked** per Action identity (`dist/` after build)
+
+The private IPC source build (unreleased) uses Chrome native messaging instead
+of the extension's TCP connection. The registered native host connects to
+`~/.lattices/run/action-chrome.sock` with `action-chrome.token`. Use the matching
+extension, native host, and Action runtime, including for a local installation.
+Register the host for the exact extension ID and Chrome user-data directory;
+registration for regular Chrome does not cover a separate Action identity.
 
 ```bash
 bun run chrome:companion:build

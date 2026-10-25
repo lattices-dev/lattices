@@ -1,0 +1,47 @@
+{
+  "duration": 23,
+  "fps": 60,
+  "playbackRate": 1,
+  "shots": [
+    {
+      "id": "filmstrip",
+      "source": "assets/filmstrip.mov",
+      "in": 0.75,
+      "duration": 8.5,
+      "title": "Switch desktops",
+      "hint": "CTRL  +  \u2190  \u2192",
+      "number": "01",
+      "side": "left"
+    },
+    {
+      "id": "canvas",
+      "source": "assets/canvas.mov",
+      "in": 0.4,
+      "duration": 13.5,
+      "title": "Open canvas / Fit all desktops / Choose a desktop / Go to desktop",
+      "hint": "CTRL  +  \u2193     \u00b7     0 TO FIT",
+      "number": "02",
+      "side": "right",
+      "segments": [
+        {
+          "start": 0,
+          "sourceIn": 1.4,
+          "duration": 3.6
+        },
+        {
+          "start": 3.6,
+          "sourceIn": 12.3,
+          "duration": 3.4
+        },
+        {
+          "start": 7,
+          "sourceIn": 22.7,
+          "duration": 6.5
+        }
+      ],
+      "capture": "take-06.mov"
+    }
+  ],
+  "editing": "Hard cuts remove static pauses only; each retained interaction is 1x.",
+  "revision": "Demo first: no opening, 22 seconds of native footage, 1-second closing; compact action-synchronized keyboard hints."
+}

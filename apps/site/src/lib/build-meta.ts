@@ -34,6 +34,7 @@ export function formatBuildDate(value: string | null | undefined): string | null
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
   return date.toLocaleDateString('en-US', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

@@ -21,7 +21,7 @@ const markNotes: Record<BrandSlug, { meaning: string; accent: string; tab: strin
   lattices: {
     meaning: "The L of a 3 × 3 grid, with Action's cursor in the centre and its tip in the crook of the L: Lattices puts a window where you point.",
     accent: 'The pointer taking aim',
-    tab: 'Lattices — the programmable workspace for Mac',
+    tab: 'Lattices — the programmable workspace',
   },
   action: {
     meaning: "An A that fills its square, with the cursor on its diagonal: the tip on the counter's edge, the tail on the square's right and bottom sides.",

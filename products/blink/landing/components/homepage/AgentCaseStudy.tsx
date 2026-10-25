@@ -175,10 +175,10 @@ export function AgentFilm() {
           tag="DEMO"
           title={
             <>
-              Pi types the commands. <span className="text-acc">Blink arranges the desk.</span>
+              Pi types the commands. <span className="text-acc">Canvas arranges the desk.</span>
             </>
           }
-          sub="A real iTerm2 session uses Blink’s CLI to create, move, hide, and restore spatial notes — with the desktop itself as the workspace."
+          sub="Recorded before the rename to Canvas, this iTerm2 session uses the compatible blink CLI to create, move, hide, and restore spatial notes — with the desktop itself as the workspace."
         />
 
         <Reveal>
@@ -201,7 +201,7 @@ export function AgentFilm() {
                   playsInline
                   preload="metadata"
                   poster="/demos/blink-spatial-demo-poster.jpg"
-                  aria-label="Pi drives Blink through the command line to create and arrange spatial notes"
+                  aria-label="Pi drives Canvas (then Blink) through the command line to create and arrange spatial notes"
                 >
                   <source src="/demos/blink-spatial-demo.mp4" type="video/mp4" />
                 </video>

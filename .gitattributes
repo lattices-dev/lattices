@@ -1,1 +1,2 @@
 apps/mac/Resources/DeckBuilder/** -whitespace
+studies/**/assets/gsap.min.js -whitespace

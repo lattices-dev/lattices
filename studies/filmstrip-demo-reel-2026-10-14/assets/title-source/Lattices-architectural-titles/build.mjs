@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+const c=JSON.parse(fs.readFileSync(new URL('./config.json',import.meta.url),'utf8'));
+const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const W=Number(c.canvas.width),H=Number(c.canvas.height),a=Number(c.introDuration),b=Number(c.outroDuration);
+if(!Number.isFinite(W)||!Number.isFinite(H)||W<640||H<360||W%2||H%2) throw new Error('Use even canvas dimensions at least640×360.');
+if(![a,b].every(v=>Number.isFinite(v)&&v>=1&&v<=10))throw new Error('Durations must be1–10seconds.');
+const s=Math.min(W/3440,H/1440),oy=(H-1440*s)/2;
+let h=fs.readFileSync(new URL('./template.html.template',import.meta.url),'utf8');
+h=h.replace('width=3440,height=1440',`width=${W},height=${H}`).replace('data-width="3440" data-height="1440"',`data-width="${W}" data-height="${H}"`).replace('data-duration="5"',`data-duration="${a+b}"`);
+h=h.replace('data-start="0" data-duration="2.5"',`data-start="0" data-duration="${a}"`).replace('data-start="2.5" data-duration="2.5"',`data-start="${a}" data-duration="${b}"`).replace("},2.5);",`},${a});`);
+h=h.replace('left:1510px;top:120px;width:1800px;height:1200px',`left:${1510*s}px;top:${120*s+oy}px;width:${1800*s}px;height:${1200*s}px`).replace('left:232px;top:554px;width:1200px',`left:${232*s}px;top:${554*s+oy}px;width:${1200*s}px`).replace('font-size:244px',`font-size:${244*s}px`).replace('letter-spacing:-10px',`letter-spacing:${-10*s}px`).replace('font-size:66px',`font-size:${66*s}px`).replace('margin-top:38px',`margin-top:${38*s}px`).replace('letter-spacing:-1px',`letter-spacing:${-s}px`);
+h=h.replace('data-composition-id="main"',`data-composition-id="main" data-fps="${Number(c.fps)||30}"`);
+h=h.replace('>Overview</p>',`>${esc(c.topic)}</p>`);
+if(c.endingText)h=h.replace('<h1 id="outro-title">Lattices</h1>','<h1 id="outro-title">Lattices</h1><p id="outro-ending">'+esc(c.endingText)+'</p>');
+if(c.endingText)h=h.replace('window.__timelines.main=tl;',`tl.fromTo('#outro-ending',{y:10,opacity:0},{y:0,opacity:1,duration:.4,ease:'power2.out'},${a+.12});\nwindow.__timelines.main=tl;`);
+fs.writeFileSync(new URL('./index.html',import.meta.url),h);
+fs.writeFileSync(new URL('./edit-points.json',import.meta.url),JSON.stringify({intro:{in:0,out:a},outro:{in:a,out:a+b},canvas:{width:W,height:H},fps:c.fps},null,2)+'\n');
+console.log(`Built${W}×${H},${a+b}s; intro${a}s/outro${b}s.`);

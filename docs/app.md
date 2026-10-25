@@ -271,7 +271,7 @@ Transparency suppress the effect. Agents can also set it with
 The filmstrip stays visible while the switch is in progress, then waits 0.85
 seconds after landing before its 0.12-second fade.
 Only bare Ctrl+arrows are claimed;
-Ctrl+Option+arrows still tile. While the feature is on, the app
+Cmd+Option+Shift+arrows tile; Ctrl+Option+arrows are available for other shortcuts. While the feature is on, the app
 disables Mission Control's "Move left/right a space" symbolic hotkeys
 (they would replay the slide animation); the original setting is
 restored when the feature is toggled off or the app quits. Toggle it in
@@ -317,6 +317,11 @@ The settings window has five tabs:
 - hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
 - tap Caps Lock -> Escape
 
+Holding Control + Option is quiet by default. **Cmd+Option+arrows** browse
+layers; add **Shift** to tile the current window. Existing custom bindings
+remain available in Settings > Shortcuts.
+
+The pointer picker is optional under Settings > Shortcuts > **Ctrl+Option hold**.
 With **Spatial Lens** enabled, holding physical Control + Option reveals
 eight contextual placement targets around the pointer. Choose a side to preview
 left, right, top, or bottom placement, or choose a corner for quarter placement.
@@ -374,16 +379,17 @@ from Settings > Shortcuts.
 | Ctrl+Cmd+M         | Hands-off mode       |
 | Hyper+Space        | Hyperspace window survey |
 | Hyper+G            | In-place window tools |
-| Hold Ctrl+Option + pointer | Preview Spatial Lens placement; release to commit |
+| Hold Ctrl+Option + pointer | Optional Spatial Lens placement; release to commit |
 | Hyper+H            | Window navigation hints |
 | Hyper+5            | Omni search          |
 | Hyper+6            | Cheat sheet          |
 | Ctrl+Option+Space  | Command bar          |
 | Ctrl+Option+G      | 4x4 grid placement   |
 | Ctrl+Option+V      | Fill open 3x2 cell   |
-| Ctrl+Option+arrows | Tile halves          |
-| Ctrl+Option+mouse  | Aim HUD; release to tile, stay centered to cancel |
-| Ctrl+Option+1/2/3  | Tile thirds          |
+| Cmd+Option+Shift+arrows | Tile halves     |
+| Ctrl+Option+arrows | Available for custom shortcuts |
+| Ctrl+Option+mouse  | Optional Tile HUD; off by default |
+| Ctrl+Option+Shift+1/2/3 | Tile thirds     |
 | Ctrl+Left/Right    | Instant Space switch |
 | Cmd+Option+1–9    | Switch to the layer in that slot; 5 shows the current one |
 | Cmd+Option+arrows | Move across the layer pad |

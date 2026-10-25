@@ -12,7 +12,7 @@ const DOCS = [
     detail: 'complete operating contract',
   },
   {
-    href: 'https://github.com/arach/lattices/blob/main/products/blink/docs/cli.md',
+    href: 'https://github.com/lattices-dev/lattices/blob/main/products/blink/docs/cli.md',
     label: 'CLI reference',
     detail: 'commands + JSON shapes',
   },
@@ -33,7 +33,7 @@ const CONTRACT = [
   },
   {
     term: 'App optional',
-    detail: 'Writes still land while Blink is closed. The app reconciles them when it is running or next opens.',
+    detail: 'Writes still land while Canvas is closed. The app reconciles them when it is running or next opens.',
   },
   {
     term: 'Configure by file',

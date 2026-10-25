@@ -1,0 +1,19 @@
+{
+  "artwork": {
+    "file": "assets/lattices-architecture.png",
+    "type": "user-approved generated concept artwork",
+    "original": "/Users/arach/.codex/generated_images/01a0fdb8-c0fb-79d3-96f2-0f167289c777/exec-debae1f3-2660-4d41-bf7e-d82fb6b63416.png",
+    "treatment": "unchanged source image, layout mask only",
+    "officialLogo": false
+  },
+  "font": {
+    "family": "Inter",
+    "source": "Google Fonts",
+    "license": "assets/Inter-LICENSE.txt"
+  },
+  "runtime": {
+    "name": "GSAP",
+    "version": "3.14.2",
+    "file": "assets/gsap.min.js"
+  }
+}
