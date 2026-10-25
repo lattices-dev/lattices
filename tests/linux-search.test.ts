@@ -37,11 +37,39 @@ test("placement previews select an exact window without changing focus and use c
   const calls: unknown[] = [];
   const client = { daemonCall: async (method: string, params: unknown) => {
     calls.push([method, params]);
-    if (method === "search.query") return [{ wid: 123, app: "Terminal", title: "project" }];
+    if (method === "search.query") return [{ wid: 123, app: "Terminal", title: "project", matchSources: ["title"] }];
     return { status: "planned" };
   } } as DaemonClient;
   const result = await placeWithClient(client, "project", "right", true);
   expect(calls).toEqual([["search.query", { query: "project", sources: ["all"] }], ["windows.place", { wid: 123, placement: "right", dryRun: true }]]);
   expect(result?.window.wid).toBe(123);
   expect(result?.status).toBe("planned");
+});
+
+test("placement cannot move a window identified only by its terminal app", async () => {
+  const calls: string[] = [];
+  const client = { daemonCall: async (method: string) => {
+    calls.push(method);
+    return [{ wid: 123, app: "Terminal", title: "zsh", matchSources: ["terminal-app"] }];
+  } } as DaemonClient;
+  expect(await placeWithClient(client, "project", "right", false)).toBeNull();
+  expect(calls).toEqual(["search.query"]);
+});
+
+test("placement selects the exact window after an app-only match", async () => {
+  const calls: unknown[] = [];
+  const client = { daemonCall: async (method: string, params: unknown) => {
+    calls.push([method, params]);
+    if (method === "search.query") return [
+      { wid: 123, app: "Terminal", title: "zsh", matchSources: ["terminal-app"] },
+      { wid: 456, app: "Terminal", title: "project", matchSources: ["terminal-app", "title"] },
+    ];
+    return { status: "executed" };
+  } } as DaemonClient;
+  expect((await placeWithClient(client, "project", "right", false))?.window.wid).toBe(456);
+  expect(calls).toEqual([
+    ["search.query", { query: "project", sources: ["all"] }],
+    ["windows.focus", { wid: 456 }],
+    ["windows.place", { wid: 456, placement: "right", dryRun: false }],
+  ]);
 });
