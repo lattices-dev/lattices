@@ -17,7 +17,7 @@
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "studio": "file:../../../studio"
+    "studio": "github:hudsonkit/studio#e0ba2db676ed5d09800efacc3f653b47ad26c5bd"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
@@ -26,5 +26,8 @@
     "@types/react-dom": "^19.0.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "workspaces": [
+    "../../../hudson/packages/web/hudsonkit"
+  ]
 }
