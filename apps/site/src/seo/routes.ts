@@ -86,7 +86,7 @@ const voiceRoute: RouteMeta = {
 export const staticRoutes: readonly RouteMeta[] = [
   {
     path: '/',
-    title: 'Lattices — the programmable workspace',
+    title: 'Lattices — take control of your workspace',
     description:
       'Take control of windows, terminals, and projects. Give your agents the same workspace controls across every computer you connect. Free and open source.',
     priority: '1.0',

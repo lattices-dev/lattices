@@ -342,7 +342,7 @@ const pages = [
     tag: "npm install -g @lattices/lattices",
     title: "lattices",
     subtitle:
-      "Your workspace, programmable. For you and your agents.",
+      "Take control of your workspace. Bring your agents.",
     preview: screenMapPreview,
   },
   {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
+import { HeroControlHeadline } from "./HeroControlHeadline";
 import { GestureMatrix } from "./GestureMatrix";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu, SiteFooter } from "./SiteChrome";
@@ -949,9 +950,9 @@ export default function App() {
         <section className="hero fade-in">
           <div className="hero-inner">
 
-            <h1>Your workspace, programmable.</h1>
+            <HeroControlHeadline />
             <p className="hero-sub">
-              Take full control of your windows, terminals, and projects.
+              Arrange your windows, terminals, and projects.
               Give your agents the same workspace controls, across every
               computer you connect.
             </p>
