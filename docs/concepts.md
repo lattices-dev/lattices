@@ -283,7 +283,7 @@ embedded voice runtime on `voice.sock`. It does not use Voice.app.
 | Term | Definition |
 |------|------------|
 | **Command Bar** | The menu bar app's primary interface (**Control+Option+Space** by default). Search and run actions for apps, windows, workspaces, and settings. |
-| **Workspace layer** | A named group of windows that you switch as one unit with **⌘⌥** arrows or `lats layer`. See [Layers](/lattices/docs/layers). Not the same as an Action private layer. |
+| **Workspace layer** | A named group of windows that you switch as one unit with **⌃⌥⇧** arrows or `lats layer`. See [Layers](/lattices/docs/layers). Not the same as an Action private layer. |
 | **Window Tiling**     | Snap terminal windows to preset screen positions (halves, quarters, thirds, maximize, center). Works from the CLI (`lats tile`) or the command bar. |
 | **Agent API** | Lattices RPC methods and events hosted by the menu bar app on macOS or `lattices-host` on Linux. Current versions use authenticated WebSocket over `lattices.sock`; versions before 0.15.1 use TCP 9399. See the [API reference](/lattices/docs/api). |
 | **Private IPC** | Local communication over a Unix socket owned by the current user. Product APIs authenticate local clients before accepting requests; the gateway is not involved. |

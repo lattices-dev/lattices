@@ -32,7 +32,7 @@ positions such as sixths and eighths.
 ## Tile with a key
 
 1. Bring the window to the front.
-2. Press Command+Option+Shift and an arrow key.
+2. Press Control+Option and an arrow key.
 
 Expected: the window fills that half of its display.
 

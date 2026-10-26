@@ -36,7 +36,7 @@ layer. Choosing the layer you are already on gathers its windows back up.
 |------|--------|
 | Command+Option+1 to 4, 6 to 9 | Switch to the layer in that slot |
 | Command+Option+5 | Show which layer is active |
-| Command+Option+arrows | Move across the pad |
+| Control+Option+Shift+arrows | Move across the pad |
 | Command+Option+T | Add the front window to the active layer |
 | Command+Option+0 | Classic mode: every window back as if Lattices were not running |
 | Command+Option+Z | Undo the last layer edit |
