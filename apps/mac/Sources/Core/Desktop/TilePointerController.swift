@@ -2,6 +2,30 @@ import AppKit
 import Combine
 import CoreGraphics
 
+/// A layer or Hyper chord owns the modifier hold until Control or Option
+/// lifts, even when Shift or Command is released first.
+struct TilePointerModifierState {
+    private var blockedUntilPairReleased = false
+
+    mutating func update(_ flags: NSEvent.ModifierFlags) -> Bool {
+        if !flags.contains([.control, .option]) {
+            blockedUntilPairReleased = false
+        } else if !flags.intersection([.command, .shift]).isEmpty {
+            blockedUntilPairReleased = true
+        }
+        return allowsHold(flags)
+    }
+
+    func allowsHold(_ flags: NSEvent.ModifierFlags) -> Bool {
+        !blockedUntilPairReleased && Self.isExactPair(flags)
+    }
+
+    static func isExactPair(_ flags: NSEvent.ModifierFlags) -> Bool {
+        flags.contains([.control, .option])
+            && flags.intersection([.command, .shift]).isEmpty
+    }
+}
+
 /// Hold Ctrl+Option and move the mouse to aim. Dead-center is cancel;
 /// the rest of the center cell is maximize; outer cells are sectors.
 /// Release Ctrl+Option to apply the current aim, or stay in the dead
@@ -36,6 +60,7 @@ final class TilePointerController {
     private var pollTimer: Timer?
     private var pendingArm: DispatchWorkItem?
     private var pendingDisarm: DispatchWorkItem?
+    private var modifierState = TilePointerModifierState()
     private var subscriptions = Set<AnyCancellable>()
 
     private static let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
@@ -116,6 +141,7 @@ final class TilePointerController {
         pendingDisarm = nil
         subscriptions.removeAll()
         dismiss(apply: false)
+        modifierState = TilePointerModifierState()
     }
 
     /// Keyboard chords and other Ctrl+Option hotkeys own the hold.
@@ -147,7 +173,7 @@ final class TilePointerController {
         // to the registered tiling hotkeys instead of committing here.
         guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !SpaceZoomInput.engaged, !WindowQuickMenu.shared.isActive else { return false }
         guard !Self.modifierKeyCodes.contains(event.keyCode) else { return false }
-        guard Self.ctrlOptionHeld(event.modifierFlags) else {
+        guard modifierState.allowsHold(event.modifierFlags) else {
             cancelApply()
             return false
         }
@@ -174,6 +200,7 @@ final class TilePointerController {
     }
 
     private func handleFlags(_ flags: NSEvent.ModifierFlags) {
+        let mayAim = modifierState.update(flags)
         // A ⌃⌥ right-click's menu owns the hold until it closes.
         guard Preferences.shared.ctrlOptionHoldMode == .tileHUD, !SpaceZoomInput.engaged, !WindowQuickMenu.shared.isActive else {
             pendingArm?.cancel()
@@ -201,7 +228,7 @@ final class TilePointerController {
             heldArrows.removeAll()
         }
 
-        if Self.ctrlOptionHeld(flags) {
+        if mayAim {
             pendingDisarm?.cancel()
             pendingDisarm = nil
             guard !armed, pendingArm == nil else { return }
@@ -210,7 +237,7 @@ final class TilePointerController {
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.pendingArm = nil
-                guard !SpaceZoomInput.engaged, Self.ctrlOptionHeld(NSEvent.modifierFlags), !self.armed else { return }
+                guard !SpaceZoomInput.engaged, self.modifierState.allowsHold(NSEvent.modifierFlags), !self.armed else { return }
                 DiagnosticLog.shared.info("TilePointer: arm flags=\(NSEvent.modifierFlags.rawValue)")
                 self.arm()
             }
@@ -433,10 +460,7 @@ final class TilePointerController {
     }
 
     private static func ctrlOptionHeld(_ flags: NSEvent.ModifierFlags) -> Bool {
-        let mods = flags.intersection(.deviceIndependentFlagsMask)
-        return mods.contains(.control)
-            && mods.contains(.option)
-            && mods.intersection([.command, .shift]).isEmpty
+        TilePointerModifierState.isExactPair(flags)
     }
 
     static func wedgeIndex(for position: TilePosition) -> Int? {

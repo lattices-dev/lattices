@@ -283,7 +283,6 @@ class HotkeyStore: ObservableObject {
         let hyper = UInt32(cmdKey | controlKey | optionKey | shiftKey)
         let cmdShift = UInt32(cmdKey | shiftKey)
         let cmdOpt = UInt32(cmdKey | optionKey)
-        let cmdOptShift = UInt32(cmdKey | optionKey | shiftKey)
         let ctrlOpt = UInt32(controlKey | optionKey)
         let ctrlOptShift = UInt32(controlKey | optionKey | shiftKey)
 
@@ -317,19 +316,18 @@ class HotkeyStore: ObservableObject {
             bind(action, layerKeyCodes[i], cmdOpt)
         }
 
-        // Layer moves across the pad: Cmd+Option+Arrow / Cmd+Option+T
-        bind(.layerNext, 124, cmdOpt)  // Cmd+Opt+→
-        bind(.layerPrev, 123, cmdOpt)  // Cmd+Opt+←
-        bind(.layerUp,   126, cmdOpt)  // Cmd+Opt+↑
-        bind(.layerDown, 125, cmdOpt)  // Cmd+Opt+↓
+        // Add Shift to the placement arrows to browse the layer pad.
+        bind(.layerNext, 124, ctrlOptShift)  // Ctrl+Opt+Shift+→
+        bind(.layerPrev, 123, ctrlOptShift)  // Ctrl+Opt+Shift+←
+        bind(.layerUp,   126, ctrlOptShift)  // Ctrl+Opt+Shift+↑
+        bind(.layerDown, 125, ctrlOptShift)  // Ctrl+Opt+Shift+↓
         bind(.layerTag,   17, cmdOpt)  // Cmd+Opt+T
 
-        // Arrows share the layer family: add Shift to arrange the window.
-        // Ctrl+Option+arrows remain available to other apps and custom bindings.
-        bind(.tileLeft,        123, cmdOptShift)  // Cmd+Opt+Shift+←
-        bind(.tileRight,       124, cmdOptShift)  // Cmd+Opt+Shift+→
-        bind(.tileTop,         126, cmdOptShift)  // Cmd+Opt+Shift+↑
-        bind(.tileBottom,      125, cmdOptShift)  // Cmd+Opt+Shift+↓
+        // Keep frequent window placement on the shorter Ctrl+Option chord.
+        bind(.tileLeft,        123, ctrlOpt)  // Ctrl+Opt+←
+        bind(.tileRight,       124, ctrlOpt)  // Ctrl+Opt+→
+        bind(.tileTop,         126, ctrlOpt)  // Ctrl+Opt+↑
+        bind(.tileBottom,      125, ctrlOpt)  // Ctrl+Opt+↓
         bind(.tileMaximize,     36, ctrlOpt)  // Ctrl+Opt+Return
         bind(.tileCenter,        8, ctrlOpt)  // Ctrl+Opt+C
         bind(.tileTopLeft,      32, ctrlOpt)  // Ctrl+Opt+U
@@ -361,10 +359,19 @@ class HotkeyStore: ObservableObject {
     /// Move only persisted former defaults. User remaps, disabled actions, and
     /// the higher-priority hotkeys.json file keep their explicit choices.
     static func migrateLayerTilingArrows(in defaults: UserDefaults) {
-        let migrationKey = "hotkey.tilingArrows.cmdOptShift.v1"
+        let migrationKey = "hotkey.layerTilingArrows.ctrlOpt.v1"
         guard !defaults.bool(forKey: migrationKey) else { return }
-        let formerModifiers = UInt32(controlKey | optionKey)
-        for action in [HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom] {
+        let formerDefaults: [(HotkeyAction, UInt32)] = [
+            (.tileLeft, UInt32(cmdKey | optionKey | shiftKey)),
+            (.tileRight, UInt32(cmdKey | optionKey | shiftKey)),
+            (.tileTop, UInt32(cmdKey | optionKey | shiftKey)),
+            (.tileBottom, UInt32(cmdKey | optionKey | shiftKey)),
+            (.layerPrev, UInt32(cmdKey | optionKey)),
+            (.layerNext, UInt32(cmdKey | optionKey)),
+            (.layerUp, UInt32(cmdKey | optionKey)),
+            (.layerDown, UInt32(cmdKey | optionKey)),
+        ]
+        for (action, formerModifiers) in formerDefaults {
             let key = storageKey(for: action)
             guard !defaults.bool(forKey: disabledKey(for: action)),
                   let data = defaults.data(forKey: key),
@@ -379,17 +386,18 @@ class HotkeyStore: ObservableObject {
     }
 
     /// New defaults must not take a chord already assigned by the user, including
-    /// file overrides. Explicit tile remaps remain under the user's control too.
+    /// file overrides. Explicit arrow remaps remain under the user's control too.
     static func preserveExplicitArrowBindings(
         in bindings: inout [HotkeyAction: KeyBinding], explicitActions: Set<HotkeyAction>
     ) {
-        for tile in [HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom] {
-            guard !explicitActions.contains(tile), let proposed = bindings[tile] else { continue }
+        for arrow in [HotkeyAction.tileLeft, .tileRight, .tileTop, .tileBottom,
+                      .layerPrev, .layerNext, .layerUp, .layerDown] {
+            guard !explicitActions.contains(arrow), let proposed = bindings[arrow] else { continue }
             let occupied = explicitActions.contains { action in
-                guard action != tile, let binding = bindings[action] else { return false }
+                guard action != arrow, let binding = bindings[action] else { return false }
                 return binding.keyCode == proposed.keyCode && binding.carbonModifiers == proposed.carbonModifiers
             }
-            if occupied { bindings.removeValue(forKey: tile) }
+            if occupied { bindings.removeValue(forKey: arrow) }
         }
     }
 

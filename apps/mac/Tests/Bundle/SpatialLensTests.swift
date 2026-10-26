@@ -191,6 +191,22 @@ final class SpatialLensTests: XCTestCase {
 
         XCTAssertNil(state.flagsChanged(control: true, option: true, command: true, shift: true))
         XCTAssertNil(state.keyDown())
+        XCTAssertNil(state.flagsChanged(control: true, option: true, command: true, shift: false))
+        XCTAssertNil(state.flagsChanged(control: true, option: true, command: false, shift: false))
+    }
+
+    func testShiftFirstLayerChordDoesNotOpenLensWhenShiftLiftsFirst() {
+        var state = SpatialLensModifierState()
+
+        XCTAssertNil(state.flagsChanged(control: false, option: false, command: false, shift: true))
+        XCTAssertNil(state.flagsChanged(control: true, option: false, command: false, shift: true))
+        XCTAssertNil(state.flagsChanged(control: true, option: true, command: false, shift: true))
+        XCTAssertNil(state.flagsChanged(control: true, option: true, command: false, shift: false))
+        XCTAssertNil(state.flagsChanged(control: true, option: false, command: false, shift: false))
+        XCTAssertEqual(
+            state.flagsChanged(control: true, option: true, command: false, shift: false),
+            .pressed(generation: 1)
+        )
     }
 
     func testControlOptionShortcutCancelsUntilPairReleased() {

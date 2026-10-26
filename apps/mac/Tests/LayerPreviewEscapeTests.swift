@@ -7,7 +7,8 @@ final class LayerPreviewEscapeTests: XCTestCase {
         for key: Int64 in [123, 124, 125, 126] {
             XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: .maskControl))
             XCTAssertFalse(LayerPreview.passesSystemNavigation(key: key, flags: []))
-            XCTAssertFalse(LayerPreview.passesSystemNavigation(key: key, flags: [.maskCommand, .maskAlternate]))
+            XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: [.maskCommand, .maskAlternate]))
+            XCTAssertFalse(LayerPreview.passesSystemNavigation(key: key, flags: [.maskControl, .maskAlternate, .maskShift]))
         }
     }
 

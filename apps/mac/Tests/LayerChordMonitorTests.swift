@@ -3,52 +3,72 @@ import XCTest
 @testable import Lattices
 
 final class LayerChordMonitorTests: XCTestCase {
-    private let browse: CGEventFlags = [.maskCommand, .maskAlternate]
-    private let tile: CGEventFlags = [.maskCommand, .maskAlternate, .maskShift]
+    private let browse: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
+    private let direct: CGEventFlags = [.maskCommand, .maskAlternate]
+    private let tile: CGEventFlags = [.maskControl, .maskAlternate]
 
-    func testTheExactLayerChordStartsOnceAndReleasesOnce() {
+    func testTheArrowChordStartsOnceAndReleasesOnce() {
+        var chord = LayerChordState()
+        XCTAssertNil(chord.update(.maskControl))
+        XCTAssertNil(chord.update(tile))
+        XCTAssertEqual(chord.update(browse), .pressed)
+        XCTAssertEqual(chord.activeChord, .arrows)
+        XCTAssertNil(chord.update(browse))
+        XCTAssertEqual(chord.update(tile), .released)
+        XCTAssertFalse(chord.holding)
+        XCTAssertNil(chord.update([]))
+    }
+
+    func testDirectSlotChordStillStartsAndReleases() {
         var chord = LayerChordState()
         XCTAssertNil(chord.update(.maskCommand))
-        XCTAssertEqual(chord.update(browse), .pressed)
-        XCTAssertTrue(chord.holding)
-        XCTAssertNil(chord.update(browse))
+        XCTAssertEqual(chord.update(direct), .pressed)
+        XCTAssertEqual(chord.activeChord, .direct)
         XCTAssertEqual(chord.update(.maskAlternate), .released)
-        XCTAssertFalse(chord.holding)
         XCTAssertNil(chord.update([]))
     }
 
-    func testAddingShiftCancelsInsteadOfOfferingToSwitchLayers() {
+    func testTilingChordNeverStartsLayerBrowsing() {
         var chord = LayerChordState()
-        XCTAssertEqual(chord.update(browse), .pressed)
-        XCTAssertEqual(chord.update(tile), .cancelled)
-        XCTAssertFalse(chord.holding)
-        // Letting go of the tiling chord cannot release the abandoned aim.
-        XCTAssertNil(chord.update([.maskCommand, .maskShift]))
+        XCTAssertNil(chord.update(.maskAlternate))
+        XCTAssertNil(chord.update(tile))
+        XCTAssertNil(chord.update(.maskControl))
         XCTAssertNil(chord.update([]))
-    }
-
-    func testAddingControlCancelsInsteadOfOfferingToSwitchLayers() {
-        var chord = LayerChordState()
-        XCTAssertEqual(chord.update(browse), .pressed)
-        XCTAssertEqual(chord.update(browse.union(.maskControl)), .cancelled)
-        XCTAssertNil(chord.update([]))
-    }
-
-    func testShiftFirstTilingAndHyperNeverStartLayerBrowsing() {
-        var chord = LayerChordState()
-        XCTAssertNil(chord.update(.maskShift))
-        XCTAssertNil(chord.update([.maskShift, .maskCommand]))
-        XCTAssertEqual(chord.update(tile), .cancelled)
-        XCTAssertEqual(chord.update(tile.union(.maskControl)), .cancelled)
         XCTAssertFalse(chord.holding)
     }
 
-    func testReturningToTheExactChordStartsAFreshBrowse() {
+    func testEveryArrowChordReleaseOrderReleasesExactlyOnce() {
+        assertReleaseOrders([.maskControl, .maskAlternate, .maskShift])
+    }
+
+    func testEveryDirectChordReleaseOrderReleasesExactlyOnce() {
+        assertReleaseOrders([.maskCommand, .maskAlternate])
+    }
+
+    func testAddingCommandCancelsArrowAimInsteadOfOfferingToSwitch() {
         var chord = LayerChordState()
         XCTAssertEqual(chord.update(browse), .pressed)
-        XCTAssertEqual(chord.update(tile), .cancelled)
+        XCTAssertEqual(chord.update(browse.union(.maskCommand)), .cancelled)
+        XCTAssertFalse(chord.holding)
+        XCTAssertNil(chord.update(tile))
+        XCTAssertNil(chord.update([]))
+    }
+
+    func testAddingShiftOrControlCancelsDirectSlotAim() {
+        for modifier: CGEventFlags in [.maskShift, .maskControl] {
+            var chord = LayerChordState()
+            XCTAssertEqual(chord.update(direct), .pressed)
+            XCTAssertEqual(chord.update(direct.union(modifier)), .cancelled)
+            XCTAssertNil(chord.update([]))
+        }
+    }
+
+    func testChangingChordCannotReleaseThePreviousAim() {
+        var chord = LayerChordState()
+        XCTAssertEqual(chord.update(direct), .pressed)
+        XCTAssertEqual(chord.update(browse), .cancelled)
+        XCTAssertNil(chord.update([]))
         XCTAssertEqual(chord.update(browse), .pressed)
-        XCTAssertEqual(chord.update([]), .released)
     }
 
     func testAnExplicitCancelDoesNotBecomeAReleaseLater() {
@@ -58,13 +78,13 @@ final class LayerChordMonitorTests: XCTestCase {
         XCTAssertNil(chord.update([]))
     }
 
-    func testCapsLockAndFunctionFlagsDoNotChangeTheLayerChord() {
-        XCTAssertEqual(LayerChordState.mode(browse.union([.maskAlphaShift, .maskSecondaryFn])), .browse)
-        XCTAssertEqual(LayerChordState.mode(tile), .cancel)
-        XCTAssertEqual(LayerChordState.mode(browse.union(.maskControl)), .cancel)
-        // The release watcher must also cancel if a base modifier came up
-        // before it observes the added Shift or Control.
-        XCTAssertEqual(LayerChordState.mode([.maskCommand, .maskShift]), .cancel)
+    func testCapsLockAndFunctionFlagsDoNotChangeEitherLayerChord() {
+        for flags in [browse, direct] {
+            XCTAssertEqual(LayerChordState.mode(flags.union([.maskAlphaShift, .maskSecondaryFn])), .browse)
+        }
+        XCTAssertEqual(LayerChordState.mode(tile, for: .arrows), .release)
+        XCTAssertEqual(LayerChordState.mode(browse.union(.maskCommand), for: .arrows), .cancel)
+        XCTAssertEqual(LayerChordState.mode([.maskCommand, .maskShift], for: .direct), .cancel)
     }
 
     func testTilingArrowsPassThroughFrozenPreviewAndPendingLayerChoice() {
@@ -76,18 +96,34 @@ final class LayerChordMonitorTests: XCTestCase {
         }
     }
 
-    func testControlCannotExtendLayerBrowsingOrLoseItsArrow() {
-        let flags = browse.union(.maskControl)
-        for key: Int64 in [123, 124, 125, 126] {
-            XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: flags))
-            XCTAssertEqual(LayerAim.choice(for: key, flags: flags), .cancelAndPass)
+    func testShiftedTilingDigitsPassThroughBothLayerSurfaces() {
+        for key: Int64 in [18, 19, 20] { // ⌃⌥⇧1–3: window thirds.
+            XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: browse))
+            XCTAssertEqual(LayerAim.choice(for: key, flags: browse), .cancelAndPass)
+            XCTAssertFalse(LayerPreview.passesSystemNavigation(key: key, flags: direct))
+            XCTAssertEqual(LayerAim.choice(for: key, flags: direct), .pass)
         }
     }
 
-    func testControlOptionArrowsLeavePreviewForUserShortcuts() {
-        for key: Int64 in [123, 124, 125, 126] {
-            XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: [.maskControl, .maskAlternate]))
-            XCTAssertFalse(LayerPreview.passesSystemNavigation(key: key, flags: []))
+    func testModifiedPlacementKeysNeverConfirmOrEditTheLayerPreview() {
+        for key: Int64 in [36, 76, 8] { // ⌃⌥ Return/Enter maximize, C centers.
+            XCTAssertEqual(LayerAim.choice(for: key, flags: tile), .cancelAndPass)
+            XCTAssertTrue(LayerPreview.passesSystemNavigation(key: key, flags: tile))
+        }
+        XCTAssertEqual(LayerAim.choice(for: 53, flags: .maskShift), .cancel)
+        XCTAssertFalse(LayerPreview.passesSystemNavigation(key: 53, flags: .maskShift))
+    }
+
+    func testEachBrowseChordOwnsOnlyItsLayerKeys() {
+        XCTAssertTrue(LayerChordState.BrowseChord.arrows.accepts(key: 123))
+        XCTAssertFalse(LayerChordState.BrowseChord.direct.accepts(key: 123))
+        XCTAssertTrue(LayerChordState.BrowseChord.direct.accepts(key: 83))
+        XCTAssertTrue(LayerChordState.BrowseChord.direct.accepts(key: 29))
+        XCTAssertTrue(LayerChordState.BrowseChord.direct.accepts(key: 6))
+        XCTAssertFalse(LayerChordState.BrowseChord.arrows.accepts(key: 18))
+        for chord in LayerChordState.BrowseChord.allCases {
+            XCTAssertTrue(chord.accepts(key: 49))
+            XCTAssertFalse(chord.accepts(key: 53))
         }
     }
 
@@ -97,5 +133,24 @@ final class LayerChordMonitorTests: XCTestCase {
         XCTAssertEqual(LayerAim.choice(for: 53, flags: []), .cancel)
         XCTAssertFalse(LayerPreview.passesSystemNavigation(key: 48, flags: .maskShift))
         XCTAssertFalse(LayerPreview.passesSystemNavigation(key: 123, flags: []))
+    }
+
+    private func assertReleaseOrders(_ modifiers: [CGEventFlags]) {
+        let initial = modifiers.reduce(CGEventFlags()) { $0.union($1) }
+        var chord = LayerChordState()
+        XCTAssertEqual(chord.update(initial), .pressed)
+        func release(_ remaining: [CGEventFlags], flags: CGEventFlags, chord: LayerChordState, first: Bool) {
+            guard !remaining.isEmpty else { return }
+            for (index, modifier) in remaining.enumerated() {
+                var next = chord
+                let released = flags.subtracting(modifier)
+                XCTAssertEqual(next.update(released), first ? .released : nil)
+                XCTAssertFalse(next.holding)
+                var rest = remaining
+                rest.remove(at: index)
+                release(rest, flags: released, chord: next, first: false)
+            }
+        }
+        release(modifiers, flags: initial, chord: chord, first: true)
     }
 }
