@@ -185,7 +185,7 @@ These are the default bindings. Hyper means Control+Option+Shift+Command.
 | **Control+Option+Shift+1 / 2 / 3** | Tile thirds |
 | **Control+Option+Space** | Open the command bar |
 | **Command+Option+1–9** | Aim a workspace layer; release to switch. Slot 5 shows the current layer |
-| **Command+Option+arrows** | Move across the layer pad |
+| **Control+Option+Shift+arrows** | Move across the layer pad |
 | **Command+Option+T** | Add the front window to the active layer |
 | **Command+Option+0** | Classic: every window back |
 | **Hyper+1** | Workspace home |

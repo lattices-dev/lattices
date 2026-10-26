@@ -270,8 +270,8 @@ Transparency suppress the effect. Agents can also set it with
 `settings.spaceBezel.set {"shimmerIntensity":0.15}` (range 0–1; zero is off).
 The filmstrip stays visible while the switch is in progress, then waits 0.85
 seconds after landing before its 0.12-second fade.
-Only bare Ctrl+arrows are claimed;
-Cmd+Option+Shift+arrows tile; Ctrl+Option+arrows are available for other shortcuts. While the feature is on, the app
+Only bare Ctrl+arrows are claimed by Instant Space Switching;
+Ctrl+Option+arrows tile, and Ctrl+Option+Shift+arrows browse layers. While the feature is on, the app
 disables Mission Control's "Move left/right a space" symbolic hotkeys
 (they would replay the slide animation); the original setting is
 restored when the feature is toggled off or the app quits. Toggle it in
@@ -317,8 +317,8 @@ The settings window has five tabs:
 - hold Caps Lock -> Hyper (`Control` + `Option` + `Shift` + `Command`)
 - tap Caps Lock -> Escape
 
-Holding Control + Option is quiet by default. **Cmd+Option+arrows** browse
-layers; add **Shift** to tile the current window. Existing custom bindings
+Holding Control + Option is quiet by default. **Control+Option+arrows** tile
+the current window; add **Shift** to browse layers. Existing custom bindings
 remain available in Settings > Shortcuts.
 
 The pointer picker is optional under Settings > Shortcuts > **Ctrl+Option hold**.
@@ -374,8 +374,7 @@ Tiling and placement:
 
 | Shortcut | Action |
 |----------|--------|
-| Command+Option+Shift+arrows | Tile the front window to a half |
-| Control+Option+arrows | Available for custom shortcuts |
+| Control+Option+arrows | Tile the front window to a half |
 | Control+Option+Return | Maximize |
 | Control+Option+C | Center |
 | Control+Option+U / I / J / K | Top-left, top-right, bottom-left, bottom-right quarter |
@@ -402,7 +401,7 @@ Spaces and layers:
 |----------|--------|
 | Control+Left / Right | Instant Space switch |
 | Command+Option+1–9 | Aim the layer in that pad slot; release to switch. 5 shows the current layer |
-| Command+Option+arrows | Move across the layer pad |
+| Control+Option+Shift+arrows | Move across the layer pad |
 | Command+Option+T | Add the front window to the active layer |
 | Command+Option+0 | Classic: every window back, as if Lattices were not running |
 | Command+Option+Z | Undo the last layer edit |

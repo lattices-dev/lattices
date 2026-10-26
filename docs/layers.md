@@ -311,7 +311,7 @@ Four ways to switch:
 
 | Method               | How                                      |
 |----------------------|------------------------------------------|
-| **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Cmd+Option+arrows move across the pad and stop at its edges |
+| **Hotkey**           | Cmd+Option+1–9 pick a slot of the [layer pad](#layer-bezel); Cmd+Option+5 shows the layer you're on; Control+Option+Shift+arrows move across the pad and stop at its edges |
 | **Layer bar**        | Click a layer pill in the menu bar panel |
 | **Command bar**      | Press Control+Option+Space and search for the layer by name |
 | **CLI**              | `lats layer <name\|slot>`            |
@@ -425,7 +425,7 @@ window says No window, and an entry with nothing running says Not open.
 Last, dimmed, come other layers' windows whose app kept them on screen
 when the switch tried to park them: Stayed.
 
-Cmd+Option+arrows move to the nearest layer that way on the pad, hopping
+Control+Option+Shift+arrows move to the nearest layer that way on the pad, hopping
 the middle: from 4, right goes to 6. At the pad's edge the grid shows the
 layer you're on for a moment, its lit slot bumping the way you pushed.
 Cmd+Option+5, or a slot without a layer, shows the layer you're on too.

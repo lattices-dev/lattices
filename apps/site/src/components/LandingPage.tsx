@@ -804,7 +804,7 @@ function HandsOnSection() {
     <section className="home-sec fade-in" id="hands">
       <SectionHead title="Shape the workspace as you work.">
         <p className="sec-lede">
-          On macOS, tile halves with ⌘⌥⇧ and an arrow, use Caps Lock as Hyper, or hold a mouse button,
+          On macOS, tile halves with ⌃⌥ and an arrow, use Caps Lock as Hyper, or hold a mouse button,
           draw a gesture, and release. Explore the paths in the 3×3
           gesture matrix below.
         </p>
