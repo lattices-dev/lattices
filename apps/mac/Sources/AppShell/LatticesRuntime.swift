@@ -4,28 +4,19 @@ enum LatticesRuntime {
     static let releaseBundleIdentifier = "dev.lattices.app"
     static let devBundleIdentifier = "dev.lattices.app.dev"
 
-    static var cliRoot: String? {
-        if let idx = CommandLine.arguments.firstIndex(of: "--lattices-cli-root"),
-           CommandLine.arguments.indices.contains(idx + 1) {
-            let root = CommandLine.arguments[idx + 1]
-            if hasAppHelper(in: root) { return root }
-        }
+    private static let cliResolution = LatticesCLIRootResolver.resolve(
+        arguments: CommandLine.arguments,
+        bundleURL: Bundle.main.bundleURL,
+        appVersion: appVersion,
+        searchPaths: LatticesCLIRootResolver.installedSearchPaths(
+            home: FileManager.default.homeDirectoryForCurrentUser,
+            environment: ProcessInfo.processInfo.environment
+        )
+    )
 
-        let bundleDerivedRoot = Bundle.main.bundleURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .path
-        if hasAppHelper(in: bundleDerivedRoot) {
-            return bundleDerivedRoot
-        }
+    static var cliRoot: String? { cliResolution?.root }
 
-        let devRoot = NSHomeDirectory() + "/dev/lattices"
-        if hasAppHelper(in: devRoot) {
-            return devRoot
-        }
-
-        return nil
-    }
+    static var cliRootSource: String { cliResolution?.source.rawValue ?? "unavailable" }
 
     static var appHelperScriptPath: String? {
         guard let cliRoot else { return nil }
@@ -39,20 +30,6 @@ enum LatticesRuntime {
             if FileManager.default.isExecutableFile(atPath: path) {
                 return path
             }
-        }
-
-        let candidates = [
-            NSHomeDirectory() + "/.bun/bin/lattices",
-            "/opt/homebrew/bin/lattices",
-            "/usr/local/bin/lattices",
-        ]
-        if let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
-            return path
-        }
-
-        let resolved = ProcessQuery.shell(["/bin/zsh", "-lc", "command -v lattices 2>/dev/null"])
-        if !resolved.isEmpty, FileManager.default.isExecutableFile(atPath: resolved) {
-            return resolved
         }
 
         return nil
@@ -131,10 +108,6 @@ enum LatticesRuntime {
 
     static func isLatticesBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
         bundleIdentifier == releaseBundleIdentifier || bundleIdentifier == devBundleIdentifier
-    }
-
-    private static func hasAppHelper(in root: String) -> Bool {
-        FileManager.default.fileExists(atPath: root + "/bin/lattices-app.ts")
     }
 
     private static func terminalShellEscape(_ value: String) -> String {

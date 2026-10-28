@@ -315,7 +315,7 @@ class Preferences: ObservableObject {
            let style = MouseGestureHUDStyle(rawValue: savedStyle) {
             self.mouseGestureHUDStyle = style
         } else {
-            self.mouseGestureHUDStyle = .technical
+            self.mouseGestureHUDStyle = .ink
         }
 
         if let savedTileStyle = UserDefaults.standard.string(forKey: "tilePointer.hud.style"),
