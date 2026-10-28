@@ -4936,15 +4936,6 @@ button.nav-link {
   border-left: 1px solid var(--border);
 }
 
-.home-spine-num {
-  display: block;
-  margin-bottom: 22px;
-  color: var(--text-muted);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-}
-
 .home-spine h3 {
   margin: 0 0 10px;
   color: var(--ui-accent);
@@ -5106,6 +5097,207 @@ button.nav-link {
 
   .hero-desktop-comparison {
     align-self: stretch;
+  }
+}
+
+/* ── Homepage hero ─────────────────────────────────────
+   One centred stack: the promise and the agents on their rail, one
+   download with its facts beneath, the other installs as quiet links,
+   then the proof close enough to read as the answer. The facts and the
+   product update close the hero under the stage. */
+
+.hero.home-hero {
+  --hero-ink-dim: color-mix(in srgb, var(--hero-ink) 80%, var(--hero-ground));
+  padding: 64px 0 40px;
+}
+
+.home-hero .hero-sub {
+  max-width: 56ch;
+  margin: 0 auto 26px;
+  color: var(--hero-ink-dim);
+}
+
+.home-hero .hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 26px;
+}
+
+.home-hero .hero-primary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 50px;
+  padding: 0 24px 0 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* The docs are a way in, not a second button beside the download. */
+.home-hero .hero-secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--hero-ink-dim);
+  font-size: 14px;
+  text-decoration: underline;
+  text-decoration-color: var(--hero-rule);
+  text-underline-offset: 5px;
+}
+
+.home-hero .hero-secondary-cta:hover {
+  color: var(--hero-ink);
+  text-decoration-color: currentColor;
+}
+
+.home-hero .hero-secondary-cta:focus-visible,
+.hero-handoff a:focus-visible {
+  outline: 2px solid var(--hero-accent);
+  outline-offset: 4px;
+}
+
+.hero-handoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 0;
+  margin: 16px auto 0;
+  color: var(--hero-ink-dim);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.hero-handoff > * {
+  padding: 0 14px;
+}
+
+.hero-handoff > * + * {
+  border-left: 1px solid var(--hero-rule);
+}
+
+.hero-handoff-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.hero-handoff a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--hero-ink-dim);
+  text-decoration: underline;
+  text-decoration-color: var(--hero-rule);
+  text-underline-offset: 4px;
+}
+
+.hero-handoff a:hover {
+  color: var(--hero-ink);
+  text-decoration-color: currentColor;
+}
+
+.home-hero .hero-stage {
+  margin-top: 44px;
+}
+
+.hero-colophon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 32px;
+  width: min(1220px, calc(100% - 48px));
+  margin: 30px auto 0;
+}
+
+.hero-colophon .hero-meta {
+  justify-content: flex-start;
+  gap: 8px 18px;
+  margin: 0;
+}
+
+.hero-colophon .hero-announcement {
+  margin: 0;
+}
+
+/* The hero's own bottom rule already separates it from the ticker. */
+.home-hero + .home-ticker {
+  border-top: 0;
+}
+
+@media (max-width: 720px) {
+  .hero-colophon {
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .hero-colophon .hero-meta {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero.home-hero {
+    padding: 48px 0 32px;
+  }
+
+  .home-hero .hero-stage {
+    margin-top: 36px;
+  }
+
+  .hero-handoff {
+    flex-direction: column;
+    gap: 0;
+    margin-top: 10px;
+  }
+
+  .hero-handoff > * + * {
+    border-left: 0;
+  }
+
+  .hero-handoff-meta {
+    margin-bottom: 2px;
+  }
+
+  .hero-handoff a {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 520px) {
+  .home-hero .hero-actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .home-hero .hero-primary-cta {
+    justify-content: center;
+    width: 100%;
+    max-width: 340px;
+  }
+
+  .home-hero .hero-secondary-cta {
+    width: auto;
+  }
+
+  .hero-colophon {
+    width: calc(100% - 32px);
+  }
+
+  .hero-colophon .hero-announcement {
+    max-width: 100%;
   }
 }
 
