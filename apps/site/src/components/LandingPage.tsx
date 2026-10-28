@@ -842,10 +842,9 @@ function HandsOnSection() {
   );
 }
 
-function SectionHead({ kicker, title, children }: { kicker?: string; title: string; children?: ReactNode }) {
+function SectionHead({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <header className="sec-head">
-      {kicker && <p className="sec-kicker">{kicker}</p>}
       <h2 className="sec-title">{title}</h2>
       {children}
     </header>
@@ -946,7 +945,7 @@ export default function App() {
 
       {/* Hero */}
       <main>
-        <section className="hero fade-in">
+        <section className="hero home-hero fade-in">
           <div className="hero-inner">
 
             <HeroControlHeadline />
@@ -965,9 +964,21 @@ export default function App() {
                 Download for macOS
               </a>
               <a href="/lattices/docs/overview" className="hero-secondary-cta">
-                Read the docs
+                Read the docs <span aria-hidden="true">&rarr;</span>
               </a>
             </div>
+            <p className="hero-handoff">
+              <span className="hero-handoff-meta">{latticesDownloadMeta}</span>
+              <a href="#install">Homebrew or the Bun CLI</a>
+              <a href="/linux">Also on Linux, with Hyprland and Omarchy</a>
+            </p>
+          </div>
+
+          <div className="hero-stage">
+            <HeroWorkspaceStage />
+          </div>
+
+          <div className="hero-colophon">
             <ul className="hero-meta">
               <li>5,500+ installs</li>
               <li>Local first</li>
@@ -980,13 +991,6 @@ export default function App() {
                 <path d="M4 12h16m-6-6 6 6-6 6" />
               </svg>
             </a>
-            <a href="/linux" className="hero-linux-link">
-              Also on Linux, with Hyprland and Omarchy <span aria-hidden="true">&rarr;</span>
-            </a>
-          </div>
-
-          <div className="hero-stage">
-            <HeroWorkspaceStage />
           </div>
         </section>
 
@@ -1110,7 +1114,6 @@ export default function App() {
           <SectionHead title="Make your environment part of your workflow." />
           <div className="home-spine">
             <article>
-              <span className="home-spine-num">01</span>
               <h3>Window manager</h3>
               <h2>Organize around the work.</h2>
               <p>
@@ -1120,7 +1123,6 @@ export default function App() {
               </p>
             </article>
             <article>
-              <span className="home-spine-num">02</span>
               <h3>Tools and terminals</h3>
               <h2>Run the whole project.</h2>
               <p>
@@ -1130,7 +1132,6 @@ export default function App() {
               </p>
             </article>
             <article>
-              <span className="home-spine-num">03</span>
               <h3>Configuration</h3>
               <h2>Make your workflow executable.</h2>
               <p>
@@ -1145,7 +1146,7 @@ export default function App() {
         {/* Config */}
         <section className="home-sec" id="config">
           <div className="fade-in fade-in-delay-2">
-            <SectionHead kicker="Configuration" title="Define the workspace. Return to the work.">
+            <SectionHead title="Define the workspace. Return to the work.">
               <p className="sec-lede">
                 Give each project a repeatable setup: named panes, startup
                 commands, and a layout that fits the task. Define it once
@@ -1203,7 +1204,6 @@ export default function App() {
         <section className="home-sec" id="agents">
           <div className="config-grid fade-in fade-in-delay-2">
             <div>
-              <p className="sec-kicker">Agent API</p>
               <h2 className="sec-title">
                 Give your agents workspace control.
               </h2>

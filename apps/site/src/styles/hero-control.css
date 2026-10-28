@@ -4,9 +4,8 @@
 
 .hero-control {
   position: relative;
-  margin: -6px auto 24px;
-  padding: 18px 170px 38px;
-  isolation: isolate;
+  z-index: 2; /* open tooltips sit above the hero content that follows */
+  margin: 0 auto 24px;
 }
 
 .hero .hero-control-title {
@@ -17,109 +16,115 @@
   letter-spacing: -0.035em;
 }
 
-.hero-control-title .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-.hero-control-first-line,
-.hero-control-second-line {
+.hero-control-line {
   display: block;
   white-space: nowrap;
 }
 
 .hero-control-subject {
-  display: inline-grid;
-  text-align: left;
   color: var(--hero-accent);
-  vertical-align: bottom;
 }
 
-.hero-control-subject > span {
-  grid-area: 1 / 1;
-  opacity: 0;
-  transform: translateY(0.15em);
-  transition: opacity 220ms ease, transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
+/* One centred row under the headline. Every tooltip anchors to the row,
+   centred beneath it, so none can clip an edge. */
+.hero-control-harnesses {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px;
+  width: min(520px, 100%);
+  margin: 28px auto 0;
 }
 
-.hero-control-subject > .is-current {
-  opacity: 1;
-  transform: translateY(0);
+/* Keep a hover path from every logo to the description below the row. */
+.hero-control-harnesses::after {
+  content: "";
+  position: absolute;
+  inset: 100% 0 auto;
+  height: 8px;
 }
 
-.hero-control-period {
+/* The marks are the content: no frame, no fill, just the logo and a caption. */
+.hero-control-agent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--hero-ink);
+  font: 500 13px/1.3 "Space Grotesk", sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.hero-control-agent-mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  flex: none;
   color: var(--hero-ink);
 }
 
-.hero-control-harness {
-  position: absolute;
-  z-index: 1;
+.hero-control-agent-mark > * { grid-area: 1 / 1; }
+
+/* Optical sizing keeps the five different marks balanced at the larger scale. */
+.hero-control-agent-logo {
+  --logo-w: 46px;
+  --logo-h: 46px;
+  display: block;
+  width: var(--logo-w);
+  height: var(--logo-h);
+  object-fit: contain;
 }
 
-.hero-control-harness.is-active {
-  z-index: 3;
-}
+.hero-control-harness-codex .hero-control-agent-logo { --logo-w: 44px; --logo-h: 44px; }
+.hero-control-harness-gemini .hero-control-agent-logo { --logo-w: 44px; --logo-h: 44px; }
+/* Hermes includes inset space around a detailed profile; OpenCode is a dense block. */
+.hero-control-harness-hermes .hero-control-agent-logo { --logo-w: 56px; --logo-h: 56px; }
+.hero-control-harness-opencode .hero-control-agent-logo { --logo-w: 32px; --logo-h: 41px; }
 
-.hero-control-harness-claude { left: 0; top: 0; }
-.hero-control-harness-codex { right: 12px; top: 14px; }
-.hero-control-harness-gemini { left: 28px; bottom: 12px; }
-.hero-control-harness-opencode { right: 0; bottom: 0; }
+/* Dark ground is the default theme; light-ground artwork only shows under data-theme="light". */
+.hero-control-agent-logo.is-light { display: none; }
+[data-theme='light'] .hero-control-agent-logo.is-light { display: block; }
+[data-theme='light'] .hero-control-agent-logo.is-dark { display: none; }
 
-.hero-control-agent {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 44px;
-  padding: 10px 13px;
-  border: 1px solid var(--hero-rule);
-  border-radius: 9px;
-  background: var(--hero-ground);
-  color: var(--hero-ink-dim);
-  font: 500 13px/1.2 "Space Grotesk", sans-serif;
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
-}
-
-.hero-control-agent > svg {
-  width: 18px;
-  height: 18px;
-  color: var(--hero-accent);
-}
-
-.hero-control-agent-indicator {
-  width: 4px;
-  height: 4px;
-  margin-left: 4px;
-  border-radius: 50%;
-  background: currentColor;
+.hero-control-agent-name {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+  transition: text-decoration-color 150ms ease;
 }
 
 .hero-control-agent:hover,
 .hero-control-harness.is-active .hero-control-agent {
-  color: var(--hero-ink);
-  border-color: var(--hero-ink-dim);
-  background: color-mix(in srgb, var(--hero-ink) 5%, var(--hero-ground));
+  color: var(--hero-accent);
 }
 
-.hero-control-agent:focus-visible,
-.hero-control-motion:focus-visible {
+.hero-control-agent:hover .hero-control-agent-name,
+.hero-control-harness.is-active .hero-control-agent-name {
+  text-decoration-color: var(--hero-accent);
+}
+
+.hero-control-agent:focus-visible {
   outline: 2px solid var(--hero-accent);
   outline-offset: 4px;
 }
 
 .hero-control-tooltip {
   position: absolute;
-  top: 100%;
-  left: 0;
-  width: 272px;
+  z-index: 4;
+  top: calc(100% + 8px);
+  left: 50%;
+  width: min(max(320px, 100%), calc(100vw - 32px));
   padding: 18px;
   border-radius: 12px;
   background: var(--slab-bg);
@@ -128,12 +133,23 @@
   text-align: left;
   font-size: 13px;
   line-height: 1.5;
+  transform: translateX(-50%);
 }
 
-.hero-control-harness-codex .hero-control-tooltip,
-.hero-control-harness-opencode .hero-control-tooltip {
-  right: 0;
-  left: auto;
+/* Bridges the gap under the row so the pointer can travel into the tooltip. */
+.hero-control-tooltip::before {
+  content: "";
+  position: absolute;
+  inset: -8px 0 auto;
+  height: 8px;
+}
+
+.hero-control-tooltip-name {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--slab-accent);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .hero-control-tooltip .hero-control-request {
@@ -151,58 +167,40 @@
   font-weight: 600;
 }
 
-.hero-control-motion {
-  position: absolute;
-  bottom: -8px;
-  left: calc(50% - 22px);
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--hero-ink-dim);
-  cursor: pointer;
-}
-
-.hero-control-motion:hover {
-  color: var(--hero-ink);
-  background: color-mix(in srgb, var(--hero-ink) 6%, transparent);
-}
-
-.hero-control-motion svg { width: 14px; height: 14px; }
-
 @media (max-width: 900px) {
-  .hero-control {
-    padding: 0 0 42px;
-    margin-bottom: 18px;
-  }
-
   .hero-control-harnesses {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 26px;
+    margin-top: 24px;
   }
-
-  .hero-control-harness { position: relative; inset: auto; }
-  .hero-control-agent { font-size: 12px; gap: 7px; padding-inline: 10px; }
-  .hero-control-agent-indicator { display: none; }
-  .hero-control-harness:nth-child(n + 3) .hero-control-tooltip { right: 0; left: auto; }
 }
 
 @media (max-width: 520px) {
   .hero .hero-control-title { font-size: clamp(1.8rem, 8.5vw, 2.6rem); }
-  .hero-control-harnesses { display: grid; grid-template-columns: repeat(2, max-content); }
-  .hero-control-harness:nth-child(odd) .hero-control-tooltip { left: 0; right: auto; }
-  .hero-control-harness:nth-child(even) .hero-control-tooltip { right: 0; left: auto; }
-  .hero-control-tooltip { width: min(272px, calc(100vw - 64px)); }
-  .hero-control-agent { width: 100%; }
+
+  /* Keep the names readable alongside the marks on narrow screens. */
+  .hero-control-harnesses {
+    gap: 4px;
+    margin-top: 20px;
+  }
+
+  .hero-control-agent {
+    gap: 8px;
+    padding: 0;
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .hero-control-agent-name { min-height: 2.6em; }
+
+  .hero-control-agent-mark { width: 48px; height: 48px; }
+
+  .hero-control-agent-logo { --logo-w: 38px; --logo-h: 38px; }
+  .hero-control-harness-codex .hero-control-agent-logo { --logo-w: 36px; --logo-h: 36px; }
+  .hero-control-harness-gemini .hero-control-agent-logo { --logo-w: 36px; --logo-h: 36px; }
+  .hero-control-harness-hermes .hero-control-agent-logo { --logo-w: 48px; --logo-h: 48px; }
+  .hero-control-harness-opencode .hero-control-agent-logo { --logo-w: 28px; --logo-h: 35px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-control-subject > span { transition: none; transform: none; }
-  .hero-control-motion { display: none; }
+  .hero-control-agent,
+  .hero-control-agent-name { transition: none; }
 }
