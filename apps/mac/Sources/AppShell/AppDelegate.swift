@@ -130,8 +130,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
         let bundlePath = Bundle.main.bundleURL.path
         let executablePath = Bundle.main.executableURL?.path ?? "unknown"
+        let cliRoot = LatticesRuntime.cliRoot ?? "unavailable"
 
-        let trace = "BUILD TRACE | channel=\(LatticesRuntime.buildChannel) version=\(version) build=\(build) revision=\(revision) builtAt=\(timestamp) pid=\(ProcessInfo.processInfo.processIdentifier) bundleID=\(bundleID) bundle=\(bundlePath) executable=\(executablePath)"
+        let trace = "BUILD TRACE | channel=\(LatticesRuntime.buildChannel) version=\(version) build=\(build) revision=\(revision) builtAt=\(timestamp) pid=\(ProcessInfo.processInfo.processIdentifier) bundleID=\(bundleID) bundle=\(bundlePath) executable=\(executablePath) cliRoot=\(cliRoot) cliRootSource=\(LatticesRuntime.cliRootSource)"
         HudLogger(category: "build").info(trace)
         NSLog("%@", trace)
     }

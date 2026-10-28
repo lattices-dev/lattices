@@ -3,9 +3,9 @@ import ScreenCaptureKit
 
 // MARK: - Layer Preview
 
-/// The frozen side of a ⌘⌥ flip. A flip aims at its layer and moves
-/// nothing until ⌘⌥ comes up (`LayerAim`); pressing Space while ⌘⌥ is
-/// still down freezes on the layer aimed at instead, and lays the whole
+/// The frozen side of a layer browse. A browse aims at its layer and moves
+/// nothing until its chord comes up (`LayerAim`); pressing Space while the
+/// chord is still down freezes on the layer aimed at instead, and lays the whole
 /// layer out like Mission Control: every window it matched,
 /// wherever it is, then what it shows beyond its entries (its scene, drawn
 /// with a dashed edge) and what it keeps put away, each captured and scaled
@@ -20,7 +20,7 @@ import ScreenCaptureKit
 /// away, since a switch leaves that display be. L steps the layer's layout
 /// through none, auto, columns and master-stack. A bare digit sends the
 /// picked window to the layer in that slot, and Delete takes it out of this
-/// one. ⌘⌥ arrows and ⌘⌥1–9 browse other layers without touching a window.
+/// one. ⌃⌥⇧ arrows and ⌘⌥1–9 browse other layers without touching a window.
 ///
 /// Each choice is saved as it's made, and no window moves until Enter moves
 /// in: windows on another desktop of the display are carried to this one
@@ -30,13 +30,13 @@ import ScreenCaptureKit
 ///
 /// A freeze holds the keys only while its panel is up or coming up. Besides
 /// Escape and Enter, it ends when another app comes forward, when the panel
-/// goes, and after a spell with no key; a key or ⌘⌥ release that finds no
+/// goes, and after a spell with no key; a key or chord release that finds no
 /// panel goes through and ends it.
 final class LayerPreview {
     static let shared = LayerPreview()
 
     private let lock = NSLock()
-    /// Set by a flip while ⌘⌥ is held; Space freezes, releasing ⌘⌥ disarms.
+    /// Set while a browse chord is held; Space freezes, releasing disarms.
     private var armed = false
     private var frozen = false
     /// Space froze it and the panel isn't up yet.
@@ -89,7 +89,7 @@ final class LayerPreview {
     }
 
     /// Whether a freeze has the keys: its panel is up, or on its way. A
-    /// freeze whose panel is gone ends here instead, so ⌘⌥ flips again.
+    /// freeze whose panel is gone ends here instead, so layer shortcuts work again.
     func holdsKeys() -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock()
@@ -110,7 +110,7 @@ final class LayerPreview {
 
     // MARK: Hotkey entry points
 
-    /// After a ⌘⌥ flip to a workspace layer: while ⌘⌥ stays down, Space
+    /// After aiming at a layer: while its browse chord stays down, Space
     /// freezes on it.
     func arm() {
         dispatchPrecondition(condition: .onQueue(.main))
@@ -122,7 +122,7 @@ final class LayerPreview {
         lock.unlock()
     }
 
-    /// A ⌘⌥ arrow from the hotkeys: the tap has already browsed while
+    /// A layer arrow from the hotkeys: the tap has already browsed while
     /// frozen, so this only says whether to skip the flip (`holdsKeys`).
     func step(_ direction: LayerSlots.Direction) -> Bool { holdsKeys() }
 
@@ -606,7 +606,7 @@ final class LayerPreview {
                     if !preview.isFrozen, let tap = preview.eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
                 }
             }
-            if frozen, LayerChordState.hasBaseModifiers(flags), !chord { return endAndPass() }
+            if frozen, LayerChordState.mode(flags) == .cancel { return endAndPass() }
             if frozen, !holds, !chord { return endAndPass() }
             return Unmanaged.passUnretained(event)
         }
@@ -634,24 +634,24 @@ final class LayerPreview {
         if passesSystemNavigation(key: key, flags: flags) { return endAndPass() }
 
         // Frozen: every key stops here, so nothing types into the app
-        // underneath and ⌘⌥Space doesn't open Finder's search. ⌘⌥ arrows
-        // and digits browse; bare arrows pick, a bare digit sends, bare
+        // underneath and ⌘⌥Space doesn't open Finder's search. ⌃⌥⇧ arrows
+        // and ⌘⌥ digits browse; bare arrows pick, a bare digit sends, bare
         // Space puts away or brings back, bare L steps the layout. Any other
-        // mix does nothing, so Space with ⌘⌥ still down doesn't toggle.
+        // mix does nothing, so Space with a browse chord down doesn't toggle.
         guard !isRepeat || Key.arrows[key] != nil || key == Key.tab else { return nil }
         let modifiers = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
-        let browsing = modifiers == [.maskCommand, .maskAlternate]
+        let browsing = LayerChordState.browseChord(for: flags)
         let bare = modifiers.isEmpty
         let backward = modifiers == .maskShift
         DispatchQueue.main.async {
             guard preview.isCurrent(generation) else { return }
             preview.extendIdle(generation)
             if let direction = Key.arrows[key] {
-                if browsing { preview.browse(direction) } else if bare { preview.previewView?.pick(toward: direction) }
+                if browsing == .arrows { preview.browse(direction) } else if bare { preview.previewView?.pick(toward: direction) }
                 return
             }
             if let digit = Key.digits[key] {
-                if browsing { preview.browse(toSlot: digit) } else if bare { preview.send(toSlot: digit) }
+                if browsing == .direct { preview.browse(toSlot: digit) } else if bare { preview.send(toSlot: digit) }
                 return
             }
             switch key {
@@ -670,13 +670,15 @@ final class LayerPreview {
     }
 
     static func passesSystemNavigation(key: Int64, flags: CGEventFlags) -> Bool {
-        // Shift transfers the shared ⌘⌥ arrow family to tiling. Control
-        // likewise leaves layer browsing, even if its close is still queued.
-        if LayerChordState.hasBaseModifiers(flags), LayerChordState.mode(flags) != .browse { return true }
-        let modifiers = flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
-        return ((modifiers == .maskControl || modifiers == [.maskControl, .maskAlternate]) && Key.arrows[key] != nil)
-            || (key == Key.tab && (modifiers == .maskCommand || modifiers == [.maskCommand, .maskShift]))
-            || (key == Key.escape && modifiers == [.maskCommand, .maskAlternate])
+        let modifiers = LayerChordState.modifiers(flags)
+        if modifiers.isEmpty { return false }
+        if modifiers == .maskShift, key == Key.tab || key == Key.escape { return false }
+        if let chord = LayerChordState.browseChord(for: flags) {
+            return !chord.accepts(key: key)
+        }
+        // Keep all other modified shortcuts available, including ⌃⌥ window
+        // placement and system navigation, while ending the frozen preview.
+        return true
     }
 }
 
@@ -1012,7 +1014,7 @@ final class LayerPreviewView: NSView {
             line.draw(at: CGPoint(x: (bounds.width - line.size().width) / 2, y: bounds.height - 64))
         }
         let space = picked.map(isAway) == true ? "␣ Show" : "␣ Put away"
-        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌘⌥ ← → ↑ ↓ Layers", "esc Cancel", "⇧esc Exit Layers"]
+        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌃⌥⇧ ← → ↑ ↓ Layers", "esc Cancel", "⇧esc Exit Layers"]
         let keys = text(hints.joined(separator: "     "), font: .systemFont(ofSize: 11, weight: .medium), color: Self.dim)
         keys.draw(at: CGPoint(x: (bounds.width - keys.size().width) / 2, y: bounds.height - 34))
     }

@@ -1,27 +1,22 @@
 import AppKit
 
-/// A ⌘⌥ browse that moves nothing until you say so. While ⌘⌥ is held, the
-/// arrows and digits aim at a layer: the pad lights its slot and draws a
-/// map of where its windows would sit (`LayerForecast`); no window moves.
-/// Letting go of ⌘⌥ asks: Return or the switch button switches to the
-/// layer aimed at; Escape, the stay button, a click elsewhere, another key
-/// or the wait running out (`Preferences.layerSwitchConfirmSeconds`) stay
-/// on the layer you're on. A wait of 0 switches at once.
-/// ⌘⌥ again goes on browsing from the layer aimed at. Escape, the middle
-/// slot, or someone else's ⌘⌥ shortcut while held drops the aim.
-///
-/// Space mid-browse freezes on the layer aimed at (`LayerPreview`), which
-/// takes the aim over; its Enter switches.
+/// A layer browse that moves nothing until you say so. ⌃⌥⇧ arrows or
+/// ⌘⌥ digits aim at a layer and show where its windows would sit. Letting
+/// go asks: Return or the switch button switches; Escape, the stay button,
+/// another key, a click elsewhere or the wait running out stays put.
+/// A wait of 0 switches at once. Either chord resumes browsing; Space
+/// freezes the aimed layer in `LayerPreview`, whose Enter switches.
 final class LayerAim {
     static let shared = LayerAim()
 
     private enum Phase { case aiming, deciding }
 
-    /// The layer aimed at, while ⌘⌥ is held or the choice is open. Main
+    /// The layer aimed at, while a browse chord is held or the choice is open. Main
     /// thread only, the key tap's callback included.
     private(set) var target: Int?
     private var phase = Phase.aiming
     private var customShortcut = false
+    private var browseChord = LayerChordState.BrowseChord.direct
     /// How many keys aimed in this hold. Aiming at the layer you're on as
     /// the only key offers to reconcile it, as ⌘⌥N always has; browsing
     /// back to it leaves it be.
@@ -51,8 +46,8 @@ final class LayerAim {
         return min(max(target ?? workspace.activeLayerIndex, 0), max(count - 1, 0))
     }
 
-    /// Aims at layer `index` and shows it on the pad. With ⌘⌥ already up,
-    /// or a shortcut using other modifiers, it asks at once.
+    /// Aims at layer `index` and shows it on the pad. With its browse chord
+    /// already up, or a shortcut using other modifiers, it asks at once.
     func aim(at index: Int, binding: KeyBinding? = nil) {
         dispatchPrecondition(condition: .onQueue(.main))
         let workspace = WorkspaceManager.shared
@@ -61,6 +56,7 @@ final class LayerAim {
         phase = .aiming
         target = index
         customShortcut = Self.isCustomShortcut(binding)
+        browseChord = Self.browseChord(for: binding) ?? .direct
         steps += 1
         let entry = Self.entry(for: CGEventSource.flagsState(.combinedSessionState), binding: binding)
         guard entry == .browse else {
@@ -88,7 +84,7 @@ final class LayerAim {
         present(edge: direction)
     }
 
-    /// ⌘⌥ came up. True when it now asks, keeping the pad up; false when
+    /// The browse chord came up. True when it now asks, keeping the pad up; false when
     /// there was nothing to ask, and the pad can go.
     @discardableResult
     func letGo() -> Bool {
@@ -116,13 +112,14 @@ final class LayerAim {
         return true
     }
 
-    /// ⌘⌥ went down again while asking: browse on from the layer aimed at.
-    /// True when there was a choice open.
-    func resume() -> Bool {
+    /// A browse chord went down again while asking: browse on from the
+    /// layer aimed at. True when there was a choice open.
+    func resume(with chord: LayerChordState.BrowseChord) -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
         guard isDeciding, !ownsShortcutDecision else { return false }
         endDeciding()
         phase = .aiming
+        browseChord = chord
         present()
         watchRelease()
         return true
@@ -203,8 +200,9 @@ final class LayerAim {
     private func watchRelease() {
         guard watch == nil else { return }
         watch = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
-            let mode = LayerChordState.mode(CGEventSource.flagsState(.combinedSessionState))
-            guard let self, mode != .browse else { return }
+            guard let self else { return }
+            let mode = LayerChordState.mode(CGEventSource.flagsState(.combinedSessionState), for: self.browseChord)
+            guard mode != .browse else { return }
             if mode == .cancel {
                 self.cancel()
                 LayerBezel.shared.release(after: 0)
@@ -265,7 +263,7 @@ final class LayerAim {
         }
     }
 
-    /// On the main run loop. Return and Escape are the choice's; ⌘⌥ keys go
+    /// On the main run loop. Return and Escape are the choice's; layer keys go
     /// through to the hotkeys, which browse on; any other key stays and
     /// goes through.
     private static let callback: CGEventTapCallBack = { _, type, event, _ in
@@ -297,9 +295,9 @@ final class LayerAim {
     static func entry(for flags: CGEventFlags, binding: KeyBinding?) -> Entry {
         // The dispatched action identifies an intentional custom shortcut.
         // Looking only at current flags mistakes its Shift/Control for a
-        // modifier added to an existing Cmd+Option browse.
-        if isCustomShortcut(binding) { return .decide }
-        switch LayerChordState.mode(flags) {
+        // modifier added to an existing browse.
+        guard let chord = browseChord(for: binding) else { return .decide }
+        switch LayerChordState.mode(flags, for: chord) {
         case .browse: return .browse
         case .release: return .decide
         case .cancel: return .cancel
@@ -307,13 +305,27 @@ final class LayerAim {
     }
 
     static func isCustomShortcut(_ binding: KeyBinding?) -> Bool {
-        guard let binding else { return false }
-        return binding.carbonModifiers != KeyBinding.carbonModifiers(from: [.command, .option])
+        browseChord(for: binding) == nil
+    }
+
+    static func browseChord(for binding: KeyBinding?) -> LayerChordState.BrowseChord? {
+        guard let binding else { return .direct } // Fixed keypad/direct actions.
+        let chord: LayerChordState.BrowseChord
+        switch binding.carbonModifiers {
+        case KeyBinding.carbonModifiers(from: [.control, .option, .shift]): chord = .arrows
+        case KeyBinding.carbonModifiers(from: [.command, .option]): chord = .direct
+        default: return nil
+        }
+        return chord.accepts(key: Int64(binding.keyCode)) ? chord : nil
     }
 
     static func choice(for key: Int64, flags: CGEventFlags) -> Choice {
-        if LayerChordState.mode(flags) == .browse { return .pass }
-        if LayerChordState.hasBaseModifiers(flags) { return .cancelAndPass }
+        if let chord = LayerChordState.browseChord(for: flags) {
+            return chord.accepts(key: key) ? .pass : .cancelAndPass
+        }
+        let modifiers = LayerChordState.modifiers(flags)
+        if key == 53, modifiers == .maskShift { return .cancel }
+        guard modifiers.isEmpty else { return .cancelAndPass }
         switch key {
         case 36, 76: return .confirm
         case 53: return .cancel

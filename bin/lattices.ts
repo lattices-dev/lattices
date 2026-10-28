@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { loadDaemonClient, tryDaemon, withDaemon, targetHost, isRemoteTarget, remoteHostName } from "./cli/daemon.ts";
 import { printHome, printUsage } from "./cli/usage.ts";
 import {
@@ -3490,7 +3491,10 @@ switch (command) {
       break;
     }
     const { execFileSync } = await import("node:child_process");
-    const dir = process.cwd();
+    // App commands belong to the invoked CLI installation. A release CLI used
+    // inside a checkout must not silently launch, rebuild, or stop its dev app.
+    // Resolve the entry file itself so linked source CLIs keep their own bundle.
+    const dir = dirname(dirname(realpathSync(fileURLToPath(import.meta.url))));
     const first = args[1];
     const appSubcommand = first && !first.startsWith("-") ? first : "launch";
     const appFlags = first && !first.startsWith("-") ? args.slice(2) : args.slice(1);
@@ -3506,7 +3510,7 @@ switch (command) {
     }
 
     // Forward release/package app commands to lattices-app script.
-    const appScript = resolve(import.meta.dir, "lattices-app.ts");
+    const appScript = resolve(dir, "bin/lattices-app.ts");
     try {
       execFileSync("bun", [appScript, ...args.slice(1)], { stdio: "inherit" });
     } catch { /* exit code forwarded */ }

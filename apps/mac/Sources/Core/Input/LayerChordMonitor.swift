@@ -1,15 +1,13 @@
 import AppKit
 import Combine
 
-/// Shows the layer pad as soon as ⌘⌥ goes down, before any arrow, and keeps
-/// it up while the chord is held (`LayerBezel.hold`). An arrow or digit
-/// lights the slot it aims at (`LayerAim`), and letting go asks whether to
-/// switch there: Return switches, Escape stays. ⌘⌥ again browses on.
+/// Shows the layer pad while ⌃⌥⇧ (arrows) or ⌘⌥ (direct slots) is held.
+/// A layer key lights its slot (`LayerAim`), and letting go asks whether
+/// to switch there: Return switches, Escape stays. Either chord browses on.
 ///
-/// Apps own plenty of ⌘⌥ shortcuts (⌘⌥I, ⌘⌥Esc), so the pad waits a beat
-/// before showing, and any key that isn't a layer key (arrows, 1–9, Space)
-/// takes it down and drops the aim, Escape included. A read-only tap:
-/// nothing is consumed here.
+/// The pad waits a beat to skip unrelated shortcuts. A key outside the
+/// held chord's layer keys drops the aim, Escape included. A read-only
+/// tap: nothing is consumed here.
 final class LayerChordMonitor {
     static let shared = LayerChordMonitor()
 
@@ -17,16 +15,6 @@ final class LayerChordMonitor {
     private static let showDelay: TimeInterval = 0.12
     /// How long the pad stays after letting go, when a flip happened.
     private static let lingerAfterFlip: TimeInterval = 0.9
-
-    private static let layerKeys: Set<Int64> = [
-        123, 124, 125, 126,                     // arrows
-        18, 19, 20, 21, 23, 22, 26, 28, 25,     // 1–9
-        83, 84, 85, 86, 87, 88, 89, 91, 92,     // numpad 1–9
-        49,                                     // Space, which freezes the preview
-        29, 82,                                 // 0 and numpad 0: Classic
-        6,                                      // Z: undo
-    ]
-    private static let arrowsAndDigits = layerKeys.subtracting([49])
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -64,7 +52,7 @@ final class LayerChordMonitor {
     }
 
     private func pressed() {
-        if LayerAim.shared.resume() {
+        if let held = chord.activeChord, LayerAim.shared.resume(with: held) {
             flipped = true
             LayerPreview.shared.arm()
             return
@@ -109,16 +97,16 @@ final class LayerChordMonitor {
         if LayerAim.shared.ownsShortcutDecision { clearTracking(); return }
         guard chord.holding else { return }
         // A missed flagsChanged must not let a tiling key extend the aim.
-        guard LayerChordState.mode(flags) == .browse else {
+        guard let held = chord.activeChord, LayerChordState.mode(flags, for: held) == .browse else {
             cancelled()
             return
         }
-        if Self.arrowsAndDigits.contains(code) {
+        if held.accepts(key: code), code != 49 {
             // The hotkey shows the bezel itself; don't show it twice.
             flipped = true
             pending?.cancel()
-        } else if !Self.layerKeys.contains(code) {
-            // Someone else's ⌘⌥ shortcut, or Escape: nothing moves.
+        } else if !held.accepts(key: code) {
+            // Someone else's shortcut, or Escape: nothing moves.
             cancelled()
         }
     }
@@ -138,7 +126,7 @@ final class LayerChordMonitor {
             callback: Self.callback,
             userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
         ) else {
-            DiagnosticLog.shared.warn("LayerChord: couldn't install the ⌘⌥ monitor")
+            DiagnosticLog.shared.warn("LayerChord: couldn't install the layer shortcut monitor")
             return
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -169,44 +157,76 @@ final class LayerChordMonitor {
     }
 }
 
-/// The layer chord owns exactly ⌘⌥. Adding Shift hands arrows to tiling;
-/// adding Control hands them to another shortcut. Neither is a release
-/// that can confirm a layer switch.
+/// The two layer chords have distinct keys. A release removes modifiers
+/// from the held chord; adding a foreign modifier cancels its aim.
 struct LayerChordState {
     enum Mode: Equatable { case browse, cancel, release }
     enum Change: Equatable { case pressed, cancelled, released }
+    enum BrowseChord: CaseIterable, Equatable {
+        case arrows, direct
 
-    private(set) var holding = false
+        var modifiers: CGEventFlags {
+            switch self {
+            case .arrows: return [.maskControl, .maskAlternate, .maskShift]
+            case .direct: return [.maskCommand, .maskAlternate]
+            }
+        }
 
-    static func hasBaseModifiers(_ flags: CGEventFlags) -> Bool {
-        flags.contains(.maskCommand) && flags.contains(.maskAlternate)
+        func accepts(key: Int64) -> Bool {
+            if key == 49 { return true } // Space freezes either browse.
+            switch self {
+            case .arrows: return [123, 124, 125, 126].contains(key)
+            case .direct:
+                return [18, 19, 20, 21, 23, 22, 26, 28, 25, // 1–9
+                        83, 84, 85, 86, 87, 88, 89, 91, 92, // numpad 1–9
+                        29, 82, 6].contains(key)             // Classic, undo
+            }
+        }
     }
 
-    static func mode(_ flags: CGEventFlags) -> Mode {
-        if !flags.intersection([.maskShift, .maskControl]).isEmpty { return .cancel }
-        return hasBaseModifiers(flags) ? .browse : .release
+    private(set) var activeChord: BrowseChord?
+    var holding: Bool { activeChord != nil }
+
+    static func modifiers(_ flags: CGEventFlags) -> CGEventFlags {
+        flags.intersection([.maskCommand, .maskAlternate, .maskControl, .maskShift])
+    }
+
+    static func browseChord(for flags: CGEventFlags) -> BrowseChord? {
+        BrowseChord.allCases.first { $0.modifiers == modifiers(flags) }
+    }
+
+    static func mode(_ flags: CGEventFlags, for expected: BrowseChord? = nil) -> Mode {
+        let modifiers = modifiers(flags)
+        if let expected {
+            if modifiers == expected.modifiers { return .browse }
+            return modifiers.subtracting(expected.modifiers).isEmpty ? .release : .cancel
+        }
+        if browseChord(for: flags) != nil { return .browse }
+        return BrowseChord.allCases.contains { modifiers.subtracting($0.modifiers).isEmpty } ? .release : .cancel
     }
 
     mutating func update(_ flags: CGEventFlags, preservingShortcutDecision: Bool = false) -> Change? {
         // Carbon can dispatch a custom action before an earlier modifier
         // event reaches main. Its decision owns the bezel until resolved.
-        if preservingShortcutDecision { holding = false; return nil }
-        switch Self.mode(flags) {
-        case .browse:
-            guard !holding else { return nil }
-            holding = true
-            return .pressed
-        case .cancel:
-            // A frozen preview can still be open after the chord came up.
-            guard holding || Self.hasBaseModifiers(flags) else { return nil }
-            holding = false
-            return .cancelled
-        case .release:
-            guard holding else { return nil }
-            holding = false
-            return .released
+        if preservingShortcutDecision { activeChord = nil; return nil }
+        if let activeChord {
+            switch Self.mode(flags, for: activeChord) {
+            case .browse: return nil
+            case .cancel:
+                self.activeChord = nil
+                return .cancelled
+            case .release:
+                self.activeChord = nil
+                return .released
+            }
         }
+        if let next = Self.browseChord(for: flags) {
+            activeChord = next
+            return .pressed
+        }
+        // A frozen preview can still be open after the chord came up.
+        return Self.mode(flags) == .cancel ? .cancelled : nil
     }
 
-    mutating func cancel() { holding = false }
+    mutating func cancel() { activeChord = nil }
 }

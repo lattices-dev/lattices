@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Lattices
 
@@ -33,5 +34,47 @@ final class TilePointerKeyboardTests: XCTestCase {
         XCTAssertEqual(TilePointerKeyboard.tilePosition(forArrows: [.down]), .bottom)
         XCTAssertEqual(TilePointerKeyboard.tilePosition(forArrows: [.left, .down]), .bottomLeft)
         XCTAssertEqual(TilePointerKeyboard.tilePosition(forArrows: [.right, .up]), .topRight)
+    }
+
+    func testPointerHoldStillAcceptsUnmodifiedControlOption() {
+        var state = TilePointerModifierState()
+
+        XCTAssertFalse(state.update(.control))
+        XCTAssertTrue(state.update([.control, .option]))
+        XCTAssertTrue(state.update([.control, .option, .numericPad, .function]))
+        XCTAssertFalse(state.update(.option))
+        XCTAssertTrue(state.update([.control, .option]))
+    }
+
+    func testAddingShiftCancelsPointerHoldUntilControlOptionPairBreaks() {
+        var state = TilePointerModifierState()
+
+        XCTAssertTrue(state.update([.control, .option]))
+        XCTAssertFalse(state.update([.control, .option, .shift]))
+        XCTAssertFalse(state.update([.control, .option]))
+        XCTAssertFalse(state.allowsHold([.control, .option]), "Delayed arming and matrix keys must respect the cancelled hold")
+        XCTAssertFalse(state.update(.control))
+        XCTAssertTrue(state.update([.control, .option]))
+    }
+
+    func testShiftFirstLayerChordCannotArmPointerWhenShiftLiftsFirst() {
+        var state = TilePointerModifierState()
+
+        XCTAssertFalse(state.update(.shift))
+        XCTAssertFalse(state.update([.control, .shift]))
+        XCTAssertFalse(state.update([.control, .option, .shift]))
+        XCTAssertFalse(state.update([.control, .option]))
+        XCTAssertFalse(state.update(.option))
+        XCTAssertTrue(state.update([.control, .option]))
+    }
+
+    func testHyperReleaseDoesNotBecomePointerHold() {
+        var state = TilePointerModifierState()
+
+        XCTAssertFalse(state.update([.control, .option, .shift, .command]))
+        XCTAssertFalse(state.update([.control, .option, .command]))
+        XCTAssertFalse(state.update([.control, .option]))
+        XCTAssertFalse(state.update([]))
+        XCTAssertTrue(state.update([.control, .option]))
     }
 }

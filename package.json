@@ -1,6 +1,6 @@
 {
   "name": "@lattices/lattices",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "description": "Find any project's windows. Put them in place, for you or your agent. A window manager for macOS and Linux that knows about projects, with a CLI and a local API.",
   "homepage": "https://lattices.dev",
   "bugs": {

@@ -2788,7 +2788,7 @@ struct SettingsContentView: View {
                             shortcutSectionCard(
                                 title: "Tiling",
                                 eyebrow: "Desktop Layout",
-                                summary: "Command+Option+arrows browse layers; add Shift to tile. Click a cell to rebind. The optional Ctrl+Option Tile HUD also supports number keys and arrow aiming."
+                                summary: "Control+Option+arrows tile the window; add Shift to browse layers. Click a cell to rebind. The optional Ctrl+Option Tile HUD also supports number keys and arrow aiming."
                             ) {
                                 LazyVGrid(columns: tilingColumns, alignment: .leading, spacing: 20) {
                                     shortcutsTilingVisualizer

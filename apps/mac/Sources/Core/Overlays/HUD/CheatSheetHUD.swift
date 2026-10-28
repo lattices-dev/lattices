@@ -198,7 +198,7 @@ struct CheatSheetView: View {
         VStack(alignment: .leading, spacing: 10) {
             columnHeader("Tiling")
 
-            Text("Add Shift to the layer arrows to tile.")
+            Text("Add Shift to the tiling arrows to browse layers.")
                 .font(Typo.caption(10))
                 .foregroundColor(Palette.textMuted)
 

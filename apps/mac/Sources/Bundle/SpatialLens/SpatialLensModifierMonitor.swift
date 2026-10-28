@@ -46,6 +46,11 @@ struct SpatialLensModifierState {
             return nil
         }
 
+        // Shift or Command may have gone down before the pair. Releasing
+        // either first must not turn a layer or Hyper chord into a lens hold.
+        if !isExactPair {
+            blockedUntilPairReleased = true
+        }
         guard isExactPair, !blockedUntilPairReleased else { return nil }
         nextGeneration &+= 1
         activeGeneration = nextGeneration

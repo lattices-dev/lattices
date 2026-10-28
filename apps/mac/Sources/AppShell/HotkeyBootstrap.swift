@@ -125,8 +125,8 @@ enum HotkeyBootstrap {
         LayerPreview.shared.arm()
     }
 
-    /// Cmd+Opt+arrows aim across the pad the way they point, from the layer
-    /// last aimed at; letting go of ⌘⌥ asks to switch (`LayerAim`). They hop the
+    /// Ctrl+Opt+Shift+arrows aim across the pad the way they point, from the layer
+    /// last aimed at; letting go asks to switch (`LayerAim`). They hop the
     /// middle and don't wrap: at the pad's edge, the lit slot bumps the way
     /// you pushed.
     private static func stepLayer(_ direction: LayerSlots.Direction, action: HotkeyAction) {
