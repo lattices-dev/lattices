@@ -58,6 +58,47 @@ final class DesktopInventoryTests: XCTestCase {
                     spaceIds: spaceIds, isOnScreen: isOnScreen, latticesSession: nil)
     }
 
+    func testCaptureInventoryKeepsUntitledPanelsWithoutChangingPlacementInventory() {
+        let panel = row(134, app: "Scout", pid: 782,
+                        frame: CGRect(x: 0, y: 0, width: 3440, height: 1440), layer: 3)
+        let hidden = row(135, app: "Scout", pid: 782,
+                         frame: CGRect(x: 0, y: 0, width: 500, height: 500),
+                         layer: 3, onScreen: false)
+        let entries = DesktopModel.captureWindows(in: [panel, hidden])
+        XCTAssertEqual(entries.map(\.wid), [134])
+        XCTAssertEqual(entries.first?.title, "")
+        XCTAssertEqual(entries.first?.cgLayer, 3)
+        XCTAssertEqual(entries.first?.axVerified, false)
+        XCTAssertTrue(DesktopModel.sweep([panel], sources: sources(), recoverCollapsed: false).entries.isEmpty)
+    }
+
+    func testLiveCaptureInventoryWhenRequested() throws {
+        guard let raw = ProcessInfo.processInfo.environment["LATTICES_CAPTURE_REPRO_WID"],
+              let wid = UInt32(raw) else { throw XCTSkip("Set LATTICES_CAPTURE_REPRO_WID for read-only live inventory repro") }
+        let entry = try XCTUnwrap(DesktopModel.captureWindows().first { $0.wid == wid })
+        let resolved = try CaptureController.shared.resolveWindow(params: .object(["wid": .int(Int(wid))]))
+        XCTAssertEqual(resolved.wid, wid)
+        XCTAssertEqual(entry.app, "Scout")
+        XCTAssertEqual(entry.cgLayer, 3)
+        print("Live capture inventory: wid=\(entry.wid) app=\(entry.app) cgLayer=\(entry.cgLayer ?? -1) frame=\(entry.frame)")
+    }
+
+    func testAppCaptureRequiresExplicitChoiceForAmbiguousPanels() throws {
+        let rows = [
+            row(123, app: "Scout", pid: 782, title: "Scout", frame: CGRect(x: 0, y: 0, width: 500, height: 500)),
+            row(134, app: "Scout", pid: 782, frame: CGRect(x: 0, y: 0, width: 3440, height: 1440), layer: 3),
+        ]
+        let entries = DesktopModel.captureWindows(in: rows)
+        XCTAssertThrowsError(try CaptureController.windowForCapture(app: "scout", title: nil, candidates: entries)) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("wid:123"))
+            XCTAssertTrue(message.contains("wid:134"))
+            XCTAssertTrue(message.contains("(untitled)"))
+            XCTAssertTrue(message.contains("lats capture window <wid>"))
+        }
+        XCTAssertEqual(try CaptureController.windowForCapture(app: "scout", title: "Scout", candidates: entries).wid, 123)
+    }
+
     // MARK: - Sweep
 
     func testSweepKeepsAHiddenAppsCollapsedWindowWithItsTrueFrame() {

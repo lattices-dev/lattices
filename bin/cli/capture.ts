@@ -183,12 +183,31 @@ export function parseCaptureDisplayArgs(args: string[]): CaptureDisplayArgs {
   };
 }
 
+/** Global CG coordinates in points; still region capture is composited. */
+export function parseCaptureRegionArgs(args: string[]): Record<string, unknown> {
+  const params: Record<string, unknown> = { source: "cli" };
+  for (const key of ["x", "y", "width", "height"] as const) {
+    const value = parseOptionalNumber(args, key);
+    if (value === undefined || !Number.isFinite(value) ||
+        ((key === "width" || key === "height") && value <= 0)) {
+      throw new Error(`--${key} requires a finite ${key === "width" || key === "height" ? "positive " : ""}number`);
+    }
+    params[key] = value;
+  }
+  for (const key of ["filename", "run-id"] as const) {
+    const value = parseFlagValue(args, key);
+    if (value) params[key === "run-id" ? "runId" : key] = value;
+  }
+  return params;
+}
+
 export function captureUsage(): string {
   return `lats capture — capture run artifacts
 
 Usage:
   lats capture window [wid] [--json]
   lats capture screenshot [wid] [--session name] [--app name]
+  lats capture region --x N --y N --width N --height N [--json]
   lats capture display [index] [--clipboard] [--delay seconds] [--filename name] [--run-id id] [--json]
   lats --host <name> capture display [index] [--out path]   saved on this Mac, ~/.lattices/captures/<name>/
   lats --host <name> capture window [wid] [--app name] [--out path]
@@ -402,6 +421,30 @@ Usage:
       if (!result.stopResult) {
         console.log(`  stop: lats capture stop ${result.run?.id || ""}`);
       }
+    });
+    return;
+  }
+
+  if (sub === "region") {
+    const params = parseCaptureRegionArgs(commandArgs);
+    const host = remoteHostName();
+    if (host) params.inline = true;
+    await withDaemon(async ({ daemonCall }) => {
+      const result = await daemonCall("capture.screenshotRegion", params, 20000) as any;
+      if (host) {
+        await saveRemoteCapture(host, "region", result, {
+          out: parseFlagValue(commandArgs, "out") || undefined,
+          filename: params.filename as string | undefined, json: jsonFlag,
+        });
+        return;
+      }
+      if (jsonFlag) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log("Captured region");
+      console.log(`  run: ${result.run?.id || "?"}`);
+      console.log(`  artifact: ${result.artifact?.path || "?"}`);
     });
     return;
   }

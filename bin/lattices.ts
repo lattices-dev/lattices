@@ -992,9 +992,9 @@ async function daemonStatusCommand(): Promise<void> {
   console.log(`  version:   ${status.version}`);
 }
 
-async function windowsCommand(jsonFlag: boolean): Promise<void> {
+async function windowsCommand(jsonFlag: boolean, includePanels = false): Promise<void> {
   await withDaemon(async ({ daemonCall }) => {
-    const windows = await daemonCall("windows.list") as any[];
+    const windows = await daemonCall("windows.list", { includePanels }) as any[];
     if (jsonFlag) {
       console.log(JSON.stringify(windows, null, 2));
       return;
@@ -1007,7 +1007,7 @@ async function windowsCommand(jsonFlag: boolean): Promise<void> {
     for (const w of windows) {
       const session = w.latticesSession ? `  \x1b[36m[lattices:${w.latticesSession}]\x1b[0m` : "";
       const spaces = w.spaceIds.length ? ` space:${w.spaceIds.join(",")}` : "";
-      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${spaces}${session}`);
+      console.log(`  \x1b[1m${w.app}\x1b[0m  wid:${w.wid}${w.cgLayer !== undefined ? ` cgLayer:${w.cgLayer}` : ""}${spaces}${session}`);
       console.log(`    "${w.title}"`);
       console.log(`    ${Math.round(w.frame.w)}×${Math.round(w.frame.h)} at (${Math.round(w.frame.x)},${Math.round(w.frame.y)})`);
       console.log();
@@ -3287,7 +3287,7 @@ switch (command) {
     }
     break;
   case "windows":
-    await windowsCommand(args[1] === "--json");
+    await windowsCommand(args.includes("--json"), args.includes("--include-panels"));
     break;
   case "spaces":
   case "space": {
