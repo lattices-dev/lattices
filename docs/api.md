@@ -382,6 +382,37 @@ await daemonCall('capture.screenshotWindow', {
 })
 ```
 
+#### Read-only panel capture inventory
+
+The placement inventory intentionally excludes non-zero WindowServer layers.
+For capture discovery, use `windows.list` with `{"includePanels":true}`:
+this returns the fresh, on-screen CG inventory (including untitled panels),
+in front-to-back order. `cgLayer` is the raw WindowServer layer, **not** a
+Lattices workspace layer. These entries are not AX-verified or added to tiling.
+
+```sh
+lats windows --include-panels --json
+lats search Scout --include-panels --wid
+lats map --display 0 --include-panels --json
+lats capture window 134 --json
+lats capture region --x 0 --y 0 --width 500 --height 500 --json
+```
+
+`search --include-panels` matches app names and titles in this read-only
+inventory, rather than doing terminal/OCR search. The map places these
+on-screen entries by global geometry; no Space identity is inferred.
+
+Explicit window capture IDs resolve against this inventory before falling
+back to tracked off-screen windows. `--app` considers all on-screen matching
+app names (case-insensitive substring) and the optional title filter; multiple
+matches produce a candidate list and require an explicit ID. No window is
+focused or raised. A capture failure does not silently fall back to a display:
+the error supplies a region command instead. Region stills use global
+top-left coordinates in **points** and include overlapping apps, unlike an
+isolated window capture. Regions spanning displays are clipped to the selected
+display by the existing region capture backend. Still regions support
+`--filename` and `--run-id`; all four rectangle fields are required.
+
 #### `capture.still`
 
 Return one compressed frame inline. Other machines pull these one at a time to

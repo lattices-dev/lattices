@@ -126,7 +126,7 @@ final class CaptureController {
                     data: data
                 )
             }
-            throw error
+            throw RouterError.custom("Window \(target.wid) capture failed: \(error.localizedDescription). Check Screen Recording permission; the window may be unavailable or excluded from capture. Retry lats windows --include-panels --json. For a composited still run: lats capture region --x \(target.frame.x) --y \(target.frame.y) --width \(target.frame.w) --height \(target.frame.h) (includes overlapping apps).")
         }
     }
 
@@ -580,8 +580,9 @@ final class CaptureController {
         DesktopModel.shared.forcePoll()
 
         if let wid = params?["wid"]?.uint32Value {
-            guard let window = DesktopModel.shared.windows[wid] else {
-                throw RouterError.notFound("window \(wid)")
+            guard let window = DesktopModel.captureWindows().first(where: { $0.wid == wid })
+                ?? DesktopModel.shared.windows[wid] else {
+                throw RouterError.custom("Window \(wid) is not in the current WindowServer inventory (closed, stale ID, or unavailable). Run: lats windows --include-panels --json; then lats capture window <wid>. For visible content use lats capture region --x X --y Y --width W --height H (includes other apps).")
             }
             return window
         }
@@ -594,10 +595,8 @@ final class CaptureController {
         }
 
         if let app = params?["app"]?.stringValue, !app.isEmpty {
-            guard let window = DesktopModel.shared.windowForApp(app: app, title: params?["title"]?.stringValue) else {
-                throw RouterError.notFound("window for app \(app)")
-            }
-            return window
+            return try Self.windowForCapture(app: app, title: params?["title"]?.stringValue,
+                                             candidates: DesktopModel.captureWindows())
         }
 
         if let window = DesktopModel.shared.allWindows().first(where: { candidate in
@@ -612,6 +611,21 @@ final class CaptureController {
             throw RouterError.notFound("frontmost window")
         }
         return frontmost
+    }
+
+    static func windowForCapture(app: String, title: String?, candidates: [WindowEntry]) throws -> WindowEntry {
+        let matches = candidates.filter { candidate in
+            candidate.app.localizedCaseInsensitiveContains(app) &&
+            (title.map { title in candidate.title.localizedCaseInsensitiveContains(title) } ?? true)
+        }
+        if matches.count > 1 {
+            let choices = matches.map { "wid:\($0.wid) \($0.app) \($0.title.isEmpty ? "(untitled)" : $0.title) [\($0.frame.x),\($0.frame.y) \($0.frame.w)x\($0.frame.h)]" }.joined(separator: "; ")
+            throw RouterError.custom("Multiple windows match \(app): \(choices). Choose explicitly: lats capture window <wid>.")
+        }
+        guard let window = matches.first else {
+            throw RouterError.custom("No on-screen window matches app \(app). Run: lats windows --include-panels --json; select an explicit wid, or use lats capture region --x X --y Y --width W --height H for visible content.")
+        }
+        return window
     }
 
     func resolveRun(params: JSON?, title: String, source: String, surfaces: [RunSurface]) throws -> RunSession {
@@ -739,6 +753,9 @@ final class CaptureController {
     }
 
     private func captureWindowImage(wid: UInt32, timeoutSeconds: Int) throws -> CGImage {
+        guard CGPreflightScreenCaptureAccess() else {
+            throw RouterError.custom("Screen Recording permission is not granted to this Lattices process. Enable it in System Settings > Privacy & Security > Screen Recording, then retry.")
+        }
         let semaphore = DispatchSemaphore(value: 0)
         let box = CaptureBox()
 

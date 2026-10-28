@@ -239,24 +239,40 @@ final class DesktopModel: ObservableObject {
         }.first
     }
 
-    private static func liveWindowEntry(from info: [String: Any], zIndex: Int) -> WindowEntry? {
+    /// Read-only capture inventory. Never feeds placement, focus, or tiling.
+    static func captureWindows() -> [WindowEntry] {
+        guard let rows = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return [] }
+        return captureWindows(in: rows)
+    }
+
+    static func captureWindows(in rows: [[String: Any]]) -> [WindowEntry] {
+        rows.enumerated().compactMap { index, row in
+            guard row[kCGWindowIsOnscreen as String] as? Bool == true else { return nil }
+            return liveWindowEntry(from: row, zIndex: index, includePanels: true)
+        }
+    }
+
+    private static func liveWindowEntry(from info: [String: Any], zIndex: Int, includePanels: Bool = false) -> WindowEntry? {
         guard let wid = info[kCGWindowNumber as String] as? UInt32,
               let ownerName = info[kCGWindowOwnerName as String] as? String,
               let pid = info[kCGWindowOwnerPID as String] as? Int32,
               let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-              (info[kCGWindowLayer as String] as? Int ?? 0) == 0
+              (includePanels || (info[kCGWindowLayer as String] as? Int ?? 0) == 0)
         else { return nil }
 
-        if systemHelperProcesses.contains(ownerName) { return nil }
+        if !includePanels && systemHelperProcesses.contains(ownerName) { return nil }
         let isHelperByName = helperSuffixes.contains(where: { ownerName.hasSuffix($0) })
             && !knownRealApps.contains(ownerName)
-        if isHelperByName { return nil }
+        if !includePanels && isHelperByName { return nil }
 
         var rect = CGRect.zero
         guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect) else { return nil }
         let title = info[kCGWindowName as String] as? String ?? ""
-        if ownerName.hasPrefix("com.apple.") && title.isEmpty { return nil }
+        if !includePanels && ownerName.hasPrefix("com.apple.") && title.isEmpty { return nil }
 
+        guard rect.width > 0, rect.height > 0 else { return nil }
         var entry = WindowEntry(
             wid: wid,
             app: ownerName,
@@ -273,6 +289,10 @@ final class DesktopModel: ObservableObject {
             latticesSession: SessionWindowLocator.extractSessionName(from: title)
         )
         entry.zIndex = zIndex
+        if includePanels {
+            entry.cgLayer = info[kCGWindowLayer as String] as? Int ?? 0
+            entry.axVerified = false
+        }
         return entry
     }
 
