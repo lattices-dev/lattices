@@ -699,7 +699,15 @@ final class ActionAgentLayerController: NSObject {
             throw ActionHostError.unsupportedOS("detach requires an active, unpaused empty stage task")
         }
         let count = moved.count
-        for window in moved.reversed() { setFrame(window.element, window.original) }
+        // Apps apply AX moves a beat late: give them the same half second attach does,
+        // asking again halfway, before calling a window stuck.
+        for attempt in 0..<10 {
+            if attempt == 0 || attempt == 5 {
+                for window in moved.reversed() { setFrame(window.element, window.original) }
+            }
+            if moved.allSatisfy(restored) { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
         moved.removeAll { restored($0) }
         for pid in Array(attachmentLeases.keys) where !moved.contains(where: { $0.pid == pid }) {
             attachmentLeases.removeValue(forKey: pid)
