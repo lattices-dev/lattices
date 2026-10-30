@@ -420,3 +420,56 @@ an inactive task with a ready monitor is the normal state between tasks.
 - A pointer blink click on another app activates that app for a moment before focus goes back. The menu bar can flicker for that moment.
 - Blink acts refuse targets that aren't on an agent layer: a point off the layer, or an app with no window on it. `--any-display` lifts that for tests.
 - Killing a task with `SIGKILL` skips its window restoration; the persistent monitor remains. Killing the monitor owner disconnects the display, allowing macOS to relocate its windows. Neither is an ordinary task teardown or a preservation guarantee.
+
+## Explicit multi-app stage attachments
+
+An empty task can borrow existing windows from several running apps. Subject
+tasks (including browser tasks) keep their existing behavior and reject attach.
+The stage does not launch apps, create windows, or adopt later windows.
+
+After capability/acceptance preflight and explicit monitor preparation:
+
+```text
+layer_open {workspace:"stage", previewFull:true}
+layer_attach {workspace:"stage", subjects:[
+  {bundleId:"app.openscout.scout", frame:{x:0,y:0,width:1920,height:1080}},
+  {windowId:123, frame:{x:0,y:700,width:600,height:380}},
+  {windowId:124},
+  {windowId:125},
+  {windowId:126}
+]}
+layer_snapshot {workspace:"stage", full:true}
+layer_drag {workspace:"stage", space:"layer", from:[200,710], to:[800,710], durationMs:3000}
+layer_record {workspace:"stage", action:"start", out:"/absolute/stage.mov"}
+layer_record {workspace:"stage", action:"stop"}
+layer_detach {workspace:"stage"}
+layer_close {workspace:"stage"}
+```
+
+Each selector needs a bundleId, a windowId, or both (intersection). A bundleId
+selects its currently exposed non-minimized AX windows; use windowId to borrow
+only specific terminals/browser windows. Coordinates are top-left display-local
+points, not snapshot pixels. Frames must fit completely inside the stage.
+Omitted frames use a bounded default placement. Reattaching an already attached
+window fails rather than overwriting its original frame.
+
+CLI equivalents:
+
+```bash
+lats action layer attach --workspace stage --subjects '[{"windowId":123,"frame":{"x":0,"y":700,"width":600,"height":380}},{"windowId":124}]'
+lats action layer detach --workspace stage
+```
+
+Detach restores all explicit attachments and keeps the task/feed/recording alive.
+Close also restores them; release still refuses an active task, so close first.
+Attachments are always borrowed, never marked as newly born or closed on teardown.
+App-process locks prevent competing workspace attachment. MCP requires task
+ownership. Placement is verified and a failed batch attempts rollback; failed
+rollback retains restoration records. Detach retains records for windows that
+refuse restoration so it can be retried.
+
+Panels must expose movable AX windows (position and size); transparency and
+non-activation alone do not establish that. Unsupported panels fail explicitly.
+CG window IDs are discoverable in task state after attach. This API does not
+promise independent macOS focus or repair CGVirtualDisplay topology defects.
+SIGKILL and monitor-owner loss retain the existing abnormal-teardown limitations.

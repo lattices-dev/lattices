@@ -300,6 +300,14 @@ async function main(argv: string[]): Promise<void> {
       }
       throw new Error("Usage: layer record start [--out <file.mov>] | layer record stop");
     }
+    if (arg === "attach") {
+      printJson(await director.attach(JSON.parse(flags.subjects ?? "null")));
+      return;
+    }
+    if (arg === "detach") {
+      printJson(await director.detach());
+      return;
+    }
     if (arg === "snapshot") {
       const snapshot = await director.snapshot({
         windowId: flags["window-id"] ? requiredNumber(flags, "window-id") : undefined,

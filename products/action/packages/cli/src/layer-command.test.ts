@@ -60,3 +60,14 @@ test("CLI rejects unsupported requests before invoking the native host", () => {
     assert.doesNotMatch(output.error, /ENOENT/);
   }
 });
+
+test("explicit stage attach and detach commands", () => {
+  const subjects = '[{"windowId":123}]';
+  assert.deepEqual(parseLayerCommand(["attach", "--workspace", "stage", "--subjects", subjects]), {
+    positionals: ["attach"], flags: {workspace:"stage", subjects},
+  });
+  assert.deepEqual(parseLayerCommand(["detach", "--workspace", "stage"]), {
+    positionals: ["detach"], flags: {workspace:"stage"},
+  });
+  assert.throws(() => parseLayerCommand(["detach", "--subjects", subjects]));
+});

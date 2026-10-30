@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { AgentLayerDirector } from "./agent-layer.js";
+
+test("stage attachment validation rejects before dispatch", async () => {
+  const director = new AgentLayerDirector("/unused/native-host");
+  for (const subjects of [null, [], [{}], [{windowId: -1}], [{windowId: 1.5}], [{bundleId:"x", frame:{x:0,y:0,width:0,height:20}}]]) {
+    await assert.rejects(director.attach(subjects));
+  }
+});
+
+test("stage controls preserve explicit selectors and placement; detach is separate", async () => {
+  const director = new AgentLayerDirector("/unused/native-host");
+  const calls: unknown[] = [];
+  Object.assign(director, { control: async (...args: unknown[]) => { calls.push(args); return {ok:true}; } });
+  const subjects = [
+    {bundleId:"app.openscout.scout", frame:{x:0,y:0,width:1920,height:1080}},
+    {windowId:123, frame:{x:10,y:20,width:600,height:400}},
+    {bundleId:"com.apple.Terminal", windowId:456},
+  ];
+  await director.attach(subjects);
+  await director.detach();
+  assert.deepEqual(calls, [["attach",{subjects},30_000],["detach",{},30_000]]);
+});

@@ -636,6 +636,23 @@ export class AgentLayerDirector {
     return this.control("record-start", { out }, RECORD_WAIT_MS);
   }
 
+  /** Explicitly borrow existing windows into an empty stage; no future adoption. */
+  async attach(subjects: unknown): Promise<{ ok: boolean; attached?: number }> {
+    if (!Array.isArray(subjects) || subjects.length === 0 || subjects.length > 64) throw new Error("subjects must contain 1–64 selectors");
+    for (const subject of subjects) {
+      if (!subject || typeof subject !== "object" || Array.isArray(subject)) throw new Error("Invalid subject");
+      if (!(typeof subject.bundleId === "string" && subject.bundleId.trim()) && subject.windowId === undefined) throw new Error("Subject needs bundleId or windowId");
+      if (subject.windowId !== undefined && (!Number.isInteger(subject.windowId) || subject.windowId <= 0 || subject.windowId > 0xffffffff)) throw new Error("Invalid windowId");
+      if (subject.frame !== undefined && (!subject.frame || !["x", "y", "width", "height"].every(k => typeof subject.frame[k] === "number" && Number.isFinite(subject.frame[k])) || subject.frame.width <= 0 || subject.frame.height <= 0)) throw new Error("Invalid frame");
+    }
+    return this.control("attach", { subjects }, 30_000);
+  }
+
+  /** Restore all explicitly attached windows without closing the stage. */
+  async detach(): Promise<{ ok: boolean; detached?: number }> {
+    return this.control("detach", {}, 30_000);
+  }
+
   async stopRecording(): Promise<{ ok: boolean; path?: string }> {
     return this.control("record-stop", {}, RECORD_WAIT_MS);
   }

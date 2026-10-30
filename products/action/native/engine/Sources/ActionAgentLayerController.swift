@@ -80,6 +80,7 @@ final class ActionAgentLayerController: NSObject {
     private var displayID: CGDirectDisplayID { displayManifest.displayId }
     private var bounds: CGRect = .zero
     private var moved: [MovedWindow] = []
+    private var attachmentLeases: [pid_t: ActionWorkspaceLock] = [:]
     private var feed: ActionAgentLayerFeed?
     private var pip: ActionAgentLayerPiP?
     private var pollTimer: Timer?
@@ -574,6 +575,138 @@ final class ActionAgentLayerController: NSObject {
         return count
     }
 
+    /// Explicit stage borrowing only. Never launches an app or adopts later windows.
+    private func attach(_ json: [String: Any]) throws -> [String: Any] {
+        guard target == nil, targetBundleId == nil, !paused, !shuttingDown else {
+            throw ActionHostError.unsupportedOS("attachments require an active, unpaused empty stage task")
+        }
+        _ = try validateDisplayAttachment()
+        guard let subjects = json["subjects"] as? [[String: Any]], !subjects.isEmpty, subjects.count <= 64 else {
+            throw ActionHostError.unsupportedOS("subjects must contain 1–64 selectors")
+        }
+        var pending: [MovedWindow] = []
+        var frames: [CGRect] = []
+        var leases: [pid_t: ActionWorkspaceLock] = [:]
+        for subject in subjects {
+            let bundle = subject["bundleId"] as? String
+            let rawID = subject["windowId"] as? NSNumber
+            let identifier = rawID?.uint32Value
+            guard bundle?.isEmpty == false || rawID != nil else {
+                throw ActionHostError.unsupportedOS("each subject needs bundleId or windowId")
+            }
+            if let rawID {
+                guard CFGetTypeID(rawID) != CFBooleanGetTypeID(), rawID.doubleValue > 0,
+                      rawID.doubleValue <= Double(UInt32.max), rawID.doubleValue.rounded() == rawID.doubleValue else {
+                    throw ActionHostError.unsupportedOS("windowId must be a positive display window identifier")
+                }
+            }
+            var apps = NSWorkspace.shared.runningApplications
+            if let bundle { apps = apps.filter { $0.bundleIdentifier == bundle } }
+            if let identifier {
+                let rows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+                guard let row = rows.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == identifier }),
+                      let pid = row[kCGWindowOwnerPID as String] as? Int32 else {
+                    throw ActionHostError.unsupportedOS("windowId was not found")
+                }
+                apps = apps.filter { $0.processIdentifier == pid }
+            }
+            var matched = 0
+            for app in apps {
+                let pid = app.processIdentifier
+                if attachmentLeases[pid] == nil && leases[pid] == nil {
+                    let registry = registryURL
+                    leases[pid] = try ActionWorkspaceLock(url: registry.appendingPathComponent("subject-\(pid).lock"))
+                }
+                let ax = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(ax, 0.25)
+                for window in copyAttribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? [] {
+                    if let identifier, axWindowID(window) != identifier { continue }
+                    if (copyAttribute(window, kAXMinimizedAttribute) as? Bool) == true { continue }
+                    guard !moved.contains(where: { CFEqual($0.element, window) }),
+                          !pending.contains(where: { CFEqual($0.element, window) }),
+                          let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
+                          let size = axSize(copyAttribute(window, kAXSizeAttribute)) else { continue }
+                    let original = CGRect(origin: origin, size: size)
+                    var frame = CGRect(x: bounds.minX + 24, y: bounds.minY + 48,
+                                       width: min(size.width, bounds.width - 48), height: min(size.height, bounds.height - 72))
+                    if let values = subject["frame"] as? [String: Any] {
+                        func number(_ key: String) throws -> Double {
+                            guard let n = values[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite else {
+                                throw ActionHostError.unsupportedOS("frame requires finite x, y, width, height")
+                            }
+                            return n.doubleValue
+                        }
+                        frame = try CGRect(x: bounds.minX + number("x"), y: bounds.minY + number("y"),
+                                           width: number("width"), height: number("height"))
+                    }
+                    guard frame.width > 0, frame.height > 0, bounds.contains(frame) else {
+                        throw ActionHostError.unsupportedOS("frame must fit inside the stage (top-left layer points)")
+                    }
+                    pending.append(MovedWindow(element: window, pid: pid, bundleId: app.bundleIdentifier,
+                                               title: copyAttribute(window, kAXTitleAttribute) as? String,
+                                               original: original, born: false))
+                    frames.append(frame)
+                    matched += 1
+                }
+            }
+            guard matched > 0 else {
+                throw ActionHostError.unsupportedOS("selector matched no movable, unattached AX windows; panels must expose AX position and size")
+            }
+        }
+        // Retain restoration records before the first mutation, including failure paths.
+        moved.append(contentsOf: pending)
+        attachmentLeases.merge(leases) { existing, _ in existing }
+        do {
+            for (window, frame) in zip(pending, frames) {
+                setFrame(window.element, frame)
+                guard let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
+                      let size = axSize(copyAttribute(window.element, kAXSizeAttribute)),
+                      abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
+                      abs(size.width - frame.width) < 3, abs(size.height - frame.height) < 3 else {
+                    throw ActionHostError.unsupportedOS("app refused requested stage frame")
+                }
+            }
+            try writeState()
+        } catch {
+            for window in pending.reversed() { setFrame(window.element, window.original) }
+            moved.removeAll { window in
+                pending.contains { CFEqual($0.element, window.element) } && restored(window)
+            }
+            for pid in leases.keys where !moved.contains(where: { $0.pid == pid }) {
+                attachmentLeases.removeValue(forKey: pid)
+            }
+            try? writeState()
+            throw error
+        }
+        return ["ok": true, "attached": pending.count]
+    }
+
+    private func detach() throws -> [String: Any] {
+        guard target == nil, targetBundleId == nil, !paused, !shuttingDown else {
+            throw ActionHostError.unsupportedOS("detach requires an active, unpaused empty stage task")
+        }
+        let count = moved.count
+        for window in moved.reversed() { setFrame(window.element, window.original) }
+        moved.removeAll { restored($0) }
+        for pid in Array(attachmentLeases.keys) where !moved.contains(where: { $0.pid == pid }) {
+            attachmentLeases.removeValue(forKey: pid)
+        }
+        try writeState()
+        guard moved.isEmpty else {
+            throw ActionHostError.unsupportedOS("some windows refused restoration; records retained, retry detach")
+        }
+        return ["ok": true, "detached": count]
+    }
+
+    private func restored(_ window: MovedWindow) -> Bool {
+        // A closed window no longer needs restoration.
+        guard copyAttribute(window.element, kAXRoleAttribute) != nil else { return true }
+        guard let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
+              let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) else { return false }
+        return abs(origin.x - window.original.minX) < 3 && abs(origin.y - window.original.minY) < 3
+            && abs(size.width - window.original.width) < 3 && abs(size.height - window.original.height) < 3
+    }
+
     private func isSelected(_ window: AXUIElement) -> Bool {
         if let windowID, axWindowID(window) != windowID { return false }
         if let windowTitle {
@@ -650,6 +783,7 @@ final class ActionAgentLayerController: NSObject {
             "recording": feed?.recordingPath ?? NSNull(),
             "windows": moved.map { window in
                 [
+                    "windowId": axWindowID(window.element).map { Int($0) } ?? NSNull(),
                     "pid": Int(window.pid),
                     "bundleId": window.bundleId ?? NSNull(),
                     "title": window.title ?? NSNull(),
@@ -688,6 +822,9 @@ final class ActionAgentLayerController: NSObject {
             // layer): show it on the viewer the way a blink's notification would.
             pip?.mark(ActionAgentLayerAct(info: json))
             reply = ["ok": true]
+        } else if ["attach", "detach"].contains(json["op"] as? String ?? "") {
+            do { reply = (json["op"] as? String == "attach") ? try attach(json) : try detach() }
+            catch { reply = ["ok": false, "detail": error.localizedDescription] }
         } else if let feed {
             switch json["op"] as? String {
             case "show":
