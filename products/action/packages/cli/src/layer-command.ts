@@ -1,13 +1,13 @@
 import { parseAgentWorkspace } from "@action/runtime";
 
-const usage = "Usage: layer list|prepare|display-status|open|attach --subjects <json>|detach|status|snapshot|pip|record start|record stop|close|release [--workspace <name>]. Open/pip accept --preview-workspace <name>. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
+const usage = "Usage: layer list|prepare|display-status|open|attach --subjects <json>|open-window --bundle-id <id> [--url <url> | --file <path>] [--frame <json>]|detach|status|snapshot|pip|record start|record stop|close|release [--workspace <name>]. Open/pip accept --preview-workspace <name>. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
 
 const allowed: Record<string, readonly string[]> = {
   prepare: ["width", "height", "scale"],
   list: [],
   "display-status": [], release: [],
   open: ["bundle-id", "pid", "width", "height", "window-id", "window-title", "pip", "preview-workspace", "preview-full"],
-  attach: ["subjects"], detach: [],
+  attach: ["subjects"], "open-window": ["bundle-id", "url", "file", "frame"], detach: [],
   status: [], close: [], pip: ["preview-workspace", "preview-full"],
   snapshot: ["window-id", "full", "out"],
   "record start": ["out"], "record stop": [],

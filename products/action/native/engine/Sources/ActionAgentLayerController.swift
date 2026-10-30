@@ -81,6 +81,8 @@ final class ActionAgentLayerController: NSObject {
     private var bounds: CGRect = .zero
     private var moved: [MovedWindow] = []
     private var attachmentLeases: [pid_t: ActionWorkspaceLock] = [:]
+    /// Apps whose Automation question is on screen now.
+    private var automationAsks: Set<String> = []
     private var feed: ActionAgentLayerFeed?
     private var pip: ActionAgentLayerPiP?
     private var pollTimer: Timer?
@@ -627,21 +629,7 @@ final class ActionAgentLayerController: NSObject {
                           let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
                           let size = axSize(copyAttribute(window, kAXSizeAttribute)) else { continue }
                     let original = CGRect(origin: origin, size: size)
-                    var frame = CGRect(x: bounds.minX + 24, y: bounds.minY + 48,
-                                       width: min(size.width, bounds.width - 48), height: min(size.height, bounds.height - 72))
-                    if let values = subject["frame"] as? [String: Any] {
-                        func number(_ key: String) throws -> Double {
-                            guard let n = values[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite else {
-                                throw ActionHostError.unsupportedOS("frame requires finite x, y, width, height")
-                            }
-                            return n.doubleValue
-                        }
-                        frame = try CGRect(x: bounds.minX + number("x"), y: bounds.minY + number("y"),
-                                           width: number("width"), height: number("height"))
-                    }
-                    guard frame.width > 0, frame.height > 0, bounds.contains(frame) else {
-                        throw ActionHostError.unsupportedOS("frame must fit inside the stage (top-left layer points)")
-                    }
+                    let frame = try stageFrame(subject["frame"], size: size)
                     pending.append(MovedWindow(element: window, pid: pid, bundleId: app.bundleIdentifier,
                                                title: copyAttribute(window, kAXTitleAttribute) as? String,
                                                original: original, born: false))
@@ -657,28 +645,7 @@ final class ActionAgentLayerController: NSObject {
         moved.append(contentsOf: pending)
         attachmentLeases.merge(leases) { existing, _ in existing }
         do {
-            for (window, frame) in zip(pending, frames) {
-                // Apps may apply AX moves a beat late, and may round the size
-                // (a terminal's cell grid, a minimum width). The origin must
-                // land; an adjusted size is fine while the window stays on stage.
-                var landed: CGRect?
-                for attempt in 0..<10 {
-                    if attempt == 0 || attempt == 5 { setFrame(window.element, frame) }
-                    if let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
-                       let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) {
-                        landed = CGRect(origin: origin, size: size)
-                        if abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
-                           bounds.insetBy(dx: -3, dy: -3).contains(landed!) { break }
-                    }
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-                }
-                guard let landed, abs(landed.minX - frame.minX) < 3, abs(landed.minY - frame.minY) < 3,
-                      bounds.insetBy(dx: -3, dy: -3).contains(landed) else {
-                    let actual = landed.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "unreadable"
-                    throw ActionHostError.unsupportedOS(
-                        "app refused requested stage frame: asked \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height)), got \(actual)")
-                }
-            }
+            for (window, frame) in zip(pending, frames) { _ = try settle(window.element, to: frame) }
             try writeState()
         } catch {
             for window in pending.reversed() { setFrame(window.element, window.original) }
@@ -699,6 +666,13 @@ final class ActionAgentLayerController: NSObject {
             throw ActionHostError.unsupportedOS("detach requires an active, unpaused empty stage task")
         }
         let count = moved.count
+        // Windows the stage made are closed, not put back; one that asks first goes to the Dock.
+        for window in moved where window.born {
+            if !close(window.element) {
+                AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+            }
+        }
+        moved.removeAll(where: \.born)
         // Apps apply AX moves a beat late: give them the same half second attach does,
         // asking again halfway, before calling a window stuck.
         for attempt in 0..<10 {
@@ -717,6 +691,243 @@ final class ActionAgentLayerController: NSObject {
             throw ActionHostError.unsupportedOS("some windows refused restoration; records retained, retry detach")
         }
         return ["ok": true, "detached": count]
+    }
+
+    /// Chromium browsers answer `make new window with properties {bounds}`, so their new
+    /// window is born on the stage instead of being moved there.
+    private static let boundsBrowsers: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+        "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi",
+    ]
+
+    /// Makes a new window of an app on an empty stage, as its own: detach and close close
+    /// it rather than putting it anywhere. A browser that takes bounds creates it there; an
+    /// app that isn't running launches hidden and is shown once its window is on stage;
+    /// anything else opens where the app puts it and moves at once, and says so.
+    private func openWindow(_ json: [String: Any]) async throws -> [String: Any] {
+        guard target == nil, targetBundleId == nil, !paused, !shuttingDown else {
+            throw ActionHostError.unsupportedOS("open_window requires an active, unpaused empty stage task")
+        }
+        _ = try validateDisplayAttachment()
+        guard let bundle = json["bundleId"] as? String, !bundle.isEmpty else {
+            throw ActionHostError.unsupportedOS("open_window needs bundleId")
+        }
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else {
+            throw ActionHostError.unsupportedOS("no app is installed with bundle id \(bundle)")
+        }
+        var document: URL?
+        if let raw = json["url"] {
+            guard let text = raw as? String, let url = URL(string: text),
+                  let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+                throw ActionHostError.unsupportedOS("url must be an http or https URL")
+            }
+            document = url
+        }
+        if let raw = json["file"] {
+            guard document == nil else { throw ActionHostError.unsupportedOS("pass url or file, not both") }
+            guard let path = raw as? String, path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else {
+                throw ActionHostError.unsupportedOS("file must be an absolute path that exists")
+            }
+            document = URL(fileURLWithPath: path)
+        }
+        let frame = try stageFrame(json["frame"], size: CGSize(width: 1100, height: 700))
+        let front = NSWorkspace.shared.frontmostApplication
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first
+        let before = running.map { Set(windowIDs(of: $0.processIdentifier)) } ?? []
+
+        var app: NSRunningApplication
+        var placement: String
+        var launchedHidden = false
+        if let running, Self.boundsBrowsers.contains(bundle), document?.isFileURL != true {
+            try await requireAutomation(of: bundle)
+            let rect = "{\(Int(frame.minX)), \(Int(frame.minY)), \(Int(frame.maxX)), \(Int(frame.maxY))}"
+            let load = document.map { "\n    set URL of active tab of w to \"\($0.absoluteString)\"" } ?? ""
+            let source = """
+            with timeout of 5 seconds
+              tell application id "\(bundle)"
+                set w to make new window with properties {bounds:\(rect)}\(load)
+              end tell
+            end timeout
+            """
+            guard document.map({ !$0.absoluteString.contains("\"") && !$0.absoluteString.contains("\\") }) ?? true else {
+                throw ActionHostError.unsupportedOS("url must be percent-encoded")
+            }
+            var error: NSDictionary?
+            _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+            if let error {
+                throw ActionHostError.unsupportedOS("\(bundle) refused a new window: \(error[NSAppleScript.errorMessage] ?? error)")
+            }
+            app = running
+            placement = "direct"
+        } else {
+            if running != nil && document == nil {
+                throw ActionHostError.unsupportedOS(
+                    "\(bundle) is running; pass url or file for it to open, or borrow an existing window with attach")
+            }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            // A fresh launch starts hidden, so its first window never shows on the operator's screens.
+            configuration.hides = running == nil
+            launchedHidden = running == nil
+            if let document {
+                app = try await NSWorkspace.shared.open([document], withApplicationAt: appURL, configuration: configuration)
+            } else {
+                app = try await NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
+            }
+            placement = launchedHidden ? "direct" : "moved"
+        }
+
+        // The window the app just made: the first standard one that wasn't there before.
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(ax, 0.25)
+        var window: AXUIElement?
+        let deadline = Date().addingTimeInterval(8)
+        while window == nil, Date() < deadline, !app.isTerminated {
+            let fresh = (copyAttribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter { candidate in
+                guard let id = axWindowID(candidate) else { return false }
+                return !before.contains(id) && !moved.contains(where: { CFEqual($0.element, candidate) })
+            }
+            window = fresh.first { copyAttribute($0, kAXSubroleAttribute) as? String == kAXStandardWindowSubrole as String }
+                ?? fresh.first
+            if window == nil { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        guard let window else {
+            throw ActionHostError.unsupportedOS(launchedHidden
+                ? "\(bundle) launched but showed no window within 8 s; it is still running, hidden"
+                : "\(bundle) made no new window within 8 s; it may have opened the document in an existing one")
+        }
+
+        let pid = app.processIdentifier
+        if attachmentLeases[pid] == nil {
+            attachmentLeases[pid] = try ActionWorkspaceLock(url: registryURL.appendingPathComponent("subject-\(pid).lock"))
+        }
+        let original = CGRect(origin: axPoint(copyAttribute(window, kAXPositionAttribute)) ?? frame.origin,
+                              size: axSize(copyAttribute(window, kAXSizeAttribute)) ?? frame.size)
+        // Retained before the move, so a failure still closes it with the stage.
+        moved.append(MovedWindow(element: window, pid: pid, bundleId: bundle,
+                                 title: copyAttribute(window, kAXTitleAttribute) as? String,
+                                 original: original, born: true))
+        let landed: CGRect
+        do {
+            landed = try settle(window, to: frame)
+        } catch {
+            try? writeState()
+            throw error
+        }
+        if launchedHidden { app.unhide() }
+        try writeState()
+
+        // Hand the keyboard back to whoever had it.
+        if let front, front.processIdentifier != NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            front.activate()
+        }
+        return [
+            "ok": true,
+            "windowId": axWindowID(window).map { Int($0) } ?? NSNull(),
+            "pid": Int(pid),
+            "bundleId": bundle,
+            "placement": placement,
+            "frame": rectJSON(landed.offsetBy(dx: -bounds.minX, dy: -bounds.minY)),
+        ]
+    }
+
+    private func windowIDs(of pid: pid_t) -> [CGWindowID] {
+        let ax = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(ax, 0.25)
+        return (copyAttribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? []).compactMap(axWindowID)
+    }
+
+    /// Fails fast unless Action may already send Apple Events to the app. An undecided
+    /// app gets the system's question off the main thread, and this call says to retry.
+    /// While the system's question is up, even a check that doesn't ask waits on the
+    /// answer: the main thread must never make one.
+    private func requireAutomation(of bundle: String) async throws {
+        guard !automationAsks.contains(bundle) else {
+            throw ActionHostError.unsupportedOS(
+                "Action is waiting on the Automation prompt for \(bundle); answer it, then retry")
+        }
+        let status: OSStatus? = await withCheckedContinuation { continuation in
+            let gate = ResumeOnce(continuation)
+            Thread.detachNewThread { gate.resume(Self.automationPermission(of: bundle, asking: false)) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { gate.resume(nil) }
+        }
+        switch status {
+        case noErr:
+            return
+        case OSStatus(errAEEventWouldRequireUserConsent):
+            automationAsks.insert(bundle)
+            Task.detached { [weak self] in
+                _ = Self.automationPermission(of: bundle, asking: true)
+                await MainActor.run { _ = self?.automationAsks.remove(bundle) }
+            }
+            throw ActionHostError.unsupportedOS(
+                "Action needs Automation access to \(bundle); answer the system prompt, then retry")
+        case nil:
+            throw ActionHostError.unsupportedOS(
+                "Automation access to \(bundle) did not answer within 2 s; a system prompt may be waiting")
+        case OSStatus(errAEEventNotPermitted):
+            throw ActionHostError.unsupportedOS(
+                "Automation access to \(bundle) is off for Action; turn it on in System Settings › Privacy & Security › Automation")
+        case let status?:
+            throw ActionHostError.unsupportedOS("could not check Automation access to \(bundle) (\(status))")
+        }
+    }
+
+    private nonisolated static func automationPermission(of bundle: String, asking: Bool) -> OSStatus {
+        var address = AEAddressDesc()
+        let bytes = Array(bundle.utf8)
+        AECreateDesc(DescType(typeApplicationBundleID), bytes, bytes.count, &address)
+        defer { AEDisposeDesc(&address) }
+        return AEDeterminePermissionToAutomateTarget(&address, AEEventClass(typeWildCard), AEEventID(typeWildCard), asking)
+    }
+
+    /// A frame on the stage from a caller's top-left layer points, or the default cascade
+    /// slot sized to fit when none was given.
+    private func stageFrame(_ value: Any?, size: CGSize) throws -> CGRect {
+        var frame = CGRect(x: bounds.minX + 24, y: bounds.minY + 48,
+                           width: min(size.width, bounds.width - 48), height: min(size.height, bounds.height - 72))
+        if let value {
+            guard let values = value as? [String: Any] else {
+                throw ActionHostError.unsupportedOS("frame requires finite x, y, width, height")
+            }
+            func number(_ key: String) throws -> Double {
+                guard let n = values[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite else {
+                    throw ActionHostError.unsupportedOS("frame requires finite x, y, width, height")
+                }
+                return n.doubleValue
+            }
+            frame = try CGRect(x: bounds.minX + number("x"), y: bounds.minY + number("y"),
+                               width: number("width"), height: number("height"))
+        }
+        guard frame.width > 0, frame.height > 0, bounds.contains(frame) else {
+            throw ActionHostError.unsupportedOS("frame must fit inside the stage (top-left layer points)")
+        }
+        return frame
+    }
+
+    /// Moves a window onto the stage and waits for it to land. Apps may apply AX moves a
+    /// beat late, and may round the size (a terminal's cell grid, a minimum width). The
+    /// origin must land; an adjusted size is fine while the window stays on stage.
+    private func settle(_ window: AXUIElement, to frame: CGRect) throws -> CGRect {
+        var landed: CGRect?
+        for attempt in 0..<10 {
+            if attempt == 0 || attempt == 5 { setFrame(window, frame) }
+            if let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
+               let size = axSize(copyAttribute(window, kAXSizeAttribute)) {
+                landed = CGRect(origin: origin, size: size)
+                if abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
+                   bounds.insetBy(dx: -3, dy: -3).contains(landed!) { break }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        guard let landed, abs(landed.minX - frame.minX) < 3, abs(landed.minY - frame.minY) < 3,
+              bounds.insetBy(dx: -3, dy: -3).contains(landed) else {
+            let actual = landed.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "unreadable"
+            throw ActionHostError.unsupportedOS(
+                "app refused requested stage frame: asked \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height)), got \(actual)")
+        }
+        return landed
     }
 
     private func restored(_ window: MovedWindow) -> Bool {
@@ -843,9 +1054,14 @@ final class ActionAgentLayerController: NSObject {
             // layer): show it on the viewer the way a blink's notification would.
             pip?.mark(ActionAgentLayerAct(info: json))
             reply = ["ok": true]
-        } else if ["attach", "detach"].contains(json["op"] as? String ?? "") {
-            do { reply = (json["op"] as? String == "attach") ? try attach(json) : try detach() }
-            catch { reply = ["ok": false, "detail": error.localizedDescription] }
+        } else if ["attach", "detach", "open_window"].contains(json["op"] as? String ?? "") {
+            do {
+                switch json["op"] as? String {
+                case "attach": reply = try attach(json)
+                case "open_window": reply = try await openWindow(json)
+                default: reply = try detach()
+                }
+            } catch { reply = ["ok": false, "detail": error.localizedDescription] }
         } else if let feed {
             switch json["op"] as? String {
             case "show":
@@ -2480,5 +2696,21 @@ extension ActionAgentLayerAct {
             frame: frame,
             deltaY: number("dy") ?? 0
         )
+    }
+}
+
+/// Resumes a continuation with whichever answer comes first: a blocking check or its deadline.
+private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Never>?
+
+    init(_ continuation: CheckedContinuation<T, Never>) { self.continuation = continuation }
+
+    func resume(_ value: T) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
     }
 }

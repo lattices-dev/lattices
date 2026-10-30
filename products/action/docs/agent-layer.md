@@ -428,7 +428,8 @@ an inactive task with a ready monitor is the normal state between tasks.
 
 An empty task can borrow existing windows from several running apps. Subject
 tasks (including browser tasks) keep their existing behavior and reject attach.
-The stage does not launch apps, create windows, or adopt later windows.
+Attach never launches apps, creates windows, or adopts later windows; use
+`layer_open_window` to make a window on the stage.
 
 After capability/acceptance preflight and explicit monitor preparation:
 
@@ -466,6 +467,8 @@ lats action layer detach --workspace stage
 Detach restores all explicit attachments and keeps the task/feed/recording alive.
 Close also restores them; release still refuses an active task, so close first.
 Attachments are always borrowed, never marked as newly born or closed on teardown.
+Windows from `layer_open_window` are the exception: the stage made them, so it
+closes them.
 App-process locks prevent competing workspace attachment. MCP requires task
 ownership. Placement is verified and a failed batch attempts rollback; failed
 rollback retains restoration records. Detach retains records for windows that
@@ -473,6 +476,43 @@ refuse restoration so it can be retried.
 
 Panels must expose movable AX windows (position and size); transparency and
 non-activation alone do not establish that. Unsupported panels fail explicitly.
+
+## Windows made on the stage
+
+`layer_open_window` makes one new window of an app on an empty stage task. The
+stage owns that window: detach and close close it instead of restoring it, and
+a window that asks before closing is minimized.
+
+```text
+layer_open_window {workspace:"stage", bundleId:"com.google.Chrome",
+  url:"https://example.com", frame:{x:100,y:100,width:1100,height:640}}
+layer_open_window {workspace:"stage", bundleId:"com.apple.TextEdit", file:"/absolute/notes.txt"}
+```
+
+How the window gets there depends on the app, and `placement` reports which:
+
+| App | What happens | `placement` |
+| --- | --- | --- |
+| Running Chromium browser (Chrome, Brave, Edge, Vivaldi) | Apple Events create the window at the frame | `direct` |
+| Not running | Launches hidden, moves the window, then shows the app | `direct` |
+| Running, any other app | Opens the url or file where the app puts it, then moves it at once | `moved` |
+
+A running app other than a browser needs `url` or `file`, because nothing else
+asks it for a new window. Without one, the call fails and says to use attach.
+An app that opens the document in an existing window fails the same way. Focus
+returns to the app that was frontmost before the call.
+
+Browsers need Automation access to the browser. The call never waits on that
+prompt: if access is undecided it asks in the background and fails with "answer
+the system prompt, then retry". If access is off, it says where to turn it on.
+Release builds signed with the hardened runtime need the
+`com.apple.security.automation.apple-events` entitlement for this.
+
+CLI equivalent:
+
+```bash
+lats action layer open-window --workspace stage --bundle-id com.google.Chrome --url https://example.com --frame '{"x":100,"y":100,"width":1100,"height":640}'
+```
 CG window IDs are discoverable in task state after attach. This API does not
 promise independent macOS focus or repair CGVirtualDisplay topology defects.
 SIGKILL and monitor-owner loss retain the existing abnormal-teardown limitations.

@@ -654,9 +654,29 @@ export class AgentLayerDirector {
       if (!subject || typeof subject !== "object" || Array.isArray(subject)) throw new Error("Invalid subject");
       if (!(typeof subject.bundleId === "string" && subject.bundleId.trim()) && subject.windowId === undefined) throw new Error("Subject needs bundleId or windowId");
       if (subject.windowId !== undefined && (!Number.isInteger(subject.windowId) || subject.windowId <= 0 || subject.windowId > 0xffffffff)) throw new Error("Invalid windowId");
-      if (subject.frame !== undefined && (!subject.frame || !["x", "y", "width", "height"].every(k => typeof subject.frame[k] === "number" && Number.isFinite(subject.frame[k])) || subject.frame.width <= 0 || subject.frame.height <= 0)) throw new Error("Invalid frame");
+      if (subject.frame !== undefined && !isStageFrame(subject.frame)) throw new Error("Invalid frame");
     }
     return this.control("attach", { subjects }, 30_000);
+  }
+
+  /**
+   * Make a new window of an app on an empty stage, owned by the stage: detach and close
+   * close it. `placement` says whether it was born there or opened elsewhere and moved.
+   */
+  async openWindow(input: unknown): Promise<AgentLayerOpenedWindow> {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Invalid window request");
+    const { bundleId, url, file, frame } = input as Record<string, unknown>;
+    if (typeof bundleId !== "string" || !bundleId.trim()) throw new Error("open_window needs bundleId");
+    if (url !== undefined && (typeof url !== "string" || !/^https?:\/\//i.test(url))) throw new Error("url must be an http or https URL");
+    if (file !== undefined && (typeof file !== "string" || !file.startsWith("/"))) throw new Error("file must be an absolute path");
+    if (url !== undefined && file !== undefined) throw new Error("Pass url or file, not both");
+    if (frame !== undefined && !isStageFrame(frame)) throw new Error("Invalid frame");
+    return this.control("open_window", {
+      bundleId,
+      ...(url !== undefined ? { url } : {}),
+      ...(file !== undefined ? { file } : {}),
+      ...(frame !== undefined ? { frame } : {}),
+    }, 30_000);
   }
 
   /** Restore all explicitly attached windows without closing the stage. */
@@ -920,4 +940,22 @@ export function parseDisplayScale(value: unknown): 1 | 2 {
   const scale = Number(value);
   if (scale !== 1 && scale !== 2) throw new Error("scale must be 1 or 2");
   return scale;
+}
+
+/** A window the stage made, in top-left layer points. */
+export interface AgentLayerOpenedWindow {
+  ok: boolean;
+  detail?: string;
+  windowId?: number;
+  pid?: number;
+  bundleId?: string;
+  placement?: "direct" | "moved";
+  frame?: { x: number; y: number; width: number; height: number };
+}
+
+function isStageFrame(frame: unknown): boolean {
+  if (!frame || typeof frame !== "object") return false;
+  const f = frame as Record<string, unknown>;
+  return ["x", "y", "width", "height"].every(k => typeof f[k] === "number" && Number.isFinite(f[k]))
+    && (f.width as number) > 0 && (f.height as number) > 0;
 }

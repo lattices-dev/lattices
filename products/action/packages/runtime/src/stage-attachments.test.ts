@@ -22,3 +22,24 @@ test("stage controls preserve explicit selectors and placement; detach is separa
   await director.detach();
   assert.deepEqual(calls, [["attach",{subjects},30_000],["detach",{},30_000]]);
 });
+
+test("open_window validation rejects before dispatch", async () => {
+  const director = new AgentLayerDirector("/unused/native-host");
+  for (const input of [null, [], {}, {bundleId:""}, {bundleId:"x", url:"file:///etc/hosts"}, {bundleId:"x", file:"relative.txt"},
+    {bundleId:"x", url:"https://a.test", file:"/tmp/a"}, {bundleId:"x", frame:{x:0,y:0,width:-1,height:20}}]) {
+    await assert.rejects(director.openWindow(input));
+  }
+});
+
+test("open_window sends only the fields it was given", async () => {
+  const director = new AgentLayerDirector("/unused/native-host");
+  const calls: unknown[] = [];
+  Object.assign(director, { control: async (...args: unknown[]) => { calls.push(args); return {ok:true}; } });
+  const frame = {x:100,y:100,width:1100,height:640};
+  await director.openWindow({bundleId:"com.google.Chrome", url:"https://example.com", frame});
+  await director.openWindow({bundleId:"com.apple.TextEdit", file:"/tmp/notes.txt"});
+  assert.deepEqual(calls, [
+    ["open_window",{bundleId:"com.google.Chrome", url:"https://example.com", frame},30_000],
+    ["open_window",{bundleId:"com.apple.TextEdit", file:"/tmp/notes.txt"},30_000],
+  ]);
+});

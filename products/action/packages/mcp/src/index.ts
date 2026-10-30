@@ -1102,6 +1102,17 @@ const tools: Tool[] = [
     { readOnlyHint: false, idempotentHint: false },
   ),
   tool(
+    "action.layer.open_window", "Open Stage Window",
+    "Make a new window of an app on an empty stage. The stage owns it: detach and close close it. Chromium browsers create it in place; an app that isn't running launches hidden and shows once its window is on stage; otherwise it opens where the app puts it and moves at once. placement reports direct or moved. Focus returns to the previous app. Frame uses top-left layer points.",
+    objectSchema({
+      bundleId: textProperty("App bundle identifier."),
+      url: textProperty("http(s) URL to load in the new window."),
+      file: textProperty("Absolute path of a document to open."),
+      frame: { type: "object", properties: { x: {type:"number"}, y: {type:"number"}, width: {type:"number"}, height: {type:"number"} }, required: ["x","y","width","height"], additionalProperties: false },
+    }, ["bundleId"]),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
     "action.layer.detach", "Detach Stage Windows",
     "Restore all explicitly attached windows, leaving the stage task and display connected.",
     objectSchema({}), { readOnlyHint: false, idempotentHint: true },
@@ -2319,6 +2330,10 @@ const handlers: Record<string, ToolHandler> = {
   async "action.layer.attach"(args) {
     await assertLayerOwnership();
     return { ok: true, attachment: await layerContext().director.attach(args.subjects) };
+  },
+  async "action.layer.open_window"(args) {
+    await assertLayerOwnership();
+    return { ok: true, window: await layerContext().director.openWindow(args) } as unknown as JsonObject;
   },
   async "action.layer.detach"() {
     await assertLayerOwnership();

@@ -304,6 +304,15 @@ async function main(argv: string[]): Promise<void> {
       printJson(await director.attach(JSON.parse(flags.subjects ?? "null")));
       return;
     }
+    if (arg === "open-window") {
+      printJson(await director.openWindow({
+        bundleId: flags["bundle-id"],
+        ...(flags.url ? { url: flags.url } : {}),
+        ...(flags.file ? { file: flags.file } : {}),
+        ...(flags.frame ? { frame: JSON.parse(flags.frame) } : {}),
+      }));
+      return;
+    }
     if (arg === "detach") {
       printJson(await director.detach());
       return;
