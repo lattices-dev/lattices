@@ -4357,7 +4357,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         let detail = try ActionBlinkInput.drag(
             from: from,
             to: to,
-            durationMs: Int(options.double("duration-ms", default: 200)),
+            durationMs: options.options["duration-ms"].flatMap(Double.init).map { Int($0) },
             anyDisplay: options.bool("any-display", default: false),
             pointerEventLogPath: options.options["pointer-event-log"]
         )
@@ -4425,7 +4425,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         let fromY = options.double("from-y", default: .nan)
         let toX = options.double("to-x", default: .nan)
         let toY = options.double("to-y", default: .nan)
-        let durationMs = Int(options.double("duration-ms", default: 300))
+        let durationMs = options.options["duration-ms"].flatMap(Double.init).map { Int($0) }
         let filePath = options.options["file-path"]
 
         guard fromX.isFinite, fromY.isFinite, toX.isFinite, toY.isFinite else {
@@ -4440,7 +4440,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
                 path: filePath,
                 from: CGPoint(x: fromX, y: fromY),
                 to: CGPoint(x: toX, y: toY),
-                durationMs: durationMs,
+                durationMs: durationMs ?? 300,
                 pointerEventLogPath: pointerEventLogPath
             )
             let detail = gesture.recorded

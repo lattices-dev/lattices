@@ -2163,8 +2163,9 @@ private final class ActionAgentLayerViewerView: NSView {
             onArrival { [weak self] in
                 guard let self else { return }
                 self.press()
-                let trail = self.trail(from: start, to: center, duration: reduce ? 0 : 0.5)
-                self.movePointer(to: center, reduceMotion: reduce, straight: true, duration: 0.5)
+                let pace = act.from.map { Double(ActionPointerMotion.dragDurationMs(from: $0, to: point)) / 1000 } ?? 0.25
+                let trail = self.trail(from: start, to: center, duration: reduce ? 0 : pace)
+                self.movePointer(to: center, reduceMotion: reduce, straight: true, duration: pace)
                 self.onArrival { [weak self] in
                     self?.ring(at: center, reduce: reduce, size: 16)
                     self?.fadeOut(trail, after: 0.15)

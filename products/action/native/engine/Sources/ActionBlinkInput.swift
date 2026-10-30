@@ -91,7 +91,7 @@ enum ActionBlinkInput {
     /// click it has no accessibility equivalent, and events posted straight to the app
     /// don't reach web content, so the mouse-down activates the app until focus is
     /// handed back.
-    static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true) throws -> String {
+    static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int?, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true) throws -> String {
         let inputLease = try acquireInputLease()
         defer { withExtendedLifetime(inputLease) {} }
         try requireOnLayer([start, end], command: "blink-drag", anyDisplay: anyDisplay)
