@@ -2354,8 +2354,11 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
             if renderer.status == .failed { renderer.flush() }
             renderer.enqueue(sampleBuffer)
         } else {
+            // The macOS 27 SDK marks this pre-15 enqueue main-actor isolated;
+            // the layer has always taken buffers from the capture queue.
+            nonisolated(unsafe) let buffer = sampleBuffer
             if layer.status == .failed { layer.flush() }
-            layer.enqueue(sampleBuffer)
+            layer.enqueue(buffer)
         }
         onFrame?()
     }
