@@ -809,7 +809,13 @@ final class ActionLauncherViewModel: ObservableObject {
         do {
             try agentProcess.startIfNeeded()
             Task {
-                await refreshAgentStatus()
+                // The helper takes a moment to open its socket. Until it answers, the
+                // status stays at its starting value instead of reading as offline.
+                let attempts = 20
+                for attempt in 1...attempts {
+                    if await refreshAgentStatus(reportingFailure: attempt == attempts) { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
                 await refreshPermissionsViaAgent()
             }
         } catch {
@@ -844,7 +850,8 @@ final class ActionLauncherViewModel: ObservableObject {
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
-    private func refreshAgentStatus() async {
+    @discardableResult
+    private func refreshAgentStatus(reportingFailure: Bool = true) async -> Bool {
         do {
             let response = try await agentClient.send(method: .status)
             if response.ok {
@@ -855,12 +862,16 @@ final class ActionLauncherViewModel: ObservableObject {
                     updatedNotes.append("agentMethods=\(result["methods"] ?? "")")
                     notes = updatedNotes
                 }
-            } else {
-                agentStatus = response.error ?? "Agent error"
+                return true
             }
+            agentStatus = response.error ?? "Agent error"
+            return false
         } catch {
-            agentStatus = "Disconnected"
-            logger.error("Agent status failed: \(error.localizedDescription, privacy: .public)")
+            if reportingFailure {
+                agentStatus = "Disconnected"
+                logger.error("Agent status failed: \(error.localizedDescription, privacy: .public)")
+            }
+            return false
         }
     }
 
