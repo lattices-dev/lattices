@@ -658,12 +658,25 @@ final class ActionAgentLayerController: NSObject {
         attachmentLeases.merge(leases) { existing, _ in existing }
         do {
             for (window, frame) in zip(pending, frames) {
-                setFrame(window.element, frame)
-                guard let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
-                      let size = axSize(copyAttribute(window.element, kAXSizeAttribute)),
-                      abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
-                      abs(size.width - frame.width) < 3, abs(size.height - frame.height) < 3 else {
-                    throw ActionHostError.unsupportedOS("app refused requested stage frame")
+                // Apps may apply AX moves a beat late, and may round the size
+                // (a terminal's cell grid, a minimum width). The origin must
+                // land; an adjusted size is fine while the window stays on stage.
+                var landed: CGRect?
+                for attempt in 0..<10 {
+                    if attempt == 0 || attempt == 5 { setFrame(window.element, frame) }
+                    if let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
+                       let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) {
+                        landed = CGRect(origin: origin, size: size)
+                        if abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
+                           bounds.insetBy(dx: -3, dy: -3).contains(landed!) { break }
+                    }
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                }
+                guard let landed, abs(landed.minX - frame.minX) < 3, abs(landed.minY - frame.minY) < 3,
+                      bounds.insetBy(dx: -3, dy: -3).contains(landed) else {
+                    let actual = landed.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "unreadable"
+                    throw ActionHostError.unsupportedOS(
+                        "app refused requested stage frame: asked \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height)), got \(actual)")
                 }
             }
             try writeState()
