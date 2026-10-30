@@ -114,8 +114,11 @@ lats action layer prepare --width 1440 --height 900
 
 `display-status` is read-only. `prepare` reuses an existing live monitor when
 the requested size matches, or when no size is supplied. A new monitor defaults
-to 1440×900. A different size requires explicit release and preparation; an
-ordinary task must not silently resize or recreate the monitor.
+to 1440×900 points at 2× (Retina), so snapshots and recordings of the layer
+match the Macs they are shown beside. Pass `--scale 1` for a 1× monitor; 2× is
+limited to 4096 points per side. A different size or scale requires explicit
+release and preparation; an ordinary task must not silently resize or recreate
+the monitor. Monitors prepared before 2× support report no `scale` and are 1×.
 
 Once prepared, `layer open` attaches a task without connecting another display.
 `layer close` restores that task's windows and leaves the monitor connected.

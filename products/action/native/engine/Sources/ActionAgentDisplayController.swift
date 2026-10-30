@@ -15,10 +15,14 @@ final class ActionAgentDisplayController {
         let height: Int
         let serialNumber: UInt32
         let workspace: String
+        /// Backing pixels per point.
+        let scale: Int
     }
 
     private let workspace: ActionVirtualWorkspace
     private let size: CGSize
+    /// 2 backs each point with four pixels, so captures of the layer are Retina.
+    private let scale: Int
     private let stateURL: URL
     private let stopURL: URL
     private let writer: ResponseWriter
@@ -41,6 +45,14 @@ final class ActionAgentDisplayController {
             throw ActionHostError.unsupportedOS("Display size must be whole pixels between 640x400 and 8192x8192")
         }
         size = CGSize(width: width, height: height)
+        let rawScale = options.double("scale", default: 2)
+        guard rawScale == 1 || rawScale == 2 else {
+            throw ActionHostError.unsupportedOS("Display scale must be 1 or 2")
+        }
+        scale = Int(rawScale)
+        guard scale == 1 || (width <= 4096 && height <= 4096) else {
+            throw ActionHostError.unsupportedOS("A 2x display must not exceed 4096 points per side")
+        }
         stateURL = URL(fileURLWithPath: try options.required("state-file"))
         stopURL = URL(fileURLWithPath: try options.required("stop-file"))
         writer = ResponseWriter(replyFile: options.options["reply-file"])
@@ -106,8 +118,8 @@ final class ActionAgentDisplayController {
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.queue = .main
         descriptor.name = workspace.name == "default" ? "Action Agent Layer" : "Action · \(workspace.name)"
-        descriptor.maxPixelsWide = UInt32(size.width)
-        descriptor.maxPixelsHigh = UInt32(size.height)
+        descriptor.maxPixelsWide = UInt32(size.width) * UInt32(scale)
+        descriptor.maxPixelsHigh = UInt32(size.height) * UInt32(scale)
         descriptor.sizeInMillimeters = CGSize(width: size.width / 110 * 25.4, height: size.height / 110 * 25.4)
         descriptor.vendorID = ActionAgentLayerDisplay.vendorID
         descriptor.productID = ActionAgentLayerDisplay.productID
@@ -121,8 +133,13 @@ final class ActionAgentDisplayController {
         display = created
         log("display-owner-post-init")
         let settings = CGVirtualDisplaySettings()
-        settings.hiDPI = 0
-        settings.modes = [CGVirtualDisplayMode(width: UInt(size.width), height: UInt(size.height), refreshRate: 60)]
+        settings.hiDPI = scale == 2 ? 1 : 0
+        settings.modes = scale == 2
+            ? [
+                CGVirtualDisplayMode(width: UInt(size.width) * 2, height: UInt(size.height) * 2, refreshRate: 60),
+                CGVirtualDisplayMode(width: UInt(size.width), height: UInt(size.height), refreshRate: 60),
+            ]
+            : [CGVirtualDisplayMode(width: UInt(size.width), height: UInt(size.height), refreshRate: 60)]
         let applied = created.apply(settings)
         log("display-owner-post-apply", result: String(applied))
         guard applied else {
@@ -136,6 +153,7 @@ final class ActionAgentDisplayController {
               CGDisplaySerialNumber(created.displayID) == workspace.serialNumber else {
             throw ActionHostError.unsupportedOS("The prepared display did not become available with its stable identity")
         }
+        if scale == 2 { try selectRetinaMode(created.displayID) }
         try placeOffCorner(created.displayID)
         let bounds = CGDisplayBounds(created.displayID)
         guard bounds.width == size.width, bounds.height == size.height else {
@@ -145,7 +163,8 @@ final class ActionAgentDisplayController {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let state = State(schemaVersion: 1, pid: getpid(), displayId: created.displayID,
                           startedAt: formatter.string(from: Date()), width: Int(size.width),
-                          height: Int(size.height), serialNumber: workspace.serialNumber, workspace: workspace.name)
+                          height: Int(size.height), serialNumber: workspace.serialNumber, workspace: workspace.name,
+                          scale: scale)
         self.state = state
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
         log("display-owner-ready")
@@ -153,6 +172,29 @@ final class ActionAgentDisplayController {
         Darwin.close(setupLeaseDescriptor)
         setupLeaseDescriptor = -1
         topologyLock = nil
+    }
+
+    /// A HiDPI virtual display comes up in its 1:1 pixel mode; pick the requested
+    /// point size backed at 2x. Only this virtual display changes mode.
+    private func selectRetinaMode(_ displayID: CGDirectDisplayID) throws {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        let modes = (CGDisplayCopyAllDisplayModes(displayID, options) as? [CGDisplayMode]) ?? []
+        guard let retina = modes.first(where: {
+            $0.width == Int(size.width) && $0.height == Int(size.height) && $0.pixelWidth == Int(size.width) * 2
+        }) else {
+            log("display-owner-no-retina-mode", result: modes.map { "\($0.width)x\($0.height)@\($0.pixelWidth)" }.joined(separator: ","))
+            throw ActionHostError.unsupportedOS("The prepared display offered no 2x mode at \(Int(size.width))x\(Int(size.height)); prepare with scale 1")
+        }
+        var configuration: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else {
+            throw ActionHostError.unsupportedOS("Could not start display mode selection")
+        }
+        guard CGConfigureDisplayWithDisplayMode(configuration, displayID, retina, nil) == .success,
+              CGCompleteDisplayConfiguration(configuration, .forAppOnly) == .success else {
+            CGCancelDisplayConfiguration(configuration)
+            throw ActionHostError.unsupportedOS("Could not select the 2x display mode")
+        }
+        log("display-owner-retina-mode", result: "\(retina.width)x\(retina.height)@\(retina.pixelWidth)")
     }
 
     private func placeOffCorner(_ displayID: CGDirectDisplayID) throws {

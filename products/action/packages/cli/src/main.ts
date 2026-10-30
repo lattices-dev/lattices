@@ -243,7 +243,7 @@ async function main(argv: string[]): Promise<void> {
       previewDisplayId = target.display.displayId;
     }
     if (arg === "prepare") {
-      const display = await director.prepareDisplay({ width: flags.width, height: flags.height });
+      const display = await director.prepareDisplay({ width: flags.width, height: flags.height, scale: flags.scale });
       printJson({ ok: display.active, display });
       if (!display.active) process.exitCode = 1;
       return;
@@ -344,7 +344,7 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage status",
       "bun packages/cli/src/main.ts capabilities",
       "bun packages/cli/src/main.ts layer list (list named workspaces; all other layer commands accept --workspace <name>, default: default)",
-      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] (connect a persistent monitor; may change desktop topology)",
+      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] [--scale 1|2] (connect a persistent monitor; may change desktop topology)",
       "bun packages/cli/src/main.ts layer display-status",
       "bun packages/cli/src/main.ts layer open [--workspace <name>] [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off] [--preview-workspace <name>] (attach to the prepared monitor)",
       "bun packages/cli/src/main.ts layer pip [--workspace <name>] [--preview-workspace <name>] [--preview-full] (open also accepts --preview-full)",
