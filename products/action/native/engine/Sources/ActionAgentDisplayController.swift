@@ -153,7 +153,7 @@ final class ActionAgentDisplayController {
               CGDisplaySerialNumber(created.displayID) == workspace.serialNumber else {
             throw ActionHostError.unsupportedOS("The prepared display did not become available with its stable identity")
         }
-        if scale == 2 { try selectRetinaMode(created.displayID) }
+        if scale == 2 { try await selectRetinaMode(created.displayID) }
         try placeOffCorner(created.displayID)
         let bounds = CGDisplayBounds(created.displayID)
         guard bounds.width == size.width, bounds.height == size.height else {
@@ -176,13 +176,28 @@ final class ActionAgentDisplayController {
 
     /// A HiDPI virtual display comes up in its 1:1 pixel mode; pick the requested
     /// point size backed at 2x. Only this virtual display changes mode.
-    private func selectRetinaMode(_ displayID: CGDirectDisplayID) throws {
-        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
-        let modes = (CGDisplayCopyAllDisplayModes(displayID, options) as? [CGDisplayMode]) ?? []
-        guard let retina = modes.first(where: {
-            $0.width == Int(size.width) && $0.height == Int(size.height) && $0.pixelWidth == Int(size.width) * 2
-        }) else {
-            log("display-owner-no-retina-mode", result: modes.map { "\($0.width)x\($0.height)@\($0.pixelWidth)" }.joined(separator: ","))
+    private func selectRetinaMode(_ displayID: CGDirectDisplayID) async throws {
+        let isRetina = { (mode: CGDisplayMode) in
+            mode.width == Int(self.size.width) && mode.height == Int(self.size.height) && mode.pixelWidth == Int(self.size.width) * 2
+        }
+        if let current = CGDisplayCopyDisplayMode(displayID), isRetina(current) {
+            log("display-owner-retina-mode", result: "already \(current.width)x\(current.height)@\(current.pixelWidth)")
+            return
+        }
+        // A String key with a Swift Bool: kCFBooleanTrue is optional in Swift and
+        // does not bridge into a usable options dictionary.
+        let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
+        var modes: [CGDisplayMode] = []
+        // A new display can report online before WindowServer publishes its modes.
+        for _ in 0..<40 {
+            modes = (CGDisplayCopyAllDisplayModes(displayID, options) as? [CGDisplayMode]) ?? []
+            if modes.contains(where: isRetina) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard let retina = modes.first(where: isRetina) else {
+            let current = CGDisplayCopyDisplayMode(displayID).map { "\($0.width)x\($0.height)@\($0.pixelWidth)" } ?? "none"
+            log("display-owner-no-retina-mode",
+                result: "current=\(current) offered=" + modes.map { "\($0.width)x\($0.height)@\($0.pixelWidth)" }.joined(separator: ","))
             throw ActionHostError.unsupportedOS("The prepared display offered no 2x mode at \(Int(size.width))x\(Int(size.height)); prepare with scale 1")
         }
         var configuration: CGDisplayConfigRef?
