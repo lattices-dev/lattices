@@ -55,13 +55,20 @@ detect_identity() {
 
   local identity
 
-  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/{print $2; exit}')
+  # Developer ID first. Every copy of Action shares the bundle id dev.lattices.Action,
+  # and macOS keeps one Accessibility and one Screen Recording grant per bundle id,
+  # bound to the code requirement of the copy that asked. A dev build signed with
+  # Apple Development fails the installed release's requirement and the release
+  # fails the dev build's, so each grant silently stops working for the other copy
+  # while System Settings still shows Action enabled. Signing both with Developer
+  # ID makes them satisfy one requirement and share one grant.
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application:/{print $2; exit}')
   if [[ -n "$identity" ]]; then
     printf '%s\n' "$identity"
     return
   fi
 
-  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application:/{print $2; exit}')
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/{print $2; exit}')
   if [[ -n "$identity" ]]; then
     printf '%s\n' "$identity"
     return

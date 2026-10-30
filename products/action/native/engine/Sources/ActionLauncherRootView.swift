@@ -2445,7 +2445,7 @@ struct ActionLauncherRootView: View {
                             ? "Quit older Action copies, then reopen Action."
                             : needsIdentityRegrant
                                 ? "This version of Action has a new app identity, so macOS requires fresh Accessibility and Screen Recording access."
-                                : "Accessibility and Screen Recording"
+                                : "Accessibility and Screen Recording for \(model.runningAppPath)"
                     ) {
                         Button(hasAgentIdentityMismatch ? "Check again" : "Request access") {
                             if hasAgentIdentityMismatch {
@@ -2455,6 +2455,26 @@ struct ActionLauncherRootView: View {
                             }
                         }
                         .buttonStyle(ActionSettingsPillButtonStyle(primary: true))
+                    }
+
+                    if !hasAgentIdentityMismatch {
+                        ActionSettingsDivider()
+
+                        // Settings can show Action enabled while the grant belongs to
+                        // another copy with the same bundle id; only a reset rebinds it.
+                        ActionSettingsRow(
+                            icon: "arrow.counterclockwise",
+                            iconColor: StageHUDTheme.textMuted,
+                            title: "Already enabled in System Settings?",
+                            subtitle: "The grant may belong to another Action copy. Reset rebinds it to this one."
+                        ) {
+                            HStack(spacing: 8) {
+                                Button("Show in Finder", action: model.revealRunningApp)
+                                    .buttonStyle(ActionSettingsPillButtonStyle())
+                                Button("Reset and ask again", action: model.resetPermissionsAndRequest)
+                                    .buttonStyle(ActionSettingsPillButtonStyle())
+                            }
+                        }
                     }
                 }
             }

@@ -335,6 +335,45 @@ final class ActionLauncherViewModel: ObservableObject {
         }
     }
 
+    /// The copy macOS has to grant. Several copies can share one bundle id, so a
+    /// grant made to another one looks enabled in System Settings but does not apply.
+    var runningAppPath: String {
+        Bundle.main.bundleURL.resolvingSymlinksInPath().path
+    }
+
+    func revealRunningApp() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+    }
+
+    /// Clears the grants recorded for Action's bundle ids, then asks again, so the
+    /// prompt binds to this copy. This is the way out when Settings shows Action
+    /// enabled for a copy signed differently.
+    func resetPermissionsAndRequest() {
+        Task {
+            let bundleIds = [Bundle.main.bundleIdentifier ?? ActionAppIdentity.mainBundleIdentifier,
+                             ActionAppIdentity.agentBundleIdentifier]
+            for service in ["Accessibility", "ScreenCapture"] {
+                for bundleId in bundleIds {
+                    await Self.runTCCReset(service: service, bundleId: bundleId)
+                }
+            }
+            _ = await updatePermissions(using: .accessibilityRequest)
+            await requestScreenRecordingPermissionFromHost()
+        }
+    }
+
+    private nonisolated static func runTCCReset(service: String, bundleId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", service, bundleId]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            process.terminationHandler = { _ in continuation.resume() }
+            do { try process.run() } catch { continuation.resume() }
+        }
+    }
+
     func requestAccessibilityPermission() {
         Task {
             _ = await updatePermissions(using: .accessibilityRequest)
