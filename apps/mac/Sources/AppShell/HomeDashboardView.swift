@@ -135,10 +135,10 @@ struct HomeDashboardView: View {
                         Circle()
                             .fill(project.isRunning ? Palette.running : Palette.textMuted)
                             .frame(width: 5, height: 5)
-                        Text(project.isRunning ? "RUNNING" : "STOPPED")
-                            .font(Typo.mono(9))
-                            .tracking(0.4)
+                        Text(project.isRunning ? "Running" : "Stopped")
+                            .font(Typo.caption(10))
                     }
+                    .fixedSize()
                     .foregroundColor(project.isRunning ? Palette.running : Palette.textMuted)
                 }
 
@@ -249,14 +249,13 @@ struct HomeDashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Region")
                 .frame(width: HomeWindowColumn.region, alignment: .leading)
-            Text("Size")
-                .frame(width: HomeWindowColumn.size, alignment: .trailing)
             Text("Active")
                 .frame(width: HomeWindowColumn.trailing, alignment: .trailing)
         }
         .font(Typo.caption(10))
         .tracking(0.5)
         .textCase(.uppercase)
+        .lineLimit(1)
         .foregroundColor(Palette.textMuted)
         .padding(.horizontal, 10)
         .padding(.bottom, 6)
@@ -343,7 +342,6 @@ private enum HomeWindowColumn {
     static let icon: CGFloat = 18
     static let app: CGFloat = 108
     static let region: CGFloat = 60
-    static let size: CGFloat = 68
     static let trailing: CGFloat = 84
 }
 
@@ -382,11 +380,6 @@ private struct WindowSnapshotRow: View {
                     .font(Typo.mono(10))
                     .foregroundColor(Palette.textMuted)
                     .frame(width: HomeWindowColumn.region, alignment: .leading)
-
-                Text(sizeLabel)
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textMuted)
-                    .frame(width: HomeWindowColumn.size, alignment: .trailing)
 
                 trailingSlot
             }
@@ -466,8 +459,6 @@ private struct WindowSnapshotRow: View {
         WindowTiler.tileWindowById(wid: window.wid, pid: window.pid, to: placement)
         WindowTiler.highlightWindowById(wid: window.wid)
     }
-
-    private var sizeLabel: String { "\(Int(window.frame.w))×\(Int(window.frame.h))" }
 
     /// Coarse horizontal region from the window's centre across the full desktop.
     /// Not a true macOS Space index (that needs a live CGS query per window,
