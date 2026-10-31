@@ -3503,6 +3503,15 @@ switch (command) {
       "install", "uninstall", "login", "startup", "status",
     ]);
 
+    if (appSubcommand === "show") {
+      const [page, section] = appFlags.filter((arg) => !arg.startsWith("-"));
+      await withDaemon(async ({ daemonCall }) => {
+        const result = await daemonCall("app.show", { ...(page ? { page } : {}), ...(section ? { section } : {}) }) as any;
+        console.log(section ? `${result.page} › ${section}` : result.page);
+      });
+      break;
+    }
+
     if (detectProjectType(dir) === "lattices-app" && devAppCommands.has(appSubcommand)) {
       console.log("Using local dev app bundle so macOS permissions stay attached across rebuilds.");
       await forwardToLatticesDevHelper(dir, appSubcommand, appFlags);

@@ -41,6 +41,19 @@ struct LatticesApp: App {
 
                 Divider()
             }
+
+            // The rail's pages in the View menu, ⌘1 down the rail, so every page
+            // is reachable from the keyboard and through the menu bar's
+            // accessibility tree.
+            CommandGroup(before: .sidebar) {
+                ForEach(Array(AppPage.primaryTabs.enumerated()), id: \.element) { index, page in
+                    Button(page.label) {
+                        ScreenMapWindowController.shared.showPage(page)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
+                Divider()
+            }
         }
     }
 }

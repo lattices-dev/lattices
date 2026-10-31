@@ -3714,6 +3714,20 @@ final class LatticesApi {
             }
         ))
 
+        api.register(Endpoint(
+            method: "app.show",
+            description: "Open the main window on a page, or Settings on a section",
+            access: .mutate,
+            params: [
+                Param(name: "page", type: "string", required: false, description: "home, overview, layers, machines, assistant, runs, activity, settings or docs. Defaults to home."),
+                Param(name: "section", type: "string", required: false, description: "With page settings: a Settings section such as permissions, shortcuts, voice or search."),
+            ],
+            returns: .custom("The page shown and the pages available"),
+            handler: { params in
+                try Self.showAppPage(params)
+            }
+        ))
+
         // ── Mouse Finder ────────────────────────────────────────
 
         api.register(Endpoint(
@@ -4747,6 +4761,33 @@ private extension LatticesApi {
             DispatchQueue.main.sync(execute: apply)
         }
         return spaceBezelSettingsResponse()
+    }
+
+    static func showAppPage(_ params: JSON?) throws -> JSON {
+        let raw = params?["page"]?.stringValue ?? "home"
+        guard let page = AppPage.named(raw) else {
+            let options = AppPage.allCases.map(\.rawValue).joined(separator: ", ")
+            throw RouterError.custom("Unknown page: \(raw). Use \(options).")
+        }
+        let section = params?["section"]?.stringValue
+        let show = {
+            if page == .settings, let section, !section.isEmpty {
+                SettingsWindowController.shared.show(section: section)
+            } else {
+                ScreenMapWindowController.shared.showPage(page)
+            }
+        }
+        if Thread.isMainThread {
+            show()
+        } else {
+            DispatchQueue.main.sync(execute: show)
+        }
+        var result: [String: JSON] = [
+            "page": .string(page.rawValue),
+            "pages": .array(AppPage.allCases.map { .string($0.rawValue) }),
+        ]
+        if let section { result["section"] = .string(section) }
+        return .object(result)
     }
 
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {
