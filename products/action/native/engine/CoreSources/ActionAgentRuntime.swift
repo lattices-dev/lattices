@@ -330,9 +330,9 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
             else {
                 throw NSError(domain: "ActionAgent", code: 21, userInfo: [NSLocalizedDescriptionKey: "Missing or invalid drag parameters"])
             }
-            let durationMs = Int(request.params["durationMs"].flatMap(Double.init) ?? 300)
+            let durationMs = request.params["durationMs"].flatMap(Double.init).map { Int($0) }
             if let filePath = request.params["filePath"], !filePath.isEmpty {
-                try ActionNativeAutomation.dragFile(path: filePath, from: CGPoint(x: fromX, y: fromY), to: CGPoint(x: toX, y: toY), durationMs: durationMs)
+                try ActionNativeAutomation.dragFile(path: filePath, from: CGPoint(x: fromX, y: fromY), to: CGPoint(x: toX, y: toY), durationMs: durationMs ?? 300)
             } else {
                 try ActionNativeAutomation.drag(from: CGPoint(x: fromX, y: fromY), to: CGPoint(x: toX, y: toY), durationMs: durationMs)
             }

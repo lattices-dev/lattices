@@ -1092,6 +1092,21 @@ const tools: Tool[] = [
     { readOnlyHint: true, idempotentHint: false },
   ),
   tool(
+    "action.layer.attach", "Attach Stage Windows",
+    "Borrow existing windows into an empty stage. Explicit selectors only; no launch or future adoption. Optional frame uses top-left layer points. Restored by detach or close.",
+    objectSchema({ subjects: { type: "array", minItems: 1, maxItems: 64, items: { type: "object", properties: {
+      bundleId: textProperty("Running app bundle identifier."),
+      windowId: numberProperty("Existing CG window identifier; may narrow bundleId."),
+      frame: { type: "object", properties: { x: {type:"number"}, y: {type:"number"}, width: {type:"number"}, height: {type:"number"} }, required: ["x","y","width","height"], additionalProperties: false },
+    }, additionalProperties: false } } }),
+    { readOnlyHint: false, idempotentHint: false },
+  ),
+  tool(
+    "action.layer.detach", "Detach Stage Windows",
+    "Restore all explicitly attached windows, leaving the stage task and display connected.",
+    objectSchema({}), { readOnlyHint: false, idempotentHint: true },
+  ),
+  tool(
     "action.layer.record",
     "Record Agent Layer",
     "Start or stop recording the agent layer to a .mov, off the layer's running capture feed (the one the viewer shows), so the take starts on the next frame. One take at a time.",
@@ -1148,7 +1163,7 @@ const tools: Tool[] = [
     objectSchema({
       from: objectProperty("Start point: { x, y } or [x, y]."),
       to: objectProperty("End point: { x, y } or [x, y]."),
-      durationMs: numberProperty("How long the drag takes. Defaults to 200."),
+      durationMs: numberProperty("How long the drag takes, in ms. Defaults to a hand pace from the distance (140–420)."),
       space: enumProperty(["snapshot", "layer"], "How to read the points. Defaults to snapshot."),
       look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
       leaseId: textProperty("Drive lease id. Optional."),
@@ -2299,6 +2314,15 @@ const handlers: Record<string, ToolHandler> = {
       reply.snapshot = await layerContext().driver.step({ verb: "look", args: {} }).then((r) => r.snapshot);
     }
     return reply as JsonObject;
+  },
+
+  async "action.layer.attach"(args) {
+    await assertLayerOwnership();
+    return { ok: true, attachment: await layerContext().director.attach(args.subjects) };
+  },
+  async "action.layer.detach"() {
+    await assertLayerOwnership();
+    return { ok: true, attachment: await layerContext().director.detach() };
   },
 
   async "action.layer.record"(args) {

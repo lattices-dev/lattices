@@ -1,12 +1,13 @@
 import { parseAgentWorkspace } from "@action/runtime";
 
-const usage = "Usage: layer list|prepare|display-status|open|status|snapshot|pip|record start|record stop|close|release [--workspace <name>]. Open/pip accept --preview-workspace <name>. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
+const usage = "Usage: layer list|prepare|display-status|open|attach --subjects <json>|detach|status|snapshot|pip|record start|record stop|close|release [--workspace <name>]. Open/pip accept --preview-workspace <name>. Prepare explicitly connects a persistent monitor; open attaches a task, close leaves the monitor connected, release disconnects it. Browser interaction requires MCP layer_open {browser:true}, then layer_click/type/js.";
 
 const allowed: Record<string, readonly string[]> = {
-  prepare: ["width", "height"],
+  prepare: ["width", "height", "scale"],
   list: [],
   "display-status": [], release: [],
   open: ["bundle-id", "pid", "width", "height", "window-id", "window-title", "pip", "preview-workspace", "preview-full"],
+  attach: ["subjects"], detach: [],
   status: [], close: [], pip: ["preview-workspace", "preview-full"],
   snapshot: ["window-id", "full", "out"],
   "record start": ["out"], "record stop": [],
@@ -33,6 +34,7 @@ export function parseLayerCommand(args: string[]): { positionals: string[]; flag
     if (["pid", "width", "height", "window-id"].includes(name) && (!/^\d+$/.test(value) || Number(value) <= 0 || !Number.isSafeInteger(Number(value)))) {
       throw new Error(`Invalid --${name}: expected a positive integer`);
     }
+    if (name === "scale" && !["1", "2"].includes(value)) throw new Error("Invalid --scale: expected 1 or 2");
     if (["full", "preview-full"].includes(name) && !["true", "false"].includes(value)) throw new Error(`Invalid --${name}: expected true or false`);
     if (name === "pip" && !["on", "off", "true", "false", "1", "0", "yes", "no"].includes(value)) throw new Error("Invalid --pip: expected on or off");
     if (name === "workspace" || name === "preview-workspace") parseAgentWorkspace(value);

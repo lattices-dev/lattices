@@ -80,6 +80,7 @@ final class ActionAgentLayerController: NSObject {
     private var displayID: CGDirectDisplayID { displayManifest.displayId }
     private var bounds: CGRect = .zero
     private var moved: [MovedWindow] = []
+    private var attachmentLeases: [pid_t: ActionWorkspaceLock] = [:]
     private var feed: ActionAgentLayerFeed?
     private var pip: ActionAgentLayerPiP?
     private var pollTimer: Timer?
@@ -574,6 +575,159 @@ final class ActionAgentLayerController: NSObject {
         return count
     }
 
+    /// Explicit stage borrowing only. Never launches an app or adopts later windows.
+    private func attach(_ json: [String: Any]) throws -> [String: Any] {
+        guard target == nil, targetBundleId == nil, !paused, !shuttingDown else {
+            throw ActionHostError.unsupportedOS("attachments require an active, unpaused empty stage task")
+        }
+        _ = try validateDisplayAttachment()
+        guard let subjects = json["subjects"] as? [[String: Any]], !subjects.isEmpty, subjects.count <= 64 else {
+            throw ActionHostError.unsupportedOS("subjects must contain 1–64 selectors")
+        }
+        var pending: [MovedWindow] = []
+        var frames: [CGRect] = []
+        var leases: [pid_t: ActionWorkspaceLock] = [:]
+        for subject in subjects {
+            let bundle = subject["bundleId"] as? String
+            let rawID = subject["windowId"] as? NSNumber
+            let identifier = rawID?.uint32Value
+            guard bundle?.isEmpty == false || rawID != nil else {
+                throw ActionHostError.unsupportedOS("each subject needs bundleId or windowId")
+            }
+            if let rawID {
+                guard CFGetTypeID(rawID) != CFBooleanGetTypeID(), rawID.doubleValue > 0,
+                      rawID.doubleValue <= Double(UInt32.max), rawID.doubleValue.rounded() == rawID.doubleValue else {
+                    throw ActionHostError.unsupportedOS("windowId must be a positive display window identifier")
+                }
+            }
+            var apps = NSWorkspace.shared.runningApplications
+            if let bundle { apps = apps.filter { $0.bundleIdentifier == bundle } }
+            if let identifier {
+                let rows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+                guard let row = rows.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == identifier }),
+                      let pid = row[kCGWindowOwnerPID as String] as? Int32 else {
+                    throw ActionHostError.unsupportedOS("windowId was not found")
+                }
+                apps = apps.filter { $0.processIdentifier == pid }
+            }
+            var matched = 0
+            for app in apps {
+                let pid = app.processIdentifier
+                if attachmentLeases[pid] == nil && leases[pid] == nil {
+                    let registry = registryURL
+                    leases[pid] = try ActionWorkspaceLock(url: registry.appendingPathComponent("subject-\(pid).lock"))
+                }
+                let ax = AXUIElementCreateApplication(pid)
+                AXUIElementSetMessagingTimeout(ax, 0.25)
+                for window in copyAttribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? [] {
+                    if let identifier, axWindowID(window) != identifier { continue }
+                    if (copyAttribute(window, kAXMinimizedAttribute) as? Bool) == true { continue }
+                    guard !moved.contains(where: { CFEqual($0.element, window) }),
+                          !pending.contains(where: { CFEqual($0.element, window) }),
+                          let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
+                          let size = axSize(copyAttribute(window, kAXSizeAttribute)) else { continue }
+                    let original = CGRect(origin: origin, size: size)
+                    var frame = CGRect(x: bounds.minX + 24, y: bounds.minY + 48,
+                                       width: min(size.width, bounds.width - 48), height: min(size.height, bounds.height - 72))
+                    if let values = subject["frame"] as? [String: Any] {
+                        func number(_ key: String) throws -> Double {
+                            guard let n = values[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite else {
+                                throw ActionHostError.unsupportedOS("frame requires finite x, y, width, height")
+                            }
+                            return n.doubleValue
+                        }
+                        frame = try CGRect(x: bounds.minX + number("x"), y: bounds.minY + number("y"),
+                                           width: number("width"), height: number("height"))
+                    }
+                    guard frame.width > 0, frame.height > 0, bounds.contains(frame) else {
+                        throw ActionHostError.unsupportedOS("frame must fit inside the stage (top-left layer points)")
+                    }
+                    pending.append(MovedWindow(element: window, pid: pid, bundleId: app.bundleIdentifier,
+                                               title: copyAttribute(window, kAXTitleAttribute) as? String,
+                                               original: original, born: false))
+                    frames.append(frame)
+                    matched += 1
+                }
+            }
+            guard matched > 0 else {
+                throw ActionHostError.unsupportedOS("selector matched no movable, unattached AX windows; panels must expose AX position and size")
+            }
+        }
+        // Retain restoration records before the first mutation, including failure paths.
+        moved.append(contentsOf: pending)
+        attachmentLeases.merge(leases) { existing, _ in existing }
+        do {
+            for (window, frame) in zip(pending, frames) {
+                // Apps may apply AX moves a beat late, and may round the size
+                // (a terminal's cell grid, a minimum width). The origin must
+                // land; an adjusted size is fine while the window stays on stage.
+                var landed: CGRect?
+                for attempt in 0..<10 {
+                    if attempt == 0 || attempt == 5 { setFrame(window.element, frame) }
+                    if let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
+                       let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) {
+                        landed = CGRect(origin: origin, size: size)
+                        if abs(origin.x - frame.minX) < 3, abs(origin.y - frame.minY) < 3,
+                           bounds.insetBy(dx: -3, dy: -3).contains(landed!) { break }
+                    }
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                }
+                guard let landed, abs(landed.minX - frame.minX) < 3, abs(landed.minY - frame.minY) < 3,
+                      bounds.insetBy(dx: -3, dy: -3).contains(landed) else {
+                    let actual = landed.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "unreadable"
+                    throw ActionHostError.unsupportedOS(
+                        "app refused requested stage frame: asked \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height)), got \(actual)")
+                }
+            }
+            try writeState()
+        } catch {
+            for window in pending.reversed() { setFrame(window.element, window.original) }
+            moved.removeAll { window in
+                pending.contains { CFEqual($0.element, window.element) } && restored(window)
+            }
+            for pid in leases.keys where !moved.contains(where: { $0.pid == pid }) {
+                attachmentLeases.removeValue(forKey: pid)
+            }
+            try? writeState()
+            throw error
+        }
+        return ["ok": true, "attached": pending.count]
+    }
+
+    private func detach() throws -> [String: Any] {
+        guard target == nil, targetBundleId == nil, !paused, !shuttingDown else {
+            throw ActionHostError.unsupportedOS("detach requires an active, unpaused empty stage task")
+        }
+        let count = moved.count
+        // Apps apply AX moves a beat late: give them the same half second attach does,
+        // asking again halfway, before calling a window stuck.
+        for attempt in 0..<10 {
+            if attempt == 0 || attempt == 5 {
+                for window in moved.reversed() { setFrame(window.element, window.original) }
+            }
+            if moved.allSatisfy(restored) { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        moved.removeAll { restored($0) }
+        for pid in Array(attachmentLeases.keys) where !moved.contains(where: { $0.pid == pid }) {
+            attachmentLeases.removeValue(forKey: pid)
+        }
+        try writeState()
+        guard moved.isEmpty else {
+            throw ActionHostError.unsupportedOS("some windows refused restoration; records retained, retry detach")
+        }
+        return ["ok": true, "detached": count]
+    }
+
+    private func restored(_ window: MovedWindow) -> Bool {
+        // A closed window no longer needs restoration.
+        guard copyAttribute(window.element, kAXRoleAttribute) != nil else { return true }
+        guard let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
+              let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) else { return false }
+        return abs(origin.x - window.original.minX) < 3 && abs(origin.y - window.original.minY) < 3
+            && abs(size.width - window.original.width) < 3 && abs(size.height - window.original.height) < 3
+    }
+
     private func isSelected(_ window: AXUIElement) -> Bool {
         if let windowID, axWindowID(window) != windowID { return false }
         if let windowTitle {
@@ -650,6 +804,7 @@ final class ActionAgentLayerController: NSObject {
             "recording": feed?.recordingPath ?? NSNull(),
             "windows": moved.map { window in
                 [
+                    "windowId": axWindowID(window.element).map { Int($0) } ?? NSNull(),
                     "pid": Int(window.pid),
                     "bundleId": window.bundleId ?? NSNull(),
                     "title": window.title ?? NSNull(),
@@ -688,6 +843,9 @@ final class ActionAgentLayerController: NSObject {
             // layer): show it on the viewer the way a blink's notification would.
             pip?.mark(ActionAgentLayerAct(info: json))
             reply = ["ok": true]
+        } else if ["attach", "detach"].contains(json["op"] as? String ?? "") {
+            do { reply = (json["op"] as? String == "attach") ? try attach(json) : try detach() }
+            catch { reply = ["ok": false, "detail": error.localizedDescription] }
         } else if let feed {
             switch json["op"] as? String {
             case "show":
@@ -915,6 +1073,8 @@ final class ActionAgentLayerFeed {
     let subjectPID: pid_t?
     private let logger: DebugLogger
     private let output = ActionAgentLayerStreamOutput()
+    /// How far the live picture runs behind the display.
+    var lag: CFTimeInterval { output.lag }
     private var stream: SCStream?
 
     init(displayID: CGDirectDisplayID, displayBounds: CGRect, subjectPID: pid_t?, logger: DebugLogger) {
@@ -1316,12 +1476,19 @@ final class ActionAgentLayerPiP {
         guard act.point.map(bounds.contains) ?? act.frame.map(bounds.intersects) ?? false else { return }
         let origin = bounds.origin
         func local(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x - origin.x, y: point.y - origin.y) }
+        if act.travelMs != nil {
+            logger.log("agent-layer viewer: drag travel=\(act.travelMs ?? 0)ms lag=\(Int(feed.lag * 1000))ms")
+        }
         viewer?.mark(ActionAgentLayerAct(
             kind: act.kind,
             point: act.point.map(local),
             from: act.from.map(local),
             frame: act.frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) },
-            deltaY: act.deltaY
+            deltaY: act.deltaY,
+            travelMs: act.travelMs,
+            leadMs: act.leadMs,
+            pressedAt: act.pressedAt,
+            feedLag: feed.lag
         ))
     }
 
@@ -1899,7 +2066,7 @@ private final class ActionAgentLayerViewerView: NSView {
     /// Sends the pointer to `target` along a shallow arc, quicker for short hops, and
     /// returns when it gets there (as a media time).
     @discardableResult
-    private func movePointer(to target: CGPoint, reduceMotion: Bool, straight: Bool = false, duration fixed: CFTimeInterval? = nil) -> CFTimeInterval {
+    private func movePointer(to target: CGPoint, reduceMotion: Bool, straight: Bool = false, duration fixed: CFTimeInterval? = nil, within limit: CFTimeInterval? = nil) -> CFTimeInterval {
         let from = pointer.presentation()?.position ?? pointerAt ?? target
         let wasShown = pointerAt != nil && pointer.opacity > 0
         CATransaction.begin()
@@ -1927,7 +2094,7 @@ private final class ActionAgentLayerViewerView: NSView {
             pointer.add(appear, forKey: "glide")
             arrives = now + appear.duration
         } else {
-            let duration = fixed ?? min(0.62, max(0.26, 0.2 + Double(distance) / 700))
+            let duration = min(fixed ?? min(0.62, max(0.26, 0.2 + Double(distance) / 700)), limit ?? .infinity)
             let path = CGMutablePath()
             path.move(to: from)
             if straight {
@@ -1949,6 +2116,13 @@ private final class ActionAgentLayerViewerView: NSView {
             pointer.add(glide, forKey: "glide")
             arrives = now + duration
         }
+        arrive(at: target, by: arrives)
+        return arrives
+    }
+
+    /// Where the pointer comes to rest and when; it fades once the layer has been quiet a while.
+    private func arrive(at target: CGPoint, by arrives: CFTimeInterval) {
+        let now = CACurrentMediaTime()
         pointerAt = target
         pointerArrives = arrives
         pointerHide?.cancel()
@@ -1961,7 +2135,6 @@ private final class ActionAgentLayerViewerView: NSView {
         }
         pointerHide = hide
         DispatchQueue.main.asyncAfter(deadline: .now() + (arrives - now) + 3.5, execute: hide)
-        return arrives
     }
 
     /// Runs `body` once the pointer has arrived.
@@ -2004,7 +2177,10 @@ private final class ActionAgentLayerViewerView: NSView {
         let center = viewPoint(point)
         switch act.kind {
         case "aim":
-            movePointer(to: center, reduceMotion: reduce)
+            // A lead is a deadline: the act follows it, so the pointer has to be there first.
+            movePointer(to: center, reduceMotion: reduce, within: act.leadMs.map { max(0.1, Double($0) / 1000 - 0.04) })
+        case "drag" where act.from != nil && act.travelMs != nil:
+            carry(from: act.from!, to: point, travelMs: act.travelMs!, pressedAt: act.pressedAt, lag: act.feedLag, reduce: reduce)
         case "drag":
             let start = act.from.map(viewPoint) ?? center
             if pointerAt.map({ hypot($0.x - start.x, $0.y - start.y) > 2 }) ?? true {
@@ -2013,8 +2189,9 @@ private final class ActionAgentLayerViewerView: NSView {
             onArrival { [weak self] in
                 guard let self else { return }
                 self.press()
-                let trail = self.trail(from: start, to: center, duration: reduce ? 0 : 0.5)
-                self.movePointer(to: center, reduceMotion: reduce, straight: true, duration: 0.5)
+                let pace = act.from.map { Double(ActionPointerMotion.dragDurationMs(from: $0, to: point)) / 1000 } ?? 0.25
+                let trail = self.trail(from: start, to: center, duration: reduce ? 0 : pace)
+                self.movePointer(to: center, reduceMotion: reduce, straight: true, duration: pace)
                 self.onArrival { [weak self] in
                     self?.ring(at: center, reduce: reduce, size: 16)
                     self?.fadeOut(trail, after: 0.15)
@@ -2074,6 +2251,71 @@ private final class ActionAgentLayerViewerView: NSView {
         )
         marks.addSublayer(shape)
         fadeOut(shape, after: 0.6)
+    }
+
+    /// A drag told as its press went down: the pointer holds while the app picks the press
+    /// up, travels the drag's own curve for its own time and rests before the release, so it
+    /// stays on what the drag carries. It keeps the drag's clock from the press, held back by
+    /// how far the picture runs behind, so it moves with the window as the viewer shows it.
+    /// Display-local top-left points.
+    private func carry(from a: CGPoint, to b: CGPoint, travelMs: Int, pressedAt: Double?, lag: CFTimeInterval, reduce: Bool) {
+        let end = viewPoint(b)
+        let control = ActionPointerMotion.dragControl(from: a, to: b)
+        let samples = 32
+        let path = (0...samples).map {
+            viewPoint(ActionPointerMotion.point(from: a, control: control, to: b, progress: Double($0) / Double(samples)))
+        }
+        let late = pressedAt.map { min(0.25, max(0, CFAbsoluteTimeGetCurrent() - $0)) } ?? 0
+        let pickup = max(0, Double(ActionPointerMotion.dragPickupMs) / 1000 + lag - late)
+        let travel = reduce ? 0 : Double(travelMs) / 1000
+        let settle = Double(ActionPointerMotion.dragSettleMs) / 1000
+        let begins = pointer.convertTime(CACurrentMediaTime(), from: nil) + pickup
+        press()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pointer.position = end
+        pointer.opacity = 1
+        CATransaction.commit()
+        pointer.removeAnimation(forKey: "glide")
+        if travel > 0 {
+            let glide = CAKeyframeAnimation(keyPath: "position")
+            glide.values = path.map { NSValue(point: $0) }
+            glide.beginTime = begins
+            glide.duration = travel
+            glide.fillMode = .backwards
+            pointer.add(glide, forKey: "glide")
+        }
+        let line = trail(along: path, begins: begins, duration: travel)
+        arrive(at: end, by: CACurrentMediaTime() + pickup + travel + settle)
+        onArrival { [weak self] in
+            self?.ring(at: end, reduce: reduce, size: 16)
+            self?.fadeOut(line, after: 0.15)
+        }
+    }
+
+    /// A drag's line along the points it travels, drawn at the pace the points were sampled.
+    private func trail(along points: [CGPoint], begins: CFTimeInterval, duration: CFTimeInterval) -> CAShapeLayer {
+        let line = CAShapeLayer()
+        let path = CGMutablePath()
+        path.addLines(between: points)
+        line.path = path
+        line.strokeColor = Self.coral.withAlphaComponent(0.85).cgColor
+        line.lineWidth = 1.5
+        line.lineCap = .round
+        line.lineDashPattern = [1, 4]
+        line.fillColor = nil
+        marks.addSublayer(line)
+        var lengths: [CGFloat] = [0]
+        for (p, q) in zip(points, points.dropFirst()) { lengths.append(lengths.last! + hypot(q.x - p.x, q.y - p.y)) }
+        if duration > 0, let total = lengths.last, total > 0 {
+            let draw = CAKeyframeAnimation(keyPath: "strokeEnd")
+            draw.values = lengths.map { $0 / total }
+            draw.beginTime = line.convertTime(begins, from: pointer)
+            draw.duration = duration
+            draw.fillMode = .backwards
+            line.add(draw, forKey: "draw")
+        }
+        return line
     }
 
     /// The line a drag draws, laid down behind the pointer.
@@ -2161,6 +2403,16 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
     private var onAttachedFrame: (() -> Void)?
     private var latestBuffer: CMSampleBuffer?
     private var latestAt = Date.distantPast
+    private var smoothedLag: CFTimeInterval = 0
+    private static let ticks: Double = {
+        var base = mach_timebase_info_data_t()
+        mach_timebase_info(&base)
+        return Double(base.numer) / Double(base.denom) / 1_000_000_000
+    }()
+
+    /// How long a frame takes from the display to the viewer, smoothed over recent frames,
+    /// plus the refresh the viewer's layer takes to show it.
+    var lag: CFTimeInterval { lock.withLock { smoothedLag } + 1.0 / 60 }
 
     func attach(_ layer: AVSampleBufferDisplayLayer, onFrame: @escaping () -> Void) {
         queue.async { [self] in
@@ -2189,9 +2441,13 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid, isComplete(sampleBuffer) else { return }
+        let lag = displayTime(of: sampleBuffer).map { Double(mach_absolute_time() &- $0) * Self.ticks }
         lock.withLock {
             latestBuffer = sampleBuffer
             latestAt = Date()
+            if let lag, lag >= 0, lag < 0.5 {
+                smoothedLag = smoothedLag == 0 ? lag : smoothedLag * 0.9 + lag * 0.1
+            }
         }
         deliver(sampleBuffer)
     }
@@ -2217,10 +2473,19 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
             if renderer.status == .failed { renderer.flush() }
             renderer.enqueue(sampleBuffer)
         } else {
+            // The macOS 27 SDK marks this pre-15 enqueue main-actor isolated;
+            // the layer has always taken buffers from the capture queue.
+            nonisolated(unsafe) let buffer = sampleBuffer
             if layer.status == .failed { layer.flush() }
-            layer.enqueue(sampleBuffer)
+            layer.enqueue(buffer)
         }
         onFrame?()
+    }
+
+    private func displayTime(of sampleBuffer: CMSampleBuffer) -> UInt64? {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+            as? [[SCStreamFrameInfo: Any]] else { return nil }
+        return (attachments.first?[.displayTime] as? NSNumber)?.uint64Value
     }
 
     private func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -2286,19 +2551,27 @@ private final class ActionAgentLayerControlButton: NSButton {
     }
 }
 
-/// What the host told the layer about an act: `aim` before a pointer act sets off,
-/// then `click`, `drag` (with `from`), `scroll` (with its wheel delta) or `field`.
+/// What the host told the layer about an act: `aim` before a pointer act sets off (with
+/// the lead it must arrive within, when it has one), then `click`, `drag` (with `from`,
+/// and its travel time when told at the press), `scroll` (with its wheel delta) or `field`.
 struct ActionAgentLayerAct: Sendable {
     let kind: String
     let point: CGPoint?
     let from: CGPoint?
     let frame: CGRect?
     let deltaY: CGFloat
+    var travelMs: Int? = nil
+    var leadMs: Int? = nil
+    /// When a drag's press went down, as `CFAbsoluteTime`.
+    var pressedAt: Double? = nil
+    /// How far the viewer's picture runs behind the display. Set from the feed, never
+    /// from a notification.
+    var feedLag: CFTimeInterval = 0
 }
 
 extension ActionAgentLayerAct {
     /// From an act notification's userInfo or a `mark` control request: `kind`, `x`/`y`,
-    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh` and `dy`, in global top-left points.
+    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh`, `dy`, `travelMs`, `leadMs` and `pressedAt`, in global top-left points.
     init<Key: Hashable>(info: [Key: Any]) {
         func number(_ key: String) -> CGFloat? {
             guard let key = key as? Key else { return nil }
@@ -2316,7 +2589,10 @@ extension ActionAgentLayerAct {
             point: point("x", "y"),
             from: point("fromX", "fromY"),
             frame: frame,
-            deltaY: number("dy") ?? 0
+            deltaY: number("dy") ?? 0,
+            travelMs: number("travelMs").map { Int($0) },
+            leadMs: number("leadMs").map { Int($0) },
+            pressedAt: ("pressedAt" as? Key).flatMap { (info[$0] as? NSNumber)?.doubleValue }
         )
     }
 }

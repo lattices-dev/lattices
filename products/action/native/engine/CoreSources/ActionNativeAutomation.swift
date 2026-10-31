@@ -574,18 +574,17 @@ public enum ActionNativeAutomation {
     public static func drag(
         from start: CGPoint,
         to end: CGPoint,
-        durationMs: Int = 300,
+        durationMs: Int? = nil,
         pointerEventLogPath: String? = nil
     ) throws -> ActionPointerGesture {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw ActionNativeAutomationError.accessibilityActionFailed("Unable to create event source")
         }
 
-        let normalizedDuration = max(40, durationMs)
-        let steps = max(6, Int(Double(normalizedDuration) / 10.0))
-        let stepDelayUs = UInt32((Double(normalizedDuration) * 1000.0 / Double(steps)).rounded())
-        let deltaX = end.x - start.x
-        let deltaY = end.y - start.y
+        // Paced from the distance unless the caller asks otherwise, and eased along a
+        // slight bow, so a window being dragged moves the way a hand moves it.
+        let duration = Double(ActionPointerMotion.dragTravelMs(from: start, to: end, requested: durationMs)) / 1000
+        let control = ActionPointerMotion.dragControl(from: start, to: end)
 
         let press = try ActionPointerChannel.beginPrimaryPress(
             at: start,
@@ -594,21 +593,27 @@ public enum ActionNativeAutomation {
             eventSource: source,
             log: ActionPointerEventLog.active(explicitPath: pointerEventLogPath)
         )
-        usleep(15000)
+        usleep(UInt32(ActionPointerMotion.dragPickupMs * 1000))
 
-        for index in 1...steps {
-            let ratio = Double(index) / Double(steps)
-            let current = CGPoint(
-                x: start.x + (deltaX * ratio),
-                y: start.y + (deltaY * ratio)
-            )
-            guard let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: current, mouseButton: .left) else {
+        func post(_ point: CGPoint) throws {
+            guard let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else {
                 throw ActionNativeAutomationError.accessibilityActionFailed("Unable to create drag events")
             }
-
             drag.post(tap: .cghidEventTap)
-            usleep(stepDelayUs)
         }
+
+        // Each event goes where the curve is at that moment, so a late wake-up catches
+        // up instead of stretching the gesture.
+        let began = CFAbsoluteTimeGetCurrent()
+        var progress = 0.0
+        while progress < 1 {
+            usleep(8000)
+            progress = min(1, (CFAbsoluteTimeGetCurrent() - began) / duration)
+            try post(ActionPointerMotion.point(from: start, control: control, to: end, progress: progress))
+        }
+        usleep(UInt32(ActionPointerMotion.dragSettleMs * 1000))
+        try post(end)
+        usleep(16000)
 
         return try ActionPointerChannel.endPrimaryPress(press, at: end)
     }
