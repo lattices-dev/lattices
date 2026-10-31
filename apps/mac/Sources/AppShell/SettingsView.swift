@@ -3213,7 +3213,7 @@ struct SettingsContentView: View {
 
                 Section(header: stickyHeader("Getting around")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        flowStep("1", "Find a window in Overview, or search with \u{2318}K")
+                        flowStep("1", "Find a window in Windows, or search with \u{2318}K")
                         flowStep("2", "Save the windows for a task as a layer")
                         flowStep("3", "Switch layers with \u{2318}\u{2325} and a number; \u{2318}\u{2325}0 shows all windows")
                         flowStep("4", "Pair another computer in Machines")

@@ -24,10 +24,10 @@ enum AppPage: String, CaseIterable {
     var label: String {
         switch self {
         case .home:             return "Home"
-        case .overview:         return "Overview"
+        case .overview:         return "Windows"
         case .layers:           return "Layers"
         case .machines:         return "Machines"
-        case .activity:         return "Activity"
+        case .activity:         return "Diagnostics"
         case .runs:             return "Runs"
         case .assistant:        return "Assistant"
         case .settings:         return "Settings"
@@ -42,7 +42,7 @@ enum AppPage: String, CaseIterable {
         case .overview:         return "rectangle.3.group"
         case .layers:           return "square.3.layers.3d"
         case .machines:         return "display.2"
-        case .activity:         return "list.bullet.rectangle"
+        case .activity:         return "stethoscope"
         case .runs:             return "record.circle"
         case .assistant:        return "bubble.left.and.bubble.right"
         case .settings:         return "gearshape"
@@ -51,23 +51,25 @@ enum AppPage: String, CaseIterable {
         }
     }
 
-    /// The rail's groups, in order. They answer "what kind of thing is this":
-    /// places you work, agent surfaces, system state — so Runs and Activity stop
-    /// reading as peers of Home.
+    /// The rail's groups, in order: places you work, then agent surfaces.
+    /// Diagnostics, Docs and Settings sit in the rail's footer, out of the way.
     static let navigationGroups: [(title: String, pages: [AppPage])] = [
         ("Workspace", [.home, .overview, .layers, .machines]),
         ("Agents",    [.assistant, .runs]),
-        ("System",    [.activity]),
     ]
+
+    /// Pages in the rail's footer, top to bottom.
+    static let footerPages: [AppPage] = [.activity, .docs, .settings]
 
     /// Pages shown as primary tabs in the unified window
     static var primaryTabs: [AppPage] { navigationGroups.flatMap(\.pages) }
 
-    /// A page by raw value, old names included: Studio and Windows open
-    /// Overview.
+    /// A page by raw value or label, old names included: Studio and Windows
+    /// open the Windows page (`overview`), Diagnostics opens Activity.
     static func named(_ raw: String) -> AppPage? {
         switch raw {
-        case "screenMap", "desktopInventory": return .overview
+        case "screenMap", "desktopInventory", "windows": return .overview
+        case "diagnostics": return .activity
         case "hosts": return .machines
         default: return AppPage(rawValue: raw)
         }
@@ -210,15 +212,19 @@ struct AppShellView: View {
             .buttonStyle(.plain)
             .offset(y: headerOffset)
         } footer: {
-            SidebarFooterButton(
-                icon: "gearshape",
-                label: "Settings",
-                isActive: windowController.activePage == .settings,
-                isCompact: sidebarCompact,
-                labelWidth: CGFloat(sidebarLabelWidth),
-                accent: Palette.textDim
-            ) {
-                windowController.showPage(.settings)
+            VStack(spacing: 0) {
+                ForEach(AppPage.footerPages, id: \.self) { page in
+                    SidebarFooterButton(
+                        icon: page.icon,
+                        label: page.label,
+                        isActive: windowController.activePage == page,
+                        isCompact: sidebarCompact,
+                        labelWidth: CGFloat(sidebarLabelWidth),
+                        accent: Palette.textDim
+                    ) {
+                        windowController.showPage(page)
+                    }
+                }
             }
         }
         .resizable(

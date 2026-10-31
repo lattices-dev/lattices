@@ -1229,10 +1229,10 @@ private struct MiniHomeCommandPane: View {
 private struct MiniHomeCommandJumps: View {
     var body: some View {
         HStack(spacing: 10) {
-            jump("magnifyingglass", "Inventory") {
+            jump("magnifyingglass", "Windows") {
                 ScreenMapWindowController.shared.showPage(.overview)
             }
-            jump("list.bullet.rectangle", "Activity") {
+            jump("stethoscope", "Diagnostics") {
                 ScreenMapWindowController.shared.showPage(.activity)
             }
             Spacer(minLength: 0)
