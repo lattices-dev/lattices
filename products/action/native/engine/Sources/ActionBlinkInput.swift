@@ -556,8 +556,8 @@ enum ActionAgentLayerDisplay {
 
     /// Tell a running layer where an act landed: the point of a click, drag (with where it
     /// started) or scroll (with its wheel delta), or the focused field's frame for typing
-    /// and keys. A drag with `travelMs` is told as its press goes down instead, so the
-    /// viewer can follow it. Global top-left coordinates; the layer ignores spots off its
+    /// and keys. A drag with `travelMs` is told as its press goes down instead, stamped
+    /// with when, so the viewer can follow it on the drag's own clock. Global top-left coordinates; the layer ignores spots off its
     /// display.
     static func announceAct(
         _ kind: String = "click",
@@ -571,7 +571,7 @@ enum ActionAgentLayerDisplay {
         if let point {
             info = ["kind": kind, "x": point.x, "y": point.y]
             if let start { info["fromX"] = start.x; info["fromY"] = start.y }
-            if let travelMs { info["travelMs"] = travelMs }
+            if let travelMs { info["travelMs"] = travelMs; info["pressedAt"] = CFAbsoluteTimeGetCurrent() }
             if let deltaY { info["dy"] = deltaY }
         } else if let app {
             let element = AXUIElementCreateApplication(app.processIdentifier)

@@ -1073,6 +1073,8 @@ final class ActionAgentLayerFeed {
     let subjectPID: pid_t?
     private let logger: DebugLogger
     private let output = ActionAgentLayerStreamOutput()
+    /// How far the live picture runs behind the display.
+    var lag: CFTimeInterval { output.lag }
     private var stream: SCStream?
 
     init(displayID: CGDirectDisplayID, displayBounds: CGRect, subjectPID: pid_t?, logger: DebugLogger) {
@@ -1474,6 +1476,9 @@ final class ActionAgentLayerPiP {
         guard act.point.map(bounds.contains) ?? act.frame.map(bounds.intersects) ?? false else { return }
         let origin = bounds.origin
         func local(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x - origin.x, y: point.y - origin.y) }
+        if act.travelMs != nil {
+            logger.log("agent-layer viewer: drag travel=\(act.travelMs ?? 0)ms lag=\(Int(feed.lag * 1000))ms")
+        }
         viewer?.mark(ActionAgentLayerAct(
             kind: act.kind,
             point: act.point.map(local),
@@ -1481,7 +1486,9 @@ final class ActionAgentLayerPiP {
             frame: act.frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) },
             deltaY: act.deltaY,
             travelMs: act.travelMs,
-            leadMs: act.leadMs
+            leadMs: act.leadMs,
+            pressedAt: act.pressedAt,
+            feedLag: feed.lag
         ))
     }
 
@@ -2173,7 +2180,7 @@ private final class ActionAgentLayerViewerView: NSView {
             // A lead is a deadline: the act follows it, so the pointer has to be there first.
             movePointer(to: center, reduceMotion: reduce, within: act.leadMs.map { max(0.1, Double($0) / 1000 - 0.04) })
         case "drag" where act.from != nil && act.travelMs != nil:
-            carry(from: act.from!, to: point, travelMs: act.travelMs!, reduce: reduce)
+            carry(from: act.from!, to: point, travelMs: act.travelMs!, pressedAt: act.pressedAt, lag: act.feedLag, reduce: reduce)
         case "drag":
             let start = act.from.map(viewPoint) ?? center
             if pointerAt.map({ hypot($0.x - start.x, $0.y - start.y) > 2 }) ?? true {
@@ -2248,15 +2255,18 @@ private final class ActionAgentLayerViewerView: NSView {
 
     /// A drag told as its press went down: the pointer holds while the app picks the press
     /// up, travels the drag's own curve for its own time and rests before the release, so it
-    /// stays on what the drag carries. Display-local top-left points.
-    private func carry(from a: CGPoint, to b: CGPoint, travelMs: Int, reduce: Bool) {
+    /// stays on what the drag carries. It keeps the drag's clock from the press, held back by
+    /// how far the picture runs behind, so it moves with the window as the viewer shows it.
+    /// Display-local top-left points.
+    private func carry(from a: CGPoint, to b: CGPoint, travelMs: Int, pressedAt: Double?, lag: CFTimeInterval, reduce: Bool) {
         let end = viewPoint(b)
         let control = ActionPointerMotion.dragControl(from: a, to: b)
         let samples = 32
         let path = (0...samples).map {
             viewPoint(ActionPointerMotion.point(from: a, control: control, to: b, progress: Double($0) / Double(samples)))
         }
-        let pickup = Double(ActionPointerMotion.dragPickupMs) / 1000
+        let late = pressedAt.map { min(0.25, max(0, CFAbsoluteTimeGetCurrent() - $0)) } ?? 0
+        let pickup = max(0, Double(ActionPointerMotion.dragPickupMs) / 1000 + lag - late)
         let travel = reduce ? 0 : Double(travelMs) / 1000
         let settle = Double(ActionPointerMotion.dragSettleMs) / 1000
         let begins = pointer.convertTime(CACurrentMediaTime(), from: nil) + pickup
@@ -2393,6 +2403,16 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
     private var onAttachedFrame: (() -> Void)?
     private var latestBuffer: CMSampleBuffer?
     private var latestAt = Date.distantPast
+    private var smoothedLag: CFTimeInterval = 0
+    private static let ticks: Double = {
+        var base = mach_timebase_info_data_t()
+        mach_timebase_info(&base)
+        return Double(base.numer) / Double(base.denom) / 1_000_000_000
+    }()
+
+    /// How long a frame takes from the display to the viewer, smoothed over recent frames,
+    /// plus the refresh the viewer's layer takes to show it.
+    var lag: CFTimeInterval { lock.withLock { smoothedLag } + 1.0 / 60 }
 
     func attach(_ layer: AVSampleBufferDisplayLayer, onFrame: @escaping () -> Void) {
         queue.async { [self] in
@@ -2421,9 +2441,13 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid, isComplete(sampleBuffer) else { return }
+        let lag = displayTime(of: sampleBuffer).map { Double(mach_absolute_time() &- $0) * Self.ticks }
         lock.withLock {
             latestBuffer = sampleBuffer
             latestAt = Date()
+            if let lag, lag >= 0, lag < 0.5 {
+                smoothedLag = smoothedLag == 0 ? lag : smoothedLag * 0.9 + lag * 0.1
+            }
         }
         deliver(sampleBuffer)
     }
@@ -2456,6 +2480,12 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
             layer.enqueue(buffer)
         }
         onFrame?()
+    }
+
+    private func displayTime(of sampleBuffer: CMSampleBuffer) -> UInt64? {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+            as? [[SCStreamFrameInfo: Any]] else { return nil }
+        return (attachments.first?[.displayTime] as? NSNumber)?.uint64Value
     }
 
     private func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -2532,11 +2562,16 @@ struct ActionAgentLayerAct: Sendable {
     let deltaY: CGFloat
     var travelMs: Int? = nil
     var leadMs: Int? = nil
+    /// When a drag's press went down, as `CFAbsoluteTime`.
+    var pressedAt: Double? = nil
+    /// How far the viewer's picture runs behind the display. Set from the feed, never
+    /// from a notification.
+    var feedLag: CFTimeInterval = 0
 }
 
 extension ActionAgentLayerAct {
     /// From an act notification's userInfo or a `mark` control request: `kind`, `x`/`y`,
-    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh`, `dy`, `travelMs` and `leadMs`, in global top-left points.
+    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh`, `dy`, `travelMs`, `leadMs` and `pressedAt`, in global top-left points.
     init<Key: Hashable>(info: [Key: Any]) {
         func number(_ key: String) -> CGFloat? {
             guard let key = key as? Key else { return nil }
@@ -2556,7 +2591,8 @@ extension ActionAgentLayerAct {
             frame: frame,
             deltaY: number("dy") ?? 0,
             travelMs: number("travelMs").map { Int($0) },
-            leadMs: number("leadMs").map { Int($0) }
+            leadMs: number("leadMs").map { Int($0) },
+            pressedAt: ("pressedAt" as? Key).flatMap { (info[$0] as? NSNumber)?.doubleValue }
         )
     }
 }
