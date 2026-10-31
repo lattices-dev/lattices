@@ -21,6 +21,7 @@ import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
 import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
 import { LatticeStudy } from "@/studio/studies/Lattice";
+import { WindowsPageStudy } from "@/studio/studies/WindowsPage";
 import {
   HOME_HREF,
   pages,
@@ -70,6 +71,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
     return <DocStudy slug={page.href.slice("/studio/eng/".length)} />;
   }
 
+  if (page?.href === "/studio/studies/windows-page") return <WindowsPageStudy page={page} />;
   if (page?.href === "/studio/studies/intents") return <IntentsStudy entry={page} />;
   if (page?.href === "/studio/studies/handsoff") return <HandsoffStudy entry={page} />;
   if (page?.href === "/studio/studies/cursor") return <CursorStudy entry={page} />;

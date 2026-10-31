@@ -22,8 +22,18 @@ struct OverviewView: View {
     @ObservedObject private var index = LayerIndexState.shared
     private let indexTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     @State private var barWidth: CGFloat = 0
+    /// The page before the desk layout, kept while the desk settles in.
+    @AppStorage("windows.classicOverview") private var classic = false
 
     var body: some View {
+        if live && !classic {
+            WindowsDeskView(model: model)
+        } else {
+            classicBody
+        }
+    }
+
+    private var classicBody: some View {
         HStack(spacing: 0) {
             OverviewLayerIndex(rows: indexRows, selected: selectedLayers, readAt: index.readAt, live: live) { id, additive in
                 if live { index.choose(id, additive: additive); applyIndex() }

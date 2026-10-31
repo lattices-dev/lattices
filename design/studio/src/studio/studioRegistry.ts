@@ -38,6 +38,18 @@ const studioPages: readonly LatticesPage[] = [
     ],
   },
   {
+    href: "/studio/studies/windows-page",
+    label: "Windows page — the desk",
+    bucket: "studies",
+    surface: "macos",
+    status: "shipped",
+    blurb: "Every display on one desk as they sit, one table grouped by display, and the selected window's actions in one inspector. Shipped as WindowsDeskView.",
+    source: [
+      "design/studio/src/studio/studies/WindowsPage.tsx",
+      "apps/mac/Sources/Core/Overlays/Overview/WindowsDeskView.swift",
+    ],
+  },
+  {
     href: "/studio/studies/shell",
     label: "Shell redesign — first pass",
     bucket: "studies",
