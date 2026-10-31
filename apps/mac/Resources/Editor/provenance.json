@@ -1,10 +1,10 @@
 {
   "source": "arach/hudson:apps/lattices-editor",
-  "revision": "7e8eee9b9057149a7aaec51d596e15c42e533b14",
-  "sourceDirty": true,
+  "revision": "8614115c85ac8114e4736ba226163968b7c685c6",
+  "sourceDirty": false,
   "files": {
-    "editor.css": "dfc2b562a43e34839b834c633c02132a1148c8e5e4dd12965cf1a5a455445489",
-    "editor.js": "4bec4698dd305050a94c27122dc328585f6a66fcb02af34780c394ec50cca4fa",
+    "editor.css": "03030223e03fcbf78dd7ff78ad996e794255a71afdddd20b5a58f6a2c765cd10",
+    "editor.js": "28e2186c81c80ac4e88d30d35733ffe5c84ebd5051272f3e9e216e8b4363be4d",
     "index.html": "6ceb52eedcfc21964230e4e1793d4e9703b7d76393b8a3808229b6c30c19c208",
     "jetbrains-mono-LICENSE.txt": "403581b69dac5cff4079205e01c6b467e56af449ecbd7247693ddb1baafa005b",
     "jetbrains-mono-latin-400-normal.woff2": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb",
@@ -22,8 +22,16 @@
       "newLiteral": "rows.length?\"Windows open\":\"No windows\"",
       "originalBundleSHA256": "95d3c5363ea4196f0037cd6abc0f466773fe64337bffc2f9bfd328c8ff788707",
       "patchedBundleSHA256": "1df72b621f1b0f05c599c630a4927400fdfc070b3cc23f70b5845223acf2b070",
-      "reason": "Clarify that the header describes open windows, not active layer focus. Applied as a single literal replacement backed by the source edit; the full editor build was not imported.",
-      "note": "Built from source: the dirty hunk is this wording edit, now compiled in rather than patched."
+      "reason": "Clarify that the header describes open windows, not active layer focus. Applied as a single literal replacement backed by the source edit; the full editor build was not imported."
+    },
+    {
+      "id": "hide-unavailable-layer-chat",
+      "file": "editor.js",
+      "source": "arach/hudson:apps/lattices-editor/overview.tsx, app.tsx",
+      "sourceRevision": "7e8eee9bcf",
+      "originalBundleSHA256": "1df72b621f1b0f05c599c630a4927400fdfc070b3cc23f70b5845223acf2b070",
+      "patchedBundleSHA256": "28e2186c81c80ac4e88d30d35733ffe5c84ebd5051272f3e9e216e8b4363be4d",
+      "reason": "Render the Overview chat section only when the assistant can answer, and drop the later-version promise from the Workspace chat. Applied as literal replacements backed by the source commit; a full rebuild currently crashes on duplicate React copies in Hudson's node_modules."
     }
   ]
 }
