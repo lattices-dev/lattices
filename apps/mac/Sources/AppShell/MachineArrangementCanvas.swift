@@ -451,14 +451,14 @@ struct DisplayShowingChip: View {
         } label: {
             HStack(spacing: 4) {
                 Circle().fill(mine ? Long.coral : Palette.textMuted).frame(width: 5, height: 5)
-                Text(current.map(MonitorInputChip.title) ?? "Elsewhere")
+                Text(current.map(MonitorInputChip.title) ?? "Other computer")
                     .font(Typo.mono(9)).foregroundStyle(mine ? Palette.text : Palette.textDim).lineLimit(1)
             }
             .padding(.horizontal, 6).frame(height: 18)
             .background(Capsule().fill(MachineTone.chip))
         }
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .help("Which machine \(screen.name) is showing")
+        .help("Which computer \(screen.name) is showing")
     }
 }
 

@@ -310,14 +310,14 @@ struct DeskCanvas: View {
     static let builtinModel = "Built-in"
 }
 
-/// Desk or Hosts, over the Machines canvas.
+/// Monitors or Computers, over the Machines canvas.
 struct MachinesCanvasModePicker: View {
     @Binding var mode: String
 
     var body: some View {
         HStack(spacing: 0) {
-            segment("desk", "Desk")
-            segment("hosts", "Hosts")
+            segment("desk", "Monitors")
+            segment("hosts", "Computers")
         }
         .padding(2)
         .background(Capsule().fill(MachineTone.chip))

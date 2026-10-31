@@ -138,8 +138,8 @@ enum BrowseMenu {
         }
         out.insert(OmniResult(
             kind: .layer,
-            title: "Exit Layers",
-            subtitle: workspace.layerRecoveryMessage ?? "Show all windows and turn layer focus off",
+            title: "Show all windows",
+            subtitle: workspace.layerRecoveryMessage ?? "Leave layers and bring every window back",
             icon: "rectangle.portrait.and.arrow.right",
             score: 0
         ) { workspace.exitLayers() }, at: 0)
@@ -207,7 +207,7 @@ enum BrowseMenu {
                 SettingsWindowController.shared.show()
             },
             OmniResult(kind: .action, title: "Refresh Projects",
-                       subtitle: "Re-scan .lattices.json configs, reload workspace.json", icon: "arrow.clockwise", score: 0) {
+                       subtitle: "Re-scan projects and reload layers", icon: "arrow.clockwise", score: 0) {
                 ProjectScanner.shared.scan()
                 WorkspaceManager.shared.reloadConfig()
             },

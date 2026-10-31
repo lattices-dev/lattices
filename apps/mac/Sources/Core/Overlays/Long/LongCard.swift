@@ -115,9 +115,9 @@ struct LongCardView: View {
                     Text(host.name).font(Typo.monoBold(11)).foregroundStyle(palette.text)
                     Spacer()
                     if visiting {
-                        Button("End visit") { model.run("home", close: false) }.buttonStyle(LongCardButton(accent: true))
+                        Button("Bring pointer back") { model.run("home", close: false) }.buttonStyle(LongCardButton(accent: true))
                     } else {
-                        Button("Visit") { model.run("visit.start", .object(["host": .string(host.name)])) }
+                        Button("Go there") { model.run("visit.start", .object(["host": .string(host.name)])) }
                             .buttonStyle(LongCardButton())
                             .disabled(model.visit.visiting != nil)
                     }

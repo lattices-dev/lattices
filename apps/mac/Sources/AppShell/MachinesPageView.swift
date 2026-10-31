@@ -75,13 +75,13 @@ struct MachinesPageView: View {
     private var pageActions: [PageAction] {
         var actions = [
             PageAction(id: "machines-add", title: "Add machine", icon: "plus") { pairing = true },
-            PageAction(id: "machines-arm", title: model.visit.armed ? "Disarm visiting" : "Arm visiting",
+            PageAction(id: "machines-arm", title: model.visit.armed ? "Stop sharing mouse & keyboard" : "Share mouse & keyboard",
                        isEnabled: !model.visit.hosts.isEmpty || model.visit.armed) {
                 VisitController.shared.arm(!model.visit.armed)
             },
         ]
         if model.visit.visiting != nil {
-            actions.append(PageAction(id: "machines-end-visit", title: "End visit") { VisitController.shared.end(because: "ended") })
+            actions.append(PageAction(id: "machines-end-visit", title: "Bring pointer back") { VisitController.shared.end(because: "ended") })
         }
         actions.append(PageAction(id: "machines-refresh", title: "Refresh", icon: "arrow.clockwise") {
             model.refresh()
@@ -241,10 +241,10 @@ private struct MachinePairSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Add machine").font(Typo.heading(15))
             TextField("Name", text: $name).disabled(waiting)
-            TextField("Bridge address · host:9399", text: $address).disabled(waiting)
-            Picker("Type", selection: $kind) {
-                Text("Lattices host").tag("host")
-                Text("Visit host").tag("visit")
+            TextField("Address", text: $address).disabled(waiting)
+            Picker("Use", selection: $kind) {
+                Text("Control from here").tag("host")
+                Text("Mouse & keyboard").tag("visit")
                 Text("Both").tag("both")
             }.disabled(waiting)
             if waiting {
@@ -302,7 +302,7 @@ enum MachineColumn {
     static let status: CGFloat = 112
     static let build: CGFloat = 176
     static let displays: CGFloat = 64
-    static let actions: CGFloat = 116
+    static let actions: CGFloat = 136
     static var divider: some View { Rectangle().fill(Palette.border).frame(height: Chrome.hairline) }
 }
 
@@ -372,10 +372,10 @@ struct MachineRow: View {
                 .contentShape(Rectangle())
             }.buttonStyle(.plain)
             HStack(spacing: 6) {
-                Button("Visit", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1)
+                Button("Go there", action: visit).disabled(canVisit != true).opacity(canVisit == nil ? 0 : 1)
                 Menu {
-                    Button("Lattices viewer", action: view).disabled(!canView)
-                    if let vnc { Button("VNC in Screen Sharing…", action: vnc) }
+                    Button("Open viewer", action: view).disabled(!canView)
+                    if let vnc { Button("Open in Screen Sharing", action: vnc) }
                 } label: { Text("View") }
                 .disabled(!canView && vnc == nil)
             }
@@ -388,9 +388,11 @@ struct MachineRow: View {
         .onHover { hovering = $0 }
     }
 
-    /// The address only when it says more than the name.
+    /// The address only when it says more than the name. A loopback address is
+    /// the local end of a tunnel, which says nothing about the machine.
     private var detail: String {
-        let shown = address.caseInsensitiveCompare(name) == .orderedSame ? nil : address
+        let loopback = address.hasPrefix("127.") || address.hasPrefix("localhost") || address.hasPrefix("[::1]")
+        let shown = loopback || address.caseInsensitiveCompare(name) == .orderedSame ? nil : address
         return [platform.map(Self.platformName), shown].compactMap { $0 }.joined(separator: " · ")
     }
 

@@ -249,7 +249,7 @@ struct RemoteViewerView: View {
                     Button("Retry live video") { session.retryVideo() }
                 }
                 Divider()
-                Button("VNC in Screen Sharing…") { session.openScreenSharing() }
+                Button("Open in Screen Sharing") { session.openScreenSharing() }
             } label: {
                 Label(session.isRecoveringVideo ? "Reconnecting" : (session.videoFallbackReason != nil ? "Stills" : "Lattices"),
                       systemImage: "rectangle.on.rectangle")

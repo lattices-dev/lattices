@@ -3187,8 +3187,8 @@ struct SettingsContentView: View {
     private var docsContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                Section(header: stickyHeader("What is lattices?")) {
-                    Text("A developer workspace launcher. It creates pre-configured terminal layouts for your projects \u{2014} go from \u{201C}I want to work on X\u{201D} to a full environment in one click.")
+                Section(header: stickyHeader("What is Lattices?")) {
+                    Text("A window manager that knows your projects. Find any project\u{2019}s windows, put them in place, and switch between pieces of work, for you or your agent.")
                         .font(Typo.caption(11))
                         .foregroundColor(Palette.textDim)
                         .lineSpacing(3)
@@ -3198,28 +3198,25 @@ struct SettingsContentView: View {
 
                 Section(header: stickyHeader("Glossary")) {
                     VStack(alignment: .leading, spacing: 12) {
+                        glossaryItem("Layer",
+                            "A named set of windows for one piece of work. Switching to it hides the rest and lays these out. Nothing closes.")
                         glossaryItem("Session",
-                            "A persistent workspace that lives in the background. Survives terminal crashes, disconnects, even closing your laptop.")
-                        glossaryItem("Pane",
-                            "A single terminal view inside a session. A typical setup has two panes \u{2014} Claude Code on the left, dev server on the right.")
-                        glossaryItem("Attach",
-                            "Connect your terminal window to an existing session. The session was already running \u{2014} you\u{2019}re just viewing it.")
-                        glossaryItem("Detach",
-                            "Disconnect your terminal but keep the session alive. Your dev server keeps running, Claude keeps thinking.")
-                        glossaryItem("tmux",
-                            "Terminal multiplexer \u{2014} the engine behind lattices. It manages sessions, panes, and layouts. lattices configures it so you don\u{2019}t have to.")
+                            "A project\u{2019}s terminal that keeps running in the background, even after its window closes.")
+                        glossaryItem("Machine",
+                            "Another computer paired with this Mac. Control it from here, or move your mouse and keyboard onto it.")
+                        glossaryItem("Run",
+                            "A recording or capture an agent made, with its steps.")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                 }
 
-                Section(header: stickyHeader("How it works")) {
+                Section(header: stickyHeader("Getting around")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        flowStep("1", "Create a .lattices.json in your project root")
-                        flowStep("2", "lattices reads the config and builds a tmux session")
-                        flowStep("3", "Each pane gets its command (claude, dev server, etc.)")
-                        flowStep("4", "Session persists in the background until you kill it")
-                        flowStep("5", "Attach and detach from any terminal, any time")
+                        flowStep("1", "Find a window in Overview, or search with \u{2318}K")
+                        flowStep("2", "Save the windows for a task as a layer")
+                        flowStep("3", "Switch layers with \u{2318}\u{2325} and a number; \u{2318}\u{2325}0 shows all windows")
+                        flowStep("4", "Pair another computer in Machines")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
