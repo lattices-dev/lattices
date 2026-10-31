@@ -624,8 +624,11 @@ struct OverviewTray: View {
                         .foregroundColor(Palette.textMuted)
                         .frame(width: geo.size.width, height: geo.size.height)
                 } else {
-                    let width = max(190, min(280, geo.size.width / CGFloat(groups.count)))
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    // Whole columns only: as many 190pt lists as fit share the
+                    // width, and the rest scroll in rather than showing a sliver.
+                    let fit = max(1, min(groups.count, Int(geo.size.width / 190)))
+                    let width = min(280, geo.size.width / CGFloat(fit))
+                    ScrollView(.horizontal, showsIndicators: groups.count > fit) {
                         HStack(alignment: .top, spacing: 0) {
                             ForEach(groups) { group in
                                 groupView(group)
