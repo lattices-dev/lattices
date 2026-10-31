@@ -593,7 +593,14 @@ public enum ActionNativeAutomation {
             eventSource: source,
             log: ActionPointerEventLog.active(explicitPath: pointerEventLogPath)
         )
-        usleep(15000)
+        usleep(UInt32(ActionPointerMotion.dragPickupMs * 1000))
+
+        func post(_ point: CGPoint) throws {
+            guard let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else {
+                throw ActionNativeAutomationError.accessibilityActionFailed("Unable to create drag events")
+            }
+            drag.post(tap: .cghidEventTap)
+        }
 
         // Each event goes where the curve is at that moment, so a late wake-up catches
         // up instead of stretching the gesture.
@@ -602,13 +609,10 @@ public enum ActionNativeAutomation {
         while progress < 1 {
             usleep(8000)
             progress = min(1, (CFAbsoluteTimeGetCurrent() - began) / duration)
-            let current = ActionPointerMotion.point(from: start, control: control, to: end, progress: progress)
-            guard let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: current, mouseButton: .left) else {
-                throw ActionNativeAutomationError.accessibilityActionFailed("Unable to create drag events")
-            }
-            drag.post(tap: .cghidEventTap)
+            try post(ActionPointerMotion.point(from: start, control: control, to: end, progress: progress))
         }
-        // A beat at rest, so the release isn't read as a fling.
+        usleep(UInt32(ActionPointerMotion.dragSettleMs * 1000))
+        try post(end)
         usleep(16000)
 
         return try ActionPointerChannel.endPrimaryPress(press, at: end)

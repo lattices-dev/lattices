@@ -29,6 +29,15 @@ public enum ActionPointerMotion {
                        y: v * v * start.y + 2 * v * t * control.y + t * t * end.y)
     }
 
+    /// How long a drag holds after the press before it travels. The press is what brings a
+    /// background app forward, and a window only follows the pointer once that app has
+    /// taken the press as the start of a move.
+    public static let dragPickupMs = 90
+
+    /// How long a drag rests on its target before the release, so the window lands where
+    /// the pointer stops instead of being read as a fling.
+    public static let dragSettleMs = 50
+
     /// A drag paced like a hand: short hops snap, long ones still land in under half a second.
     public static func dragDurationMs(from start: CGPoint, to end: CGPoint) -> Int {
         let distance = Double(hypot(end.x - start.x, end.y - start.y))
