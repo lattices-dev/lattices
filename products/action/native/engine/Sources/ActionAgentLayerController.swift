@@ -1479,7 +1479,9 @@ final class ActionAgentLayerPiP {
             point: act.point.map(local),
             from: act.from.map(local),
             frame: act.frame.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) },
-            deltaY: act.deltaY
+            deltaY: act.deltaY,
+            travelMs: act.travelMs,
+            leadMs: act.leadMs
         ))
     }
 
@@ -2057,7 +2059,7 @@ private final class ActionAgentLayerViewerView: NSView {
     /// Sends the pointer to `target` along a shallow arc, quicker for short hops, and
     /// returns when it gets there (as a media time).
     @discardableResult
-    private func movePointer(to target: CGPoint, reduceMotion: Bool, straight: Bool = false, duration fixed: CFTimeInterval? = nil) -> CFTimeInterval {
+    private func movePointer(to target: CGPoint, reduceMotion: Bool, straight: Bool = false, duration fixed: CFTimeInterval? = nil, within limit: CFTimeInterval? = nil) -> CFTimeInterval {
         let from = pointer.presentation()?.position ?? pointerAt ?? target
         let wasShown = pointerAt != nil && pointer.opacity > 0
         CATransaction.begin()
@@ -2085,7 +2087,7 @@ private final class ActionAgentLayerViewerView: NSView {
             pointer.add(appear, forKey: "glide")
             arrives = now + appear.duration
         } else {
-            let duration = fixed ?? min(0.62, max(0.26, 0.2 + Double(distance) / 700))
+            let duration = min(fixed ?? min(0.62, max(0.26, 0.2 + Double(distance) / 700)), limit ?? .infinity)
             let path = CGMutablePath()
             path.move(to: from)
             if straight {
@@ -2107,6 +2109,13 @@ private final class ActionAgentLayerViewerView: NSView {
             pointer.add(glide, forKey: "glide")
             arrives = now + duration
         }
+        arrive(at: target, by: arrives)
+        return arrives
+    }
+
+    /// Where the pointer comes to rest and when; it fades once the layer has been quiet a while.
+    private func arrive(at target: CGPoint, by arrives: CFTimeInterval) {
+        let now = CACurrentMediaTime()
         pointerAt = target
         pointerArrives = arrives
         pointerHide?.cancel()
@@ -2119,7 +2128,6 @@ private final class ActionAgentLayerViewerView: NSView {
         }
         pointerHide = hide
         DispatchQueue.main.asyncAfter(deadline: .now() + (arrives - now) + 3.5, execute: hide)
-        return arrives
     }
 
     /// Runs `body` once the pointer has arrived.
@@ -2162,7 +2170,10 @@ private final class ActionAgentLayerViewerView: NSView {
         let center = viewPoint(point)
         switch act.kind {
         case "aim":
-            movePointer(to: center, reduceMotion: reduce)
+            // A lead is a deadline: the act follows it, so the pointer has to be there first.
+            movePointer(to: center, reduceMotion: reduce, within: act.leadMs.map { max(0.1, Double($0) / 1000 - 0.04) })
+        case "drag" where act.from != nil && act.travelMs != nil:
+            carry(from: act.from!, to: point, travelMs: act.travelMs!, reduce: reduce)
         case "drag":
             let start = act.from.map(viewPoint) ?? center
             if pointerAt.map({ hypot($0.x - start.x, $0.y - start.y) > 2 }) ?? true {
@@ -2233,6 +2244,68 @@ private final class ActionAgentLayerViewerView: NSView {
         )
         marks.addSublayer(shape)
         fadeOut(shape, after: 0.6)
+    }
+
+    /// A drag told as its press went down: the pointer holds while the app picks the press
+    /// up, travels the drag's own curve for its own time and rests before the release, so it
+    /// stays on what the drag carries. Display-local top-left points.
+    private func carry(from a: CGPoint, to b: CGPoint, travelMs: Int, reduce: Bool) {
+        let end = viewPoint(b)
+        let control = ActionPointerMotion.dragControl(from: a, to: b)
+        let samples = 32
+        let path = (0...samples).map {
+            viewPoint(ActionPointerMotion.point(from: a, control: control, to: b, progress: Double($0) / Double(samples)))
+        }
+        let pickup = Double(ActionPointerMotion.dragPickupMs) / 1000
+        let travel = reduce ? 0 : Double(travelMs) / 1000
+        let settle = Double(ActionPointerMotion.dragSettleMs) / 1000
+        let begins = pointer.convertTime(CACurrentMediaTime(), from: nil) + pickup
+        press()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pointer.position = end
+        pointer.opacity = 1
+        CATransaction.commit()
+        pointer.removeAnimation(forKey: "glide")
+        if travel > 0 {
+            let glide = CAKeyframeAnimation(keyPath: "position")
+            glide.values = path.map { NSValue(point: $0) }
+            glide.beginTime = begins
+            glide.duration = travel
+            glide.fillMode = .backwards
+            pointer.add(glide, forKey: "glide")
+        }
+        let line = trail(along: path, begins: begins, duration: travel)
+        arrive(at: end, by: CACurrentMediaTime() + pickup + travel + settle)
+        onArrival { [weak self] in
+            self?.ring(at: end, reduce: reduce, size: 16)
+            self?.fadeOut(line, after: 0.15)
+        }
+    }
+
+    /// A drag's line along the points it travels, drawn at the pace the points were sampled.
+    private func trail(along points: [CGPoint], begins: CFTimeInterval, duration: CFTimeInterval) -> CAShapeLayer {
+        let line = CAShapeLayer()
+        let path = CGMutablePath()
+        path.addLines(between: points)
+        line.path = path
+        line.strokeColor = Self.coral.withAlphaComponent(0.85).cgColor
+        line.lineWidth = 1.5
+        line.lineCap = .round
+        line.lineDashPattern = [1, 4]
+        line.fillColor = nil
+        marks.addSublayer(line)
+        var lengths: [CGFloat] = [0]
+        for (p, q) in zip(points, points.dropFirst()) { lengths.append(lengths.last! + hypot(q.x - p.x, q.y - p.y)) }
+        if duration > 0, let total = lengths.last, total > 0 {
+            let draw = CAKeyframeAnimation(keyPath: "strokeEnd")
+            draw.values = lengths.map { $0 / total }
+            draw.beginTime = line.convertTime(begins, from: pointer)
+            draw.duration = duration
+            draw.fillMode = .backwards
+            line.add(draw, forKey: "draw")
+        }
+        return line
     }
 
     /// The line a drag draws, laid down behind the pointer.
@@ -2448,19 +2521,22 @@ private final class ActionAgentLayerControlButton: NSButton {
     }
 }
 
-/// What the host told the layer about an act: `aim` before a pointer act sets off,
-/// then `click`, `drag` (with `from`), `scroll` (with its wheel delta) or `field`.
+/// What the host told the layer about an act: `aim` before a pointer act sets off (with
+/// the lead it must arrive within, when it has one), then `click`, `drag` (with `from`,
+/// and its travel time when told at the press), `scroll` (with its wheel delta) or `field`.
 struct ActionAgentLayerAct: Sendable {
     let kind: String
     let point: CGPoint?
     let from: CGPoint?
     let frame: CGRect?
     let deltaY: CGFloat
+    var travelMs: Int? = nil
+    var leadMs: Int? = nil
 }
 
 extension ActionAgentLayerAct {
     /// From an act notification's userInfo or a `mark` control request: `kind`, `x`/`y`,
-    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh` and `dy`, in global top-left points.
+    /// `fromX`/`fromY`, `fx`/`fy`/`fw`/`fh`, `dy`, `travelMs` and `leadMs`, in global top-left points.
     init<Key: Hashable>(info: [Key: Any]) {
         func number(_ key: String) -> CGFloat? {
             guard let key = key as? Key else { return nil }
@@ -2478,7 +2554,9 @@ extension ActionAgentLayerAct {
             point: point("x", "y"),
             from: point("fromX", "fromY"),
             frame: frame,
-            deltaY: number("dy") ?? 0
+            deltaY: number("dy") ?? 0,
+            travelMs: number("travelMs").map { Int($0) },
+            leadMs: number("leadMs").map { Int($0) }
         )
     }
 }

@@ -4353,15 +4353,16 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         guard from.x.isFinite, from.y.isFinite, to.x.isFinite, to.y.isFinite else {
             throw ActionHostError.missingOption("--from-x --from-y --to-x --to-y")
         }
-        ActionAgentLayerDisplay.announceAim(at: from)
+        ActionAgentLayerDisplay.announceAim(at: from, leadMs: ActionAgentLayerDisplay.dragAimLeadMilliseconds)
         let detail = try ActionBlinkInput.drag(
             from: from,
             to: to,
             durationMs: options.options["duration-ms"].flatMap(Double.init).map { Int($0) },
             anyDisplay: options.bool("any-display", default: false),
-            pointerEventLogPath: options.options["pointer-event-log"]
+            pointerEventLogPath: options.options["pointer-event-log"],
+            // Told as the press goes down, so the viewer's pointer carries what the drag carries.
+            pressing: { ActionAgentLayerDisplay.announceAct("drag", at: to, from: from, travelMs: $0) }
         )
-        ActionAgentLayerDisplay.announceAct("drag", at: to, from: from)
         try writer.write(ActionHostResponse(status: "blink-dragged", outputPath: nil, detail: detail))
     case .blinkScroll:
         let point = CGPoint(x: options.double("x", default: .nan), y: options.double("y", default: .nan))

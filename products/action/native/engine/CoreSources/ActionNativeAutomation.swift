@@ -583,8 +583,8 @@ public enum ActionNativeAutomation {
 
         // Paced from the distance unless the caller asks otherwise, and eased along a
         // slight bow, so a window being dragged moves the way a hand moves it.
-        let duration = Double(max(40, durationMs ?? ActionPointerMotion.dragDurationMs(from: start, to: end))) / 1000
-        let control = ActionPointerMotion.bowControl(from: start, to: end, fraction: 0.06, limit: 14)
+        let duration = Double(ActionPointerMotion.dragTravelMs(from: start, to: end, requested: durationMs)) / 1000
+        let control = ActionPointerMotion.dragControl(from: start, to: end)
 
         let press = try ActionPointerChannel.beginPrimaryPress(
             at: start,

@@ -43,4 +43,14 @@ public enum ActionPointerMotion {
         let distance = Double(hypot(end.x - start.x, end.y - start.y))
         return Int(min(420, max(140, 110 + distance / 2.4)))
     }
+
+    /// How long a drag travels: what the caller asked for, else paced from the distance.
+    public static func dragTravelMs(from start: CGPoint, to end: CGPoint, requested: Int? = nil) -> Int {
+        max(40, requested ?? dragDurationMs(from: start, to: end))
+    }
+
+    /// The bow a drag travels along, in the same points as `start` and `end`.
+    public static func dragControl(from start: CGPoint, to end: CGPoint) -> CGPoint {
+        bowControl(from: start, to: end, fraction: 0.06, limit: 14)
+    }
 }

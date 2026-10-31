@@ -91,14 +91,17 @@ enum ActionBlinkInput {
     /// click it has no accessibility equivalent, and events posted straight to the app
     /// don't reach web content, so the mouse-down activates the app until focus is
     /// handed back.
-    static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int?, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true) throws -> String {
+    /// `pressing` runs just before the press with the drag's travel time.
+    static func drag(from start: CGPoint, to end: CGPoint, durationMs: Int?, anyDisplay: Bool, pointerEventLogPath: String?, handBack: Bool = true, pressing: ((Int) -> Void)? = nil) throws -> String {
         let inputLease = try acquireInputLease()
         defer { withExtendedLifetime(inputLease) {} }
         try requireOnLayer([start, end], command: "blink-drag", anyDisplay: anyDisplay)
         let previous = frontmostPID().flatMap(NSRunningApplication.init(processIdentifier:))
         let target = ownerOfWindow(at: start)
+        let travelMs = ActionPointerMotion.dragTravelMs(from: start, to: end, requested: durationMs)
         let saved = try borrowPointer {
-            try ActionNativeAutomation.drag(from: start, to: end, durationMs: durationMs, pointerEventLogPath: pointerEventLogPath)
+            pressing?(travelMs)
+            try ActionNativeAutomation.drag(from: start, to: end, durationMs: travelMs, pointerEventLogPath: pointerEventLogPath)
         }
         var detail = "\(Int(start.x)),\(Int(start.y))→\(Int(end.x)),\(Int(end.y)) via=pointer pointer=\(Int(saved.x)),\(Int(saved.y))"
         if handBack, handBackFocus(to: previous, after: target) {
@@ -536,21 +539,31 @@ enum ActionAgentLayerDisplay {
     /// act does rather than after it.
     static let aimLeadMilliseconds: UInt32 = 260
 
+    /// The head start before a drag's press. The viewer's pointer has to be on the start
+    /// by then, so it is told to arrive within it.
+    static let dragAimLeadMilliseconds: UInt32 = 400
+
     /// Tell a running layer where a pointer act is about to land, and give its pointer a
-    /// head start. Costs nothing when no layer is up.
-    static func announceAim(at point: CGPoint) {
+    /// head start. A `leadMs` is a deadline the pointer must make. Costs nothing when no
+    /// layer is up.
+    static func announceAim(at point: CGPoint, leadMs: UInt32? = nil) {
         guard contains(point) else { return }
-        post(["kind": "aim", "x": point.x, "y": point.y])
-        usleep(aimLeadMilliseconds * 1_000)
+        var info: [String: Any] = ["kind": "aim", "x": point.x, "y": point.y]
+        if let leadMs { info["leadMs"] = leadMs }
+        post(info)
+        usleep((leadMs ?? aimLeadMilliseconds) * 1_000)
     }
 
     /// Tell a running layer where an act landed: the point of a click, drag (with where it
     /// started) or scroll (with its wheel delta), or the focused field's frame for typing
-    /// and keys. Global top-left coordinates; the layer ignores spots off its display.
+    /// and keys. A drag with `travelMs` is told as its press goes down instead, so the
+    /// viewer can follow it. Global top-left coordinates; the layer ignores spots off its
+    /// display.
     static func announceAct(
         _ kind: String = "click",
         at point: CGPoint? = nil,
         from start: CGPoint? = nil,
+        travelMs: Int? = nil,
         deltaY: Double? = nil,
         focusedIn app: NSRunningApplication? = nil
     ) {
@@ -558,6 +571,7 @@ enum ActionAgentLayerDisplay {
         if let point {
             info = ["kind": kind, "x": point.x, "y": point.y]
             if let start { info["fromX"] = start.x; info["fromY"] = start.y }
+            if let travelMs { info["travelMs"] = travelMs }
             if let deltaY { info["dy"] = deltaY }
         } else if let app {
             let element = AXUIElementCreateApplication(app.processIdentifier)
