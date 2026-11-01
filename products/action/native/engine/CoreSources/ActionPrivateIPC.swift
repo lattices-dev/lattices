@@ -88,6 +88,9 @@ final class ActionPrivateSocketLease {
             Darwin.close(fd)
             throw ActionPrivateIPC.failure("Action socket is already owned by another runtime")
         }
+        // Name the owner so a client can find an agent that holds the socket but stopped answering.
+        let owner = Array("\(getpid())\n".utf8)
+        if ftruncate(fd, 0) == 0 { _ = pwrite(fd, owner, owner.count, 0) }
         if lstat(path, &info) == 0 {
             guard info.st_uid == getuid(), info.st_mode & S_IFMT == S_IFSOCK else {
                 Darwin.close(fd)

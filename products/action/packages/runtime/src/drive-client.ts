@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import WebSocket from "ws";
 import { actionSocketPath, actionTokenPath, readPrivateToken } from "./local-security.js";
 
@@ -158,6 +159,7 @@ export class DriveAgentClient {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Action agent request timed out: ${method}`));
+        this.dropIfUnresponsive(socket);
       }, this.requestTimeoutMs);
       this.pending.set(id, { resolve: resolvePromise, reject, timeout });
 
@@ -187,22 +189,61 @@ export class DriveAgentClient {
     try {
       return await this.connectOnce(400);
     } catch {
-      await this.launchAgent();
+      // Fall through: nothing answered, so start or replace the agent.
     }
 
-    const deadline = Date.now() + this.startupTimeoutMs;
+    // An agent that holds the socket lock but won't answer keeps every new agent
+    // out. Give it a moment in case it is busy, then replace it.
+    const owner = readAgentOwner();
+    if (owner && owner.ageSeconds >= STUCK_OWNER_MIN_AGE_SECONDS) {
+      try {
+        return await this.retryConnect(Date.now() + STUCK_OWNER_GRACE_MS);
+      } catch {
+        await reapAgent(owner.pid);
+      }
+    }
+
+    const child = await this.launchAgent();
+    return this.retryConnect(Date.now() + this.startupTimeoutMs, child);
+  }
+
+  private async retryConnect(deadline: number, child?: ChildProcess): Promise<WebSocket> {
     let lastError: unknown;
+    let backoff = CONNECT_BACKOFF_MIN_MS;
     while (Date.now() < deadline) {
       try {
         return await this.connectOnce(500);
       } catch (error) {
         lastError = error;
-        await delay(150);
       }
+      // The agent we started exited: waiting out the startup timeout won't help.
+      if (child && child.exitCode !== null && child.exitCode !== 0) {
+        const owner = readAgentOwner();
+        throw new Error(owner && owner.pid !== child.pid
+          ? `Action agent pid ${owner.pid} holds the socket but is not answering`
+          : `Action agent exited with code ${child.exitCode} during startup`);
+      }
+      await delay(Math.min(backoff, Math.max(0, deadline - Date.now())));
+      backoff = Math.min(backoff * 2, CONNECT_BACKOFF_MAX_MS);
     }
-    throw new Error(
-      `Action agent did not start within ${this.startupTimeoutMs}ms: ${String(lastError)}`,
-    );
+    throw new Error(`Action agent did not answer within ${this.startupTimeoutMs}ms: ${String(lastError)}`);
+  }
+
+  /** After a request timeout, drop the socket if the agent no longer answers pings. */
+  private dropIfUnresponsive(socket: WebSocket): void {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    const timer = setTimeout(() => {
+      if (this.socket === socket) this.socket = undefined;
+      socket.terminate();
+    }, PING_TIMEOUT_MS);
+    timer.unref?.();
+    socket.once("pong", () => clearTimeout(timer));
+    try {
+      socket.ping();
+    } catch {
+      clearTimeout(timer);
+      socket.terminate();
+    }
   }
 
   private connectOnce(timeoutMs: number): Promise<WebSocket> {
@@ -275,8 +316,8 @@ export class DriveAgentClient {
     });
   }
 
-  private launchAgent(): Promise<void> {
-    return new Promise<void>((resolvePromise, reject) => {
+  private launchAgent(): Promise<ChildProcess> {
+    return new Promise<ChildProcess>((resolvePromise, reject) => {
       const child = spawn(
         this.launcherPath,
         ["agent", "--port", String(this.port), "--idle-exit-seconds", "5"],
@@ -285,7 +326,7 @@ export class DriveAgentClient {
       child.once("error", reject);
       child.once("spawn", () => {
         child.unref();
-        resolvePromise();
+        resolvePromise(child);
       });
     });
   }
@@ -296,6 +337,69 @@ export class DriveAgentClient {
       request.reject(error);
     }
     this.pending.clear();
+  }
+}
+
+const CONNECT_BACKOFF_MIN_MS = 150;
+const CONNECT_BACKOFF_MAX_MS = 2_000;
+const STUCK_OWNER_GRACE_MS = 3_000;
+/** A younger owner may still be starting up; never reap it. */
+const STUCK_OWNER_MIN_AGE_SECONDS = 30;
+const PING_TIMEOUT_MS = 5_000;
+
+/** The live Action agent named in the socket lock file, if any. */
+export function readAgentOwner(lockPath = `${actionSocketPath()}.lock`): { pid: number; ageSeconds: number } | undefined {
+  let pid: number;
+  try {
+    pid = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
+  } catch {
+    return undefined;
+  }
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return undefined;
+  const ps = spawnSync("ps", ["-o", "etime=,command=", "-p", String(pid)], { encoding: "utf8" });
+  const line = ps.stdout?.trim();
+  if (ps.status !== 0 || !line) return undefined;
+  const [etime = "", ...command] = line.split(/\s+/);
+  if (!isActionAgentCommand(command.join(" "))) return undefined;
+  const ageSeconds = parseElapsed(etime);
+  return ageSeconds === undefined ? undefined : { pid, ageSeconds };
+}
+
+export function isActionAgentCommand(command: string): boolean {
+  return /\/Action(\.app\/Contents\/MacOS\/Action)? agent(\s|$)/.test(command);
+}
+
+/** Parse ps `etime`, `[[dd-]hh:]mm:ss`, into seconds. */
+export function parseElapsed(etime: string): number | undefined {
+  const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(etime);
+  if (!match) return undefined;
+  const [, days = "0", hours = "0", minutes, seconds] = match;
+  return ((Number(days) * 24 + Number(hours)) * 60 + Number(minutes)) * 60 + Number(seconds);
+}
+
+async function reapAgent(pid: number): Promise<void> {
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  // A stopped or suspended process can't handle SIGTERM; follow with SIGKILL.
+  for (let waited = 0; waited < 2_000 && alive(); waited += 100) await delay(100);
+  if (alive()) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      return;
+    }
+    for (let waited = 0; waited < 2_000 && alive(); waited += 100) await delay(100);
   }
 }
 

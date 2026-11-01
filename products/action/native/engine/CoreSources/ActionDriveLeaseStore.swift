@@ -412,6 +412,10 @@ actor ActionDriveLeaseStore {
         return record.lease
     }
 
+    func isDriving(ownerID: String) -> Bool {
+        records.values.contains { $0.ownerID == ownerID && $0.lease.status == "driving" }
+    }
+
     func disconnectOwner(by ownerID: String, summary: String) {
         let at = now()
         disconnectedOwners[ownerID] = at

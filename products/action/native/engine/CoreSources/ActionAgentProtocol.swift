@@ -63,4 +63,6 @@ public enum ActionAgentMethod: String, CaseIterable, Sendable {
 public enum ActionAgentDefaults {
     public static let host = "127.0.0.1"
     public static let port: UInt16 = 4319
+    /// A connection silent this long, with no driving lease, is dropped so it can't pin the agent.
+    public static let silentConnectionSeconds: TimeInterval = 30 * 60
 }
