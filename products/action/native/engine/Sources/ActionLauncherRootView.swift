@@ -1039,16 +1039,7 @@ struct ActionLauncherRootView: View {
 
     private var footerBar: some View {
         HStack(spacing: 16) {
-            footerChip(
-                label: "Agent",
-                value: humanAgentStatus,
-                ok: agentIsHealthy
-            )
-            footerChip(
-                label: "Permissions",
-                value: permissionSummary,
-                ok: permissionsReady
-            )
+            footerStatus
 
             if model.isRunningGuidedDemo {
                 footerChip(label: "Capture", value: "Running", ok: true)
@@ -1104,6 +1095,74 @@ struct ActionLauncherRootView: View {
         }
     }
 
+    /// The agent and its permissions as one answer: still starting, all good, or the
+    /// one thing that needs the operator.
+    private enum FooterHealth: Equatable {
+        case loading
+        case allGood
+        case attention(String, SettingsPane)
+    }
+
+    private var footerHealth: FooterHealth {
+        if model.hasAgentIdentityMismatch {
+            return .attention("Older agent running", .permissions)
+        }
+        switch model.agentStatus.lowercased() {
+        case "connected":
+            break
+        case "offline":
+            // The value before the agent has answered at all.
+            return .loading
+        default:
+            return .attention("Agent offline", .agent)
+        }
+        let accessibility = model.accessibilityStatus.lowercased()
+        let screen = model.screenRecordingStatus.lowercased()
+        if accessibility == "unknown" || screen == "unknown" {
+            return .loading
+        }
+        switch (accessibility == "granted", screen == "granted") {
+        case (true, true):
+            return .allGood
+        case (false, true):
+            return .attention("Needs Accessibility", .permissions)
+        case (true, false):
+            return .attention("Needs Screen Recording", .permissions)
+        case (false, false):
+            return .attention("Needs permissions", .permissions)
+        }
+    }
+
+    @ViewBuilder
+    private var footerStatus: some View {
+        switch footerHealth {
+        case .loading:
+            footerStatusLabel("Loading", dot: StageHUDTheme.textMuted.opacity(0.5))
+        case .allGood:
+            footerStatusLabel("All good", dot: StageHUDTheme.runOk)
+        case let .attention(text, pane):
+            Button {
+                settingsPane = pane
+                selectedSection = .settings
+            } label: {
+                footerStatusLabel(text, dot: StageHUDTheme.hudAmber)
+            }
+            .buttonStyle(.plain)
+            .help("Open \(pane.title) settings")
+        }
+    }
+
+    private func footerStatusLabel(_ text: String, dot: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(dot)
+                .frame(width: 6, height: 6)
+            Text(text)
+                .font(ActionType.uiCaptionStrong)
+                .foregroundStyle(StageHUDTheme.textPrimary)
+        }
+    }
+
     private var agentIsHealthy: Bool {
         model.agentStatus.lowercased() == "connected"
     }
@@ -1122,13 +1181,6 @@ struct ActionLauncherRootView: View {
     private var permissionsReady: Bool {
         model.accessibilityStatus.lowercased() == "granted"
             && model.screenRecordingStatus.lowercased() == "granted"
-    }
-
-    private var permissionSummary: String {
-        if permissionsReady {
-            return "Ready"
-        }
-        return "AX \(shortPermission(model.accessibilityStatus)) · Screen \(shortPermission(model.screenRecordingStatus))"
     }
 
     // MARK: - Takes
@@ -2445,7 +2497,7 @@ struct ActionLauncherRootView: View {
                             ? "Quit older Action copies, then reopen Action."
                             : needsIdentityRegrant
                                 ? "This version of Action has a new app identity, so macOS requires fresh Accessibility and Screen Recording access."
-                                : "Accessibility and Screen Recording"
+                                : "Accessibility and Screen Recording for \(model.runningAppPath)"
                     ) {
                         Button(hasAgentIdentityMismatch ? "Check again" : "Request access") {
                             if hasAgentIdentityMismatch {
@@ -2455,6 +2507,28 @@ struct ActionLauncherRootView: View {
                             }
                         }
                         .buttonStyle(ActionSettingsPillButtonStyle(primary: true))
+                    }
+
+                    if !hasAgentIdentityMismatch {
+                        ActionSettingsDivider()
+
+                        // Settings can show Action enabled while the grant belongs to
+                        // another copy with the same bundle id; only a reset rebinds it.
+                        ActionSettingsRow(
+                            icon: "arrow.counterclockwise",
+                            iconColor: StageHUDTheme.textMuted,
+                            title: "Already enabled in System Settings?",
+                            subtitle: "The grant may belong to another Action copy. Drag this one into the list, or reset to ask again."
+                        ) {
+                            HStack(spacing: 8) {
+                                Button("Drag into Settings") {
+                                    model.showPermissionHelper(for: axGranted ? .screenRecording : .accessibility)
+                                }
+                                .buttonStyle(ActionSettingsPillButtonStyle())
+                                Button("Reset and ask again", action: model.resetPermissionsAndRequest)
+                                    .buttonStyle(ActionSettingsPillButtonStyle())
+                            }
+                        }
                     }
                 }
             }
@@ -2794,19 +2868,6 @@ struct ActionLauncherRootView: View {
             return "square.stack"
         case .settings:
             return "gearshape"
-        }
-    }
-
-    private func shortPermission(_ status: String) -> String {
-        switch status.lowercased() {
-        case "granted":
-            return "OK"
-        case "denied":
-            return "Denied"
-        case "unknown":
-            return "Unknown"
-        default:
-            return status
         }
     }
 

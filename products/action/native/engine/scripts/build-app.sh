@@ -55,13 +55,20 @@ detect_identity() {
 
   local identity
 
-  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/{print $2; exit}')
+  # Developer ID first. Every copy of Action shares the bundle id dev.lattices.Action,
+  # and macOS keeps one Accessibility and one Screen Recording grant per bundle id,
+  # bound to the code requirement of the copy that asked. A dev build signed with
+  # Apple Development fails the installed release's requirement and the release
+  # fails the dev build's, so each grant silently stops working for the other copy
+  # while System Settings still shows Action enabled. Signing both with Developer
+  # ID makes them satisfy one requirement and share one grant.
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application:/{print $2; exit}')
   if [[ -n "$identity" ]]; then
     printf '%s\n' "$identity"
     return
   fi
 
-  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Developer ID Application:/{print $2; exit}')
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development:/{print $2; exit}')
   if [[ -n "$identity" ]]; then
     printf '%s\n' "$identity"
     return
@@ -205,6 +212,17 @@ codesign_item "$AGENT_HELPER_APP_DIR"
 codesign_item "$APP_DIR"
 
 printf 'codesigned-with=%s\n' "$SIGNING_IDENTITY" >&2
+
+SIGNING_AUTHORITY=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1 | awk -F= '/^Authority=/{print $2; exit}')
+if [[ "$SIGNING_AUTHORITY" != "Developer ID Application:"* ]]; then
+  cat >&2 <<WARN
+warning: $APP_DIR is signed ${SIGNING_AUTHORITY:-ad-hoc}, not Developer ID.
+warning: It shares the bundle id dev.lattices.Action with the installed release, and macOS
+warning: holds one Accessibility and Screen Recording grant per bundle id. Granting this
+warning: build revokes the release's grant and the other way round. Install a Developer ID
+warning: certificate, or set ACTION_CODESIGN_IDENTITY, to keep one grant for every copy.
+WARN
+fi
 
 "$SCRIPT_DIR/verify-app.sh" >&2
 
