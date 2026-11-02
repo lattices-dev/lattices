@@ -251,6 +251,7 @@ final class ActionLauncherViewModel: ObservableObject {
     @Published var agentStatus: String = "Offline"
     @Published var accessibilityStatus: String = "Unknown"
     @Published var screenRecordingStatus: String = "Unknown"
+    @Published var permissionHelperFocus: ActionPermissionKind = .accessibility
     @Published var notes: [String] = []
     /// The status line before anything has happened. Surfaces compare against
     /// it so they can stay silent rather than print it.
@@ -329,10 +330,7 @@ final class ActionLauncherViewModel: ObservableObject {
     }
 
     func requestPermissions() {
-        Task {
-            _ = await updatePermissions(using: .accessibilityRequest)
-            await requestScreenRecordingPermissionFromHost()
-        }
+        showPermissionHelper(for: isGranted(.accessibility) ? .screenRecording : .accessibility)
     }
 
     /// The copy macOS has to grant. Several copies can share one bundle id, so a
@@ -374,16 +372,50 @@ final class ActionLauncherViewModel: ObservableObject {
         }
     }
 
-    func requestAccessibilityPermission() {
-        Task {
-            _ = await updatePermissions(using: .accessibilityRequest)
+    func isGranted(_ kind: ActionPermissionKind) -> Bool {
+        switch kind {
+        case .accessibility: return accessibilityStatus.lowercased() == "granted"
+        case .screenRecording: return screenRecordingStatus.lowercased() == "granted"
         }
     }
 
-    func requestScreenRecordingPermission() {
-        Task {
-            await requestScreenRecordingPermissionFromHost()
+    func openSettings(for kind: ActionPermissionKind) {
+        switch kind {
+        case .accessibility: openAccessibilitySettings()
+        case .screenRecording: openScreenRecordingSettings()
         }
+    }
+
+    /// Asks macOS once, which adds Action to the list, then opens the helper
+    /// beside System Settings for whatever the prompt did not settle.
+    func showPermissionHelper(for kind: ActionPermissionKind) {
+        Task {
+            switch kind {
+            case .accessibility: _ = await updatePermissions(using: .accessibilityRequest)
+            case .screenRecording: await requestScreenRecordingPermissionFromHost()
+            }
+            let focus = isGranted(kind)
+                ? ActionPermissionKind.allCases.first { !isGranted($0) }
+                : kind
+            if let focus {
+                ActionPermissionHelperController.shared.show(model: self, focus: focus)
+            }
+        }
+    }
+
+    /// Screen Recording is read once per process, so a grant made while the agent
+    /// runs stays denied to it until it restarts.
+    func restartAgentAndRefreshPermissions() {
+        agentProcess.stopIfNeeded()
+        startAgent()
+    }
+
+    func requestAccessibilityPermission() {
+        showPermissionHelper(for: .accessibility)
+    }
+
+    func requestScreenRecordingPermission() {
+        showPermissionHelper(for: .screenRecording)
     }
 
     func openAccessibilitySettings() {

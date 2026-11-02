@@ -2518,11 +2518,13 @@ struct ActionLauncherRootView: View {
                             icon: "arrow.counterclockwise",
                             iconColor: StageHUDTheme.textMuted,
                             title: "Already enabled in System Settings?",
-                            subtitle: "The grant may belong to another Action copy. Reset rebinds it to this one."
+                            subtitle: "The grant may belong to another Action copy. Drag this one into the list, or reset to ask again."
                         ) {
                             HStack(spacing: 8) {
-                                Button("Show in Finder", action: model.revealRunningApp)
-                                    .buttonStyle(ActionSettingsPillButtonStyle())
+                                Button("Drag into Settings") {
+                                    model.showPermissionHelper(for: axGranted ? .screenRecording : .accessibility)
+                                }
+                                .buttonStyle(ActionSettingsPillButtonStyle())
                                 Button("Reset and ask again", action: model.resetPermissionsAndRequest)
                                     .buttonStyle(ActionSettingsPillButtonStyle())
                             }
