@@ -213,7 +213,10 @@ codesign_item "$APP_DIR"
 
 printf 'codesigned-with=%s\n' "$SIGNING_IDENTITY" >&2
 
-SIGNING_AUTHORITY=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1 | awk -F= '/^Authority=/{print $2; exit}')
+# Read all of codesign's output before picking the first Authority: exiting awk early
+# can SIGPIPE codesign, which pipefail turns into a failed build.
+SIGNING_DETAILS=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1 || true)
+SIGNING_AUTHORITY=$(printf '%s\n' "$SIGNING_DETAILS" | sed -n 's/^Authority=//p' | sed -n '1p')
 if [[ "$SIGNING_AUTHORITY" != "Developer ID Application:"* ]]; then
   cat >&2 <<WARN
 warning: $APP_DIR is signed ${SIGNING_AUTHORITY:-ad-hoc}, not Developer ID.
