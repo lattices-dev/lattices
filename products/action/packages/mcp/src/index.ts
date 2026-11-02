@@ -46,6 +46,7 @@ import {
   openBrowserWindow,
   CompanionClient,
   DriveAgentClient,
+  collectPermissionReport,
   inferAxTier,
   inspectCurrentSurface,
   MacOSCommandEngine,
@@ -1482,13 +1483,33 @@ const handlers: Record<string, ToolHandler> = {
 
   async "action.health"() {
     const engine = newEngine();
-    const diagnostics = await engine.diagnostics();
+    if (engine.platform !== "macos") {
+      return { ok: true, actionRoot, nativeHostPath, diagnostics: await engine.diagnostics(), toolFamilies, capabilities: refreshActionCapabilities(serverCapabilities) };
+    }
+    // The agent makes every AX and capture call, so its view is the one that counts;
+    // the host probe is a fresh launch of the checkout's dist copy and can disagree.
+    const permissions = await collectPermissionReport({
+      agentPermissions: () => driveClient.permissions({ startAgent: false }),
+      hostDiagnostics: () => engine.diagnostics(),
+      nativeHostPath,
+    });
+    const diagnostics = {
+      ...permissions.host,
+      accessibility: permissions.accessibility,
+      screenRecording: permissions.screenRecording,
+      notes: [
+        ...(permissions.host?.notes ?? []),
+        ...(permissions.fix ? [permissions.fix] : []),
+        ...permissions.warnings,
+      ],
+    };
 
     return {
       ok: true,
       actionRoot,
       nativeHostPath,
       diagnostics,
+      permissions,
       toolFamilies,
       capabilities: refreshActionCapabilities(serverCapabilities),
     };

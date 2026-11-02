@@ -9,7 +9,19 @@ import type {
   DriveMode,
   DriveOutcome,
   DriveStatusSnapshot,
+  PermissionState,
 } from "@action/protocol";
+
+export interface AgentPermissionSnapshot {
+  accessibility: PermissionState;
+  screenRecording: PermissionState;
+  bundleId?: string;
+  bundlePath?: string;
+}
+
+function asPermissionState(value: string | undefined): PermissionState {
+  return value === "granted" || value === "denied" ? value : "unknown";
+}
 
 interface ActionAgentResponse {
   id: string;
@@ -138,6 +150,17 @@ export class DriveAgentClient {
     return parseAgentJSON<DriveStatusSnapshot>(result, "snapshot");
   }
 
+  /** What the agent itself sees: it is the process that makes every AX and capture call. */
+  async permissions(options: { startAgent?: boolean } = {}): Promise<AgentPermissionSnapshot> {
+    const result = await this.request("permissions.snapshot", {}, options.startAgent ?? true);
+    return {
+      accessibility: asPermissionState(result.accessibility),
+      screenRecording: asPermissionState(result.screenRecording),
+      bundleId: result.bundleId,
+      bundlePath: result.bundlePath,
+    };
+  }
+
   close(): void {
     this.socket?.close(1000, "Action MCP closed");
     this.socket = undefined;
@@ -147,8 +170,9 @@ export class DriveAgentClient {
   private async request(
     method: string,
     params: Record<string, string | undefined> = {},
+    startAgent = true,
   ): Promise<Record<string, string>> {
-    const socket = await this.ensureConnected();
+    const socket = startAgent || this.isConnected ? await this.ensureConnected() : await this.connectOnce(400);
     const id = randomUUID();
     const cleanParams = Object.fromEntries(
       Object.entries({ ...params, authToken: readPrivateToken(actionTokenPath()), protocolVersion: "2" }).filter((entry): entry is [string, string] => entry[1] !== undefined),

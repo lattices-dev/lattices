@@ -213,6 +213,17 @@ codesign_item "$APP_DIR"
 
 printf 'codesigned-with=%s\n' "$SIGNING_IDENTITY" >&2
 
+SIGNING_AUTHORITY=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1 | awk -F= '/^Authority=/{print $2; exit}')
+if [[ "$SIGNING_AUTHORITY" != "Developer ID Application:"* ]]; then
+  cat >&2 <<WARN
+warning: $APP_DIR is signed ${SIGNING_AUTHORITY:-ad-hoc}, not Developer ID.
+warning: It shares the bundle id dev.lattices.Action with the installed release, and macOS
+warning: holds one Accessibility and Screen Recording grant per bundle id. Granting this
+warning: build revokes the release's grant and the other way round. Install a Developer ID
+warning: certificate, or set ACTION_CODESIGN_IDENTITY, to keep one grant for every copy.
+WARN
+fi
+
 "$SCRIPT_DIR/verify-app.sh" >&2
 
 printf '%s\n' "$APP_DIR"
