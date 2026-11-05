@@ -37,6 +37,18 @@
     </script>
 
     <script>
+      // Pulse records visits only on the production site.
+      (function () {
+        if (window.location.origin !== 'https://lattices.dev' || navigator.doNotTrack === '1' || navigator.globalPrivacyControl) return;
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://pulse.arach.dev/track.js';
+        script.dataset.property = '552148955';
+        document.head.appendChild(script);
+      })();
+    </script>
+
+    <script>
       // Apply theme synchronously to avoid a flash of wrong-theme content.
       (function () {
         try {
