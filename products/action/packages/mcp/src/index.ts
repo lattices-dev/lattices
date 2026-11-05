@@ -1164,7 +1164,7 @@ const tools: Tool[] = [
     objectSchema({
       from: objectProperty("Start point: { x, y } or [x, y]."),
       to: objectProperty("End point: { x, y } or [x, y]."),
-      durationMs: numberProperty("How long the drag takes, in ms. Defaults to a hand pace from the distance (140–420)."),
+      durationMs: numberProperty("How long the drag takes, in ms. Defaults to a hand pace from the distance (140–420); browser tasks default to 200."),
       space: enumProperty(["snapshot", "layer"], "How to read the points. Defaults to snapshot."),
       look: booleanProperty("Snapshot the layer after the act and return it. Defaults to on."),
       leaseId: textProperty("Drive lease id. Optional."),

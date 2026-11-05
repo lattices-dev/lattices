@@ -435,7 +435,7 @@ After capability/acceptance preflight and explicit monitor preparation:
 ```text
 layer_open {workspace:"stage", previewFull:true}
 layer_attach {workspace:"stage", subjects:[
-  {bundleId:"app.openscout.scout", frame:{x:0,y:0,width:1920,height:1080}},
+  {bundleId:"app.openscout.scout", frame:{x:0,y:48,width:1920,height:1032}},
   {windowId:123, frame:{x:0,y:700,width:600,height:380}},
   {windowId:124},
   {windowId:125},
@@ -452,9 +452,13 @@ layer_close {workspace:"stage"}
 Each selector needs a bundleId, a windowId, or both (intersection). A bundleId
 selects its currently exposed non-minimized AX windows; use windowId to borrow
 only specific terminals/browser windows. Coordinates are top-left display-local
-points, not snapshot pixels. Frames must fit completely inside the stage.
-Omitted frames use a bounded default placement. Reattaching an already attached
-window fails rather than overwriting its original frame.
+points, not snapshot pixels. Frames must fit completely inside the stage: the
+frames above assume the 1920×1080 `stage` workspace prepared earlier, and the
+default 1440×900 stage rejects them. Like the default placement, start frames
+48 points down so a display menu bar can't push the origin off the requested
+point. Omitted frames use a bounded default placement at one shared origin, so
+several bare windowIds stack; give each a frame to lay them out. Reattaching an
+already attached window fails rather than overwriting its original frame.
 
 CLI equivalents:
 

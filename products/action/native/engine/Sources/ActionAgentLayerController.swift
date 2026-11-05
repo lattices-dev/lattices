@@ -601,7 +601,10 @@ final class ActionAgentLayerController: NSObject {
                 }
             }
             var apps = NSWorkspace.shared.runningApplications
-            if let bundle { apps = apps.filter { $0.bundleIdentifier == bundle } }
+            if let bundle {
+                apps = apps.filter { $0.bundleIdentifier == bundle }
+                guard !apps.isEmpty else { throw ActionHostError.unsupportedOS("no running app has bundleId \(bundle)") }
+            }
             if let identifier {
                 let rows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
                 guard let row = rows.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == identifier }),
@@ -609,13 +612,22 @@ final class ActionAgentLayerController: NSObject {
                     throw ActionHostError.unsupportedOS("windowId was not found")
                 }
                 apps = apps.filter { $0.processIdentifier == pid }
+                guard !apps.isEmpty else {
+                    throw ActionHostError.unsupportedOS(bundle.map { "windowId \(identifier) does not belong to \($0)" }
+                        ?? "windowId \(identifier) is not owned by a running app")
+                }
             }
             var matched = 0
             for app in apps {
                 let pid = app.processIdentifier
                 if attachmentLeases[pid] == nil && leases[pid] == nil {
                     let registry = registryURL
-                    leases[pid] = try ActionWorkspaceLock(url: registry.appendingPathComponent("subject-\(pid).lock"))
+                    do {
+                        leases[pid] = try ActionWorkspaceLock(url: registry.appendingPathComponent("subject-\(pid).lock"))
+                    } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(EWOULDBLOCK) {
+                        let name = app.localizedName ?? app.bundleIdentifier ?? "pid \(pid)"
+                        throw ActionHostError.unsupportedOS("\(name) is already attached to another stage or task")
+                    }
                 }
                 let ax = AXUIElementCreateApplication(pid)
                 AXUIElementSetMessagingTimeout(ax, 0.25)
@@ -650,7 +662,9 @@ final class ActionAgentLayerController: NSObject {
                 }
             }
             guard matched > 0 else {
-                throw ActionHostError.unsupportedOS("selector matched no movable, unattached AX windows; panels must expose AX position and size")
+                // Every app matched: what's left is windows already on the stage (this
+                // call or an earlier one), minimized, or a panel without AX geometry.
+                throw ActionHostError.unsupportedOS("selector matched no movable windows that aren't already attached (in this call or earlier); minimized windows and panels without AX position and size are skipped")
             }
         }
         // Retain restoration records before the first mutation, including failure paths.
@@ -681,7 +695,7 @@ final class ActionAgentLayerController: NSObject {
             }
             try writeState()
         } catch {
-            for window in pending.reversed() { setFrame(window.element, window.original) }
+            settleRestoration(pending)
             moved.removeAll { window in
                 pending.contains { CFEqual($0.element, window.element) } && restored(window)
             }
@@ -689,7 +703,12 @@ final class ActionAgentLayerController: NSObject {
                 attachmentLeases.removeValue(forKey: pid)
             }
             try? writeState()
-            throw error
+            // A window the rollback could not put back is still attached: say so, or the
+            // agent believes the failed attach left nothing on the stage.
+            let stuck = pending.filter { window in moved.contains { CFEqual($0.element, window.element) } }.count
+            guard stuck > 0 else { throw error }
+            throw ActionHostError.unsupportedOS(
+                "\(error.localizedDescription); \(stuck) window(s) remain attached, call layer_detach to restore them")
         }
         return ["ok": true, "attached": pending.count]
     }
@@ -699,15 +718,7 @@ final class ActionAgentLayerController: NSObject {
             throw ActionHostError.unsupportedOS("detach requires an active, unpaused empty stage task")
         }
         let count = moved.count
-        // Apps apply AX moves a beat late: give them the same half second attach does,
-        // asking again halfway, before calling a window stuck.
-        for attempt in 0..<10 {
-            if attempt == 0 || attempt == 5 {
-                for window in moved.reversed() { setFrame(window.element, window.original) }
-            }
-            if moved.allSatisfy(restored) { break }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
+        settleRestoration(moved)
         moved.removeAll { restored($0) }
         for pid in Array(attachmentLeases.keys) where !moved.contains(where: { $0.pid == pid }) {
             attachmentLeases.removeValue(forKey: pid)
@@ -719,9 +730,25 @@ final class ActionAgentLayerController: NSObject {
         return ["ok": true, "detached": count]
     }
 
+    /// Moves windows back to their original frames. Apps apply AX moves a beat late:
+    /// give them the same half second attach does, asking again halfway, before
+    /// calling a window stuck.
+    private func settleRestoration(_ windows: [MovedWindow]) {
+        guard !windows.isEmpty else { return }
+        for attempt in 0..<10 {
+            if attempt == 0 || attempt == 5 {
+                for window in windows.reversed() { setFrame(window.element, window.original) }
+            }
+            if windows.allSatisfy(restored) { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+    }
+
     private func restored(_ window: MovedWindow) -> Bool {
-        // A closed window no longer needs restoration.
-        guard copyAttribute(window.element, kAXRoleAttribute) != nil else { return true }
+        // A closed window no longer needs restoration. Only an invalid element means
+        // closed: a busy app's timeout or lost Accessibility trust fails every read too,
+        // and must keep the record.
+        if axElementGone(window.element) { return true }
         guard let origin = axPoint(copyAttribute(window.element, kAXPositionAttribute)),
               let size = axSize(copyAttribute(window.element, kAXSizeAttribute)) else { return false }
         return abs(origin.x - window.original.minX) < 3 && abs(origin.y - window.original.minY) < 3
@@ -739,21 +766,27 @@ final class ActionAgentLayerController: NSObject {
 
     private func restoreWindows() {
         var closed = 0
-        for window in moved.reversed() {
-            if window.born {
-                // Opened for the agent: it never belonged on the operator's screens.
-                // One that asks before closing (several tabs, unsaved changes) goes to
-                // the Dock instead of landing on their desktop.
-                if close(window.element) {
-                    closed += 1
-                } else {
-                    AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
-                }
+        for window in moved.reversed() where window.born {
+            // Opened for the agent: it never belonged on the operator's screens.
+            // One that asks before closing (several tabs, unsaved changes) goes to
+            // the Dock instead of landing on their desktop.
+            if close(window.element) {
+                closed += 1
             } else {
-                setFrame(window.element, window.original)
+                AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
             }
         }
-        logger.log("agent-layer: restored \(moved.count(where: { !$0.born })) window(s), closed \(closed) opened on the layer")
+        // Borrowed windows go back the way detach puts them back: verified, asked
+        // twice. The state file goes with the layer, so a window that still refuses
+        // is named here with the frame it belongs at.
+        let borrowed = moved.filter { !$0.born }
+        settleRestoration(borrowed)
+        let stuck = borrowed.filter { !restored($0) }
+        for window in stuck {
+            let o = window.original
+            logger.log("agent-layer: window refused restoration: pid \(window.pid) \(window.bundleId ?? "unknown app") \"\(window.title ?? "")\" belongs at \(Int(o.minX)),\(Int(o.minY)) \(Int(o.width))x\(Int(o.height))")
+        }
+        logger.log("agent-layer: restored \(borrowed.count - stuck.count) of \(borrowed.count) window(s), closed \(closed) opened on the layer")
         moved.removeAll()
     }
 
@@ -764,7 +797,7 @@ final class ActionAgentLayerController: NSObject {
               CFGetTypeID(button) == AXUIElementGetTypeID(),
               AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString) == .success else { return false }
         for _ in 0..<50 {
-            if copyAttribute(window, kAXRoleAttribute) == nil { return true }
+            if axElementGone(window) { return true }
             usleep(20_000)
         }
         return false
@@ -1043,6 +1076,13 @@ private func copyAttribute(_ element: AXUIElement, _ attribute: String) -> AnyOb
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
     return value
+}
+
+/// True only when the element no longer exists. A timeout, a busy app or lost
+/// Accessibility trust also fail a read; those are not "gone".
+private func axElementGone(_ element: AXUIElement) -> Bool {
+    var value: CFTypeRef?
+    return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .invalidUIElement
 }
 
 private func axPoint(_ value: AnyObject?) -> CGPoint? {

@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { AgentLayerDirector } from "./agent-layer.js";
 
 test("stage attachment validation rejects before dispatch", async () => {
-  const director = new AgentLayerDirector("/unused/native-host");
-  for (const subjects of [null, [], [{}], [{windowId: -1}], [{windowId: 1.5}], [{bundleId:"x", frame:{x:0,y:0,width:0,height:20}}]]) {
-    await assert.rejects(director.attach(subjects));
+  // A scratch root, and a control that fails the test if reached: validation must
+  // reject on its own, never by bouncing off a live layer under ~/Library.
+  const director = new AgentLayerDirector("/unused/native-host", { root: mkdtempSync(join(tmpdir(), "action-stage-attach-")) });
+  Object.assign(director, { control: async () => { throw new Error("dispatched"); } });
+  const cases: [unknown, RegExp][] = [
+    [null, /1–64 selectors/],
+    [[], /1–64 selectors/],
+    [[{}], /bundleId or windowId/],
+    [[{windowId: -1}], /Invalid windowId/],
+    [[{windowId: 1.5}], /Invalid windowId/],
+    [[{bundleId:"x", frame:{x:0,y:0,width:0,height:20}}], /Invalid frame/],
+  ];
+  for (const [subjects, message] of cases) {
+    await assert.rejects(director.attach(subjects), message);
   }
 });
 
