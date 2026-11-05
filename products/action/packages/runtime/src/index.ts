@@ -16,6 +16,7 @@ export * from "./vision.js";
 export * from "./characters.js";
 export * from "./companion-client.js";
 export * from "./drive-client.js";
+export * from "./permission-identity.js";
 export * from "./drive-cursor.js";
 export * from "./play-log.js";
 export * from "./pointer-events.js";

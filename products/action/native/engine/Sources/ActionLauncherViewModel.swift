@@ -251,6 +251,7 @@ final class ActionLauncherViewModel: ObservableObject {
     @Published var agentStatus: String = "Offline"
     @Published var accessibilityStatus: String = "Unknown"
     @Published var screenRecordingStatus: String = "Unknown"
+    @Published var permissionHelperFocus: ActionPermissionKind = .accessibility
     @Published var notes: [String] = []
     /// The status line before anything has happened. Surfaces compare against
     /// it so they can stay silent rather than print it.
@@ -329,22 +330,92 @@ final class ActionLauncherViewModel: ObservableObject {
     }
 
     func requestPermissions() {
+        showPermissionHelper(for: isGranted(.accessibility) ? .screenRecording : .accessibility)
+    }
+
+    /// The copy macOS has to grant. Several copies can share one bundle id, so a
+    /// grant made to another one looks enabled in System Settings but does not apply.
+    var runningAppPath: String {
+        Bundle.main.bundleURL.resolvingSymlinksInPath().path
+    }
+
+    func revealRunningApp() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+    }
+
+    /// Clears the grants recorded for Action's bundle ids, then asks again, so the
+    /// prompt binds to this copy. This is the way out when Settings shows Action
+    /// enabled for a copy signed differently.
+    func resetPermissionsAndRequest() {
         Task {
+            let bundleIds = [Bundle.main.bundleIdentifier ?? ActionAppIdentity.mainBundleIdentifier,
+                             ActionAppIdentity.agentBundleIdentifier]
+            for service in ["Accessibility", "ScreenCapture"] {
+                for bundleId in bundleIds {
+                    await Self.runTCCReset(service: service, bundleId: bundleId)
+                }
+            }
             _ = await updatePermissions(using: .accessibilityRequest)
             await requestScreenRecordingPermissionFromHost()
         }
+    }
+
+    private nonisolated static func runTCCReset(service: String, bundleId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            process.arguments = ["reset", service, bundleId]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            process.terminationHandler = { _ in continuation.resume() }
+            do { try process.run() } catch { continuation.resume() }
+        }
+    }
+
+    func isGranted(_ kind: ActionPermissionKind) -> Bool {
+        switch kind {
+        case .accessibility: return accessibilityStatus.lowercased() == "granted"
+        case .screenRecording: return screenRecordingStatus.lowercased() == "granted"
+        }
+    }
+
+    func openSettings(for kind: ActionPermissionKind) {
+        switch kind {
+        case .accessibility: openAccessibilitySettings()
+        case .screenRecording: openScreenRecordingSettings()
+        }
+    }
+
+    /// Asks macOS once, which adds Action to the list, then opens the helper
+    /// beside System Settings for whatever the prompt did not settle.
+    func showPermissionHelper(for kind: ActionPermissionKind) {
+        Task {
+            switch kind {
+            case .accessibility: _ = await updatePermissions(using: .accessibilityRequest)
+            case .screenRecording: await requestScreenRecordingPermissionFromHost()
+            }
+            let focus = isGranted(kind)
+                ? ActionPermissionKind.allCases.first { !isGranted($0) }
+                : kind
+            if let focus {
+                ActionPermissionHelperController.shared.show(model: self, focus: focus)
+            }
+        }
+    }
+
+    /// Screen Recording is read once per process, so a grant made while the agent
+    /// runs stays denied to it until it restarts.
+    func restartAgentAndRefreshPermissions() {
+        agentProcess.stopIfNeeded()
+        startAgent()
     }
 
     func requestAccessibilityPermission() {
-        Task {
-            _ = await updatePermissions(using: .accessibilityRequest)
-        }
+        showPermissionHelper(for: .accessibility)
     }
 
     func requestScreenRecordingPermission() {
-        Task {
-            await requestScreenRecordingPermissionFromHost()
-        }
+        showPermissionHelper(for: .screenRecording)
     }
 
     func openAccessibilitySettings() {
@@ -770,7 +841,13 @@ final class ActionLauncherViewModel: ObservableObject {
         do {
             try agentProcess.startIfNeeded()
             Task {
-                await refreshAgentStatus()
+                // The helper takes a moment to open its socket. Until it answers, the
+                // status stays at its starting value instead of reading as offline.
+                let attempts = 20
+                for attempt in 1...attempts {
+                    if await refreshAgentStatus(reportingFailure: attempt == attempts) { break }
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
                 await refreshPermissionsViaAgent()
             }
         } catch {
@@ -805,7 +882,8 @@ final class ActionLauncherViewModel: ObservableObject {
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
-    private func refreshAgentStatus() async {
+    @discardableResult
+    private func refreshAgentStatus(reportingFailure: Bool = true) async -> Bool {
         do {
             let response = try await agentClient.send(method: .status)
             if response.ok {
@@ -816,12 +894,16 @@ final class ActionLauncherViewModel: ObservableObject {
                     updatedNotes.append("agentMethods=\(result["methods"] ?? "")")
                     notes = updatedNotes
                 }
-            } else {
-                agentStatus = response.error ?? "Agent error"
+                return true
             }
+            agentStatus = response.error ?? "Agent error"
+            return false
         } catch {
-            agentStatus = "Disconnected"
-            logger.error("Agent status failed: \(error.localizedDescription, privacy: .public)")
+            if reportingFailure {
+                agentStatus = "Disconnected"
+                logger.error("Agent status failed: \(error.localizedDescription, privacy: .public)")
+            }
+            return false
         }
     }
 
