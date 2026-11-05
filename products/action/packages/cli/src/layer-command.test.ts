@@ -38,7 +38,8 @@ test("persistent monitor setup and teardown are explicit commands", () => {
   for (const command of ["prepare", "display-status", "release"]) {
     assert.deepEqual(parseLayerCommand([command]), { positionals: [command], flags: {} });
   }
-  for (const args of [["prepare", "--browser"], ["prepare", "--bundle-id=app"], ["prepare", "--width=-1"], ["prepare", "--height=0"], ["display-status", "--width=1440"], ["release", "--force"], ["release", "--clear-quarantine"]]) {
+  assert.deepEqual(parseLayerCommand(["prepare", "--scale", "1"]).flags, { scale: "1" });
+  for (const args of [["prepare", "--scale=3"], ["prepare", "--scale", "1.5"], ["open", "--scale=2"], ["prepare", "--browser"], ["prepare", "--bundle-id=app"], ["prepare", "--width=-1"], ["prepare", "--height=0"], ["display-status", "--width=1440"], ["release", "--force"], ["release", "--clear-quarantine"]]) {
     assert.throws(() => parseLayerCommand(args));
   }
 });
@@ -59,4 +60,15 @@ test("CLI rejects unsupported requests before invoking the native host", () => {
     assert.match(output.error, /MCP layer_open/);
     assert.doesNotMatch(output.error, /ENOENT/);
   }
+});
+
+test("explicit stage attach and detach commands", () => {
+  const subjects = '[{"windowId":123}]';
+  assert.deepEqual(parseLayerCommand(["attach", "--workspace", "stage", "--subjects", subjects]), {
+    positionals: ["attach"], flags: {workspace:"stage", subjects},
+  });
+  assert.deepEqual(parseLayerCommand(["detach", "--workspace", "stage"]), {
+    positionals: ["detach"], flags: {workspace:"stage"},
+  });
+  assert.throws(() => parseLayerCommand(["detach", "--subjects", subjects]));
 });

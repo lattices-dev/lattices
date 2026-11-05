@@ -38,6 +38,8 @@ export interface AgentLayerDisplayState {
   width: number;
   height: number;
   serialNumber: number;
+  /** Backing pixels per point. Absent from owners that predate 2x, which were 1x. */
+  scale?: number;
 }
 
 export interface AgentLayerDisplayStatus {
@@ -332,9 +334,10 @@ export class AgentLayerDirector {
       : { ...base, active: false, state: "stale", display: parsed, detail: "Prepared display owner is no longer running." };
   }
 
-  prepareDisplay(input: { width?: unknown; height?: unknown } = {}): Promise<AgentLayerDisplayStatus> {
+  prepareDisplay(input: { width?: unknown; height?: unknown; scale?: unknown } = {}): Promise<AgentLayerDisplayStatus> {
     return this.serialize(async () => {
       const size = parseAgentLayerOpen({ width: input.width, height: input.height });
+      const scale = parseDisplayScale(input.scale);
       if ((size.width !== undefined && size.width < 640) || (size.height !== undefined && size.height < 400)) {
         throw new Error("Prepared display must be at least 640x400");
       }
@@ -345,6 +348,10 @@ export class AgentLayerDirector {
       if (existing.state === "invalid") throw new Error(existing.detail);
       if (existing.active && existing.display) {
         this.assertDisplaySize(existing.display, size);
+        const current = existing.display.scale ?? 1;
+        if (input.scale !== undefined && scale !== current) {
+          throw new Error(`Prepared display is ${current}x; release and explicitly prepare a new display to change its scale`);
+        }
         return existing;
       }
       if ((await this.status()).active) throw new Error("Close the active agent layer before preparing a display");
@@ -354,10 +361,14 @@ export class AgentLayerDirector {
       await rm(paths.displayStop, { force: true });
       const width = size.width ?? 1440;
       const height = size.height ?? 900;
+      if (scale === 2 && (width > 4096 || height > 4096)) {
+        throw new Error("A 2x prepared display must not exceed 4096 points per side; pass scale 1 for larger");
+      }
       const { stdout } = await this.runHost([
         "agent-display", "--state-file", paths.displayState, "--stop-file", paths.displayStop,
         "--workspace", this.workspace,
         "--debug-log", paths.displayLog, "--width", String(width), "--height", String(height),
+        "--scale", String(scale),
       ]);
       const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
       const pid = Number(response.detail);
@@ -636,6 +647,23 @@ export class AgentLayerDirector {
     return this.control("record-start", { out }, RECORD_WAIT_MS);
   }
 
+  /** Explicitly borrow existing windows into an empty stage; no future adoption. */
+  async attach(subjects: unknown): Promise<{ ok: boolean; attached?: number }> {
+    if (!Array.isArray(subjects) || subjects.length === 0 || subjects.length > 64) throw new Error("subjects must contain 1–64 selectors");
+    for (const subject of subjects) {
+      if (!subject || typeof subject !== "object" || Array.isArray(subject)) throw new Error("Invalid subject");
+      if (!(typeof subject.bundleId === "string" && subject.bundleId.trim()) && subject.windowId === undefined) throw new Error("Subject needs bundleId or windowId");
+      if (subject.windowId !== undefined && (!Number.isInteger(subject.windowId) || subject.windowId <= 0 || subject.windowId > 0xffffffff)) throw new Error("Invalid windowId");
+      if (subject.frame !== undefined && (!subject.frame || !["x", "y", "width", "height"].every(k => typeof subject.frame[k] === "number" && Number.isFinite(subject.frame[k])) || subject.frame.width <= 0 || subject.frame.height <= 0)) throw new Error("Invalid frame");
+    }
+    return this.control("attach", { subjects }, 30_000);
+  }
+
+  /** Restore all explicitly attached windows without closing the stage. */
+  async detach(): Promise<{ ok: boolean; detached?: number }> {
+    return this.control("detach", {}, 30_000);
+  }
+
   async stopRecording(): Promise<{ ok: boolean; path?: string }> {
     return this.control("record-stop", {}, RECORD_WAIT_MS);
   }
@@ -881,4 +909,15 @@ async function readJson<T>(path: string): Promise<T | undefined> {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+}
+
+/**
+ * Prepared displays default to 2x so recordings of the layer are Retina, like the
+ * Macs they are shown beside. 1x stays available for very large stages.
+ */
+export function parseDisplayScale(value: unknown): 1 | 2 {
+  if (value === undefined || value === null || value === "") return 2;
+  const scale = Number(value);
+  if (scale !== 1 && scale !== 2) throw new Error("scale must be 1 or 2");
+  return scale;
 }

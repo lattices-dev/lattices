@@ -83,8 +83,10 @@ async function fixture(options: {
       if (args[0] === "agent-display") {
         owners.add(pid);
         if (options.writeDisplayState !== false) {
-          await writeFile(director.paths().displayState, JSON.stringify(displayFor(pid,
-            Number(args[args.indexOf("--width") + 1]), Number(args[args.indexOf("--height") + 1]))));
+          await writeFile(director.paths().displayState, JSON.stringify({
+            ...displayFor(pid, Number(args[args.indexOf("--width") + 1]), Number(args[args.indexOf("--height") + 1])),
+            scale: Number(args[args.indexOf("--scale") + 1]),
+          }));
         }
         return { stdout: JSON.stringify({ status: "agent-display-running", detail: String(pid) }) };
       }
@@ -189,6 +191,30 @@ describe("AgentLayerDirector", () => {
       await assert.rejects(director.prepareDisplay({ width: 639, height: 400 }), /at least 640x400/);
       await assert.rejects(director.prepareDisplay({ width: 640 }), /go together/);
       await assert.rejects(director.prepareDisplay({ width: 8193, height: 900 }), /must not exceed 8192/);
+    } finally { await cleanup(); }
+  });
+
+  test("prepared displays default to 2x and never change scale in place", async () => {
+    const { director, calls, cleanup } = await fixture({ prepared: false });
+    try {
+      await assert.rejects(director.prepareDisplay({ width: 4097, height: 900 }), /4096 points per side/);
+      await assert.rejects(director.prepareDisplay({ scale: 3 }), /scale must be 1 or 2/);
+      assert.equal(calls.length, 0);
+      const prepared = await director.prepareDisplay();
+      assert.equal(calls[0]?.[calls[0].indexOf("--scale") + 1], "2");
+      assert.equal(prepared.display?.scale, 2);
+      assert.equal((await director.prepareDisplay({ scale: 2 })).display?.scale, 2);
+      await assert.rejects(director.prepareDisplay({ scale: 1 }), /is 2x; release/);
+      assert.equal(calls.length, 1);
+    } finally { await cleanup(); }
+  });
+
+  test("1x stays available for stages too large for 2x", async () => {
+    const { director, calls, cleanup } = await fixture({ prepared: false });
+    try {
+      const prepared = await director.prepareDisplay({ width: 5120, height: 2880, scale: "1" });
+      assert.equal(calls[0]?.[calls[0].indexOf("--scale") + 1], "1");
+      assert.equal(prepared.display?.scale, 1);
     } finally { await cleanup(); }
   });
 

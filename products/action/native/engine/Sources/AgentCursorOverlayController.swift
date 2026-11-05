@@ -1,3 +1,4 @@
+import ActionCore
 import AppKit
 import Foundation
 import ScreenCaptureKit
@@ -390,19 +391,6 @@ final class AgentCursorOverlayController: NSObject {
         overlayView = view
     }
 
-    /// Continuous acceleration at launch and arrival; no abrupt warp segments.
-    private static func travelEase(_ t: Double) -> Double {
-        let x = min(1, max(0, t))
-        return x * x * x * (x * (x * 6 - 15) + 10)
-    }
-
-    private static func trajectory(from: CGPoint, control: CGPoint, to: CGPoint, progress: Double) -> CGPoint {
-        let t = CGFloat(travelEase(progress))
-        let v = 1 - t
-        return CGPoint(x: v * v * from.x + 2 * v * t * control.x + t * t * to.x,
-                       y: v * v * from.y + 2 * v * t * control.y + t * t * to.y)
-    }
-
     private func renderFrame() {
         ensureWindow()
         guard let screen = overlayWindow?.screen ?? NSScreen.main else {
@@ -427,9 +415,9 @@ final class AgentCursorOverlayController: NSObject {
                 }
             } else {
                 let control = moveControl ?? origin
-                let position = Self.trajectory(from: origin, control: control, to: target, progress: u)
+                let position = ActionPointerMotion.point(from: origin, control: control, to: target, progress: u)
                 let prevU = max(0, (now - dt - t0) / max(0.001, moveDuration))
-                let prev = Self.trajectory(from: origin, control: control, to: target, progress: prevU)
+                let prev = ActionPointerMotion.point(from: origin, control: control, to: target, progress: prevU)
                 travelPoint = position
                 speed = CGFloat(hypot(position.x - prev.x, position.y - prev.y) / max(dt, 0.001))
                 trail.append(TrailSample(point: position, at: now))
