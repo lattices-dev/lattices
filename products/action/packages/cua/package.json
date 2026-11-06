@@ -1,6 +1,6 @@
 {
   "name": "@lattices/action",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Computer use on macOS through one contract: codex-cua, trycua-cua and action-cua backends, with a tier gate, as a library, an MCP server and a CLI.",
   "license": "MIT",
   "homepage": "https://lattices.dev/action",

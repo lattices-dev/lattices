@@ -27,6 +27,7 @@ import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/prom
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { findActionApp } from "./locate.js";
 import type { BackendHost, BackendCallInput } from "./host.js";
 import type { BackendAvailability, BackendNeed } from "./types.js";
 
@@ -82,7 +83,7 @@ export type AskOptions = {
   timeoutMs?: number;
   checkMs?: number;
   pollMs?: number;
-  /** Action.app; defaults to ACTION_APP, /Applications, ~/Applications. */
+  /** Action.app; defaults to ACTION_APP, /Applications, ~/Applications, then the running Action. */
   app?: string;
   /** Where asks, locks and the log live; defaults to Action's Application Support. */
   dir?: string;
@@ -105,11 +106,7 @@ export function defaultAskDir(): string {
 }
 
 export function resolveActionApp(explicit?: string): string | undefined {
-  const candidates = [explicit, process.env.ACTION_APP, "/Applications/Action.app", join(homedir(), "Applications/Action.app")]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  return candidates.find((path) => {
-    try { return statSync(path).isDirectory() && existsSync(join(path, "Contents/MacOS/Action")); } catch { return false; }
-  });
+  return findActionApp(explicit);
 }
 
 function run(file: string, args: string[], timeoutMs: number): Promise<string> {
