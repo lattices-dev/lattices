@@ -92,7 +92,7 @@ Keep these rules intact:
 
 ## Private-layer discovery
 
-Use `lats action capabilities` and the active MCP `capabilities` / `tools/list`
+Use `action capabilities` and the active MCP `capabilities` / `tools/list`
 for build provenance and routing. Check host quarantine before opening a private
 display. Native support, runtime health, and version strings do not establish
 physical desktop preservation. See [Agent layer](/action/docs/agent-layer).

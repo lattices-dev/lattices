@@ -10,8 +10,8 @@ describe("Action quick start", () => {
     const html = renderToStaticMarkup(createElement(ActionQuickStart));
     expect(html).toContain('id="get-started"');
     expect(html).toContain("Install Bun first");
-    expect(html).toContain("lats action install --launch");
-    expect(html).toContain("permissions.snapshot");
+    expect(html).toContain("action install --launch");
+    expect(html).toContain("action setup action-cua");
     expect(html).toContain("capture.screenshotScreen");
     expect(html).toContain("&quot;output&quot;");
     expect(html.match(/<li /g)).toHaveLength(3);

@@ -32,9 +32,9 @@ running these commands. Build only in the native development workspace; copy a
 matched bundle and runtime to installation targets.
 
 ```bash
-lats action layer prepare --workspace stage --width 1920 --height 1080
-lats action layer prepare --workspace agent --width 1440 --height 900
-lats action layer list
+action layer prepare --workspace stage --width 1920 --height 1080
+action layer prepare --workspace agent --width 1440 --height 900
+action layer list
 ```
 
 After preflight and host acceptance, attach tasks through MCP:
@@ -60,14 +60,14 @@ as finished. An empty stage task does not populate or arrange application window
 Set `previewFull:true` on the stage's `layer_open` or `layer_pip` call to show its
 entire display, including the embedded agent preview. Otherwise the preview follows
 the subject windows and can crop out the embedded preview. CLI equivalent:
-`lats action layer pip --workspace stage --preview-full`. Each preview identifies
+`action layer pip --workspace stage --preview-full`. Each preview identifies
 its workspace and host. Preview framing does not change full-display recording.
 
 Use `layer_pip {workspace:"agent", previewWorkspace:"stage"}` to move an existing
 preview. CLI equivalent:
 
 ```bash
-lats action layer pip --workspace agent --preview-workspace stage
+action layer pip --workspace agent --preview-workspace stage
 ```
 
 Action rejects self-previews and recursive preview chains. A preview that loses
@@ -81,8 +81,8 @@ layer_close {workspace:"stage"}
 ```
 
 ```bash
-lats action layer release --workspace agent
-lats action layer release --workspace stage
+action layer release --workspace agent
+action layer release --workspace stage
 ```
 
 Browser profiles are separate for each named workspace. A busy debugging port
@@ -108,8 +108,8 @@ arrangement, or window placement; it does not promise an unchanged desktop.
 Check capabilities and quarantine first. Preparation never clears quarantine.
 
 ```bash
-lats action layer display-status
-lats action layer prepare --width 1440 --height 900
+action layer display-status
+action layer prepare --width 1440 --height 900
 ```
 
 `display-status` is read-only. `prepare` reuses an existing live monitor when
@@ -122,7 +122,7 @@ the monitor. Monitors prepared before 2× support report no `scale` and are 1×.
 
 Once prepared, `layer open` attaches a task without connecting another display.
 `layer close` restores that task's windows and leaves the monitor connected.
-When the user wants to disconnect the monitor, use `lats action layer release`;
+When the user wants to disconnect the monitor, use `action layer release`;
 it refuses while a task is active, so close the task first with `layer close`. Release can
 also change the desktop topology. A restart, crashed monitor owner, or missing
 monitor requires explicit preparation again, not automatic recovery during
@@ -130,10 +130,10 @@ the next task.
 
 ## Check capabilities before opening
 
-Run `lats action capabilities`, then call `capabilities` on the active MCP
+Run `action capabilities`, then call `capabilities` on the active MCP
 connection. Check its `tools/list` for `layer_open`, `layer_snapshot`,
 `layer_click`, `layer_type`, `layer_js`, and `layer_close`.
-Use `lats action layer display-status` to confirm a prepared monitor is active.
+Use `action layer display-status` to confirm a prepared monitor is active.
 If it is missing, stop the task and report the preparation requirement.
 
 Compare the orchestration source digest, signed native build manifest, and
@@ -265,7 +265,7 @@ display. Closing a task does not release the monitor.
 
 ## Acceptance
 
-Read-only lookup is `lats action capabilities` or MCP `capabilities`, under
+Read-only lookup is `action capabilities` or MCP `capabilities`, under
 `acceptance.privateLayer`. The native host supplies the current host and
 physical-display context; inability to read that context leaves acceptance
 unverified. The record's matching status does not override `safety.privateLayer`

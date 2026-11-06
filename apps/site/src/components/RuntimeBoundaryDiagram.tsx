@@ -42,7 +42,7 @@ export function MacRuntimeDiagram() {
             <div><dt>Chrome bridge</dt><dd><code>action-chrome.sock</code></dd></div>
             <div><dt>Job service, in Action support</dt><dd><code>runtime/companion.sock</code></dd></div>
           </dl>
-          <p className="runtime-entry"><code>lats action</code> calls the agent directly. The Chrome native messaging host connects to the Chrome bridge. Recording probes and the durable job service keep separate processes.</p>
+          <p className="runtime-entry"><code>action call</code> reaches the agent directly. The Chrome native messaging host connects to the Chrome bridge. Recording probes and the durable job service keep separate processes.</p>
         </section>
         <section className="runtime-process">
           <h3>Canvas.app <span>Spatial notes</span></h3>

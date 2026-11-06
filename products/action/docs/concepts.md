@@ -11,7 +11,7 @@ command.
 
 The port numbers and connection behavior below describe published builds.
 Matching development builds use private IPC: the Action agent listens on
-`~/.lattices/run/action.sock`, and the runtime and `lats action call` supply
+`~/.lattices/run/action.sock`, and the runtime and `action call` supply
 the connection token. Lattices core uses its own private socket. Remote access
 goes through a separate, explicitly started gateway with approved method grants.
 See [Private transport](/action/docs/api#private-connection) and
@@ -60,11 +60,13 @@ Several Lattices family commands look related to Action. Only some reach it.
 
 | Command | Receiver | Notes |
 | --- | --- | --- |
-| `lats action install`, `update` | Lattices CLI | Downloads `Action.dmg` from the latest `action-v*` release to `/Applications` |
-| `lats action launch`, `quit`, `status` | Lattices CLI and `Action.app` | Starts or stops the app. Prepared layer displays survive `quit`. |
-| `lats action call <method>` | Action agent, port 4319 | Raw RPC. The CLI does not add credentials; privileged methods require `protocolVersion` and `authToken` parameters. |
-| `lats action mcp` | Action MCP server (stdio) | Needs a runtime bundle, `ACTION_ROOT`, or a checkout |
-| `lats action capabilities`, `layer …`, other verbs | Action CLI | Forwarded with `bun --cwd <action-root> action …`. Fails without a runtime or checkout. |
+| `action install`, `update` | `@lattices/action` | Downloads `Action.dmg` from the latest `action-v*` release to `/Applications` |
+| `action launch`, `quit`, `status` | `@lattices/action` and `Action.app` | Starts or stops the app. Prepared layer displays survive `quit`. `status` also reports each computer-use backend. |
+| `action call <method>` | Action agent, `action.sock` | Raw RPC. The CLI supplies the local token and protocol version. |
+| `action setup`, `observe`, `press`, `set`, `act` | `@lattices/action` | Computer use through `action-cua`, `codex-cua`, or `trycua-cua` |
+| `action mcp` | `@lattices/action` MCP server (stdio) | The computer-use tools (`cua_*`). The full Action MCP server, with drive and layer tools, is `lats action mcp`. |
+| `action capabilities`, `layer …`, other verbs | Action runtime CLI | Forwarded to `<action-root>/packages/cli`. Fails without a runtime or checkout. |
+| `lats action …` | Lattices CLI | The same app commands from the Lattices CLI, plus `lats action mcp` |
 | `lats computer …` | Lattices core daemon, port 9399 | `computer.*` methods are implemented in Lattices core, not in Action |
 | `lats mcp` (`browser_*` tools) | Lattices MCP server | Drives Action-owned Chrome profiles over CDP. It does not call Action.app. |
 | Action MCP with `ACTION_REMOTE_HOST` | `lattices-host` on the remote machine, port 9399 | The Linux path uses the Lattices host protocol, not the Action agent |
@@ -127,7 +129,7 @@ These features solve opposite problems.
 ## Capability discovery
 
 Version strings do not prove feature parity. Before private-layer work, read
-`lats action capabilities` or the MCP `capabilities` tool. Check the source and
+`action capabilities` or the MCP `capabilities` tool. Check the source and
 native fingerprints, `runtimeParity.state`, host quarantine, and
 `acceptance.privateLayer.state`.
 
