@@ -1,7 +1,7 @@
 /**
  * Action.app's one-shot native host, with no dependency on @action/runtime.
  * options.host / ACTION_NATIVE_HOST selects an executable launcher; otherwise
- * options.app / ACTION_APP, /Applications, then ~/Applications supply Action.app.
+ * options.app / ACTION_APP, /Applications, ~/Applications, then the running Action supply Action.app.
  * options.apps optionally limits targets to bundle ids. Nothing is installed.
  *
  * Native refs retain observed AX paths when the host advertises path commands.
@@ -25,6 +25,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { actionAppCandidates, findActionApp } from "./locate.js";
 import { recordSetupStep, setupCall, waitForSetupPoll } from "./setup.js";
 import type {
   Backend,
@@ -188,9 +189,6 @@ function expand(path: string): string {
 function executable(path: string): boolean {
   try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; }
 }
-function appExists(path: string): boolean {
-  try { return statSync(path).isDirectory() && executable(join(path, "Contents/MacOS/Action")); } catch { return false; }
-}
 function configured(value: unknown): string[] {
   return typeof value === "string" && value.trim() ? [expand(value.trim())] : [];
 }
@@ -237,12 +235,14 @@ export function createActionCuaBackend(ctx: Ctx): Backend {
 
   function resolveLauncher(): { launcher?: Launcher; reason: string } {
     const hosts = [...configured(options.host), ...configured(process.env.ACTION_NATIVE_HOST)];
-    const bundles = [...configured(options.app), ...configured(process.env.ACTION_APP), "/Applications/Action.app", join(homedir(), "Applications/Action.app")];
-    const app = bundles.find(appExists);
     const host = hosts.find(executable);
+    const explicit = configured(options.app)[0] ?? configured(process.env.ACTION_APP)[0];
+    const bundles = actionAppCandidates(explicit, { running: false });
+    // A configured host owns the launch; only without one is the running Action worth a process lookup.
+    const app = findActionApp(explicit, { running: !host });
     return {
       ...(host ? { launcher: { host, ...(app ? { app } : {}) } } : app ? { launcher: { app } } : {}),
-      reason: `No executable native launcher or runnable Action.app found (checked ${[...hosts, ...bundles].join(", ")}). Install Action.app or set ACTION_NATIVE_HOST to an executable launcher (or options.host).`,
+      reason: `No executable native launcher or runnable Action.app found (checked ${[...hosts, ...bundles, "the running Action"].join(", ")}). Install Action.app or set ACTION_NATIVE_HOST to an executable launcher (or options.host).`,
     };
   }
 
