@@ -27,7 +27,7 @@ own release tags (`action-vX.Y.Z`), and its own lifecycle.
 | Action agent | `Action.app/Contents/Helpers/ActionAgent.app`, `ws://127.0.0.1:4319` | Local WebSocket RPC for native requests and drive leases |
 | Agent runtime | A runtime bundle or a `products/action` checkout | TypeScript runtime, product CLI, and the Action MCP server |
 
-`lats action install` installs the app only. The app alone does not include MCP
+`action install` installs the app only. The app alone does not include MCP
 orchestration. To connect an agent over MCP, install the matching runtime as
 described in [Agent setup](/action/docs/agent-setup).
 
@@ -38,8 +38,10 @@ owns native computer use on `action.sock`. Both sockets are in
 `~/.lattices/run`. Quitting one app does not stop the other. Remote access goes only through the opt-in Lattices gateway. See
 [API](/action/docs/api#private-connection).
 
-The Lattices CLI is the family entry point. `lats action` installs, launches,
-quits, and queries Action, and forwards other verbs to the Action CLI. Two
+Action has its own CLI, `action`, from `@lattices/action`. It installs,
+launches, quits, and queries Action, drives apps through its computer-use
+backends, and forwards other verbs to the Action runtime CLI. `lats action`
+remains as the Lattices family entry point. Two
 nearby commands do not reach Action:
 
 - `lats computer` calls the core daemon's `computer.*` methods. See the

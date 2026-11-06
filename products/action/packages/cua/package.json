@@ -1,0 +1,50 @@
+{
+  "name": "@lattices/action",
+  "version": "0.1.0",
+  "description": "Computer use on macOS through one contract: codex-cua, trycua-cua and action-cua backends, with a tier gate, as a library, an MCP server and a CLI.",
+  "license": "MIT",
+  "homepage": "https://lattices.dev/action",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arach/lattices",
+    "directory": "products/action/packages/cua"
+  },
+  "bugs": {
+    "url": "https://github.com/arach/lattices/issues"
+  },
+  "keywords": ["computer-use", "cua", "macos", "accessibility", "mcp", "codex", "trycua", "agent"],
+  "type": "module",
+  "os": ["darwin"],
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "action": "./bin/action.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
+    },
+    "./tools": {
+      "types": "./dist/tools.d.ts",
+      "import": "./dist/tools.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "dist", "README.md"],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "test": "bun test src",
+    "prepublishOnly": "bun run build && bun test src"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
+  }
+}

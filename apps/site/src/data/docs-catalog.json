@@ -21,7 +21,7 @@
       "home": "/action",
       "agent": {
         "guide": "/action/docs/agent-setup",
-        "firstCheck": "lats action status",
+        "firstCheck": "action status",
         "expect": "Install, runtime, and agent state. Over MCP, read `capabilities` and `tools/list` and report the native/runtime match before you take control.",
         "boundary": "Action owns native observe, resolve, act, and record, private agent layers, and Action-owned browsers. Window tiling and workspaces are Lattices."
       },

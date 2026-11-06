@@ -25,14 +25,14 @@ Action lets agents inspect and control native Mac apps and browser surfaces thro
 
 ## Install and run
 
-Action is a separate macOS app. With Bun installed, install the Lattices CLI and
-use its Action entry point:
+Action is a separate macOS app. With Bun installed, install the Action CLI and
+let it install the app:
 
 ```sh
-bun add --global @lattices/lattices
-lattices action install
-lattices action launch
-lattices action status --json
+bun add -g @lattices/action
+action install --launch
+action setup action-cua
+action status
 ```
 
 The installer downloads `Action.dmg` from the latest `action-v*` release and
@@ -43,7 +43,7 @@ control and capture.
 To query the running Action agent:
 
 ```sh
-lattices action call status
+action call status
 ```
 
 ## CLI and MCP
@@ -89,8 +89,9 @@ Lattices core owns workspace organization and its daemon at
 `ws://127.0.0.1:9399`. Action keeps its own app lifecycle and agent at
 `ws://127.0.0.1:4319`.
 
-- `lattices action` installs, launches, and queries Action. Other product CLI
-  commands are forwarded when a `products/action` checkout is available.
+- `action` (from `@lattices/action`) installs, launches, and queries Action.
+  Other product CLI commands are forwarded when a `products/action` checkout
+  or runtime is available. `lats action` offers the same from the Lattices CLI.
 - `lattices computer` calls the core daemon's `computer.*` workspace automation
   methods. Its API is documented in the [core API reference](../../docs/api.md).
 - `lattices mcp` serves the Action Browser tools from the Lattices CLI. These
