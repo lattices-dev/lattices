@@ -6931,3 +6931,228 @@ button.nav-link {
   .install-main > :is(.install-download, .install-brew, .install-npm)::before,
   .install-app-mark, .install-command, .install-copy-command button, .install-primary { transition: none; }
 }
+
+/* ── Action: computer-use backends ─────────────────── */
+
+.action-backends {
+  width: min(1200px, calc(100% - 48px));
+  margin-inline: auto;
+  padding: 104px 0;
+  border-top: 1px solid var(--action-rule);
+}
+
+.action-backends .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.action-backend-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--action-rule-strong);
+  border-bottom: 1px solid var(--action-rule);
+}
+
+.action-backend-cards li {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr auto;
+  gap: 6px;
+  padding: 32px 28px 28px;
+  color: var(--action-ink);
+}
+
+.action-backend-cards li + li {
+  border-left: 1px solid var(--action-rule);
+}
+
+.action-backend-mark {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 18px;
+}
+
+.action-backend-mark svg {
+  display: block;
+}
+
+.action-backend-id,
+.action-backend-setup,
+.action-backend-cards dt,
+.action-tier-table th,
+.action-tier-table td {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.action-backend-id {
+  color: var(--action-coral);
+}
+
+.action-backend-cards h3 {
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.action-backend-engine {
+  color: var(--action-copy);
+}
+
+.action-backend-cards dl {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 14px 0 0;
+  color: var(--action-copy);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.action-backend-cards dt {
+  flex: none;
+  color: color-mix(in srgb, var(--action-ink) 48%, transparent);
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.action-backend-cards dd {
+  margin: 0;
+}
+
+.action-backend-setup {
+  justify-self: start;
+  margin-top: 22px;
+  padding: 7px 10px;
+  border: 1px solid var(--action-rule);
+  border-radius: 6px;
+  background: var(--action-paper-light);
+  color: var(--action-ink);
+}
+
+.action-tier-gate {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(32px, 6vw, 88px);
+  align-items: start;
+  margin-top: 64px;
+}
+
+.action-tier-copy h3 {
+  margin-bottom: 18px;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.action-tier-copy p {
+  color: var(--action-copy);
+  line-height: 1.65;
+}
+
+.action-tier-copy p + p {
+  margin-top: 12px;
+}
+
+.action-tier-copy strong {
+  color: var(--action-ink);
+  font-weight: 600;
+}
+
+.action-tier-copy code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86em;
+  color: var(--action-ink);
+}
+
+.action-tier-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.action-tier-table th,
+.action-tier-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--action-rule);
+  text-align: left;
+}
+
+.action-tier-table thead th {
+  border-bottom-color: var(--action-rule-strong);
+  color: color-mix(in srgb, var(--action-ink) 55%, transparent);
+  font-weight: 400;
+}
+
+.action-tier-table tbody th {
+  color: var(--action-ink);
+  font-weight: 500;
+}
+
+.action-tier-table td {
+  white-space: nowrap;
+}
+
+.action-tier-table td[data-tier='semantic'] {
+  color: var(--action-ink);
+}
+
+.action-tier-table td[data-tier='attention'] {
+  color: color-mix(in srgb, var(--action-ink) 42%, transparent);
+}
+
+.action-tier-table td[data-tier='semantic']::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--action-coral);
+  vertical-align: 1px;
+  content: "";
+}
+
+@media (max-width: 860px) {
+  .action-backend-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .action-backend-cards li + li {
+    border-top: 1px solid var(--action-rule);
+    border-left: 0;
+  }
+
+  .action-backend-cards li {
+    padding: 28px 0;
+  }
+
+  .action-tier-gate {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .action-backends {
+    width: calc(100% - 32px);
+    padding: 72px 0;
+  }
+
+  .action-tier-table th,
+  .action-tier-table td {
+    padding: 10px 4px;
+    font-size: 10px;
+  }
+
+  .action-tier-table td[data-tier='semantic']::before {
+    margin-right: 5px;
+  }
+}
