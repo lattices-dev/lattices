@@ -21,10 +21,11 @@ final class DaemonServer: ObservableObject {
     private let speechCapabilityURL: URL
     private let speechEndpoint: URL?
     private let eventBus: EventBus
+    private let api: LatticesApi
     private var subscribedToEventBus = false
     private(set) var listeningPort: UInt16 = 0
 
-    init(port: UInt16? = nil, socketPath: String? = nil, tokenURL: URL? = nil, speechCapabilityURL: URL = SpeechCompanionConnection.capabilityURL, speechEndpoint: URL? = nil, eventBus: EventBus = .shared) {
+    init(port: UInt16? = nil, socketPath: String? = nil, tokenURL: URL? = nil, speechCapabilityURL: URL = SpeechCompanionConnection.capabilityURL, speechEndpoint: URL? = nil, eventBus: EventBus = .shared, api: LatticesApi = .shared) {
         let compatibility = ProcessInfo.processInfo.environment["LATTICES_ALLOW_LOOPBACK_TCP"] == "1"
         self.port = port ?? (compatibility ? LatticesLocalEndpoints.agentAPIPort : nil)
         self.socketPath = self.port == nil ? (socketPath ?? LatticesLocalEndpoints.agentSocketPath) : nil
@@ -32,6 +33,7 @@ final class DaemonServer: ObservableObject {
         self.speechCapabilityURL = speechCapabilityURL
         self.speechEndpoint = speechEndpoint
         self.eventBus = eventBus
+        self.api = api
     }
 
     private var generation = UUID()
@@ -39,6 +41,9 @@ final class DaemonServer: ObservableObject {
     private var clients: [UUID: WebSocketClient] = [:]
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "lattices.daemon", qos: .userInitiated)
+    // Transport never executes application handlers: they may wait for main.
+    // This also makes synchronous listener shutdown safe from the main thread.
+    private let requestQueue = DispatchQueue(label: "lattices.daemon.requests", qos: .userInitiated)
     private let blockingRequestQueue = DispatchQueue(
         label: "lattices.daemon.blocking-requests",
         qos: .userInitiated,
@@ -63,7 +68,6 @@ final class DaemonServer: ObservableObject {
         "capture.stream.keyframe",
         "capture.stream.stop",
     ]
-    private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var acceptSource: DispatchSourceRead?
 
@@ -173,6 +177,7 @@ final class DaemonServer: ObservableObject {
         for client in closing {
             let speech = client.speechConnection
             Task { await speech?.close() }
+            client.readSource?.cancel()
             client.closeSocket()
         }
         DispatchQueue.main.async {
@@ -182,13 +187,13 @@ final class DaemonServer: ObservableObject {
     }
 
     func broadcast(_ event: DaemonEvent) {
-        guard let data = try? encoder.encode(event),
+        guard let data = try? JSONEncoder().encode(event),
               let text = String(data: data, encoding: .utf8) else { return }
         lock.lock()
         let snapshot = clients
         lock.unlock()
         for (_, client) in snapshot where EventSubscriptions.wants(client.subscribedEvents, event: event.event) {
-            sendWebSocketText(text, to: client)
+            client.enqueue(opcode: 0x1, payload: Data(text.utf8))
         }
     }
 
@@ -293,14 +298,16 @@ final class DaemonServer: ObservableObject {
         // Admission runs off the serial queue; recheck the lifecycle before
         // registering, so a late handshake cannot survive stop/restart.
         queue.async {
-            guard self.serverFd >= 0, self.generation == generation else { close(client.fd); return }
+            guard self.serverFd >= 0, self.generation == generation else { client.closeSocket(); return }
+            // Install the queue-owned read/close lifecycle before broadcasts can
+            // discover this client and enqueue output from another thread.
+            self.readLoop(client: client)
             self.lock.lock()
             self.clients[client.id] = client
             let count = self.clients.count
             self.lock.unlock()
             DispatchQueue.main.async { self.clientCount = count }
             diag.info("DaemonServer: client connected (\(count) total)")
-            self.readLoop(client: client)
         }
     }
 
@@ -409,11 +416,11 @@ final class DaemonServer: ObservableObject {
     }
 
     private func sendFrame(opcode: UInt8, payload: [UInt8], to client: WebSocketClient) {
-        client.send(opcode: opcode, payload: Data(payload))
+        client.enqueue(opcode: opcode, payload: Data(payload))
     }
 
     private func sendWebSocketText(_ text: String, to client: WebSocketClient) {
-        client.send(opcode: 0x1, payload: Data(text.utf8))
+        client.enqueue(opcode: 0x1, payload: Data(text.utf8))
     }
 
     // MARK: - Message Handling
@@ -422,6 +429,12 @@ final class DaemonServer: ObservableObject {
         guard let request = try? decoder.decode(DaemonRequest.self, from: data) else {
             let errResponse = DaemonResponse(id: "?", result: nil, error: "Invalid request JSON")
             sendResponse(errResponse, to: client)
+            return
+        }
+
+        guard !request.isExpired else {
+            sendResponse(DaemonResponse(id: request.id, result: nil, error: "deadline_exceeded: Request expired before execution",
+                                       delivery: DaemonDelivery.notDelivered.json(method: request.method)), to: client)
             return
         }
 
@@ -439,7 +452,15 @@ final class DaemonServer: ObservableObject {
         }
 
         if request.method == "voice.status" {
-            handleVoiceStatus(request, client: client)
+            requestQueue.async { [weak self] in
+                guard let self, self.isConnected(client) else { return }
+                let context = DaemonContext(connection: client, deadline: request.deadline)
+                let base = context.run { self.api.handle(request) }
+                self.queue.async { [weak self] in
+                    guard let self, self.isConnected(client) else { return }
+                    self.handleVoiceStatus(request, base: base, client: client)
+                }
+            }
             return
         }
 
@@ -448,26 +469,23 @@ final class DaemonServer: ObservableObject {
             return
         }
 
-        // These handlers can sleep or wait for the user. Keep them off the
-        // serial socket queue so other clients, events, and RPCs still flow.
-        let context = DaemonContext(connection: client)
-        if Self.blockingMethods.contains(MethodAliases.canonical(request.method)) {
-            blockingRequestQueue.async { [weak self] in
-                let response = context.run { LatticesApi.shared.handle(request) }
-                self?.queue.async { [weak self] in
-                    defer { context.replied() }
-                    guard let self, self.isConnected(client) else { return }
-                    self.sendResponse(response, to: client)
+        // Long operations retain independent workers; ordinary operations stay
+        // ordered, but neither queue can hold up socket input or shutdown.
+        let context = DaemonContext(connection: client, deadline: request.deadline)
+        let executionQueue = Self.blockingMethods.contains(MethodAliases.canonical(request.method))
+            ? blockingRequestQueue : requestQueue
+        executionQueue.async { [weak self] in
+            guard let self, self.isConnected(client) else { return }
+            let response = context.run { self.api.handle(request) }
+            self.queue.async { [weak self] in
+                guard let self, self.isConnected(client) else { return }
+                self.sendResponse(response, to: client) { written in
+                    if written { context.replied() }
+                }
+                if CaptureAudit.methods.contains(request.method), response.error == nil {
+                    CaptureAudit.record(method: request.method, caller: client.caller, result: response.result)
                 }
             }
-            return
-        }
-
-        let response = context.run { LatticesApi.shared.handle(request) }
-        sendResponse(response, to: client)
-        context.replied()
-        if CaptureAudit.methods.contains(request.method), response.error == nil {
-            CaptureAudit.record(method: request.method, caller: client.caller, result: response.result)
         }
     }
 
@@ -523,8 +541,7 @@ final class DaemonServer: ObservableObject {
 
     /// `voice.status`: the daemon's listening state plus the Voice helper's
     /// `speech.status`, or why the helper could not be asked.
-    private func handleVoiceStatus(_ request: DaemonRequest, client: WebSocketClient) {
-        let base = LatticesApi.shared.handle(request)
+    private func handleVoiceStatus(_ request: DaemonRequest, base: DaemonResponse, client: WebSocketClient) {
         guard base.error == nil, case .object(var object)? = base.result else {
             sendResponse(base, to: client)
             return
@@ -580,7 +597,7 @@ final class DaemonServer: ObservableObject {
             self?.queue.async { [weak self, weak client] in
                 guard let self, let client, self.isConnected(client) else { return }
                 for event in VoiceHelperRouting.clientEvents(for: update) {
-                    guard let data = try? self.encoder.encode(event), let text = String(data: data, encoding: .utf8) else { continue }
+                    guard let data = try? JSONEncoder().encode(event), let text = String(data: data, encoding: .utf8) else { continue }
                     self.sendWebSocketText(text, to: client)
                 }
             }
@@ -618,10 +635,9 @@ final class DaemonServer: ObservableObject {
         return clients[client.id] === client
     }
 
-    private func sendResponse(_ response: DaemonResponse, to client: WebSocketClient) {
-        guard let data = try? encoder.encode(response),
-              let text = String(data: data, encoding: .utf8) else { return }
-        sendWebSocketText(text, to: client)
+    private func sendResponse(_ response: DaemonResponse, to client: WebSocketClient, completion: ((Bool) -> Void)? = nil) {
+        guard let data = try? JSONEncoder().encode(response) else { completion?(false); return }
+        client.enqueue(opcode: 0x1, payload: data, completion: completion)
     }
 
     // MARK: - Client Management
@@ -721,13 +737,22 @@ protocol DaemonConnection: AnyObject {
 /// queues: who called, and work to do once the reply is on the wire.
 final class DaemonContext {
     let connection: DaemonConnection
+    let deadline: Double?
     private let lock = NSLock()
     private var afterReplyHandlers: [() -> Void] = []
     private var didReply = false
     private static let key = "lattices.daemon.context"
 
-    init(connection: DaemonConnection) {
+    init(connection: DaemonConnection, deadline: Double? = nil) {
         self.connection = connection
+        self.deadline = deadline
+    }
+
+    func checkActive() throws {
+        guard connection.isOpen else { throw RouterError.custom("request_cancelled: Connection closed") }
+        if let deadline, Date().timeIntervalSince1970 * 1000 >= deadline {
+            throw RouterError.custom("deadline_exceeded: Request expired before execution")
+        }
     }
 
     /// The request being handled on this thread, nil for in-process dispatch.
@@ -791,6 +816,12 @@ final class WebSocketClient: DaemonConnection {
     /// Guards the fd for writes and close, so whole frames from any thread
     /// never interleave and nothing writes to a reused descriptor.
     private let writeLock = NSLock()
+    private let stateLock = NSLock()
+    private let outboundQueue = DispatchQueue(label: "lattices.daemon.client-output")
+    private let outboundLock = NSLock()
+    private var pendingBytes = 0
+    private var outboundFailed = false
+    static let maxPendingBytes = 32 * 1024 * 1024
     private var closed = false
     private var closeHandlers: [() -> Void] = []
     /// How long one frame may wait on a full socket before the client is dropped.
@@ -804,7 +835,7 @@ final class WebSocketClient: DaemonConnection {
     var connectionID: UUID { id }
 
     var isOpen: Bool {
-        writeLock.lock(); defer { writeLock.unlock() }
+        stateLock.lock(); defer { stateLock.unlock() }
         return !closed
     }
 
@@ -818,14 +849,43 @@ final class WebSocketClient: DaemonConnection {
     }
 
     func onClose(_ handler: @escaping () -> Void) {
-        writeLock.lock()
+        stateLock.lock()
         if closed {
-            writeLock.unlock()
+            stateLock.unlock()
             DispatchQueue.global(qos: .userInitiated).async(execute: handler)
             return
         }
         closeHandlers.append(handler)
-        writeLock.unlock()
+        stateLock.unlock()
+    }
+
+    /// Bounded output for replies and model events. No socket I/O runs on the
+    /// publishing thread. A slow peer cannot retain an unbounded event backlog.
+    @discardableResult
+    func enqueue(opcode: UInt8, payload: Data, completion: ((Bool) -> Void)? = nil) -> Bool {
+        let size = payload.count + 10
+        outboundLock.lock()
+        guard !outboundFailed, size <= Self.maxPendingBytes - pendingBytes else {
+            outboundFailed = true
+            outboundLock.unlock()
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.disconnect()
+                completion?(false)
+            }
+            return false
+        }
+        pendingBytes += size
+        outboundQueue.async {
+            let sent = self.send(opcode: opcode, payload: payload)
+            self.outboundLock.lock()
+            self.pendingBytes -= size
+            if !sent { self.outboundFailed = true }
+            self.outboundLock.unlock()
+            if !sent { self.disconnect() }
+            completion?(sent)
+        }
+        outboundLock.unlock()
+        return true
     }
 
     /// One unfragmented frame. A frame that can't be written whole poisons
@@ -835,7 +895,7 @@ final class WebSocketClient: DaemonConnection {
         let header = Self.frameHeader(opcode: opcode, length: payload.count)
         writeLock.lock()
         defer { writeLock.unlock() }
-        guard !closed else { return false }
+        guard isOpen else { return false }
         let deadline = Date().addingTimeInterval(Self.writeTimeout)
         if writeAll(header, deadline: deadline), writeAll(payload, deadline: deadline) { return true }
         shutdown(fd, SHUT_RDWR)
@@ -846,16 +906,33 @@ final class WebSocketClient: DaemonConnection {
     func writeRaw(_ data: Data) -> Bool {
         writeLock.lock()
         defer { writeLock.unlock() }
-        return !closed && writeAll(data, deadline: Date().addingTimeInterval(Self.writeTimeout))
+        return isOpen && writeAll(data, deadline: Date().addingTimeInterval(Self.writeTimeout))
+    }
+
+    /// A worker may interrupt I/O, but only the read source's cancellation
+    /// handler closes an admitted fd. Closing it on an output worker could race
+    /// a read already running on the daemon queue and read a reused descriptor.
+    private func disconnect() {
+        stateLock.lock()
+        if !closed { shutdown(fd, SHUT_RDWR) }
+        stateLock.unlock()
+        if let source = readSource { source.cancel() }
+        else { closeSocket() } // unregistered socket (including unit fixtures)
     }
 
     func closeSocket() {
-        writeLock.lock()
-        guard !closed else { writeLock.unlock(); return }
+        // Mark closed and interrupt a blocked writer before waiting for it.
+        // Only this first closer may close the fd, so it cannot be reused while
+        // the writer owns writeLock.
+        stateLock.lock()
+        guard !closed else { stateLock.unlock(); return }
         closed = true
-        close(fd)
+        shutdown(fd, SHUT_RDWR)
         let handlers = closeHandlers
         closeHandlers = []
+        stateLock.unlock()
+        writeLock.lock()
+        close(fd)
         writeLock.unlock()
         for handler in handlers { DispatchQueue.global(qos: .userInitiated).async(execute: handler) }
     }

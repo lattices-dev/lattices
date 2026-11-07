@@ -32,6 +32,9 @@ jobs:
       HUDSON_READ_TOKEN: ${{ secrets.HUDSON_READ_TOKEN }}
       LATTICES_TIER: free
       LATTICES_SKIP_HELPERS: "1"
+      LATTICES_HUDSON_SOURCE: git
+      HUDSON_VOX_SOURCE: git
+      LATTICES_LOCKED_DEPENDENCIES: "1"
 
     steps:
       - name: Checkout
@@ -225,14 +228,11 @@ jobs:
       - name: Cache verified speech binary dependency
         run: bash tools/release/cache-speech-artifact.sh
 
+      - name: Test release profile before packaging
+        run: bun run test:app:release
+
       - name: Build DMG
         shell: bash
-        env:
-          LATTICES_HUDSON_SOURCE: git
-          HUDSONKIT_WITH_VOICE: "1"
-          # Resolve hudson's own vox/swift dependency over git too (no local path
-          # in CI). Requires hudson@main >= a8fc83d and vox@main >= 960a1df.
-          HUDSON_VOX_SOURCE: git
         run: |
           set -euo pipefail
 

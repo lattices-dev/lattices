@@ -28,7 +28,7 @@ final class ScreenTextModule: BundleModule {
                     throw RouterError.missingParam("query")
                 }
                 let app = params?["app"]?.stringValue
-                let limit = params?["limit"]?.intValue ?? 50
+                let limit = min(1000, max(0, params?["limit"]?.intValue ?? 50))
                 let live = params?["live"]?.boolValue ?? false
 
                 if live {
@@ -56,7 +56,7 @@ final class ScreenTextModule: BundleModule {
             ],
             returns: .array(model: "OcrSearchResult"),
             handler: { params in
-                let limit = params?["limit"]?.intValue ?? 50
+                let limit = min(1000, max(0, params?["limit"]?.intValue ?? 50))
                 let results = params?["wid"]?.uint32Value.map { OcrStore.shared.history(wid: $0, limit: limit) }
                     ?? OcrStore.shared.recent(limit: limit)
                 return .array(results.map { Encoders.ocrSearchResult($0) })

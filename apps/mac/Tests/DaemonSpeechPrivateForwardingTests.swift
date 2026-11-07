@@ -7,6 +7,79 @@ import XCTest
 final class DaemonSpeechPrivateForwardingTests: XCTestCase {
     private static let childKey = "LATTICES_SPEECH_FORWARDING_TEST_CHILD"
 
+    func testExpiredDuplicateKeepsOriginalSpeechRequestPending() async throws {
+        let directory = URL(fileURLWithPath: "/private/tmp/lats-speech-duplicate-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+                                               attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("speech.sock").path
+        let tokenURL = directory.appendingPathComponent("speech.token")
+        let lease = try PrivateLocalEndpoint(socketPath: path, tokenURL: tokenURL)
+        defer { lease.closeLease() }
+        let listener = try descriptor()
+        defer { Darwin.close(listener) }
+        try lease.bindSocket(listener, path: path)
+        let token = try lease.publishToken(at: tokenURL)
+        guard Darwin.listen(listener, 1) == 0 else { throw socketError() }
+
+        let originalReceived = expectation(description: "original request reached Speech")
+        let duplicateRejected = expectation(description: "duplicate rejected without replacing original")
+        let originalReplied = expectation(description: "original response remains correlated")
+        let served = expectation(description: "Speech responder finished")
+        let replyAllowed = DispatchSemaphore(value: 0)
+        let callerFinished = DispatchSemaphore(value: 0)
+        defer { replyAllowed.signal(); callerFinished.signal() }
+        DispatchQueue(label: "test.speech.duplicate-responder").async {
+            defer { served.fulfill() }
+            do {
+                var readable = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
+                guard poll(&readable, 1, 4000) == 1 else { throw POSIXError(.ETIMEDOUT) }
+                let peer = accept(listener, nil, nil)
+                guard peer >= 0 else { throw self.socketError() }
+                defer { Darwin.close(peer) }
+                try self.configure(peer)
+                let handshake = try self.readHeader(peer)
+                guard DaemonAdmission.allows(handshake, token: token, port: nil) else { throw POSIXError(.EACCES) }
+                let key = try XCTUnwrap(handshake.components(separatedBy: "\r\n")
+                    .first { $0.lowercased().hasPrefix("sec-websocket-key:") }?
+                    .split(separator: ":", maxSplits: 1).last)
+                    .trimmingCharacters(in: .whitespaces)
+                let bytes = Array((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8)
+                var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+                CC_SHA1(bytes, CC_LONG(bytes.count), &digest)
+                try self.writeAll(peer, Data(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+                    "Connection: Upgrade\r\nSec-WebSocket-Accept: \(Data(digest).base64EncodedString())\r\n\r\n").utf8))
+                let request = try JSONDecoder().decode(DaemonRequest.self, from: self.readFrame(peer, masked: true))
+                XCTAssertEqual(request.id, "shared-id")
+                originalReceived.fulfill()
+                guard replyAllowed.wait(timeout: .now() + 5) == .success else { throw POSIXError(.ETIMEDOUT) }
+                let response = DaemonResponse(id: request.id, result: .string("original"), error: nil)
+                try self.writeFrame(peer, data: JSONEncoder().encode(response), masked: false)
+                _ = callerFinished.wait(timeout: .now() + 5)
+            } catch { XCTFail("Private Speech responder failed: \(error)") }
+        }
+
+        let helper = SpeechCompanionConnection(socketPath: path, tokenFile: tokenURL, response: { response in
+            XCTAssertEqual(response.id, "shared-id")
+            if let error = response.error {
+                XCTAssertEqual(error, "Duplicate in-flight request id")
+                duplicateRejected.fulfill()
+            } else {
+                XCTAssertEqual(response.result, .string("original"))
+                originalReplied.fulfill()
+            }
+        }, event: { _ in XCTFail("No Speech event expected") })
+        await helper.forward(DaemonRequest(id: "shared-id", method: "speech.voices", params: nil))
+        await fulfillment(of: [originalReceived], timeout: 5)
+        await helper.forward(DaemonRequest(id: "shared-id", method: "speech.voices", params: nil, deadline: 1))
+        await fulfillment(of: [duplicateRejected], timeout: 1)
+        replyAllowed.signal()
+        await fulfillment(of: [originalReplied], timeout: 2)
+        await helper.close()
+        callerFinished.signal()
+        await fulfillment(of: [served], timeout: 2)
+    }
+
     func testDefaultDaemonForwardsToSpeechPrivateSocketWithItsOwnToken() async throws {
         if ProcessInfo.processInfo.environment[Self.childKey] == "1" {
             try exerciseDefaultForwarding()
