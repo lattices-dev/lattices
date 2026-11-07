@@ -198,6 +198,10 @@ class Preferences: ObservableObject {
         didSet { UserDefaults.standard.set(!ocrEnabled, forKey: "ocr.disabled") }
     }
 
+    @Published var ocrExcludedBundleIDs: Set<String> {
+        didSet { UserDefaults.standard.set(ocrExcludedBundleIDs.sorted(), forKey: "ocr.excludedBundleIDs") }
+    }
+
     @Published var ocrQuickInterval: Double {
         didSet { UserDefaults.standard.set(ocrQuickInterval, forKey: "ocr.interval") }
     }
@@ -412,6 +416,9 @@ class Preferences: ObservableObject {
         } else {
             self.ocrEnabled = false
         }
+
+        self.ocrExcludedBundleIDs = UserDefaults.standard.stringArray(forKey: "ocr.excludedBundleIDs")
+            .map(Set.init) ?? ScreenTextPolicy.defaultExcludedBundleIDs
 
         let savedInterval = UserDefaults.standard.double(forKey: "ocr.interval")
         self.ocrQuickInterval = savedInterval > 0 ? savedInterval : 60

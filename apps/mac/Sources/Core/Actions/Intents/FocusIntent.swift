@@ -57,8 +57,8 @@ struct FocusIntent: LatticeIntent {
         )
         if case .array(let items) = result, let first = items.first,
            let wid = first["wid"]?.uint32Value {
-            let pid = first["pid"]?.intValue ?? Int(DesktopModel.shared.windows[wid]?.pid ?? 0)
-            DispatchQueue.main.async {
+            let pid = first["pid"]?.intValue ?? Int(DesktopModel.shared.snapshot.windows[wid]?.pid ?? 0)
+            try LatticesApi.onMain {
                 WindowTiler.focusWindow(wid: wid, pid: Int32(pid))
             }
             var receipt: [String: JSON] = [
@@ -68,7 +68,7 @@ struct FocusIntent: LatticeIntent {
                 "pid": .int(pid),
                 "targetResolution": .string("search"),
             ]
-            if let entry = DesktopModel.shared.windows[wid] {
+            if let entry = DesktopModel.shared.snapshot.windows[wid] {
                 receipt["app"] = .string(entry.app)
                 receipt["title"] = .string(entry.title)
                 if let session = entry.latticesSession {

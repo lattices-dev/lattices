@@ -50,6 +50,8 @@ protocol ScreenTextIndex: AnyObject {
     var lastReviewedAt: Date? { get }
 
     func setEnabled(_ on: Bool)
+    func setExcludedBundleIDs(_ bundleIDs: Set<String>)
+    func cancelPendingScans()
     func scan()
     func scanSingle(wid: UInt32)
 }
@@ -57,7 +59,8 @@ protocol ScreenTextIndex: AnyObject {
 /// Where scanned text is kept once it leaves the live index. The bundle
 /// installs the SQLite store behind `ocr.search`; the free build keeps none.
 protocol ScreenTextHistory: AnyObject {
-    func insert(results: [OcrWindowResult])
+    func insert(results: [OcrWindowResult], gate: ScreenTextScanGate, permit: UInt64)
+    func clear()
 }
 
 /// Core's view of screen text. Views observe `ScreenText.shared`; one-shot
@@ -74,8 +77,14 @@ final class ScreenText: ObservableObject {
     }
 
     /// Hands freshly scanned windows to the history, when there is one.
-    func record(_ results: [OcrWindowResult]) {
-        history?.insert(results: results)
+    func record(_ results: [OcrWindowResult], gate: ScreenTextScanGate, permit: UInt64) {
+        history?.insert(results: results, gate: gate, permit: permit)
+    }
+
+    /// Explicitly forget saved history. Turning scanning off only stops collection.
+    func clearHistory() {
+        index?.cancelPendingScans()
+        history?.clear()
     }
 
     func install(_ index: ScreenTextIndex) {
@@ -91,15 +100,16 @@ final class ScreenText: ObservableObject {
     var lastReviewedAt: Date? { index?.lastReviewedAt }
 
     func setEnabled(_ on: Bool) { index?.setEnabled(on) }
+    func setExcludedBundleIDs(_ bundleIDs: Set<String>) { index?.setExcludedBundleIDs(bundleIDs) }
     func scan() { index?.scan() }
     func scanSingle(wid: UInt32) { index?.scanSingle(wid: wid) }
 
     // MARK: - Vision OCR
 
-    static func recognize(in image: CGImage) -> [OcrTextBlock] {
+    static func recognize(in image: CGImage, accuracy: String? = nil) -> [OcrTextBlock] {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = Preferences.shared.ocrAccuracy == "fast" ? .fast : .accurate
+        request.recognitionLevel = (accuracy ?? Preferences.shared.ocrAccuracy) == "fast" ? .fast : .accurate
         request.usesLanguageCorrection = true
 
         do {

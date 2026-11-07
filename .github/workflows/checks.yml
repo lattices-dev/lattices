@@ -83,10 +83,10 @@ jobs:
           fi
           git config --global url."https://x-access-token:${HUDSON_READ_TOKEN}@github.com/".insteadOf "git@github.com:"
 
-      - name: Test native app without live window probes
+      - name: Cache verified speech binary dependency
         if: runner.os == 'macOS'
-        env:
-          LATTICES_HUDSON_SOURCE: git
-          HUDSONKIT_WITH_VOICE: "0"
-          LATTICES_BUNDLE: "0"
-        run: bun run test:app
+        run: bash tools/release/cache-speech-artifact.sh
+
+      - name: Test manifest native profile without live window probes
+        if: runner.os == 'macOS'
+        run: bun run test:app:release
