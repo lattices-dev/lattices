@@ -55,7 +55,7 @@ enum VoiceHelperRouting {
     }
 
     static func renamed(_ request: DaemonRequest, to method: String) -> DaemonRequest {
-        DaemonRequest(id: request.id, method: method, params: request.params)
+        DaemonRequest(id: request.id, method: method, params: request.params, deadline: request.deadline)
     }
 
     /// Helper events keep their `speech.*` names for existing clients and are

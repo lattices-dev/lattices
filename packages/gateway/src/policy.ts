@@ -109,6 +109,102 @@ export function authorizeMethod(grants: string[], product: Product, method: stri
   if (!methodScope(product, method)) return `method_denied: ${product}:${method} is not exposed by this gateway`;
   return grants.includes(grantName(product, method)) ? null : `scope_denied: missing ${grantName(product, method)}`;
 }
+
+const SEARCH_DEFAULT_SOURCES = ["titles", "apps", "sessions", "cwd", "tabs", "tmux"];
+const SEARCH_TERMINAL_SOURCES = ["cwd", "tabs", "tmux", "processes"];
+const SEARCH_ALL_SOURCES = [...SEARCH_DEFAULT_SOURCES, "ocr", "processes"];
+const RUN_METHODS = new Set(["runs.list", "runs.get", "runs.artifacts"]);
+
+/** Resolve the reviewed source vocabulary before forwarding. Passing explicit
+ * sources prevents a host's defaults or legacy mode fallback from widening a
+ * metadata-only request. Unknown new sources need a gateway policy review. */
+function searchSources(params: Record<string, unknown>): string[] {
+  if (params.sources !== undefined) {
+    const names = params.sources;
+    if (!Array.isArray(names) || names.some(name => typeof name !== "string" || ![...SEARCH_ALL_SOURCES, "all", "terminals"].includes(name))) {
+      throw new Error("Invalid search sources");
+    }
+    if (names.includes("all")) return [...SEARCH_ALL_SOURCES];
+    if (names.includes("terminals")) return [...new Set([...names.filter(name => name !== "terminals"), ...SEARCH_TERMINAL_SOURCES])];
+    return names.length ? [...new Set(names)] : [...SEARCH_DEFAULT_SOURCES];
+  }
+  if (params.mode !== undefined) {
+    switch (params.mode) {
+      case "quick": return ["titles", "apps", "sessions"];
+      case "terminal": return [...SEARCH_TERMINAL_SOURCES];
+      case "complete": return [...SEARCH_ALL_SOURCES];
+      default: throw new Error("Invalid search mode");
+    }
+  }
+  return [...SEARCH_DEFAULT_SOURCES];
+}
+
+/** Exact method grants plus parameter-dependent content permissions. Both
+ * search surfaces read the same cached OCR snapshot, so that existing exact
+ * grant is the additional permission (included by --screen). Local IPC keeps
+ * its native defaults; remote window search includes OCR only when requested. */
+export function authorizeRequest(grants: string[], product: Product, method: string, params: Record<string, unknown>): Record<string, unknown> {
+  const denied = authorizeMethod(grants, product, method);
+  if (denied) throw new Error(denied);
+  if (product !== "lattices") return params;
+  const name = canonicalMethod(product, method);
+  let resolved = params;
+  let includesOcr = false;
+  if (name === "search.query") {
+    const sources = searchSources(params);
+    const { mode: _mode, ...rest } = params;
+    resolved = { ...rest, sources };
+    includesOcr = sources.includes("ocr");
+  } else if (name === "windows.search") {
+    if (params.ocr !== undefined && typeof params.ocr !== "boolean") throw new Error("Invalid ocr flag");
+    includesOcr = params.ocr === true;
+    resolved = { ...params, ocr: includesOcr };
+  } else if (RUN_METHODS.has(name)) {
+    if (params.includeContent !== undefined && typeof params.includeContent !== "boolean") throw new Error("Invalid includeContent flag");
+    if (params.includeContent === true && !grants.includes("lattices:files.read")) {
+      throw new Error("scope_denied: stored run content requires lattices:files.read (pair with --screen)");
+    }
+    resolved = { ...params, includeContent: params.includeContent === true };
+  }
+  if (includesOcr && !grants.includes("lattices:ocr.snapshot")) {
+    throw new Error("scope_denied: OCR search requires lattices:ocr.snapshot (pair with --screen)");
+  }
+  return resolved;
+}
+
+function metadataFields(value: unknown, names: string[]): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid run metadata response");
+  const object = value as Record<string, unknown>;
+  return Object.fromEntries(names.filter(name => object[name] !== undefined).map(name => [name, object[name]]));
+}
+function artifactMetadata(value: unknown): Record<string, unknown> {
+  // Caller-supplied artifact paths and metadata can themselves contain text.
+  return { ...metadataFields(value, ["id", "runId", "kind", "mimeType", "createdAt"]), metadataOnly: true };
+}
+function runMetadata(value: unknown): Record<string, unknown> {
+  const result = metadataFields(value, ["id", "title", "source", "state", "startedAt", "completedAt"]);
+  const run = value as Record<string, unknown>;
+  if (Array.isArray(run.surfaces)) result.surfaces = run.surfaces.map(surface => metadataFields(surface, ["id", "kind", "wid", "app", "title", "frame", "latticesSession", "x", "y"]));
+  if (Array.isArray(run.artifacts)) result.artifacts = run.artifacts.map(artifactMetadata);
+  return { ...result, metadataOnly: true };
+}
+
+/** Run records contain observed and typed text in trace data. Remote callers
+ * get an explicitly marked metadata view unless they request stored content
+ * with its file-read grant. Allowlist fields so new run data stays private. */
+export function remoteResult(product: Product, method: string, params: Record<string, unknown>, result: unknown): unknown {
+  if (product !== "lattices" || params.includeContent === true) return result;
+  switch (canonicalMethod(product, method)) {
+    case "runs.get": return runMetadata(result);
+    case "runs.list":
+      if (!Array.isArray(result)) throw new Error("Invalid run list response");
+      return result.map(runMetadata);
+    case "runs.artifacts":
+      if (!Array.isArray(result)) throw new Error("Invalid run artifacts response");
+      return result.map(artifactMetadata);
+    default: return result;
+  }
+}
 export function requestedGrants(params: Record<string, unknown>): string[] {
   if (params.grants !== undefined) {
     if (!Array.isArray(params.grants) || params.grants.length === 0 || params.grants.length > 128) throw new Error("Invalid exact product:method grants");
