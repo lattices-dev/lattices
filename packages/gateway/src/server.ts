@@ -8,7 +8,7 @@ import { localEvents } from "../../desktop-client/local-events.ts";
 import { GatewayPairing } from "./pairing.ts";
 import { PairingLimits, pairingIdentity } from "./pairing-limits.ts";
 import { appendAudit } from "./audit.ts";
-import { authorizeMethod, canonicalMethod, canonicalProduct, isTailnetAddress, validateRemoteRequest, type Product } from "./policy.ts";
+import { authorizeRequest, canonicalMethod, canonicalProduct, isTailnetAddress, remoteResult, validateRemoteRequest, type Product } from "./policy.ts";
 import { callProduct, COMPANION_ROUTES, proxyCompanion, connectCompanionVisit, connectLatticesStream, type ProductCall, type CompanionVisit, type ProductStream, type StreamConnect } from "./products.ts";
 
 const STREAM_METHODS = new Set(["capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop"]);
@@ -203,7 +203,7 @@ export function gatewayHandlers(options: GatewayOptions) {
           ws.data.visit.socket.send(raw); return;
         }
         let id = "?", method = "?";
-        const reply = (result: unknown, error: string | null = null) => { if (ws.readyState === 1) ws.send(JSON.stringify({ id, result: error ? null : result, error })); };
+        const reply = (result: unknown, error: string | null = null, delivery?: unknown) => { if (ws.readyState === 1) ws.send(JSON.stringify({ id, result: error ? null : result, error, ...(delivery ? { delivery } : {}) })); };
         const conn = ws.data;
         let controller: AbortController | undefined;
         try {
@@ -289,8 +289,7 @@ export function gatewayHandlers(options: GatewayOptions) {
           }
           // Also apply allowlisting to local gateway calls: use product sockets
           // directly for local administration, never a gateway wildcard bypass.
-          const denied = authorizeMethod(client?.capabilities ?? [], product, targetMethod);
-          if (denied) throw new Error(denied);
+          targetParams = authorizeRequest(client?.capabilities ?? [], product, targetMethod, targetParams);
           const streamMethod = product === "lattices" ? canonicalMethod(product, targetMethod) : "";
           if (product === "lattices" && isInteractiveInput(streamMethod, targetParams)) {
             const deadline = request.deadline ?? Date.now() + 2000;
@@ -316,11 +315,13 @@ export function gatewayHandlers(options: GatewayOptions) {
           const deadline = request.deadline ?? Date.now() + 30_000;
           if (!Number.isSafeInteger(deadline) || deadline <= Date.now()) throw new Error("Request deadline exceeded");
           controller = new AbortController(); conn.active.add(controller);
-          const result = await call(product, targetMethod, targetParams, Math.min(deadline - Date.now(), 120_000), controller.signal);
-          audit(conn, targetMethod, "success", product); reply(result);
+          const productParams = { ...targetParams };
+          if (product === "lattices" && ["runs.list", "runs.get", "runs.artifacts"].includes(targetMethod)) delete productParams.includeContent;
+          const result = await call(product, targetMethod, productParams, Math.min(deadline - Date.now(), 120_000), controller.signal);
+          audit(conn, targetMethod, "success", product); reply(remoteResult(product, targetMethod, targetParams, result));
         } catch (error) {
           const message = (error as Error).message;
-          audit(conn, method, message.split(":")[0]!.slice(0, 128)); reply(null, message);
+          audit(conn, method, message.split(":")[0]!.slice(0, 128)); reply(null, message, (error as { delivery?: unknown }).delivery);
         } finally { if (controller) conn.active.delete(controller); }
       },
     },

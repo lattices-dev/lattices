@@ -104,8 +104,18 @@ async function fixture(run: (f: any) => Promise<void>) {
   const router = new Router(() => new Set());
   const calls: string[] = [];
   const stalled = { started: false, aborted: false };
+  const forwarded: { method: string; params: unknown }[] = [];
+  for (const method of ["search.query", "windows.search"]) router.register({ method, access: "read", description: "search fixture", returns: "", handler: params => {
+    calls.push(method); forwarded.push({ method, params });
+    return [{ title: "fixture", ...(params.ocr === true || Array.isArray(params.sources) && params.sources.includes("ocr") ? { ocrSnippet: "private screen fixture" } : {}) }];
+  } });
+  router.register({ method: "runs.get", access: "read", description: "run fixture", returns: "", handler: params => {
+    calls.push("runs.get"); forwarded.push({ method: "runs.get", params });
+    return { id: "run-1", state: "completed", trace: [{ data: { text: "private typed fixture" } }], artifacts: [{ id: "artifact-1", path: "/private/fixture", metadata: { text: "private screen fixture" } }] };
+  } });
   router.register({ method: "windows.list", access: "read", description: "fixture", returns: "", handler: () => { calls.push("windows.list"); return [{ title: "private fixture" }]; } });
   router.register({ method: "windows.place", access: "mutate", description: "fixture", returns: "", handler: () => { calls.push("windows.place"); return { ok: true }; } });
+  router.register({ method: "computer.typeText", access: "mutate", description: "fixture", returns: "", handler: () => { calls.push("computer.typeText"); throw new Error("typing failed"); } });
   router.register({ method: "windows.get", access: "read", description: "fixture", returns: "", handler: () => new Promise(resolve => {
     stalled.started = true;
     currentRequestContext()?.signal?.addEventListener("abort", () => { stalled.aborted = true; resolve(null); }, { once: true });
@@ -143,7 +153,7 @@ async function fixture(run: (f: any) => Promise<void>) {
     await daemonCallTo(admin, "clients.approve", { clientID });
     const reply = await response; socket.close(); expect(reply.error).toBeNull(); return reply.result;
   };
-  try { await run({ root, local, admin, pairing, approvals, product, authority, url, connect, signed, pair, clientID, audit, calls, stalled, admission }); }
+  try { await run({ root, local, admin, pairing, approvals, product, authority, url, connect, signed, pair, clientID, audit, calls, forwarded, stalled, admission }); }
   finally { for (const socket of sockets) socket.close(); handlers.stop(); server.stop(true); localServer.stop(true); cleanupAdmin(); product.stop(); rmSync(root, { recursive: true, force: true }); if (previous === undefined) delete process.env.LATTICES_RUNTIME_DIR; else process.env.LATTICES_RUNTIME_DIR = previous; }
 }
 
@@ -171,6 +181,41 @@ test("actual gateway sockets reject origins, forged hosts, unpaired, bad signatu
   expect((await rpc(paired, "clients.approve", { clientID: "evil" })).error).toContain("method_denied");
   expect(f.calls).toEqual(["windows.list"]);
 }), 8000);
+
+test("gateway enforces search content permissions before forwarding direct, alias and wrapped calls", () => fixture(async f => {
+  await f.pair();
+  const socket = await f.connect(f.signed());
+  for (const [method, params] of [
+    ["search.query", { query: "fixture", sources: ["all"] }],
+    ["lattices.search", { query: "fixture", mode: "complete" }],
+    ["windows.search", { query: "fixture", ocr: true }],
+    ["gateway.call", { product: "lattices", method: "search.query", params: { query: "fixture", sources: ["terminals", "ocr"] } }],
+  ] as const) expect((await rpc(socket, method, params)).error).toContain("scope_denied");
+  expect(f.calls).toEqual([]);
+  expect((await rpc(socket, "search.query", { query: "fixture" })).result).toEqual([{ title: "fixture" }]);
+  expect(f.forwarded[0].params.sources).not.toContain("ocr");
+  expect((await rpc(socket, "windows.search", { query: "fixture" })).result).toEqual([{ title: "fixture" }]);
+  expect(f.forwarded[1].params.ocr).toBe(false);
+  // A targeted approved grant unlocks only this content source, without
+  // requiring every unrelated screen operation.
+  f.pairing.client(f.clientID).capabilities.push("lattices:ocr.snapshot");
+  expect((await rpc(socket, "lattices.search", { query: "fixture", mode: "complete" })).result[0].ocrSnippet).toBe("private screen fixture");
+  expect((await rpc(socket, "gateway.call", { product: "lattices", method: "windows.search", params: { query: "fixture", ocr: true } })).result[0].ocrSnippet).toBe("private screen fixture");
+}));
+
+test("gateway run metadata cannot disclose stored content from an existing read-only pairing", () => fixture(async f => {
+  await f.pair();
+  const socket = await f.connect(f.signed());
+  const metadata = await rpc(socket, "runs.get", { id: "run-1" });
+  expect(metadata.result).toEqual({ id: "run-1", state: "completed", artifacts: [{ id: "artifact-1", metadataOnly: true }], metadataOnly: true });
+  expect(f.forwarded[0].params).toEqual({ id: "run-1" });
+  expect((await rpc(socket, "gateway.call", { product: "lattices", method: "runs.get", params: { id: "run-1", includeContent: true } })).error).toContain("scope_denied");
+  expect(f.calls).toEqual(["runs.get"]);
+  f.pairing.client(f.clientID).capabilities.push("lattices:files.read");
+  const complete = await rpc(socket, "runs.get", { id: "run-1", includeContent: true });
+  expect(complete.result.trace[0].data.text).toBe("private typed fixture");
+  expect(f.forwarded[1].params).toEqual({ id: "run-1" });
+}));
 
 test("revocation closes active gateway connections and refuses a fresh signed connection", () => fixture(async f => {
   await f.pair(); const socket = await f.connect(f.signed());
@@ -214,6 +259,17 @@ test("signed Canvas and legacy Blink calls use the same private socket and exact
     if (previousCanvas === undefined) delete process.env.CANVAS_HOME; else process.env.CANVAS_HOME = previousCanvas;
     if (previousBlink === undefined) delete process.env.BLINK_HOME; else process.env.BLINK_HOME = previousBlink;
   }
+}));
+
+test("mutating replies carry the host's delivery through the gateway", () => fixture(async f => {
+  await f.pair(["lattices:windows.place", "lattices:computer.typeText"]);
+  const socket = await f.connect(f.signed());
+  const placed = await rpc(socket, "windows.place");
+  expect(placed.result.delivery).toEqual({ status: "delivered_unverified", retrySafe: true, recovery: "none" });
+  const typed = await rpc(socket, "computer.typeText");
+  expect(typed.error).toContain("typing failed");
+  expect(typed.delivery).toEqual({ status: "delivery_uncertain", retrySafe: false, recovery: "observe_then_retry" });
+  expect(f.calls).toEqual(["windows.place", "computer.typeText"]);
 }));
 
 test("approved replacement keys close connections authenticated by the former key", () => fixture(async f => {
@@ -283,9 +339,12 @@ test("explicit product grants report unavailable without starting product and fi
   const socket = await f.connect(f.signed());
   expect((await rpc(socket, "gateway.call", { product: "speech", method: "speech.status" })).error).toContain("product_unavailable");
   expect((await rpc(socket, "events.subscribe", { events: ["spaces.changed"] })).error).toContain("scope_denied");
+  for (const event of ["ocr.scanComplete", "voice.command"]) expect((await rpc(socket, "events.subscribe", { events: [event] })).error).toContain("scope_denied");
   expect((await rpc(socket, "events.subscribe", { events: ["windows.changed"] })).result.events).toEqual(["windows.changed"]);
   await waitFor(() => f.product.clientCount() > 0);
   const received = new Promise<any>(resolve => socket.addEventListener("message", (event: MessageEvent) => { const data = JSON.parse(String(event.data)); if (data.event) resolve(data); }, { once: true }));
+  f.product.broadcast("voice.command", { text: "private spoken fixture" });
+  f.product.broadcast("ocr.scanComplete", { text: "private screen fixture" });
   f.product.broadcast("windows.changed", { test: true });
   expect((await received).event).toBe("windows.changed");
 }));
