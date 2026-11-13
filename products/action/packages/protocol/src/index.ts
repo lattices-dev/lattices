@@ -381,6 +381,8 @@ export interface DriveLease {
   client?: string;
   /** The process the agent saw on the socket, e.g. "bun 41250 ← claude 41012". */
   clientProcess?: string;
+  /** The folder the driving harness works in, e.g. "talkie". */
+  project?: string;
   /** Acts recorded against this lease. */
   actCount?: number;
 }
@@ -545,6 +547,8 @@ export interface AgentLayerState {
   workspace?: string;
   previewDisplayId?: number | null;
   previewFull?: boolean;
+  /** Experimental normal-scale viewport over the prepared monitor. */
+  previewViewport?: boolean;
   pid: number;
   displayId: number;
   bounds: Bounds;

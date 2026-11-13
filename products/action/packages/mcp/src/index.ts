@@ -444,6 +444,7 @@ async function ensureDriveLeaseForAct(input: {
     const identity = driverIdentity.get();
     const begun = await driveClient.begin({
       agent: identity.agent,
+      project: identity.project,
       task: identity.task ?? input.description ?? input.actionKind,
       mode: "background",
       implicit: true,
@@ -1363,6 +1364,7 @@ async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
   const identity = driverIdentity.get();
   const begun = await driveClient.begin({
     agent: identity.agent,
+    project: identity.project,
     task: optionalString(args.task) ?? layerTaskName({
       bundleId: optionalString(args.bundleId),
       url: optionalString(args.url),
@@ -1540,10 +1542,11 @@ const handlers: Record<string, ToolHandler> = {
     if (!agent || !task) {
       throw new Error("agent and task are required");
     }
-    driverIdentity.identify(agent, task);
+    const identity = driverIdentity.identify(agent, task);
     const result = await driveClient.begin({
       agent,
       task,
+      project: identity.project,
       mode: parseDriveMode(args.mode),
       sessionId: optionalString(args.sessionId),
       showSupervisionLabel: optionalBoolean(args.showSupervisionLabel) ?? true,
@@ -2524,6 +2527,12 @@ function createServer(): Server {
       ].join("\n"),
     },
   );
+
+  // Name implicit leases after the harness that connected, so a caller that never
+  // calls drive_begin or driver_identify still shows up as "Claude Code", not a stray.
+  server.oninitialized = () => {
+    driverIdentity.adoptClient(server.getClientVersion());
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: advertisedTools(),

@@ -39,6 +39,8 @@ export interface DriveBeginInput {
   agent: string;
   task: string;
   mode?: DriveMode;
+  /** The folder the driving harness works in, e.g. "talkie". */
+  project?: string;
   sessionId?: string;
   implicit?: boolean;
   showSupervisionLabel?: boolean;
@@ -93,6 +95,7 @@ export class DriveAgentClient {
       showSupervisionLabel: input.showSupervisionLabel === false ? "false" : "true",
       pointerControl: input.pointerControl === true ? "true" : "false",
       client: this.clientName,
+      project: input.project,
     });
     return {
       status: result.status === "denied" ? "denied" : "granted",

@@ -448,7 +448,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 workflowRunID: request.params["workflowRunId"],
                 workspaceID: request.params["workspaceId"],
                 client: request.params["client"],
-                clientProcess: await peers.describe(ownerID: ownerID)
+                clientProcess: await peers.describe(ownerID: ownerID),
+                project: request.params["project"]
             )
             var response = [
                 "status": result.status,
