@@ -4,13 +4,14 @@ import SwiftUI
 final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     static let shared = MenuBarController()
 
-    /// Mini-Home popover: rail (~100pt) + pane, fixed size.
-    static let popoverHeight: CGFloat = 430
+    /// A compact workspace utility; the system popover owns its chrome.
+    static let popoverHeight: CGFloat = 470
     static let popoverWidth: CGFloat = 500
 
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var contextMenu: NSMenu?
+    private var popoverOpenStartedAt: TimeInterval?
     private weak var actionMenuItem: NSMenuItem?
     private weak var visitMenuItem: NSMenuItem?
     private weak var longMenuItem: NSMenuItem?
@@ -29,6 +30,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem?.button {
             button.image = Self.menuBarIcon
+            button.setAccessibilityLabel("Lattices")
+            button.toolTip = "Lattices — workspace, windows, and commands"
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.target = self
@@ -57,7 +60,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
 
     private func showProjectsPopover() {
         guard let button = statusItem?.button else { return }
+        popoverOpenStartedAt = ProcessInfo.processInfo.systemUptime
         let popover = makePopover()
+        updatePopoverAppearance(popover)
         popover.contentSize = NSSize(
             width: Self.popoverWidth,
             height: Self.popoverHeight
@@ -87,8 +92,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
         // No `guard let event` — action deliveries without a current event
         // (AX presses, synthetic triggers) must still open the popover.
         let eventType = NSApp.currentEvent?.type
+        let eventDelayMs = NSApp.currentEvent.map {
+            Int(max(0, ProcessInfo.processInfo.systemUptime - $0.timestamp) * 1_000)
+        }
         DiagnosticLog.shared.info(
-            "menuBar.click event=\(eventType.map { "\($0.rawValue)" } ?? "nil") shown=\(popover?.isShown == true)"
+            "menuBar.click event=\(eventType.map { "\($0.rawValue)" } ?? "nil") shown=\(popover?.isShown == true) eventDelayMs=\(eventDelayMs.map(String.init) ?? "nil")"
         )
 
         if eventType == .rightMouseUp {
@@ -132,11 +140,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
             width: Self.popoverWidth,
             height: Self.popoverHeight
         )
-        popover.appearance = NSAppearance(named: .darkAqua)
+        updatePopoverAppearance(popover)
         popover.delegate = self
         self.popover = popover
         DiagnosticLog.shared.finish(timed)
         return popover
+    }
+
+    private func updatePopoverAppearance(_ popover: NSPopover) {
+        // The full workspace deliberately uses dark Aqua at application scope.
+        // This menu should follow macOS instead, including changes between opens.
+        let isDark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+        popover.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
     }
 
     func popoverWillShow(_ notification: Notification) {
@@ -151,8 +166,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSMenuDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        popoverOpenStartedAt = nil
         DiagnosticLog.shared.info("menuBar.popover closed")
         AppActivationCoordinator.shared.refresh()
+    }
+
+    func popoverDidShow(_ notification: Notification) {
+        guard let started = popoverOpenStartedAt else { return }
+        let elapsedMs = Int((ProcessInfo.processInfo.systemUptime - started) * 1_000)
+        DiagnosticLog.shared.info("menuBar.popover didShow elapsedMs=\(elapsedMs)")
+        popoverOpenStartedAt = nil
     }
 
     private func buildContextMenu() -> NSMenu {
