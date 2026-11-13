@@ -10,11 +10,11 @@ struct SpaceOptimizationService {
 
     private let allWindows: () -> [WindowEntry]
     private let frontmostAppName: () -> String?
-    private let enqueueDistribution: ([Target], Region?) -> Void
+    private let enqueueDistribution: ([Target], Region?) throws -> Void
 
     init(allWindows: @escaping () -> [WindowEntry],
          frontmostAppName: @escaping () -> String?,
-         enqueueDistribution: @escaping ([Target], Region?) -> Void) {
+         enqueueDistribution: @escaping ([Target], Region?) throws -> Void) {
         self.allWindows = allWindows
         self.frontmostAppName = frontmostAppName
         self.enqueueDistribution = enqueueDistribution
@@ -72,7 +72,7 @@ struct SpaceOptimizationService {
         }
 
         let targets = windows.map { (wid: $0.wid, pid: $0.pid) }
-        enqueueDistribution(targets, region)
+        try enqueueDistribution(targets, region)
 
         return .object([
             "ok": .bool(true),

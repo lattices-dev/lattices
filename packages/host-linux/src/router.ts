@@ -1,4 +1,5 @@
 import { assertRequestActive } from "./request-context.ts";
+import { delivery } from "./delivery.ts";
 // The Linux host speaks the Mac daemon's protocol (docs/api.md, "Wire
 // protocol"): {id, method, params} in, {id, result, error} out, {event, data}
 // pushed. Endpoints use the LAT-012 domain names; old names are accepted as
@@ -39,8 +40,11 @@ export interface Response {
   id: string;
   result: Json;
   error: string | null;
+  /** On every reply to a mutating endpoint: how far it got (see delivery.ts). */
+  delivery?: Json;
 }
 
+/** A refusal before the handler touched anything: bad params, nothing to act on. */
 export class RouterError extends Error {
   static unknownMethod(method: string) {
     return new RouterError(`Unknown method: ${method}`);
@@ -122,7 +126,8 @@ export class Router {
     return [...this.endpoints.values()].filter((e) => !e.capability || caps.has(e.capability));
   }
 
-  async dispatch(method: string, params: Params | null | undefined): Promise<Json> {
+  /** `onStart` runs just before the handler, after every check that refuses without acting. */
+  async dispatch(method: string, params: Params | null | undefined, onStart?: () => void): Promise<Json> {
     assertRequestActive();
     const resolved = resolveAlias(method, params ?? {});
     const endpoint = this.endpoints.get(resolved.method);
@@ -132,15 +137,32 @@ export class Router {
         `capability_unavailable: ${resolved.method} needs ${endpoint.capability}, which this host does not have`
       );
     }
+    onStart?.();
     return endpoint.handler(resolved.params);
   }
 
   async handle(request: Request): Promise<Response> {
+    const endpoint = this.lookup(request.method);
+    const mutates = endpoint?.access === "mutate";
+    let started = false;
     try {
-      const result = await this.dispatch(request.method, request.params);
-      return { id: request.id, result: result ?? null, error: null };
+      const result = await this.dispatch(request.method, request.params, () => { started = true; });
+      return {
+        id: request.id,
+        result: result ?? null,
+        error: null,
+        ...(mutates ? { delivery: delivery("delivered_unverified", endpoint.method) } : {}),
+      };
     } catch (err) {
-      return { id: request.id, result: null, error: (err as Error).message };
+      // A RouterError is a refusal; anything else the handler threw may follow
+      // a key it already pressed.
+      const reached = started && !(err instanceof RouterError);
+      return {
+        id: request.id,
+        result: null,
+        error: (err as Error).message,
+        ...(mutates ? { delivery: delivery(reached ? "delivery_uncertain" : "not_delivered", endpoint.method) } : {}),
+      };
     }
   }
 

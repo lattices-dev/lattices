@@ -57,9 +57,32 @@ final class DesktopModel: ObservableObject {
         "Activity Monitor",
     ]
 
-    @Published private(set) var windows: [UInt32: WindowEntry] = [:]
-    @Published private(set) var interactionDates: [UInt32: Date] = [:]
-    @Published private(set) var focusedWindowID: UInt32?
+    // UI publication stays on main; RPC and inventory consumers read copied
+    // snapshots instead of racing Combine's mutable property storage.
+    @Published private(set) var windows: [UInt32: WindowEntry] = [:] { didSet { publishSnapshot() } }
+    @Published private(set) var interactionDates: [UInt32: Date] = [:] { didSet { publishSnapshot() } }
+    @Published private(set) var focusedWindowID: UInt32? { didSet { publishSnapshot() } }
+
+    struct Snapshot {
+        var windows: [UInt32: WindowEntry] = [:]
+        var interactionDates: [UInt32: Date] = [:]
+        var focusedWindowID: UInt32?
+    }
+    private let snapshotLock = NSLock()
+    private var publishedSnapshot = Snapshot()
+
+    var snapshot: Snapshot {
+        snapshotLock.lock(); defer { snapshotLock.unlock() }
+        return publishedSnapshot
+    }
+
+    private func publishSnapshot() {
+        precondition(Thread.isMainThread, "Desktop state is published on main")
+        let value = Snapshot(windows: windows, interactionDates: interactionDates, focusedWindowID: focusedWindowID)
+        snapshotLock.lock()
+        publishedSnapshot = value
+        snapshotLock.unlock()
+    }
     private var timer: Timer?
     private var lastFocusedWindowID: UInt32?
     private let pollWorker = BackgroundPollWorker(label: "lattices.desktop-inventory")
@@ -85,7 +108,7 @@ final class DesktopModel: ObservableObject {
     }
 
     func allWindows() -> [WindowEntry] {
-        Array(windows.values).sorted { $0.zIndex < $1.zIndex }
+        Array(snapshot.windows.values).sorted { $0.zIndex < $1.zIndex }
     }
 
     /// The frontmost window a user would call "the current window".
@@ -97,6 +120,9 @@ final class DesktopModel: ObservableObject {
     /// "drifted" forever. Filter to windows that can actually be placed, and
     /// prefer the AX-focused window when it survives the same filter.
     func frontmostWindow() -> WindowEntry? {
+        let state = snapshot
+        let windows = state.windows
+        let focusedWindowID = state.focusedWindowID
         let placeable = windows.values.filter(Self.isPlaceableTarget)
         if let focused = focusedWindowID.flatMap({ windows[$0] }),
            Self.isPlaceableTarget(focused) {
@@ -135,7 +161,15 @@ final class DesktopModel: ObservableObject {
     }
 
     func focusedWindow() -> WindowEntry? {
-        focusedWindowID.flatMap { windows[$0] }
+        let state = snapshot
+        return state.focusedWindowID.flatMap { state.windows[$0] }
+    }
+
+    /// Capture focus for a newly opened surface instead of borrowing the
+    /// recurring poll's last observation. Each AX request gets at most 100 ms;
+    /// absent, excluded, or unresponsive focused windows remain unknown.
+    func captureFocusedWindowID() -> UInt32? {
+        resolveFocusedWindowID(in: snapshot.windows, timeout: 0.1)
     }
 
     /// Frontmost window containing `point` (CG coords, top-left origin).
@@ -176,7 +210,7 @@ final class DesktopModel: ObservableObject {
     }
 
     func lastInteractionDate(for wid: UInt32) -> Date? {
-        interactionDates[wid]
+        snapshot.interactionDates[wid]
     }
 
     func markInteraction(wid: UInt32, at date: Date = Date()) {
@@ -196,6 +230,7 @@ final class DesktopModel: ObservableObject {
     }
 
     func windowForSession(_ session: String, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        let windows = snapshot.windows
         guard currentSpaceOnly else {
             return SessionWindowLocator.cachedWindow(forSession: session, in: windows)
         }
@@ -211,6 +246,7 @@ final class DesktopModel: ObservableObject {
     /// `currentSpaceOnly` skips windows on desktops that aren't showing —
     /// raising or tiling one of those would switch Spaces.
     func windowForApp(app: String, title: String?, currentSpaceOnly: Bool = false) -> WindowEntry? {
+        let windows = snapshot.windows
         let current = currentSpaceOnly ? Self.currentSpaceIds() : []
         let matches = windows.values.filter {
             $0.app.localizedCaseInsensitiveContains(app)
@@ -283,6 +319,14 @@ final class DesktopModel: ObservableObject {
 
     private func pollInBackground() {
         guard Date().timeIntervalSince(lastPollTime) >= Self.minPollInterval else { return }
+        requestRefresh()
+    }
+
+    /// Refresh a visible surface without making its opening wait for inventory
+    /// locks or another app's Accessibility replies. An in-flight scan already
+    /// publishes fresh state, so repeated requests do not queue more scans.
+    @discardableResult
+    func requestRefresh() -> Bool {
         pollWorker.request { [weak self] in self?.performPoll() }
     }
 
@@ -726,23 +770,26 @@ final class DesktopModel: ObservableObject {
         return sorted
     }
 
-    private func resolveFocusedWindowID(in windows: [UInt32: WindowEntry]) -> UInt32? {
+    private func resolveFocusedWindowID(in windows: [UInt32: WindowEntry], timeout: Float = 0.2) -> UInt32? {
         guard let app = NSWorkspace.shared.frontmostApplication,
               !LatticesRuntime.isLatticesBundleIdentifier(app.bundleIdentifier) else {
             return nil
         }
 
         let appRef = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(appRef, 0.2)
+        AXUIElementSetMessagingTimeout(appRef, timeout)
 
         var focusedRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
-              let focusedWindow = focusedRef else {
+              let focusedWindow = focusedRef,
+              CFGetTypeID(focusedWindow) == AXUIElementGetTypeID() else {
             return nil
         }
 
+        let axWindow = focusedWindow as! AXUIElement
+        AXUIElementSetMessagingTimeout(axWindow, timeout)
         var wid: CGWindowID = 0
-        guard _AXUIElementGetWindow(focusedWindow as! AXUIElement, &wid) == .success,
+        guard _AXUIElementGetWindow(axWindow, &wid) == .success,
               wid != 0 else {
             return nil
         }

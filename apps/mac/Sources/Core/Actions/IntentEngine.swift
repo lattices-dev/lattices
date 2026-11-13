@@ -211,42 +211,42 @@ final class IntentEngine {
                 }
 
                 // For wid/app/frontmost: use WindowTiler directly
-                func tileEntry(_ entry: WindowEntry) {
-                    IntentEngine.markTiled(entry.wid)
-                    let screen = WindowTiler.screenForWindowFrame(entry.frame)
-                    DispatchQueue.main.async {
+                func tileEntry(_ entry: WindowEntry) throws {
+                    try LatticesApi.onMain {
+                        IntentEngine.markTiled(entry.wid)
+                        let screen = WindowTiler.screenForWindowFrame(entry.frame)
                         WindowTiler.tileWindowById(wid: entry.wid, pid: entry.pid, to: placement, on: screen)
                     }
                 }
 
                 if let wid = req.slots["wid"]?.uint32Value,
-                   let entry = DesktopModel.shared.windows[wid] {
-                    tileEntry(entry)
+                   let entry = DesktopModel.shared.snapshot.windows[wid] {
+                    try tileEntry(entry)
                     return .object(["ok": .bool(true), "wid": .int(Int(wid)), "position": .string(posStr)])
                 }
 
                 if let app = req.slots["app"]?.stringValue {
                     // Skip windows already tiled in this batch (e.g. two iTerm windows side by side)
-                    let alreadyTiled = IntentEngine.recentlyTiledWids
-                    if let entry = DesktopModel.shared.windows.values.first(where: {
+                    let alreadyTiled = try LatticesApi.onMain { IntentEngine.recentlyTiledWids }
+                    if let entry = DesktopModel.shared.snapshot.windows.values.first(where: {
                         $0.app.localizedCaseInsensitiveContains(app) && !alreadyTiled.contains($0.wid)
                     }) {
-                        tileEntry(entry)
+                        try tileEntry(entry)
                         return .object(["ok": .bool(true), "app": .string(entry.app), "wid": .int(Int(entry.wid)), "position": .string(posStr)])
                     }
                     throw IntentError.targetNotFound("No window found for app '\(app)'")
                 }
 
                 if req.slots["selection"]?.boolValue == true {
-                    let selectionIds = WindowSelectionStore.shared.windowIds
+                    let selectionIds = try LatticesApi.onMain { WindowSelectionStore.shared.windowIds }
                     guard !selectionIds.isEmpty else {
                         throw IntentError.targetNotFound("No active window selection")
                     }
 
                     if selectionIds.count == 1,
                        let wid = selectionIds.first,
-                       let entry = DesktopModel.shared.windows[wid] {
-                        tileEntry(entry)
+                       let entry = DesktopModel.shared.snapshot.windows[wid] {
+                        try tileEntry(entry)
                         return .object([
                             "ok": .bool(true),
                             "target": .string("selection"),
@@ -266,7 +266,7 @@ final class IntentEngine {
                 }
 
                 // Default: tile frontmost window
-                DispatchQueue.main.async {
+                try LatticesApi.onMain {
                     WindowTiler.tileFrontmostViaAX(to: placement)
                 }
                 return .object(["ok": .bool(true), "target": .string("frontmost"), "position": .string(posStr)])
@@ -345,7 +345,7 @@ final class IntentEngine {
                     )
                     if case .array(let items) = searchResult,
                        let wid = items.first?["wid"]?.uint32Value,
-                       let entry = DesktopModel.shared.windows[wid] {
+                       let entry = DesktopModel.shared.snapshot.windows[wid] {
                         return try focusEntry(entry, resolution: "search", requested: app)
                     }
 
@@ -535,7 +535,7 @@ final class IntentEngine {
                     params["region"] = .string(region)
                 }
                 if req.slots["selection"]?.boolValue == true {
-                    let selectionIds = WindowSelectionStore.shared.windowIds
+                    let selectionIds = try LatticesApi.onMain { WindowSelectionStore.shared.windowIds }
                     guard !selectionIds.isEmpty else {
                         throw IntentError.targetNotFound("No active window selection")
                     }
@@ -656,8 +656,8 @@ final class IntentEngine {
                       let widB = req.slots["wid_b"]?.uint32Value else {
                     throw IntentError.missingSlot("wid_a and wid_b")
                 }
-                guard let entryA = DesktopModel.shared.windows[widA],
-                      let entryB = DesktopModel.shared.windows[widB] else {
+                guard let entryA = DesktopModel.shared.snapshot.windows[widA],
+                      let entryB = DesktopModel.shared.snapshot.windows[widB] else {
                     throw IntentError.targetNotFound("One or both windows not found")
                 }
 
@@ -684,7 +684,7 @@ final class IntentEngine {
                     (wid: widA, pid: entryA.pid, frame: frameB),
                     (wid: widB, pid: entryB.pid, frame: frameA),
                 ]
-                DispatchQueue.main.async {
+                try LatticesApi.onMain {
                     WindowTiler.batchMoveAndRaiseWindows(moves)
                 }
                 return .object([
@@ -714,7 +714,7 @@ final class IntentEngine {
             handler: { req in
                 // Hide by wid — minimize just that window via AX
                 if let wid = req.slots["wid"]?.uint32Value,
-                   let entry = DesktopModel.shared.windows[wid] {
+                   let entry = DesktopModel.shared.snapshot.windows[wid] {
                     let appRef = AXUIElementCreateApplication(entry.pid)
                     var windowsRef: CFTypeRef?
                     if AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsRef) == .success,
@@ -765,17 +765,17 @@ final class IntentEngine {
             ],
             handler: { req in
                 if let wid = req.slots["wid"]?.uint32Value {
-                    DispatchQueue.main.async {
+                    try LatticesApi.onMain {
                         WindowTiler.highlightWindowById(wid: wid)
                     }
                     return .object(["ok": .bool(true), "wid": .int(Int(wid))])
                 }
 
                 if let appName = req.slots["app"]?.stringValue {
-                    if let entry = DesktopModel.shared.windows.values.first(where: {
+                    if let entry = DesktopModel.shared.snapshot.windows.values.first(where: {
                         $0.app.localizedCaseInsensitiveContains(appName)
                     }) {
-                        DispatchQueue.main.async {
+                        try LatticesApi.onMain {
                             WindowTiler.highlightWindowById(wid: entry.wid)
                         }
                         return .object(["ok": .bool(true), "wid": .int(Int(entry.wid)), "app": .string(entry.app)])
@@ -820,7 +820,7 @@ final class IntentEngine {
                 if let w = req.slots["wid"]?.uint32Value {
                     wid = w
                 } else if let appName = req.slots["app"]?.stringValue,
-                          let entry = DesktopModel.shared.windows.values.first(where: {
+                          let entry = DesktopModel.shared.snapshot.windows.values.first(where: {
                               $0.app.localizedCaseInsensitiveContains(appName)
                           }) {
                     wid = entry.wid
@@ -868,7 +868,7 @@ final class IntentEngine {
             ],
             slots: [],
             handler: { _ in
-                DispatchQueue.main.async { MouseFinder.shared.find() }
+                try LatticesApi.onMain { MouseFinder.shared.find() }
                 let pos = NSEvent.mouseLocation
                 return .object(["ok": .bool(true), "x": .int(Int(pos.x)), "y": .int(Int(pos.y))])
             }
@@ -886,7 +886,7 @@ final class IntentEngine {
             ],
             slots: [],
             handler: { _ in
-                DispatchQueue.main.async { MouseFinder.shared.summon() }
+                try LatticesApi.onMain { MouseFinder.shared.summon() }
                 return .object(["ok": .bool(true)])
             }
         ))
@@ -904,16 +904,16 @@ final class IntentEngine {
             ],
             slots: [],
             handler: { _ in
-                let history = HandsOffSession.shared.frameHistory
+                let history = try LatticesApi.onMain { HandsOffSession.shared.frameHistory }
                 guard !history.isEmpty else {
                     throw IntentError.targetNotFound("No window moves to undo")
                 }
 
                 let restores = history.map { (wid: $0.wid, pid: $0.pid, frame: $0.frame) }
-                DispatchQueue.main.async {
+                try LatticesApi.onMain {
                     WindowTiler.batchRestoreWindows(restores)
+                    HandsOffSession.shared.clearFrameHistory()
                 }
-                HandsOffSession.shared.clearFrameHistory()
                 return .object([
                     "ok": .bool(true),
                     "restored": .int(restores.count),

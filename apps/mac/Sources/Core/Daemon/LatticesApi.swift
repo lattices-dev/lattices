@@ -169,15 +169,47 @@ final class LatticesApi {
         guard let endpoint = endpoints[resolved.method] else {
             throw RouterError.unknownMethod(method)
         }
+        try DaemonContext.current?.checkActive()
         return try endpoint.handler(resolved.params)
     }
 
     func handle(_ request: DaemonRequest) -> DaemonResponse {
+        let resolved = MethodAliases.resolve(request.method, params: request.params)
+        guard let endpoint = endpoints[resolved.method] else {
+            return DaemonResponse(id: request.id, result: nil, error: RouterError.unknownMethod(request.method).localizedDescription)
+        }
+        let mutates = endpoint.access == .mutate
+        // Check after leaving the request queue, immediately before entering a
+        // handler. Expired work has definitely produced no side effects.
         do {
-            let result = try dispatch(method: request.method, params: request.params)
-            return DaemonResponse(id: request.id, result: result, error: nil)
+            guard !request.isExpired else { throw RouterError.custom("deadline_exceeded: Request expired before execution") }
+            try DaemonContext.current?.checkActive()
         } catch {
-            return DaemonResponse(id: request.id, result: nil, error: error.localizedDescription)
+            return DaemonResponse(id: request.id, result: nil, error: error.localizedDescription,
+                                  delivery: mutates ? DaemonDelivery.notDelivered.json(method: endpoint.method) : nil)
+        }
+        do {
+            let result = try endpoint.handler(resolved.params)
+            return DaemonResponse(id: request.id, result: result, error: nil,
+                                  delivery: mutates ? DaemonDelivery.deliveredUnverified.json(method: endpoint.method) : nil)
+        } catch {
+            return DaemonResponse(id: request.id, result: nil, error: error.localizedDescription,
+                                  delivery: mutates ? DaemonDelivery.failed(error).json(method: endpoint.method) : nil)
+        }
+    }
+
+    static func onMain<T>(_ body: () throws -> T) throws -> T {
+        let context = DaemonContext.current
+        if Thread.isMainThread {
+            try context?.checkActive()
+            if let context { return try context.run(body) }
+            return try body()
+        }
+        // Check again on main, after any queue delay and before touching UI.
+        return try DispatchQueue.main.sync {
+            try context?.checkActive()
+            if let context { return try context.run(body) }
+            return try body()
         }
     }
 
@@ -263,7 +295,7 @@ final class LatticesApi {
             allWindows: { DesktopModel.shared.allWindows() },
             frontmostAppName: { NSWorkspace.shared.frontmostApplication?.localizedName },
             enqueueDistribution: { targets, region in
-                DispatchQueue.main.async {
+                try onMain {
                     WindowTiler.batchRaiseAndDistribute(windows: targets, region: region)
                 }
             }
@@ -585,7 +617,9 @@ final class LatticesApi {
             ],
             returns: .custom("Desktop snapshot object"),
             handler: { params in
-                DesktopSnapshot.build(includeOffscreen: params?["includeOffscreen"]?.boolValue ?? false)
+                try Self.onMain {
+                    DesktopSnapshot.build(includeOffscreen: params?["includeOffscreen"]?.boolValue ?? false)
+                }
             }
         ))
 
@@ -599,7 +633,7 @@ final class LatticesApi {
                 guard let wid = params?["wid"]?.uint32Value else {
                     throw RouterError.missingParam("wid")
                 }
-                guard let entry = DesktopModel.shared.windows[wid] else {
+                guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
                     throw RouterError.notFound("window \(wid)")
                 }
                 return Encoders.window(entry)
@@ -917,7 +951,7 @@ final class LatticesApi {
                                 if processMatch && !acc.sources.contains("process") { acc.sources.append("process") }
                                 acc.tabs.append(tabJson)
                                 byWid[wid] = acc
-                            } else if let entry = desktop.windows[wid] {
+                            } else if let entry = desktop.snapshot.windows[wid] {
                                 guard passesTimeFilter(wid: wid, entry: entry) else { continue }
                                 var matchSources: [String] = []
                                 if cwdMatch { matchSources.append("cwd") }
@@ -945,7 +979,7 @@ final class LatticesApi {
                                     }
                                     acc.tabs.append(tabJson)
                                     byWid[wid] = acc
-                                } else if let entry = desktop.windows[wid] {
+                                } else if let entry = desktop.snapshot.windows[wid] {
                                     guard passesTimeFilter(wid: wid, entry: entry) else { continue }
                                     byWid[wid] = Accum(
                                         entry: entry, score: 1, sources: ["terminal-app"],
@@ -995,7 +1029,7 @@ final class LatticesApi {
                         "orphans": .array(inv.orphans.map { Encoders.session($0) })
                     ])
                 }
-                let sessions = TmuxModel.shared.sessions
+                let sessions = TmuxModel.shared.sessionSnapshot
                 return .array(sessions.map { Encoders.enrichedSession($0) })
             }
         ))
@@ -1044,7 +1078,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Object with 'layers' array (id, label, index, slot, projectCount), 'active' index or null when off, 'focusActive' and 'rememberedIndex'"),
             handler: { _ in
-                Self.onMain {
+                try Self.onMain {
                 let wm = WorkspaceManager.shared
                 let layers = wm.layers
                 return .object([
@@ -1145,7 +1179,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Object with 'focusActive': false, 'active': null, 'unparked', 'stillParked', 'rescued', 'unhidden', 'stillHidden', 'recoveryPending', nullable 'persistenceWarning' and 'stage'"),
             handler: { _ in
-                Self.onMain {
+                try Self.onMain {
                 let outcome = WorkspaceManager.shared.exitLayers(showFeedback: false)
                 return .object([
                     "ok": .bool(true),
@@ -1321,7 +1355,7 @@ final class LatticesApi {
             returns: .custom("Object with active state"),
             handler: { _ in
                 var active = false
-                Self.runOnMain { active = FocusModeController.shared.isActive }
+                try Self.runOnMain { active = FocusModeController.shared.isActive }
                 return .object(["active": .bool(active)])
             }
         ))
@@ -1334,7 +1368,7 @@ final class LatticesApi {
             returns: .custom("Object with ok and active state"),
             handler: { _ in
                 var active = false
-                Self.runOnMain {
+                try Self.runOnMain {
                     FocusModeController.shared.enter()
                     active = FocusModeController.shared.isActive
                 }
@@ -1349,7 +1383,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Object with ok and active state"),
             handler: { _ in
-                Self.runOnMain { FocusModeController.shared.exit() }
+                try Self.runOnMain { FocusModeController.shared.exit() }
                 return .object(["ok": .bool(true), "active": .bool(false)])
             }
         ))
@@ -1362,7 +1396,7 @@ final class LatticesApi {
             returns: .custom("Object with ok and active state"),
             handler: { _ in
                 var active = false
-                Self.runOnMain {
+                try Self.runOnMain {
                     FocusModeController.shared.toggle()
                     active = FocusModeController.shared.isActive
                 }
@@ -1379,7 +1413,7 @@ final class LatticesApi {
             handler: { _ in
                 var active = false
                 var count = 0
-                Self.runOnMain {
+                try Self.runOnMain {
                     active = StageModeController.shared.isActive
                     count = StageModeController.shared.memberCount
                 }
@@ -1396,7 +1430,7 @@ final class LatticesApi {
             handler: { _ in
                 var active = false
                 var count = 0
-                Self.runOnMain {
+                try Self.runOnMain {
                     StageModeController.shared.enter()
                     active = StageModeController.shared.isActive
                     count = StageModeController.shared.memberCount
@@ -1412,7 +1446,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Object with ok and active state"),
             handler: { _ in
-                Self.runOnMain { StageModeController.shared.exit() }
+                try Self.runOnMain { StageModeController.shared.exit() }
                 return .object(["ok": .bool(true), "active": .bool(false)])
             }
         ))
@@ -1426,7 +1460,7 @@ final class LatticesApi {
             handler: { _ in
                 var active = false
                 var count = 0
-                Self.runOnMain {
+                try Self.runOnMain {
                     StageModeController.shared.toggle()
                     active = StageModeController.shared.isActive
                     count = StageModeController.shared.memberCount
@@ -1446,7 +1480,7 @@ final class LatticesApi {
             handler: { params in
                 let by = params?["by"]?.intValue ?? 1
                 var active = false
-                Self.runOnMain {
+                try Self.runOnMain {
                     StageModeController.shared.cycle(by: by)
                     active = StageModeController.shared.isActive
                 }
@@ -1466,8 +1500,8 @@ final class LatticesApi {
                     "uptime": .double(uptime),
                     "clientCount": .int(DaemonServer.shared.clientCount),
                     "version": .string("1.0.0"),
-                    "windowCount": .int(DesktopModel.shared.windows.count),
-                    "tmuxSessionCount": .int(TmuxModel.shared.sessions.count),
+                    "windowCount": .int(DesktopModel.shared.snapshot.windows.count),
+                    "tmuxSessionCount": .int(TmuxModel.shared.sessionSnapshot.count),
                     "permissions": PermissionChecker.shared.snapshotJSON(),
                     "tier": .string(LatticesTier.current.rawValue),
                     "bundleModules": .array(BundleModules.ids.map { .string($0) }),
@@ -1551,7 +1585,7 @@ final class LatticesApi {
                 TmuxModel.shared.poll()
                 pm.poll()
                 if !Thread.isMainThread {
-                    DispatchQueue.main.sync {}
+                    try Self.onMain {}
                 }
                 if params?["refresh"]?.boolValue == true {
                     pm.refreshTerminalTabs()
@@ -1720,7 +1754,7 @@ final class LatticesApi {
                 let source = params?["source"]?.stringValue ?? "daemon"
                 let surfaces: [RunSurface]
                 if let wid = params?["wid"]?.uint32Value {
-                    guard let window = DesktopModel.shared.windows[wid] else {
+                    guard let window = DesktopModel.shared.snapshot.windows[wid] else {
                         throw RouterError.notFound("window \(wid)")
                     }
                     surfaces = [.window(window)]
@@ -1860,8 +1894,9 @@ final class LatticesApi {
                 Param(name: "height", type: "double", required: false, description: "Region height"),
                 Param(name: "maxWidth", type: "int", required: false, description: "Largest pixel width to return (default 1600)"),
                 Param(name: "quality", type: "int", required: false, description: "JPEG quality 20-95 (default 70)"),
+                Param(name: "cursor", type: "bool", required: false, description: "Include the host pointer (display default true; region default false; windows always omit it)"),
             ],
-            returns: .custom("Object with format, width, height, base64 data, and the captured frame in layout coordinates"),
+            returns: .custom("Object with format, width, height, cursor, base64 data, and the captured frame in layout coordinates"),
             handler: { params in
                 try CaptureController.shared.still(params: params)
             }
@@ -2616,14 +2651,14 @@ final class LatticesApi {
             returns: .ok,
             handler: { params in
                 if let wid = params?["wid"]?.uint32Value {
-                    guard let entry = DesktopModel.shared.windows[wid] else {
+                    guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
                         throw RouterError.notFound("window \(wid)")
                     }
                     var raised = false
                     if Thread.isMainThread {
                         raised = WindowTiler.focusWindow(wid: wid, pid: entry.pid)
                     } else {
-                        DispatchQueue.main.sync {
+                        try Self.onMain {
                             raised = WindowTiler.focusWindow(wid: wid, pid: entry.pid)
                         }
                     }
@@ -2651,7 +2686,7 @@ final class LatticesApi {
                     if Thread.isMainThread {
                         raised = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
                     } else {
-                        DispatchQueue.main.sync {
+                        try Self.onMain {
                             raised = WindowTiler.focusWindow(wid: entry.wid, pid: entry.pid)
                         }
                     }
@@ -2674,7 +2709,7 @@ final class LatticesApi {
                     if Thread.isMainThread {
                         raised = WindowTiler.focusWindow(wid: located.wid, pid: Int32(located.pid))
                     } else {
-                        DispatchQueue.main.sync {
+                        try Self.onMain {
                             raised = WindowTiler.focusWindow(wid: located.wid, pid: Int32(located.pid))
                         }
                     }
@@ -2686,7 +2721,7 @@ final class LatticesApi {
                         "raised": .bool(raised),
                         "targetResolution": .string("session-locator"),
                     ]
-                    if let entry = DesktopModel.shared.windows[located.wid] {
+                    if let entry = DesktopModel.shared.snapshot.windows[located.wid] {
                         obj["app"] = .string(entry.app)
                         obj["title"] = .string(entry.title)
                         if let latticesSession = entry.latticesSession {
@@ -2737,7 +2772,7 @@ final class LatticesApi {
                 guard let wid = params?["wid"]?.uint32Value else {
                     throw RouterError.missingParam("wid")
                 }
-                guard let entry = DesktopModel.shared.windows[wid] else {
+                guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
                     throw RouterError.notFound("window \(wid)")
                 }
                 // Bring it to this Space first: CGS if macOS allows it, else
@@ -2746,7 +2781,7 @@ final class LatticesApi {
                 let spaces = WindowTiler.getSpacesForWindow(wid)
                 let current = WindowTiler.getCurrentSpace()
                 if current != 0, !spaces.isEmpty, !spaces.contains(current), !Thread.isMainThread {
-                    let cgs = Self.syncOnMain {
+                    let cgs = try Self.syncOnMain {
                         WindowTiler.moveViaCGS(wid: wid, fromSpaces: spaces, toSpace: current, switchOnDenial: false)
                     }
                     if case .success = cgs {
@@ -2768,7 +2803,7 @@ final class LatticesApi {
                     if Thread.isMainThread {
                         frame = WindowTiler.tileFrame(fractions: fracs, on: screen)
                     } else {
-                        DispatchQueue.main.sync {
+                        try Self.onMain {
                             frame = WindowTiler.tileFrame(fractions: fracs, on: screen)
                         }
                     }
@@ -2783,7 +2818,7 @@ final class LatticesApi {
                 if Thread.isMainThread {
                     presented = WindowTiler.present(wid: wid, pid: entry.pid, frame: frame)
                 } else {
-                    DispatchQueue.main.sync {
+                    try Self.onMain {
                         presented = WindowTiler.present(wid: wid, pid: entry.pid, frame: frame)
                     }
                 }
@@ -2854,7 +2889,7 @@ final class LatticesApi {
                     throw RouterError.notFound("project at \(path)")
                 }
                 let alreadyRunning = TmuxQuery.listSessions().contains { $0.name == project.sessionName }
-                Self.syncOnMain {
+                try Self.syncOnMain {
                     SessionManager.launch(project: project)
                 }
                 let waited = Self.waitForSession(name: project.sessionName, timeout: 4)
@@ -2989,7 +3024,7 @@ final class LatticesApi {
                 guard let group = WorkspaceManager.shared.group(byId: groupId) else {
                     throw RouterError.notFound("group \(groupId)")
                 }
-                DispatchQueue.main.async {
+                try Self.onMain {
                     WorkspaceManager.shared.launchGroup(group)
                 }
                 return .object(["ok": .bool(true)])
@@ -3021,7 +3056,7 @@ final class LatticesApi {
             params: [],
             returns: .array(model: "LiveTabGroup"),
             handler: { _ in
-                Self.onMain { .array(LiveTabGroupStore.shared.groups.map(Self.liveTabGroup)) }
+                try Self.onMain { .array(LiveTabGroupStore.shared.groups.map(Self.liveTabGroup)) }
             }
         ))
 
@@ -3065,7 +3100,7 @@ final class LatticesApi {
             handler: { params in
                 let explicit = Self.selectedWindowIds(from: params?["windowIds"])
                 let groupID = params?["id"]?.stringValue
-                return Self.onMain {
+                return try Self.onMain {
                     let ids = explicit.isEmpty ? LiveTabGroupStore.shared.candidateWindowIDs : explicit
                     let added = LiveTabGroupStore.shared.add(windowIDs: ids, to: groupID)
                     return .object(["ok": .bool(added > 0), "added": .int(added)])
@@ -3150,7 +3185,7 @@ final class LatticesApi {
             params: [],
             returns: .ok,
             handler: { _ in
-                DispatchQueue.main.async {
+                try Self.onMain {
                     ProjectScanner.shared.scan()
                 }
                 return .object(["ok": .bool(true)])
@@ -3215,12 +3250,12 @@ final class LatticesApi {
                     var tiles: [UInt32: String] = [:]
                     if case .array(let specs) = params?["windows"], !specs.isEmpty {
                         for spec in specs {
-                            guard let wid = spec["wid"]?.uint32Value, let entry = DesktopModel.shared.windows[wid] else { continue }
+                            guard let wid = spec["wid"]?.uint32Value, let entry = DesktopModel.shared.snapshot.windows[wid] else { continue }
                             windows.append(entry)
                             if let tile = spec["tile"]?.stringValue { tiles[wid] = tile }
                         }
                     } else if case .array(let ids) = params?["windowIds"], !ids.isEmpty {
-                        windows = ids.compactMap { $0.uint32Value.flatMap { DesktopModel.shared.windows[$0] } }
+                        windows = ids.compactMap { $0.uint32Value.flatMap { DesktopModel.shared.snapshot.windows[$0] } }
                     } else if params?["visible"]?.boolValue != false {
                         windows = wm.saveableWindows()
                     }
@@ -3256,7 +3291,7 @@ final class LatticesApi {
                 return try Self.onMain {
                     let wm = WorkspaceManager.shared
                     let index = try Self.layerIndex(params, default: wm.activeLayerIndex)
-                    let windows = wids.compactMap { DesktopModel.shared.windows[$0] }
+                    let windows = wids.compactMap { DesktopModel.shared.snapshot.windows[$0] }
                     guard !windows.isEmpty else { throw RouterError.notFound("window \(wids.map(String.init).joined(separator: ", "))") }
                     let added = try wm.addWindows(windows, toLayer: index)
                     return .object(["ok": .bool(true), "index": .int(index), "added": .int(added)])
@@ -3425,7 +3460,7 @@ final class LatticesApi {
                 guard AudioLayer.shared.provider != nil else {
                     throw RouterError.custom("No audio provider available. Is the voice runtime available?")
                 }
-                DispatchQueue.main.async {
+                try Self.onMain {
                     AudioLayer.shared.startVoiceCommand()
                 }
                 return .object(["ok": .bool(true), "provider": .string(AudioLayer.shared.providerName)])
@@ -3439,7 +3474,7 @@ final class LatticesApi {
             params: [],
             returns: .ok,
             handler: { _ in
-                DispatchQueue.main.async {
+                try Self.onMain {
                     AudioLayer.shared.stopVoiceCommand()
                 }
                 return .object(["ok": .bool(true)])
@@ -3736,7 +3771,7 @@ final class LatticesApi {
             params: [],
             returns: .ok,
             handler: { _ in
-                DispatchQueue.main.async { MouseFinder.shared.find() }
+                try Self.onMain { MouseFinder.shared.find() }
                 let pos = NSEvent.mouseLocation
                 return .object(["ok": .bool(true), "x": .int(Int(pos.x)), "y": .int(Int(pos.y))])
             }
@@ -3768,7 +3803,7 @@ final class LatticesApi {
                         return DesktopLong.shared.shown
                     }
                 }
-                let shown = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                let shown = try Self.onMain(work)
                 return .object(["shown": .bool(shown)])
             }
         ))
@@ -3813,7 +3848,7 @@ final class LatticesApi {
                     }
                     return VisitTrust.shared.forget(name)
                 }
-                let removed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                let removed = try Self.onMain(work)
                 return .object(["ok": .bool(removed)])
             }
         ))
@@ -3827,7 +3862,7 @@ final class LatticesApi {
                         if action == "keep" { DisplayArrangement.shared.keep() } else { DisplayArrangement.shared.revert() }
                     }
                     if Thread.isMainThread { MainActor.assumeIsolated { work() } }
-                    else { DispatchQueue.main.sync { work() } }
+                    else { try Self.onMain { MainActor.assumeIsolated { work() } } }
                     return .object(["ok": .bool(true)])
                 }
             ))
@@ -3843,7 +3878,7 @@ final class LatticesApi {
                 let number = try DisplayGather.onMain { try DisplayGather.resolve(params?["screen"], "screen").index }
                 let work: @MainActor () throws -> Void = { try DisplayArrangement.shared.makeMain(number) }
                 if Thread.isMainThread { try MainActor.assumeIsolated { try work() } }
-                else { try DispatchQueue.main.sync { try MainActor.assumeIsolated { try work() } } }
+                else { try Self.onMain { try MainActor.assumeIsolated { try work() } } }
                 return .object(["ok": .bool(true)])
             }
         ))
@@ -3919,8 +3954,8 @@ final class LatticesApi {
             params: [],
             returns: .custom("Object with 'armed', 'visiting', 'code' and 'hosts' (name, address, side, fingerprint)"),
             handler: { _ in
-                let status = Thread.isMainThread ? VisitController.shared.status() : DispatchQueue.main.sync { VisitController.shared.status() }
-                let screenFrames = Thread.isMainThread ? VisitController.screens().map(\.frame) : DispatchQueue.main.sync { VisitController.screens().map(\.frame) }
+                let status = try Self.onMain { VisitController.shared.status() }
+                let screenFrames = try Self.onMain { VisitController.screens().map(\.frame) }
                 return .object([
                     "armed": .bool(status.armed),
                     "visiting": status.visiting.map { .string($0) } ?? .null,
@@ -3946,7 +3981,7 @@ final class LatticesApi {
             handler: { params in
                 let on = params?["on"]?.boolValue ?? true
                 let work = { () -> Bool in VisitController.shared.arm(on); return VisitController.shared.armed }
-                let armed = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                let armed = try Self.onMain(work)
                 return .object(["armed": .bool(armed)])
             }
         ))
@@ -3958,7 +3993,7 @@ final class LatticesApi {
             params: [],
             returns: .custom("Array of objects with 'number', 'name', 'frame', 'main' and 'elsewhere'"),
             handler: { _ in
-                let screens = Thread.isMainThread ? VisitController.screens() : DispatchQueue.main.sync { VisitController.screens() }
+                let screens = try Self.onMain { VisitController.screens() }
                 return .array(screens.map {
                     .object([
                         "number": .int($0.number), "machine": $0.machine.map { .string($0) } ?? .null, "name": .string($0.name), "main": .bool($0.main), "elsewhere": .bool($0.elsewhere),
@@ -3986,7 +4021,7 @@ final class LatticesApi {
                     if let name = params?["name"]?.stringValue { return VisitController.shared.setDisplayMachine(number, name: name.isEmpty ? nil : name) }
                     return true
                 }
-                let ok = Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
+                let ok = try Self.onMain(work)
                 return .object(["ok": .bool(ok)])
             }
         ))
@@ -4019,7 +4054,7 @@ final class LatticesApi {
                 } else {
                     target = nil
                 }
-                DispatchQueue.main.async { MouseFinder.shared.summon(to: target) }
+                try Self.onMain { MouseFinder.shared.summon(to: target) }
                 let pos = target ?? {
                     let screen = NSScreen.main ?? NSScreen.screens[0]
                     return CGPoint(x: screen.frame.midX, y: screen.frame.midY)
@@ -4234,7 +4269,7 @@ private extension LatticesApi {
             expiresAt: expiresAt
         )
 
-        runOnMain {
+        try runOnMain {
             ScreenOverlayCanvasController.shared.publishLayer(layer)
         }
 
@@ -4252,11 +4287,11 @@ private extension LatticesApi {
     static func clearOverlay(_ params: JSON?) throws -> JSON {
         let owner = try parseOverlayOwner(params?["owner"]?.stringValue)
         if let id = params?["id"]?.stringValue, !id.isEmpty {
-            runOnMain {
+            try runOnMain {
                 ScreenOverlayCanvasController.shared.removeLayer(id: ScreenOverlayLayerID(id))
             }
         } else {
-            runOnMain {
+            try runOnMain {
                 ScreenOverlayCanvasController.shared.removeLayers(owner: owner)
             }
         }
@@ -4312,7 +4347,7 @@ private extension LatticesApi {
             expiresAt: expiresAt
         )
 
-        runOnMain {
+        try runOnMain {
             ScreenOverlayCanvasController.shared.publishLayer(layer)
         }
 
@@ -4342,7 +4377,7 @@ private extension LatticesApi {
         let durationMs = params["durationMs"]?.intValue ?? 700
         let easing = params["easing"]?.stringValue
         var moved = false
-        runOnMain {
+        try runOnMain {
             moved = ScreenOverlayCanvasController.shared.moveLayer(
                 id: ScreenOverlayLayerID(id),
                 to: CGPoint(x: x, y: y),
@@ -4369,7 +4404,7 @@ private extension LatticesApi {
         let hud = params["clear"]?.boolValue == true ? nil : try parseActorHUD(params, requireContent: true)
         var updated = false
 
-        runOnMain {
+        try runOnMain {
             updated = ScreenOverlayCanvasController.shared.setActorHUD(id: ScreenOverlayLayerID(id), hud: hud)
         }
         guard updated else {
@@ -4383,7 +4418,7 @@ private extension LatticesApi {
         let feedback = params?["feedback"]?.boolValue ?? true
         var snapshot = ScreenOverlayActorVisibilitySnapshot(hidden: false, actorCount: 0)
 
-        runOnMain {
+        try runOnMain {
             let controller = ScreenOverlayCanvasController.shared
             if let visible = params?["visible"]?.boolValue {
                 snapshot = controller.setAgentActorsHidden(!visible, showFeedback: feedback)
@@ -4468,12 +4503,8 @@ private extension LatticesApi {
         return index
     }
 
-    static func runOnMain(_ work: @escaping () -> Void) {
-        if Thread.isMainThread {
-            work()
-        } else {
-            DispatchQueue.main.sync(execute: work)
-        }
+    static func runOnMain(_ work: @escaping () -> Void) throws {
+        try onMain(work)
     }
 
     static func parseOverlayScreen(_ displayIndex: Int?) throws -> ScreenOverlayScreenTarget {
@@ -4710,11 +4741,7 @@ private extension LatticesApi {
             }
         }
 
-        if Thread.isMainThread {
-            apply()
-        } else {
-            DispatchQueue.main.sync(execute: apply)
-        }
+        try onMain(apply)
 
         return cursorAppearanceSettingsResponse()
     }
@@ -4754,11 +4781,7 @@ private extension LatticesApi {
             if let position { Preferences.shared.spaceSwitchBezelPosition = position }
             if let intensity { Preferences.shared.spaceSwitchShimmerIntensity = intensity }
         }
-        if Thread.isMainThread {
-            apply()
-        } else {
-            DispatchQueue.main.sync(execute: apply)
-        }
+        try onMain(apply)
         return spaceBezelSettingsResponse()
     }
 
@@ -4776,11 +4799,7 @@ private extension LatticesApi {
                 ScreenMapWindowController.shared.showPage(page)
             }
         }
-        if Thread.isMainThread {
-            show()
-        } else {
-            DispatchQueue.main.sync(execute: show)
-        }
+        try onMain(show)
         var result: [String: JSON] = [
             "page": .string(page.rawValue),
             "pages": .array(AppPage.allCases.map { .string($0.rawValue) }),
@@ -4828,11 +4847,11 @@ private extension LatticesApi {
             throw RouterError.missingParam("wid")
         }
         let shouldLoad = params?["load"]?.boolValue ?? true
-        guard let entry = DesktopModel.shared.windows[wid] else {
+        guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
             throw RouterError.notFound("window \(wid)")
         }
 
-        return syncOnMain {
+        return try syncOnMain {
             let store = WindowPreviewStore.shared
             if let image = store.image(for: wid),
                let preview = pngPreviewPayload(image: image) {
@@ -4883,11 +4902,13 @@ private extension LatticesApi {
         let lock = NSLock()
         var outcome: WindowMotionMode.PickOutcome?
 
-        WindowMotionMode.shared.startWindowPick(prompt: prompt, currentWid: currentWid) { result in
-            lock.lock()
-            outcome = result
-            lock.unlock()
-            semaphore.signal()
+        try onMain {
+            WindowMotionMode.shared.startWindowPick(prompt: prompt, currentWid: currentWid) { result in
+                lock.lock()
+                outcome = result
+                lock.unlock()
+                semaphore.signal()
+            }
         }
 
         let timeout = DispatchTime.now() + .milliseconds(timeoutMs)
@@ -4927,11 +4948,8 @@ private extension LatticesApi {
         return .object(response)
     }
 
-    static func syncOnMain<T>(_ work: () throws -> T) rethrows -> T {
-        if Thread.isMainThread {
-            return try work()
-        }
-        return try DispatchQueue.main.sync(execute: work)
+    static func syncOnMain<T>(_ work: () throws -> T) throws -> T {
+        try onMain(work)
     }
 
     static func waitForSession(name: String, timeout: TimeInterval) -> (wid: UInt32?, verified: Bool) {
@@ -5003,7 +5021,7 @@ private extension LatticesApi {
         return ProcessModel.shared.synthesizeTerminals()
             .first { $0.tmuxSession == session }
             .flatMap { instance in
-                instance.windowId.flatMap { DesktopModel.shared.windows[$0] }
+                instance.windowId.flatMap { DesktopModel.shared.snapshot.windows[$0] }
             }
     }
 
@@ -5038,8 +5056,9 @@ private extension LatticesApi {
         let layer = layers[index]
         trace.append(.string("activation mode \(mode)"))
 
-        // Every mode runs the one switch, which posts `.layerSwitched`.
-        DispatchQueue.main.async {
+        // Admit on main before acknowledging; a queued expired request must not
+        // switch the user's workspace after its caller has already timed out.
+        try onMain {
             switch mode {
             case "focus":
                 wm.focusLayer(index: index)
@@ -5096,11 +5115,6 @@ private extension LatticesApi {
     static func selectedWindowIds(from json: JSON?) -> [UInt32] {
         guard case .array(let values) = json else { return [] }
         return values.compactMap(\.uint32Value)
-    }
-
-    static func onMain<T>(_ body: () throws -> T) rethrows -> T {
-        if Thread.isMainThread { return try body() }
-        return try DispatchQueue.main.sync(execute: body)
     }
 
     static func liveTabGroup(_ group: LiveTabGroup) -> JSON {

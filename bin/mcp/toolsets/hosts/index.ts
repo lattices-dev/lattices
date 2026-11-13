@@ -11,7 +11,7 @@ import {
   resolveHost,
   type HostEntry,
 } from "../../../hosts.ts";
-import type { JsonObject, ToolDefinition, ToolResult, Toolset } from "../../types.ts";
+import { toolError, type JsonObject, type ToolDefinition, type ToolResult, type Toolset } from "../../types.ts";
 
 const hostProp = {
   host: {
@@ -253,7 +253,7 @@ export const hostsToolset: Toolset = {
     try {
       return await callHostTool(name, args);
     } catch (err) {
-      return { content: [{ type: "text", text: (err as Error).message }], isError: true };
+      return toolError(err);
     }
   },
 };

@@ -3,7 +3,20 @@ import Foundation
 final class TmuxModel: ObservableObject {
     static let shared = TmuxModel()
 
-    @Published private(set) var sessions: [TmuxSession] = []
+    @Published private(set) var sessions: [TmuxSession] = [] {
+        didSet {
+            precondition(Thread.isMainThread, "Tmux state is published on main")
+            snapshotLock.lock()
+            publishedSessions = sessions
+            snapshotLock.unlock()
+        }
+    }
+    private let snapshotLock = NSLock()
+    private var publishedSessions: [TmuxSession] = []
+    var sessionSnapshot: [TmuxSession] {
+        snapshotLock.lock(); defer { snapshotLock.unlock() }
+        return publishedSessions
+    }
     @Published private(set) var isAvailable: Bool = TmuxQuery.isAvailable
     private var timer: Timer?
     private let pollWorker = BackgroundPollWorker(label: "lattices.tmux-inventory")
@@ -50,7 +63,7 @@ final class TmuxModel: ObservableObject {
     }
 
     func isRunning(_ name: String) -> Bool {
-        sessions.contains { $0.name == name }
+        sessionSnapshot.contains { $0.name == name }
     }
 
     private func sessionsChanged(old: [TmuxSession], new: [TmuxSession]) -> Bool {

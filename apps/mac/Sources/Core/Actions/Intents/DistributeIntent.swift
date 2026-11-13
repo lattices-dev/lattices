@@ -48,7 +48,7 @@ struct DistributeIntent: LatticeIntent {
     static let slots: [SlotDef] = []
 
     func perform(slots: [String: JSON]) throws -> JSON {
-        DispatchQueue.main.async {
+        try LatticesApi.onMain {
             WindowTiler.distributeVisible()
         }
         return .object(["ok": .bool(true)])

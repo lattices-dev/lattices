@@ -14,7 +14,7 @@ enum DesktopSnapshot {
             "displays": displays,
             "currentSpaceId": currentSpaceId.map { .int($0) } ?? .null,
             "windows": .array(windows.map { Encoders.snapshotWindow($0, focusedWid: focusedId) }),
-            "sessions": .array(TmuxModel.shared.sessions.map { session in
+            "sessions": .array(TmuxModel.shared.sessionSnapshot.map { session in
                 .object([
                     "name": .string(session.name),
                     "attached": .bool(session.attached),

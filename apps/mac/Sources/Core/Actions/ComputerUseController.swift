@@ -772,6 +772,7 @@ final class ComputerUseController {
             var displayName = (request.modifiers + [request.key]).joined(separator: "+")
             if treatment == .execute {
                 for index in 0..<count {
+                    try DaemonContext.current?.checkActive()
                     displayName = try CompanionKeyboardController.shared.send(
                         key: request.key,
                         modifiers: request.modifiers,
@@ -1121,13 +1122,7 @@ final class ComputerUseController {
             )
 
             if shouldShow {
-                if Thread.isMainThread {
-                    MouseFinder.shared.showCursor(at: point, appearance: appearance)
-                } else {
-                    DispatchQueue.main.sync {
-                        MouseFinder.shared.showCursor(at: point, appearance: appearance)
-                    }
-                }
+                try onMain { MouseFinder.shared.showCursor(at: point, appearance: appearance) }
                 _ = try RunStore.shared.appendTrace(
                     id: run.id,
                     kind: "computer.cursor.shown",
@@ -1516,11 +1511,13 @@ final class ComputerUseController {
             }
 
             if treatment.insertsText {
+                try DaemonContext.current?.checkActive()
                 let typedCharacters = try CompanionKeyboardController.shared.typeText(
                     text,
                     targetPid: window.pid
                 )
                 if shouldPressEnter {
+                    try DaemonContext.current?.checkActive()
                     _ = try CompanionKeyboardController.shared.send(
                         key: "enter",
                         modifiers: [],
@@ -2093,11 +2090,13 @@ final class ComputerUseController {
             }
 
             if treatment.insertsText {
+                try DaemonContext.current?.checkActive()
                 let typedCharacters = try CompanionKeyboardController.shared.typeText(
                     text,
                     targetPid: window.pid
                 )
                 if shouldPressEnter {
+                    try DaemonContext.current?.checkActive()
                     _ = try CompanionKeyboardController.shared.send(
                         key: "enter",
                         modifiers: [],
@@ -2182,7 +2181,7 @@ final class ComputerUseController {
         }
         selected = candidateWithTerminalSessionOverride(params: params, selected: selected)
         guard let wid = selected.instance.windowId,
-              let window = DesktopModel.shared.windows[wid] else {
+              let window = DesktopModel.shared.snapshot.windows[wid] else {
             throw RouterError.notFound("window for terminal \(selected.instance.displayName)")
         }
         guard !treatment.insertsText || selected.isSafeForTextInsertion else {
@@ -2453,7 +2452,7 @@ final class ComputerUseController {
             reasons.append("has-window")
         }
         if let wid = instance.windowId,
-           let window = DesktopModel.shared.windows[wid] {
+           let window = DesktopModel.shared.snapshot.windows[wid] {
             if window.zIndex == 0 {
                 score += 80
                 reasons.append("frontmost-window")
@@ -2517,7 +2516,7 @@ final class ComputerUseController {
         excluding existingWindowIds: Set<UInt32>,
         preferredApp: String?
     ) -> [TerminalCandidate] {
-        DesktopModel.shared.windows.values
+        DesktopModel.shared.snapshot.windows.values
             .filter { existingWindowIds.contains($0.wid) == false }
             .filter { terminal(forWindowApp: $0.app) != nil }
             .map { window in
@@ -2545,7 +2544,7 @@ final class ComputerUseController {
     private func activeCommand(for instance: TerminalInstance) -> String? {
         if let session = instance.tmuxSession,
            let paneId = instance.tmuxPaneId,
-           let pane = TmuxModel.shared.sessions
+           let pane = TmuxModel.shared.sessionSnapshot
             .first(where: { $0.name == session })?
             .panes
             .first(where: { $0.id == paneId }) {
@@ -2596,13 +2595,7 @@ final class ComputerUseController {
     }
 
     private func focus(window: WindowEntry) throws -> Bool {
-        if Thread.isMainThread {
-            _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
-        } else {
-            DispatchQueue.main.sync {
-                _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid)
-            }
-        }
+        try onMain { _ = WindowTiler.focusWindow(wid: window.wid, pid: window.pid) }
         return waitForFocusedWindow(wid: window.wid, pid: window.pid)
     }
 
@@ -2829,28 +2822,20 @@ final class ComputerUseController {
     }
 
     private func openOrActivateApp(params: JSON?, appName: String) throws -> Bool {
-        try onMain {
+        let target = try ComputerAppLaunchTarget(params: params, appName: appName)
+        return try onMain {
             if let running = NSWorkspace.shared.runningApplications.first(where: { app in
-                app.localizedName?.localizedCaseInsensitiveContains(appName) == true
-                    || app.bundleIdentifier?.localizedCaseInsensitiveContains(appName) == true
+                target.matches(name: app.localizedName, bundleIdentifier: app.bundleIdentifier, url: app.bundleURL)
             }) {
                 return running.activate(options: [.activateAllWindows])
             }
 
-            if let bundleId = params?["bundleId"]?.stringValue
-                ?? params?["bundleIdentifier"]?.stringValue,
-               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-                return true
-            }
-
-            if let path = params?["path"]?.stringValue
-                ?? params?["appPath"]?.stringValue,
-               FileManager.default.fileExists(atPath: path) {
-                NSWorkspace.shared.openApplication(
-                    at: URL(fileURLWithPath: path),
-                    configuration: NSWorkspace.OpenConfiguration()
-                )
+            if let url = try target.applicationURL(lookup: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }) {
+                let configuration = NSWorkspace.OpenConfiguration()
+                // A second installation may share its bundle ID. Opening an
+                // explicit path must not reactivate that other installation.
+                if target.appURL != nil { configuration.createsNewApplicationInstance = true }
+                NSWorkspace.shared.openApplication(at: url, configuration: configuration)
                 return true
             }
 
@@ -3005,6 +2990,7 @@ final class ComputerUseController {
             throw RouterError.custom("Unable to create mouse click event")
         }
 
+        try DaemonContext.current?.checkActive()
         CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(point)
         usleep(35_000)
@@ -3046,6 +3032,7 @@ final class ComputerUseController {
             throw RouterError.custom("Unable to create scroll event source")
         }
 
+        try DaemonContext.current?.checkActive()
         CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(point)
         usleep(35_000)
@@ -3093,6 +3080,7 @@ final class ComputerUseController {
 
         let boundedSteps = max(2, min(steps, 120))
         let stepDelay = UInt32(max(2, min(durationMs / Double(boundedSteps), 120)) * 1_000)
+        try DaemonContext.current?.checkActive()
         CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(start)
         usleep(35_000)
@@ -3342,6 +3330,7 @@ final class ComputerUseController {
         }
 
         let action = kAXPressAction as String
+        try DaemonContext.current?.checkActive()
         let err = AXUIElementPerformAction(candidate.element, kAXPressAction as CFString)
         guard err == .success else {
             throw RouterError.custom("AXPress failed with \(err.rawValue)")
@@ -3395,6 +3384,7 @@ final class ComputerUseController {
         }
 
         func setAXValue(_ value: String) throws {
+            try DaemonContext.current?.checkActive()
             let err = AXUIElementSetAttributeValue(
                 candidate.element,
                 kAXValueAttribute as CFString,
@@ -3677,6 +3667,7 @@ final class ComputerUseController {
         guard AXIsProcessTrusted() else {
             throw RouterError.custom("Accessibility permission is required for AX element actions")
         }
+        try DaemonContext.current?.checkActive()
         let err = AXUIElementPerformAction(element, action as CFString)
         guard err == .success else {
             throw RouterError.custom("\(action) failed with \(err.rawValue)")
@@ -3687,6 +3678,7 @@ final class ComputerUseController {
         guard AXIsProcessTrusted() else {
             throw RouterError.custom("Accessibility permission is required for AX element focus")
         }
+        try DaemonContext.current?.checkActive()
         let err = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         guard err == .success else {
             throw RouterError.custom("AX focus failed with \(err.rawValue)")
@@ -3710,6 +3702,7 @@ final class ComputerUseController {
         }
 
         func setAXValue(_ value: String) throws {
+            try DaemonContext.current?.checkActive()
             let err = AXUIElementSetAttributeValue(
                 element,
                 kAXValueAttribute as CFString,
@@ -3765,7 +3758,7 @@ final class ComputerUseController {
         // view layout off the main thread and crash the Swift exclusivity runtime.
         // Keep only the self-inspection on main; remote AX and capture stay off it.
         if window.pid == ProcessInfo.processInfo.processIdentifier, !Thread.isMainThread {
-            return try DispatchQueue.main.sync {
+            return try onMain {
                 try self.axSnapshot(
                     window: window,
                     maxDepth: maxDepth,
@@ -4718,14 +4711,7 @@ final class ComputerUseController {
     }
 
     private func onMain<T>(_ work: () throws -> T) throws -> T {
-        if Thread.isMainThread {
-            return try work()
-        }
-        var result: Result<T, Error>!
-        DispatchQueue.main.sync {
-            result = Result { try work() }
-        }
-        return try result.get()
+        try LatticesApi.onMain(work)
     }
 
     private func canUseTmuxTransport(selected: TerminalCandidate, preference: String) -> Bool {
@@ -4779,11 +4765,13 @@ final class ComputerUseController {
             throw RouterError.custom("pasteboard/key-event transport requires the selected terminal tab to be active")
         }
 
+        try DaemonContext.current?.checkActive()
         let typedCharacters = try CompanionKeyboardController.shared.typeText(
             text,
             targetPid: window.pid
         )
         if pressEnter {
+            try DaemonContext.current?.checkActive()
             _ = try CompanionKeyboardController.shared.send(
                 key: "enter",
                 modifiers: [],
@@ -4805,11 +4793,13 @@ final class ComputerUseController {
             throw RouterError.custom("target has no tmux pane")
         }
         if !text.isEmpty {
+            try DaemonContext.current?.checkActive()
             guard ProcessQuery.run([tmux, "send-keys", "-t", paneId, "-l", text]) else {
                 throw RouterError.custom("tmux failed to insert text into \(paneId)")
             }
         }
         if pressEnter {
+            try DaemonContext.current?.checkActive()
             guard ProcessQuery.run([tmux, "send-keys", "-t", paneId, "Enter"]) else {
                 throw RouterError.custom("tmux failed to press Enter in \(paneId)")
             }
@@ -4844,6 +4834,7 @@ final class ComputerUseController {
         end tell
         """
 
+        try DaemonContext.current?.checkActive()
         guard ProcessQuery.run(["/usr/bin/osascript", "-e", script]) else {
             throw RouterError.custom("iTerm failed to insert text into session \(sessionId)")
         }

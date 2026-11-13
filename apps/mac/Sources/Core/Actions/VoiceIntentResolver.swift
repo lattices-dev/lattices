@@ -527,7 +527,7 @@ final class VoiceIntentResolver {
     }
 
     private func knownApps() -> [String] {
-        var names = Set(DesktopModel.shared.windows.values.map(\.app))
+        var names = Set(DesktopModel.shared.snapshot.windows.values.map(\.app))
         for app in NSWorkspace.shared.runningApplications {
             if let name = app.localizedName, !name.isEmpty {
                 names.insert(name)

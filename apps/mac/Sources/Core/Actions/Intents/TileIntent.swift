@@ -53,7 +53,7 @@ struct TileIntent: LatticeIntent {
             return .object(["ok": .bool(false), "reason": .string("Unknown position '\(posName)'")])
         }
 
-        DispatchQueue.main.async {
+        try LatticesApi.onMain {
             WindowTiler.tileFrontmostViaAX(to: placement)
         }
         return .object(["ok": .bool(true), "position": .string(posName)])

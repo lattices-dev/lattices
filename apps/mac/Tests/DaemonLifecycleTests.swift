@@ -58,6 +58,46 @@ final class DaemonLifecycleTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: credential.path))
     }
 
+    func testMainThreadShutdownDoesNotWaitForHandlerWaitingOnMain() async throws {
+        let directory = URL(fileURLWithPath: "/private/tmp/lats-shutdown-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("lattices.sock").path
+        let credential = directory.appendingPathComponent("lattices.token")
+        let api = LatticesApi()
+        let entered = DispatchSemaphore(value: 0)
+        let completed = expectation(description: "waiting handler cancelled")
+        api.register(Endpoint(method: "test.main", description: "test", access: .mutate, params: [], returns: .ok, handler: { _ in
+            defer { completed.fulfill() }
+            entered.signal()
+            return try LatticesApi.onMain {
+                XCTFail("Disconnected request reached main-thread work")
+                return .null
+            }
+        }))
+        let server = DaemonServer(socketPath: path, tokenURL: credential, eventBus: EventBus(), api: api)
+        server.start()
+        defer { server.stop() }
+        let peer = try connectPeer(path)
+        defer { close(peer) }
+        let token = try String(contentsOf: credential, encoding: .utf8)
+        try writeAll(peer, Data(("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+            "Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nx-lattices-token: \(token)\r\n\r\n").utf8))
+        var header = Data()
+        while !header.suffix(4).elementsEqual([13, 10, 13, 10]) { header.append(try readExactly(peer, 1)) }
+        XCTAssertTrue(String(decoding: header, as: UTF8.self).hasPrefix("HTTP/1.1 101"))
+        let request = Data(#"{"id":"main","method":"test.main"}"#.utf8)
+        let mask: [UInt8] = [1, 2, 3, 4]
+        try await MainActor.run {
+            try writeAll(peer, Data([0x81, 0x80 | UInt8(request.count)] + mask + request.enumerated().map { $0.element ^ mask[$0.offset % 4] }))
+            XCTAssertEqual(entered.wait(timeout: .now() + 1), .success)
+            let started = Date()
+            server.stop()
+            XCTAssertLessThan(Date().timeIntervalSince(started), 0.5)
+        }
+        await fulfillment(of: [completed], timeout: 2)
+    }
+
     private func connectPeer(_ path: String) throws -> Int32 {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw socketError() }

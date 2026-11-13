@@ -50,12 +50,12 @@ final class ActionRuntime {
         let resolved = try resolveWindowTarget(params: normalizedParams, trace: &trace, events: &events)
         let screen: NSScreen
         if let displayIndex {
-            guard let requestedScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
+            guard let requestedScreen = try onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
                 throw RouterError.notFound("display \(displayIndex)")
             }
             screen = requestedScreen
         } else {
-            screen = onMain {
+            screen = try onMain {
                 Self.resolveTargetScreen(for: resolved.entry, displayIndex: nil)
             }
         }
@@ -77,7 +77,7 @@ final class ActionRuntime {
         if let session = resolved.session { result["session"] = .string(session) }
 
         if let placement {
-            let targetFrame = onMain {
+            let targetFrame = try onMain {
                 WindowTiler.tileFrame(for: placement, on: screen)
             }
             let beforeFrame = resolved.wid.flatMap { Self.cgWindowFrameTopLeft(wid: $0) }
@@ -193,11 +193,11 @@ final class ActionRuntime {
         if let assignedSpaceId {
             trace.append("macOS app assignment desktop \(assignedSpaceId); requested destination \(spaceId)")
         }
-        guard let sourceScreen = onMain({ DisplayGeometryMapper.screen(for: sourceDisplay, in: NSScreen.screens) }),
-              let targetScreen = onMain({ DisplayGeometryMapper.screen(for: targetDisplay, in: NSScreen.screens) }) else {
+        guard let sourceScreen = try onMain({ DisplayGeometryMapper.screen(for: sourceDisplay, in: NSScreen.screens) }),
+              let targetScreen = try onMain({ DisplayGeometryMapper.screen(for: targetDisplay, in: NSScreen.screens) }) else {
             throw RouterError.custom("Could not resolve source and destination displays")
         }
-        let geometry = onMain { () -> ((x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)?, CGRect?) in
+        let geometry = try onMain { () -> ((x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat)?, CGRect?) in
             let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
             let sourceVisible = DisplayGeometryMapper.topLeftFrame(sourceScreen.visibleFrame, primaryHeight: primaryHeight)
             let fractions = DisplayGeometryMapper.normalizedFractions(of: beforeFrame, in: sourceVisible)
@@ -255,8 +255,8 @@ final class ActionRuntime {
             "fromSpaceIds": .array(before.spaceIds.map { .int($0) }),
             "afterSpaceIds": .array((after?.spaceIds ?? []).map { .int($0) }),
             "dryRun": .bool(dryRun),
-            "sourceDisplay": onMain { displayJSON(sourceScreen, requestedIndex: sourceDisplay.displayIndex) },
-            "display": onMain { displayJSON(targetScreen, requestedIndex: targetDisplay.displayIndex) },
+            "sourceDisplay": try onMain { displayJSON(sourceScreen, requestedIndex: sourceDisplay.displayIndex) },
+            "display": try onMain { displayJSON(targetScreen, requestedIndex: targetDisplay.displayIndex) },
             "verificationTolerance": .double(Double(tolerance)),
             "plan": .object([
                 "actionType": .string(actionType), "target": resolved.json,
@@ -298,7 +298,7 @@ final class ActionRuntime {
                                                           at: CGPoint(x: targetFrame.midX, y: targetFrame.midY))
             receipt["followed"] = .bool(followed)
             if followed {
-                onMain {
+                try onMain {
                     NSRunningApplication(processIdentifier: pid)?.activate()
                     if let axWindow = WindowTiler.findAXWindowByFrame(wid: wid, pid: pid) {
                         AXUIElementSetAttributeValue(axWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
@@ -318,7 +318,7 @@ final class ActionRuntime {
             let frame = Self.cgWindowFrameTopLeft(wid: wid)
             let spaces = WindowTiler.getSpacesForWindow(wid).sorted()
             let displays = WindowTiler.getDisplaySpaces()
-            let displayId: String? = onMain {
+            let displayId: String? = try? onMain {
                 guard let frame else { return nil }
                 let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
                 let candidates = displays.compactMap { display -> (String, CGFloat)? in
@@ -340,13 +340,16 @@ final class ActionRuntime {
             moveSpace: { [self] space in
                 let from = WindowTiler.getSpacesForWindow(wid)
                 if from == [space] { return nil }
-                let result = onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
-                if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
-                if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space, followWindow: followWindow) { return reason }
-                return nil
+                do {
+                    let result = try onMain { WindowTiler.moveViaCGS(wid: wid, fromSpaces: from, toSpace: space, switchOnDenial: false) }
+                    if case .success = result, WindowTiler.getSpacesForWindow(wid) == [space] { return nil }
+                    try DaemonContext.current?.checkActive()
+                    if case .failed(let reason) = WindowSpaceCarry.carry(wid: wid, pid: pid, to: space, followWindow: followWindow) { return reason }
+                    return nil
+                } catch { return error.localizedDescription }
             },
             moveFrame: { [self] frame in
-                onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: wid, pid: pid, frame: frame)], activation: .none) }
+                try? onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: wid, pid: pid, frame: frame)], activation: .none) }
             },
             wait: { predicate in
                 let deadline = Date().addingTimeInterval(1.2)
@@ -434,16 +437,16 @@ final class ActionRuntime {
         }
         let screen: NSScreen
         if let displayIndex {
-            guard let requestedScreen = onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
+            guard let requestedScreen = try onMain({ DisplayGeometryMapper.screen(forDisplayIndex: displayIndex) }) else {
                 throw RouterError.notFound("display \(displayIndex)")
             }
             screen = requestedScreen
         } else {
-            screen = onMain {
+            screen = try onMain {
                 Self.resolveTargetScreen(for: resolved.entry, displayIndex: nil)
             }
         }
-        let targetFrame = onMain {
+        let targetFrame = try onMain {
             WindowTiler.tileFrame(for: placement, on: screen)
         }
         let verificationTolerance = Self.verificationTolerance(forApp: resolved.app)
@@ -469,7 +472,7 @@ final class ActionRuntime {
                 trace.append("blocked: Accessibility permission required for deterministic window placement")
                 events.append(event("execute.blocked", "Accessibility permission required to move wid \(wid)"))
             } else {
-                onMain {
+                try onMain {
                     WindowTiler.tileWindowById(wid: wid, pid: pid, to: placement, on: screen)
                 }
                 DesktopModel.shared.markInteraction(wid: wid)
@@ -478,7 +481,7 @@ final class ActionRuntime {
             }
         } else if let session = resolved.session {
             let terminal = Preferences.shared.terminal
-            onMain {
+            try onMain {
                 WindowTiler.tile(session: session, terminal: terminal, to: placement, on: screen)
             }
             trace.append("executed terminal session fallback")
@@ -722,7 +725,7 @@ final class ActionRuntime {
             trace.append("dry run; skipped restore")
             events.append(event("undo.skipped", "dry run requested; no window mutation performed"))
         } else {
-            plannedMoves = plannedMoves.map { planned in
+            plannedMoves = try plannedMoves.map { planned in
                 var updated = planned
                 let move = planned.move
                 if let restoreSpace = move.restoreSpaceId {
@@ -741,7 +744,7 @@ final class ActionRuntime {
                 } else {
                     // Receipts created before desktop-aware relocation only
                     // contain a frame, so retain their original undo contract.
-                    onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: move.wid, pid: move.pid, frame: move.restoreFrame)]) }
+                    try onMain { WindowTiler.batchMoveAndRaiseWindows([(wid: move.wid, pid: move.pid, frame: move.restoreFrame)]) }
                     updated.afterFrame = Self.waitForWindowFrame(wid: move.wid, targetFrame: move.restoreFrame, tolerance: move.tolerance)
                 }
                 return updated
@@ -822,7 +825,7 @@ final class ActionRuntime {
 
     private func resolveWindowTarget(params: JSON?, trace: inout [String], events: inout [JSON]) throws -> ResolvedWindowTarget {
         if let wid = params?["wid"]?.uint32Value {
-            guard let entry = DesktopModel.shared.windows[wid] else {
+            guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
                 throw RouterError.notFound("window \(wid)")
             }
             trace.append("resolved target by wid")
@@ -865,7 +868,7 @@ final class ActionRuntime {
         }
 
         if let target = Self.frontmostWindowTarget() {
-            let entry = DesktopModel.shared.windows[target.wid]
+            let entry = DesktopModel.shared.snapshot.windows[target.wid]
             trace.append("resolved target by frontmost window")
             events.append(event("plan.resolveTarget", "resolved frontmost window \(target.wid)"))
             return ResolvedWindowTarget(
@@ -886,7 +889,7 @@ final class ActionRuntime {
     /// target must fail loudly rather than move whatever happens to be focused.
     private func resolveMoveTarget(params: JSON?, trace: inout [String], events: inout [JSON]) throws -> ResolvedWindowTarget {
         if let wid = params?["wid"]?.uint32Value {
-            guard let entry = DesktopModel.shared.windows[wid] else {
+            guard let entry = DesktopModel.shared.snapshot.windows[wid] else {
                 throw RouterError.notFound("window \(wid)")
             }
             trace.append("resolved target by wid")
@@ -1139,11 +1142,8 @@ final class ActionRuntime {
         return .object(obj)
     }
 
-    private func onMain<T>(_ work: () -> T) -> T {
-        if Thread.isMainThread {
-            return work()
-        }
-        return DispatchQueue.main.sync(execute: work)
+    private func onMain<T>(_ work: () -> T) throws -> T {
+        try LatticesApi.onMain(work)
     }
 
     private static func framesClose(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 6) -> Bool {
@@ -1165,7 +1165,7 @@ final class ActionRuntime {
         ProcessModel.shared.synthesizeTerminals()
             .first { $0.tmuxSession == session }
             .flatMap { instance in
-                instance.windowId.flatMap { DesktopModel.shared.windows[$0] }
+                instance.windowId.flatMap { DesktopModel.shared.snapshot.windows[$0] }
             }
     }
 

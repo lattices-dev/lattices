@@ -6,12 +6,25 @@ struct DaemonRequest: Codable {
     let id: String
     let method: String
     let params: JSON?
+    /// Absolute Unix time in milliseconds, shared with the desktop client and Linux host.
+    let deadline: Double?
+
+    init(id: String, method: String, params: JSON?, deadline: Double? = nil) {
+        self.id = id
+        self.method = method
+        self.params = params
+        self.deadline = deadline
+    }
+
+    var isExpired: Bool { deadline.map { Date().timeIntervalSince1970 * 1000 >= $0 } ?? false }
 }
 
 struct DaemonResponse: Codable {
     let id: String
     let result: JSON?
     let error: String?
+    /// On every reply to a `.mutate` endpoint: how far it got (DaemonDelivery).
+    var delivery: JSON? = nil
 }
 
 struct DaemonEvent: Codable {

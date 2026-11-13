@@ -102,6 +102,33 @@ lattices uses a JSON-RPC-style protocol over authenticated WebSocket on the priv
 | `id`     | string         | Echoed from request                          |
 | `result` | any \| null    | Method return value (null on error)          |
 | `error`  | string \| null | Error message (null on success)              |
+| `delivery` | object       | Only on `mutate` methods. See [Delivery](#delivery) |
+
+### Delivery
+
+Every reply to a `mutate` method, success or error, carries `delivery`. It
+says how far the call got, so a caller knows whether to send it again. The Mac
+daemon and lattices-host on Linux use the same values.
+
+```json
+{ "status": "delivery_uncertain", "retrySafe": false, "recovery": "observe_then_retry" }
+```
+
+| `status` | Meaning |
+| --- | --- |
+| `not_delivered` | Refused before anything happened: missing parameter, not found, or a capability the host lacks. |
+| `delivery_uncertain` | The handler started and failed. It may have acted. |
+| `delivered_unverified` | The handler finished. Nothing read the result back. |
+
+`retrySafe` is true when sending the identical call again can't double its
+effect. That is always the case for `not_delivered`, and for repeatable methods
+such as `windows.focus`, `windows.place` and `sessions.launch`. It is false for
+clicks, keys and typing. `recovery` is `retry`, `observe_then_retry` (look
+first, then act only if the change is missing) or `none`.
+
+The Node client puts `delivery` on a successful object result and on the
+`DaemonError` it throws. When the connection drops after a `computer.*` call
+was sent, the client reports `delivery_uncertain` itself.
 
 ### Errors
 

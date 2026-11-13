@@ -8,7 +8,7 @@ import { callHost, resolveHost } from "../../../hosts.ts";
 import { layerTarget } from "../../../cli/layer.ts";
 import { placeWithClient, searchWithClient, type DaemonCaller } from "../../../cli/search.ts";
 import { normalizePlacement } from "../../../cli/window.ts";
-import type { JsonObject, ToolDefinition, ToolResult, Toolset } from "../../types.ts";
+import { toolError, type JsonObject, type ToolDefinition, type ToolResult, type Toolset } from "../../types.ts";
 
 const object = (properties: JsonObject, required: string[] = []): JsonObject => ({
   type: "object",
@@ -202,12 +202,13 @@ export const windowsToolset: Toolset = {
   instructions: [
     "windows: this Mac's window controls. windows_search first (deep: true only when it misses), then windows_place / windows_focus by wid.",
     "windows: windows_place returns a receiptId; history_undo with it puts the window back. layers_list and layers_switch move between workspace layers.",
+    "windows: views_save keeps an app on another host (e.g. Spotify on archie) by id; views_open shows it as its own window here and returns that window's id.",
   ],
   async callTool(name, args) {
     try {
       return await callWindowTool(name, args);
     } catch (err) {
-      return { content: [{ type: "text", text: (err as Error).message }], isError: true };
+      return toolError(err);
     }
   },
 };
