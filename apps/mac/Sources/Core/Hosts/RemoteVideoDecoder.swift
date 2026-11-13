@@ -136,6 +136,7 @@ final class RemoteVideoDecoder {
 /// are decoded there; the session hears about pictures on the main actor.
 final class RemoteVideoStream: @unchecked Sendable {
     struct Picture: Equatable {
+        var streamID: UInt32
         var frame: CGRect
         var size: CGSize
     }
@@ -219,7 +220,7 @@ final class RemoteVideoStream: @unchecked Sendable {
         hooks?.ack(frame.streamID, frame.seq)
         switch decoder.decode(frame) {
         case .shown(let size):
-            hooks?.shown(Picture(frame: frame.frame, size: size))
+            hooks?.shown(Picture(streamID: frame.streamID, frame: frame.frame, size: size))
         case .needsKeyframe:
             let now = Date()
             guard now.timeIntervalSince(lastKeyframeAsk) > 0.5 else { return }

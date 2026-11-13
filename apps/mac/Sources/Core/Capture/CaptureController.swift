@@ -694,22 +694,27 @@ final class CaptureController {
     func still(params: JSON?) throws -> JSON {
         let maxWidth = max(160, min(3840, params?["maxWidth"]?.intValue ?? 1600))
         let quality = max(20, min(95, params?["quality"]?.intValue ?? 70))
+        var showsCursor = params?["cursor"]?.boolValue ?? true
         let image: CGImage
         let frame: CGRect
         var display: JSON = .null
         if params?["width"] != nil || params?["w"] != nil {
+            // Preserve the existing cursor-free region snapshot default.
+            showsCursor = params?["cursor"]?.boolValue ?? false
             let region = try resolveRegion(params: params)
             frame = region.rect
-            image = try captureRegionImage(rect: region.rect, timeoutSeconds: 5)
+            image = try captureRegionImage(rect: region.rect, showsCursor: showsCursor, timeoutSeconds: 5)
         } else if let wid = params?["wid"]?.intValue {
             let target = try resolveWindow(params: params)
             frame = CGRect(x: target.frame.x, y: target.frame.y, width: target.frame.w, height: target.frame.h)
             image = try captureWindowImage(wid: UInt32(wid), timeoutSeconds: 5)
+            // Window snapshots have always excluded the host pointer.
+            showsCursor = false
         } else {
             let resolved = try resolveDisplay(params: params)
             frame = resolved.frame
             display = .object(["index": .int(resolved.index), "name": .string(resolved.name)])
-            image = try captureDisplayImage(displayID: resolved.displayID, showsCursor: true, timeoutSeconds: 5)
+            image = try captureDisplayImage(displayID: resolved.displayID, showsCursor: showsCursor, timeoutSeconds: 5)
         }
         let scaled = image.width > maxWidth ? try smoothScaled(image, width: maxWidth) : image
         let rep = NSBitmapImageRep(cgImage: scaled)
@@ -720,6 +725,7 @@ final class CaptureController {
             "format": .string("jpeg"),
             "width": .int(scaled.width),
             "height": .int(scaled.height),
+            "cursor": .bool(showsCursor),
             "data": .string(data.base64EncodedString()),
             "frame": .object(["x": .double(frame.minX), "y": .double(frame.minY), "w": .double(frame.width), "h": .double(frame.height)]),
             "display": display,
@@ -761,12 +767,12 @@ final class CaptureController {
         return captured
     }
 
-    private func captureRegionImage(rect: CGRect, timeoutSeconds: Int) throws -> CGImage {
+    private func captureRegionImage(rect: CGRect, showsCursor: Bool = false, timeoutSeconds: Int) throws -> CGImage {
         let semaphore = DispatchSemaphore(value: 0)
         let box = CaptureBox()
 
         Task.detached(priority: .userInitiated) {
-            let captured = await WindowCapture.region(rect: rect, imageOption: [.bestResolution])
+            let captured = await WindowCapture.region(rect: rect, showsCursor: showsCursor, imageOption: [.bestResolution])
             box.set(captured)
             semaphore.signal()
         }

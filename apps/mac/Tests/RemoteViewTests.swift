@@ -3,6 +3,101 @@ import XCTest
 @testable import Lattices
 
 final class RemoteViewTests: XCTestCase {
+    func testControlClickRequiresCommandAloneAndALiveControllablePicture() {
+        func toggles(_ modifiers: NSEvent.ModifierFlags, canControl: Bool = true,
+                     isLive: Bool = true, selectingRegion: Bool = false, insidePicture: Bool = true) -> Bool {
+            RemoteView.shouldToggleControl(modifiers: modifiers, controlling: false,
+                canControl: canControl, isLive: isLive, selectingRegion: selectingRegion,
+                insidePicture: insidePicture)
+        }
+        XCTAssertTrue(toggles(.command))
+        XCTAssertTrue(toggles([.command, .capsLock]))
+        for modifiers: NSEvent.ModifierFlags in [[], .option, .control, [.command, .shift],
+                                                [.command, .option], [.command, .control], [.command, .function]] {
+            XCTAssertFalse(toggles(modifiers))
+        }
+        XCTAssertFalse(toggles(.command, canControl: false))
+        XCTAssertFalse(toggles(.command, isLive: false))
+        XCTAssertFalse(toggles(.command, selectingRegion: true))
+        XCTAssertFalse(toggles(.command, insidePicture: false), "Letterboxing must not start control")
+    }
+
+    func testControlClickCanStopDuringStreamReplacementButDoesNotInterruptRegionSelection() {
+        XCTAssertTrue(RemoteView.shouldToggleControl(modifiers: .command, controlling: true,
+            canControl: false, isLive: false, selectingRegion: false, insidePicture: false))
+        XCTAssertFalse(RemoteView.shouldToggleControl(modifiers: .command, controlling: true,
+            canControl: true, isLive: true, selectingRegion: true, insidePicture: true))
+    }
+
+    @MainActor
+    func testStartingControlConsumesItsGestureAndReturnsFocusFromLocalControls() throws {
+        let session = RemoteViewSession(host: "Test", address: "127.0.0.1", port: 1,
+                                        target: .display(index: 0, name: "Monitor"))
+        let presentation = RemoteViewerPresentation()
+        let view = RemoteInputView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        view.session = session
+        view.presentation = presentation
+        view.imageSize = view.bounds.size
+        view.remoteFrame = view.bounds
+        presentation.setControlsFocused(true)
+        presentation.noteKeyboardNavigation()
+        XCTAssertTrue(presentation.localControlsActive)
+
+        view.toggleControlFromClick()
+        XCTAssertTrue(session.controlling)
+        XCTAssertFalse(presentation.localControlsActive)
+        session.selectingRegion = true
+        let drag = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDragged, location: CGPoint(x: 400, y: 400),
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        view.mouseDragged(with: drag)
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: CGPoint(x: 400, y: 400),
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+        view.mouseUp(with: up)
+        XCTAssertTrue(session.selectingRegion, "The activation gesture must stay local even after Command is released")
+        XCTAssertEqual(session.target, .display(index: 0, name: "Monitor"))
+        view.endInteraction()
+        presentation.invalidate()
+    }
+
+    @MainActor
+    func testControlClickStopsTypingConsumesDragAndDoesNotToggleAgainOnDoubleClick() throws {
+        let session = RemoteViewSession(host: "Test", address: "127.0.0.1", port: 1,
+                                        target: .display(index: 0, name: "Monitor"))
+        let view = RemoteInputView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        view.session = session
+        view.imageSize = view.bounds.size
+        view.remoteFrame = view.bounds
+        session.controlling = true
+        session.keyboardEnabled = true
+        func event(_ type: NSEvent.EventType, at point: CGPoint, clicks: Int = 1) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point, modifierFlags: .command,
+                timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1))
+        }
+        let start = CGPoint(x: 100, y: 100)
+        let end = CGPoint(x: 400, y: 400)
+        view.mouseDown(with: try event(.leftMouseDown, at: start))
+        XCTAssertFalse(session.controlling)
+        XCTAssertFalse(session.keyboardEnabled)
+
+        // A state change during the consumed gesture must not turn its drag/up
+        // into region selection or a click against the remote desktop.
+        session.selectingRegion = true
+        view.mouseDragged(with: try event(.leftMouseDragged, at: end))
+        view.mouseUp(with: try event(.leftMouseUp, at: end))
+        XCTAssertEqual(session.target, .display(index: 0, name: "Monitor"))
+        XCTAssertTrue(session.selectingRegion)
+        session.selectingRegion = false
+        session.controlling = true
+        view.mouseDown(with: try event(.leftMouseDown, at: end, clicks: 2))
+        view.mouseUp(with: try event(.leftMouseUp, at: end, clicks: 2))
+        XCTAssertTrue(session.controlling, "The second click of the same gesture must stay consumed")
+
+        view.mouseDown(with: try event(.leftMouseDown, at: end))
+        view.mouseUp(with: try event(.leftMouseUp, at: end))
+        XCTAssertFalse(session.controlling, "A new click must be able to toggle again")
+        view.endInteraction()
+    }
+
     func testFitLetterboxesAWidePictureInATallView() {
         let shown = RemoteView.fit(CGSize(width: 1600, height: 900), in: CGSize(width: 800, height: 900))
         XCTAssertEqual(shown, CGRect(x: 0, y: 225, width: 800, height: 450))
@@ -62,6 +157,25 @@ final class RemoteViewTests: XCTestCase {
         // Expanding an active viewer must change the requested profile.
         XCTAssertNotEqual(RemoteView.streamProfile(engaged: true, requestWidth: 1600),
                           RemoteView.streamProfile(engaged: true, requestWidth: 3200))
+    }
+
+    func testControlChangesStreamIdentityWithoutChangingVideoQuality() {
+        let viewing = RemoteView.streamProfile(engaged: true, requestWidth: 2560)
+        let controlling = RemoteView.streamProfile(engaged: true, requestWidth: 2560, controlling: true)
+        XCTAssertTrue(viewing.showsCursor)
+        XCTAssertFalse(controlling.showsCursor)
+        XCTAssertNotEqual(viewing, controlling, "Control toggles must restart capture with the new cursor policy")
+        XCTAssertEqual(viewing.fps, controlling.fps)
+        XCTAssertEqual(viewing.maxWidth, controlling.maxWidth)
+        XCTAssertTrue(RemoteView.streamProfile(engaged: false, requestWidth: 2560, controlling: true).showsCursor,
+                      "A viewer in the background gives the host its pointer back")
+    }
+
+    func testLegacyOrCursorInclusivePicturesDoNotEnableAnExtraPointer() {
+        XCTAssertFalse(RemoteView.pictureExcludesCursor(nil))
+        XCTAssertFalse(RemoteView.pictureExcludesCursor([:]))
+        XCTAssertFalse(RemoteView.pictureExcludesCursor(["cursor": true]))
+        XCTAssertTrue(RemoteView.pictureExcludesCursor(["cursor": false]))
     }
 
     func testAutomaticResolutionRetainsViewportAndEngagementCaps() {
@@ -270,6 +384,13 @@ final class RemoteViewTests: XCTestCase {
                        .init(canSend: false, canCapture: false))
     }
 
+    func testHostsAdvertisingCuaNamesGetKeyboardSupport() {
+        XCTAssertEqual(RemoteView.keyboardSupport(platform: "linux", methods: ["cua.pressKey", "cua.typeText"], interactive: nil),
+                       .init(canSend: true, canCapture: false))
+        XCTAssertTrue(RemoteView.isKeyboardMethod("cua.hotkey"))
+        XCTAssertFalse(RemoteView.isKeyboardMethod("cua.click"))
+    }
+
     func testLinuxKeyboardKeepsPhysicalAndTextOnlyTransportsDistinct() {
         XCTAssertEqual(RemoteView.keyboardSupport(platform: "linux", methods: ["computer.pressKey"], interactive: ["keyboard": true]),
                        .init(canSend: true, canCapture: true))
@@ -336,12 +457,5 @@ final class RemoteViewTests: XCTestCase {
         XCTAssertEqual(displays.map(\.name), ["DP-1", "Studio Display"])
         XCTAssertEqual(displays[0].scale, 1.25)
         XCTAssertEqual(displays[1].frame.minX, 2560)
-    }
-
-    func testHostsAdvertisingCuaNamesGetKeyboardSupport() {
-        XCTAssertEqual(RemoteView.keyboardSupport(platform: "linux", methods: ["cua.pressKey", "cua.typeText"], interactive: nil),
-                       .init(canSend: true, canCapture: false))
-        XCTAssertTrue(RemoteView.isKeyboardMethod("cua.hotkey"))
-        XCTAssertFalse(RemoteView.isKeyboardMethod("cua.click"))
     }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AccessUnitSplitter, FlowControl, NalScanner, StreamRegistry, bitrateFor, defaultStreamDeps, encoderCommand, nalType, packFrame,
-  spsSize, splitParameterSets, streamSize, type EncoderProcess, type StreamDeps,
+  selectRecorder, spsSize, splitParameterSets, streamSize, type EncoderProcess, type StreamDeps,
 } from "../src/stream.ts";
 
 const bytes = (...v: number[]) => Uint8Array.from(v);
@@ -123,12 +123,27 @@ describe("wire frame", () => {
 });
 
 describe("encoder command", () => {
+  test("cursor-free capture selects only the patched helper", () => {
+    const helper = "/home/test/.lattices/bin/lattices-wf-recorder";
+    expect(selectRecorder(false, helper)).toEqual({ command: helper, cursor: false });
+    expect(selectRecorder(false, null)).toEqual({ command: "wf-recorder", cursor: true });
+    expect(selectRecorder(true, helper)).toEqual({ command: "wf-recorder", cursor: true });
+    for (const encoder of ["software", "vaapi"] as const) {
+      const command = encoderCommand({ width: 1280, height: 800, fps: 30, encoder, recorder: selectRecorder(false, helper) });
+      expect(command.command).toBe(helper);
+      expect(command.args[0]).toBe("--no-cursor");
+      const fallback = encoderCommand({ width: 1280, height: 800, fps: 30, encoder, recorder: selectRecorder(false, null) });
+      expect(fallback.command).toBe("wf-recorder");
+      expect(fallback.args).not.toContain("--no-cursor");
+    }
+  });
+
   test("display, software", () => {
     const { command, args } = encoderCommand({ output: "DP-1", width: 1920, height: 1080, fps: 30, encoder: "software" });
     expect(command).toBe("wf-recorder");
     expect(args).toEqual([
       "-o", "DP-1", "-D", "-r", "30",
-      "-c", "libx264", "-x", "yuv420p", "-F", "scale=1920:1080:in_range=full:out_range=full:out_color_matrix=bt709",
+      "-c", "libx264", "-x", "yuv420p", "-F", "scale=1920:1080:in_range=full:out_range=full:out_color_matrix=bt709,setsar=1",
       "-p", "color_range=pc", "-p", "colorspace=bt709", "-p", "color_primaries=bt709", "-p", "color_trc=iec61966-2-1",
       "-p", "preset=ultrafast", "-p", "tune=zerolatency", "-p", "maxrate=6220800", "-p", "bufsize=3110400",
       "-p", "profile=main", "-p", "bf=0", "-p", "g=60", "-p", "b=6220800",
@@ -147,7 +162,8 @@ describe("encoder command", () => {
   });
 
   test("size: capped to maxWidth, even, aspect kept", () => {
-    expect(streamSize(3440, { x: 0, y: 0, w: 3440, h: 1440 }, 1920)).toEqual({ width: 1920, height: 802 });
+    expect(streamSize(3440, { x: 0, y: 0, w: 3440, h: 1440 }, 1920)).toEqual({ width: 1920, height: 804 });
+    expect(streamSize(1180, { x: 0, y: 0, w: 1180, h: 760 }, 1180)).toEqual({ width: 1180, height: 760 });
     expect(streamSize(2560, { x: 0, y: 0, w: 1280, h: 801 }, 3840)).toEqual({ width: 2560, height: 1602 });
     expect(streamSize(301, { x: 0, y: 0, w: 301, h: 201 }, 1920)).toEqual({ width: 300, height: 200 });
   });
@@ -235,21 +251,24 @@ describe("session", () => {
     return { proc, push: (b: Uint8Array) => push(b), close: () => close(), exit: (code: number) => exit(code) };
   }
 
-  function harness(opts: { vaapi?: boolean; buffered?: () => number; tickMs?: number; onSend?: (bytes: Uint8Array, at: number) => void } = {}) {
+  function harness(opts: { vaapi?: boolean; recorderHelper?: string; virtual?: boolean; buffered?: () => number; tickMs?: number; onSend?: (bytes: Uint8Array, at: number) => void } = {}) {
     const sent: Uint8Array[] = [];
     const events: { name: string; data: any }[] = [];
     const encoders: ReturnType<typeof fakeEncoder>[] = [];
     const commands: string[][] = [];
+    const commandNames: string[] = [];
+    let cursorHolds = 0;
     let clock = 0;
     const deps: StreamDeps = {
       snapshot: async () => ({
         windows: [], clients: [], focused: null,
         monitors: [{ name: "DP-1", focused: true }],
-        displays: [{ displayIndex: 0, displayId: "DP-1", name: "Panel", frame: { x: 0, y: 0, w: 1280, h: 800 }, scale: 2 }],
+        displays: [{ displayIndex: 0, displayId: "DP-1", name: "Panel", frame: { x: 0, y: 0, w: 1280, h: 800 }, scale: 2, virtual: opts.virtual ?? false }],
       }) as any,
       resolveTarget: async () => { throw new Error("no windows"); },
       spawn: (cmd) => {
         commands.push(cmd.args);
+        commandNames.push(cmd.command);
         const e = fakeEncoder();
         encoders.push(e);
         return e.proc;
@@ -258,6 +277,8 @@ describe("session", () => {
       pts: () => BigInt(clock * 1000),
       windowAlive: async () => true,
       vaapiDevice: () => (opts.vaapi ? "/dev/dri/renderD128" : null),
+      cursorFreeRecorder: () => opts.recorderHelper ?? null,
+      hideCursor: () => { cursorHolds++; return () => { cursorHolds--; }; },
       tickMs: opts.tickMs ?? 1e9,
       quietMs: 50,
     };
@@ -266,10 +287,39 @@ describe("session", () => {
       buffered: opts.buffered ?? (() => 0),
       event: (name, data) => events.push({ name, data }),
     }, deps);
-    return { registry, sent, events, encoders, commands, setClock: (t: number) => { clock = t; } };
+    return { registry, sent, events, encoders, commands, commandNames, setClock: (t: number) => { clock = t; }, cursorHolds: () => cursorHolds };
   }
 
   const settle = () => new Promise((r) => setTimeout(r, 5));
+
+  test("a cursor-free stream of a headless output hides the compositor pointer until it stops", async () => {
+    const helper = "/home/test/.lattices/bin/lattices-wf-recorder";
+    for (const virtual of [false, true]) {
+      const h = harness({ recorderHelper: helper, virtual });
+      const result = await h.registry.handle("capture.stream.start", { cursor: false }) as any;
+      expect(h.cursorHolds()).toBe(virtual ? 1 : 0);
+      await h.registry.handle("capture.stream.stop", { streamId: result.streamId });
+      expect(h.cursorHolds()).toBe(0);
+      // A stream that keeps the pointer leaves it alone.
+      await h.registry.handle("capture.stream.start", { cursor: true });
+      expect(h.cursorHolds()).toBe(0);
+      h.registry.stopAll();
+    }
+  });
+
+  test("start reports the applied cursor policy, including stock-recorder fallback", async () => {
+    for (const helper of [undefined, "/home/test/.lattices/bin/lattices-wf-recorder"]) {
+      for (const cursor of [undefined, true, false]) {
+        const h = harness({ recorderHelper: helper });
+        const result = await h.registry.handle("capture.stream.start", cursor === undefined ? {} : { cursor }) as any;
+        const hidden = cursor === false && helper !== undefined;
+        expect(result.cursor).toBe(!hidden);
+        expect(h.commandNames[0]).toBe(hidden ? helper! : "wf-recorder");
+        expect(h.commands[0].includes("--no-cursor")).toBe(hidden);
+        h.registry.stopAll();
+      }
+    }
+  });
 
   test("start returns the contract shape and frames carry it", async () => {
     const h = harness();

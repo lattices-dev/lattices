@@ -1,0 +1,52 @@
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -264,6 +264,7 @@
+ }
+ 
+ static bool use_damage = true;
++static bool overlay_cursor = true;
+ static bool use_dmabuf = false;
+ static bool use_hwupload = false;
+ 
+@@ -922,6 +923,8 @@
+                             using a GPU encoder. However, this can cause issues on some systems. In such
+                             cases, this option will disable the GPU copy and force a CPU one.
+ 
++      --no-cursor           Exclude the pointer from captured frames.
++
+   -D, --no-damage           By default, wf-recorder will request a new frame from the compositor
+                             only when the screen updates. This results in a much smaller output
+                             file, which however has a variable refresh rate. When this option is
+@@ -1031,11 +1034,11 @@
+     if (!selected_region.is_selected())
+     {
+         frame = zwlr_screencopy_manager_v1_capture_output(
+-            screencopy_manager, 1, chosen_output->output);
++            screencopy_manager, overlay_cursor, chosen_output->output);
+     } else
+     {
+         frame = zwlr_screencopy_manager_v1_capture_output_region(
+-            screencopy_manager, 1, chosen_output->output,
++            screencopy_manager, overlay_cursor, chosen_output->output,
+             selected_region.x - chosen_output->x,
+             selected_region.y - chosen_output->y,
+             selected_region.width, selected_region.height);
+@@ -1123,6 +1126,7 @@
+         { "buffrate",          required_argument, NULL, 'B' },
+         { "version",           no_argument,       NULL, 'v' },
+         { "no-damage",         no_argument,       NULL, 'D' },
++        { "no-cursor",         no_argument,       NULL, 1000 },
+         { "overwrite",         no_argument,       NULL, 'y' },
+         { "list-output",       no_argument,       NULL, 'L' },
+         { 0,                   0,                 NULL,  0  }
+@@ -1215,6 +1219,10 @@
+                 printf("wf-recorder %s\n", WFRECORDER_VERSION);
+                 return 0;
+ 
++            case 1000:
++                overlay_cursor = false;
++                break;
++
+             case 'D':
+                 use_damage = false;
+                 break;

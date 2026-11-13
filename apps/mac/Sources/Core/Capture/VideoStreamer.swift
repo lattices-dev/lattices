@@ -18,6 +18,7 @@ struct VideoStreamRequest: Equatable {
     var target: Target
     var maxWidth: Int
     var fps: Int
+    var showsCursor: Bool
 
     static let defaultMaxWidth = 1920
     static let defaultFPS = 30
@@ -37,6 +38,7 @@ struct VideoStreamRequest: Equatable {
         }
         maxWidth = max(320, min(3840, params?["maxWidth"]?.intValue ?? Self.defaultMaxWidth))
         fps = max(5, min(60, params?["fps"]?.intValue ?? Self.defaultFPS))
+        showsCursor = params?["cursor"]?.boolValue ?? true
     }
 }
 
@@ -307,8 +309,9 @@ final class VideoStreamer {
                 Param(name: "maxWidth", type: "int", required: false, description: "Largest coded width, 320-3840 (default 1920)"),
                 Param(name: "fps", type: "int", required: false, description: "Frame rate cap, 5-60 (default 30)"),
                 Param(name: "codec", type: "string", required: false, description: "h264 (the only codec)"),
+                Param(name: "cursor", type: "bool", required: false, description: "Include the host pointer in captured frames (default true)"),
             ],
-            returns: .custom("Object with streamId, codec, width, height, the streamed frame in layout coordinates, and display"),
+            returns: .custom("Object with streamId, codec, width, height, cursor, the streamed frame in layout coordinates, and display"),
             handler: { try shared.start(params: $0) }
         ))
         api.register(Endpoint(
@@ -351,7 +354,8 @@ final class VideoStreamer {
         let id = nextID
         lock.unlock()
 
-        let stream = try VideoStream(id: id, owner: owner, plan: plan, fps: request.fps, maxWidth: request.maxWidth)
+        let stream = try VideoStream(id: id, owner: owner, plan: plan, fps: request.fps,
+                                     maxWidth: request.maxWidth, showsCursor: request.showsCursor)
         stream.onEnd = { [weak self] ended in self?.remove(ended) }
         lock.lock()
         streams[id] = stream
@@ -375,6 +379,7 @@ final class VideoStreamer {
             "codec": .string("h264"),
             "width": .int(stream.width),
             "height": .int(stream.height),
+            "cursor": .bool(stream.showsCursor),
             "frame": .object(["x": .double(plan.frame.minX), "y": .double(plan.frame.minY), "w": .double(plan.frame.width), "h": .double(plan.frame.height)]),
             "display": plan.display,
             "activity": stream.activityInfo,
@@ -513,6 +518,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     let owner: DaemonConnection
     let fps: Int
     let maxWidth: Int
+    let showsCursor: Bool
     let windowID: CGWindowID?
     private(set) var width: Int
     private(set) var height: Int
@@ -547,11 +553,12 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
 
     static let keyframeInterval: TimeInterval = 2
 
-    init(id: UInt32, owner: DaemonConnection, plan: VideoStreamer.Plan, fps: Int, maxWidth: Int) throws {
+    init(id: UInt32, owner: DaemonConnection, plan: VideoStreamer.Plan, fps: Int, maxWidth: Int, showsCursor: Bool) throws {
         self.id = id
         self.owner = owner
         self.fps = fps
         self.maxWidth = maxWidth
+        self.showsCursor = showsCursor
         self.windowID = plan.windowID
         self.scale = plan.scale
         self.filter = plan.filter
@@ -569,7 +576,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         configuration.queueDepth = 4
-        configuration.showsCursor = true
+        configuration.showsCursor = showsCursor
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
         if plan.windowID != nil {

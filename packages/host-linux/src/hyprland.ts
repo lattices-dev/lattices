@@ -164,6 +164,14 @@ export const activeWindow = async () => {
 };
 export const cursorPos = () => hyprctlJson<{ x: number; y: number }>("cursorpos");
 
+export async function setCursorInvisible(hidden: boolean): Promise<void> {
+  const command = await usesLua()
+    ? `/eval hl.config({ cursor = { invisible = ${hidden} } })`
+    : `/keyword cursor:invisible ${hidden}`;
+  const out = (await request(command, { timeoutMs: 1500 })).trim();
+  if (out !== "ok") throw new Error(`hyprctl: ${out}`);
+}
+
 /** Recovery path if the visit's Wayland pointer connection has failed. */
 export async function warpCursor(x: number, y: number): Promise<void> {
   const command = await usesLua()

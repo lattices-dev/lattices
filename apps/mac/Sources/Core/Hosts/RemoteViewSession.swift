@@ -29,6 +29,8 @@ final class RemoteViewSession: ObservableObject, Identifiable {
     @Published private(set) var image: NSImage?
     /// The picture comes from `video.layer` rather than `image`.
     @Published private(set) var showingVideo = false
+    /// Applies to the displayed pixels, not a stream request still in flight.
+    @Published private(set) var pictureExcludesCursor = false
     @Published private(set) var videoSize: CGSize = .zero
     /// What the current picture covers, in the host's layout coordinates.
     @Published private(set) var frame: CGRect = .zero
@@ -50,7 +52,15 @@ final class RemoteViewSession: ObservableObject, Identifiable {
                 keyboardEnabled = false
                 releaseInput()
             }
-            if streamID != nil { wake() }
+            // A cursor policy change replaces the picture. Retaining old
+            // cursor-bearing pixels until the renderer presents a new frame
+            // could briefly duplicate the pointer after its start reply.
+            streamID = nil
+            image = nil
+            showingVideo = false
+            pictureExcludesCursor = false
+            video.detach(clear: true)
+            wake()
         }
     } }
     @Published private(set) var livePointer = false
@@ -71,6 +81,10 @@ final class RemoteViewSession: ObservableObject, Identifiable {
         if !keyboardCaptured, canCaptureKeyboard { enqueueInput("computer.pressKey", ["phase": "reset"]) }
         updateInputHeartbeat()
     } }
+    /// A remote app window behaves like a Mac app: its physical keys come from
+    /// the window's own events, not a system-wide tap, so Cmd-Tab and the
+    /// app's own Cmd shortcuts stay here.
+    var localShortcuts = false
     @Published var selectingRegion = false { didSet { if selectingRegion && !oldValue { releaseInput() } } }
     @Published var notice: String?
 
@@ -115,6 +129,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
     private var ackMilliseconds = 0
     private var statsPublished = Date.distantPast
     private var firstFramePending = false
+    private var streamExcludesCursor = false
     private var streamRequestedAt = Date.distantPast
     init(host: String, address: String, port: UInt16, target: RemoteView.Target) {
         self.host = host
@@ -199,8 +214,11 @@ final class RemoteViewSession: ObservableObject, Identifiable {
             keyframe: { [weak connection] id in
                 Task { _ = try? await connection?.call("capture.stream.keyframe", params: ["streamId": Int(id)], timeout: 3) }
             },
-            shown: { [weak self] picture in
-                Task { @MainActor in self?.shown(picture) }
+            shown: { [weak self, weak connection] picture in
+                Task { @MainActor in
+                    guard let self, let connection, self.connection === connection else { return }
+                    self.shown(picture)
+                }
             }))
         connection.onClose = { [weak self] reason in
             guard let self, self.connection === connection else { return }
@@ -324,7 +342,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
     }
 
     private var streamProfile: RemoteView.StreamProfile {
-        RemoteView.streamProfile(engaged: engaged, requestWidth: requestWidth, resolution: resolution)
+        RemoteView.streamProfile(engaged: engaged, requestWidth: requestWidth, resolution: resolution, controlling: controlling)
     }
 
     private var stillWidth: Int { resolution.maxWidth ?? requestWidth }
@@ -348,7 +366,9 @@ final class RemoteViewSession: ObservableObject, Identifiable {
 
     private func retarget() {
         releaseInput()
+        streamID = nil
         image = nil
+        pictureExcludesCursor = false
         frame = .zero
         frameRate = RemoteView.FrameRateMeter()
         streamActivity = nil
@@ -396,6 +416,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
         params["maxWidth"] = profile.maxWidth
         params["fps"] = profile.fps
         params["codec"] = "h264"
+        params["cursor"] = profile.showsCursor
         streamOwner += 1
         let owner = streamOwner
         let owns = { [unowned self] in self.streamOwner == owner }
@@ -408,7 +429,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
         fps = 0
         streamEnded = false
         let requestedAt = Date()
-        DiagnosticLog.shared.info("RemoteView: \(host) request \(asked.label) \(profile.maxWidth)px @\(profile.fps)fps engaged=\(engaged)")
+        DiagnosticLog.shared.info("RemoteView: \(host) request \(asked.label) \(profile.maxWidth)px @\(profile.fps)fps engaged=\(engaged) cursor=\(profile.showsCursor)")
         let result: [String: Any]?
         do {
             result = try await connection.call("capture.stream.start", params: params, timeout: 8) as? [String: Any]
@@ -432,6 +453,8 @@ final class RemoteViewSession: ObservableObject, Identifiable {
             return
         }
         streamID = id
+        streamExcludesCursor = RemoteView.pictureExcludesCursor(result)
+        DiagnosticLog.shared.info("RemoteCursor: \(host) stream=\(id) requested=\(profile.showsCursor) applied=\(result?["cursor"].map { String(describing: $0) } ?? "unknown")")
         streamActivity = RemoteView.StreamActivity(result?["activity"])
         streamRequestedAt = requestedAt
         firstFramePending = true
@@ -492,6 +515,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
         videoFallbackReason = reason
         isRecoveringVideo = false
         firstFramePending = false
+        pictureExcludesCursor = false
         streamRecovery.failed(failure, at: Date().timeIntervalSinceReferenceDate)
         if showingVideo {
             showingVideo = false
@@ -503,7 +527,8 @@ final class RemoteViewSession: ObservableObject, Identifiable {
     }
 
     private func shown(_ picture: RemoteVideoStream.Picture) {
-        guard streamID != nil else { return }
+        guard streamID == picture.streamID else { return }
+        if pictureExcludesCursor != streamExcludesCursor { pictureExcludesCursor = streamExcludesCursor }
         if firstFramePending {
             firstFramePending = false
             DiagnosticLog.shared.info("RemoteView: \(host) first video frame \(Int(picture.size.width))x\(Int(picture.size.height)) after \(Int(Date().timeIntervalSince(streamRequestedAt) * 1000))ms")
@@ -543,20 +568,24 @@ final class RemoteViewSession: ObservableObject, Identifiable {
             let pace = RemoteView.pace(roundTrip: roundTrip, sinceInput: Date().timeIntervalSince(lastInput), engaged: engaged)
             let asked = target
             let width = stillWidth
+            let showsCursor = !controlling
             var params = asked.params
             params["maxWidth"] = width
             params["quality"] = pace.quality
+            params["cursor"] = showsCursor
             let started = Date()
             do {
                 let result = try await connection.call("capture.still", params: params, timeout: 10) as? [String: Any]
                 roundTrip = Date().timeIntervalSince(started)
-                guard !Task.isCancelled, self.connection === connection, asked == target, width == stillWidth else { continue }
+                guard !Task.isCancelled, self.connection === connection, asked == target, width == stillWidth,
+                      showsCursor == !controlling else { continue }
                 if let encoded = result?["data"] as? String, let data = Data(base64Encoded: encoded), let picture = NSImage(data: data) {
                     if showingVideo {
                         showingVideo = false
                         video.detach(clear: true)
                     }
                     image = picture
+                    pictureExcludesCursor = RemoteView.pictureExcludesCursor(result)
                     frame = RemoteView.rect(result?["frame"]) ?? fallbackFrame(asked) ?? frame
                     latency = Int(roundTrip * 1000)
                     tick()
@@ -574,7 +603,8 @@ final class RemoteViewSession: ObservableObject, Identifiable {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                guard self.connection === connection, asked == target, width == stillWidth else { continue }
+                guard self.connection === connection, asked == target, width == stillWidth,
+                      showsCursor == !controlling else { continue }
                 notice = "Frame failed: \(error.localizedDescription)"
                 if case .window = target, windowFrames[target.wid ?? 0] == nil { await loadWindows() }
                 try? await Task.sleep(for: .seconds(1))

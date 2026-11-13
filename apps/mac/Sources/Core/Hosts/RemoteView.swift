@@ -4,6 +4,16 @@ import Foundation
 /// Pure pieces of the remote viewer: what to capture, where a click lands on
 /// the other machine, how fast to pull frames, and which key was pressed.
 enum RemoteView {
+    /// Reserve Command-click for local control. Starting needs a live picture;
+    /// stopping remains available while a stream is reconnecting or replacing it.
+    static func shouldToggleControl(modifiers: NSEvent.ModifierFlags, controlling: Bool,
+                                    canControl: Bool, isLive: Bool, selectingRegion: Bool,
+                                    insidePicture: Bool) -> Bool {
+        let chord: NSEvent.ModifierFlags = [.command, .control, .option, .shift, .function]
+        guard modifiers.intersection(chord) == [.command], !selectingRegion else { return false }
+        return controlling || (canControl && isLive && insidePicture)
+    }
+
     /// What a viewer shows. Frames are in the host's layout coordinates, the
     /// same space its `computer.*` input takes.
     enum Target: Hashable {
@@ -112,6 +122,7 @@ enum RemoteView {
     struct StreamProfile: Equatable {
         var fps: Int
         var maxWidth: Int
+        var showsCursor = true
     }
 
     /// Recover a temporary capture failure without repeatedly probing a relay
@@ -220,9 +231,17 @@ enum RemoteView {
     }
 
     /// Viewing the foreground window is engagement; input permission is separate.
-    static func streamProfile(engaged: Bool, requestWidth: Int, resolution: Resolution = .automatic) -> StreamProfile {
+    /// The picture drops the host's pointer only while the viewer is in use:
+    /// a Linux host hides it compositor-wide for that, not just in the picture.
+    static func streamProfile(engaged: Bool, requestWidth: Int, resolution: Resolution = .automatic, controlling: Bool = false) -> StreamProfile {
         let width = resolution.maxWidth ?? max(320, min(engaged ? 3840 : 2560, requestWidth))
-        return StreamProfile(fps: engaged ? 60 : 30, maxWidth: width)
+        return StreamProfile(fps: engaged ? 60 : 30, maxWidth: width, showsCursor: !(controlling && engaged))
+    }
+
+    /// Missing acknowledgement means legacy capture, whose cursor may be baked
+    /// into the pixels. Never add a decorative pointer on that assumption.
+    static func pictureExcludesCursor(_ response: [String: Any]?) -> Bool {
+        response?["cursor"] as? Bool == false
     }
 
     /// A completed RPC can still say that its stream no longer exists.

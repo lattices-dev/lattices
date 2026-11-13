@@ -57,6 +57,42 @@ not current. These fields cannot retrospectively identify an older running host
 that predates this change. Deploy/restart only after its clients are ready for
 the pairing protocol; do not restart the everyday host just to obtain metadata.
 
+### Cursor-free remote video
+
+`capture.stream.start` accepts `cursor` (default `true`) and returns the cursor
+setting actually used. The immersive viewer asks for `false` while controlling
+the desktop so the host pointer does not trail its local pointer. Stock
+wf-recorder always includes the pointer. If the helper below is unavailable,
+the host keeps streaming with stock wf-recorder and reports `cursor: true`.
+Clients must use that reply instead of assuming their request was honored.
+
+Build the separate helper on the Linux host, as the user running Lattices:
+
+```sh
+# Arch/Omarchy build dependencies, if they are not already installed:
+sudo pacman -S --needed base-devel meson ninja wayland wayland-protocols ffmpeg libdrm mesa
+bash packages/host-linux/scripts/install-stream-recorder.sh
+```
+
+The installer verifies the source archive for wf-recorder 0.6.0, pinned to
+`ca103be2473db0983baf74e17b291385c3c79d79`, then applies the small
+[`--no-cursor` patch](patches/wf-recorder-no-cursor.patch). The patch changes
+only whether Wayland composites the pointer into that capture. It installs
+`~/.lattices/bin/lattices-wf-recorder`, with its upstream license and source
+receipt under `~/.lattices/share/lattices-wf-recorder/`. The system recorder,
+compositor configuration, and the host's visible pointer are unchanged.
+
+On FFmpeg 9, the installer also applies Arch Linux's existing
+[`AVCodec` compatibility patch](patches/wf-recorder-ffmpeg9.patch), vendored
+unchanged from [packaging commit d85efa27](https://gitlab.archlinux.org/archlinux/packaging/packages/wf-recorder/-/blob/d85efa2704043e629f2c47002fea6f98b02ee497/ffmpeg-9.patch).
+This patch updates removed FFmpeg API fields; it is independent of cursor capture.
+
+Update the running Linux host to this source version, then reconnect the
+viewer. Helper discovery runs when each stream starts, so installing the
+helper itself does not require a host restart. Streams already open keep
+their original cursor setting. `capture.still` also accepts `cursor` and
+reports the applied setting; its existing default remains `false`.
+
 ## Visiting cursor
 
 Paired devices with `input.trackpad` can open the signed, encrypted `/visit`

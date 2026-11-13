@@ -1,31 +1,29 @@
 import AppKit
 import QuartzCore
 
-enum RemoteAgentCursorBehavior: String, CaseIterable {
-    case followPointer
-    case returnToOrigin
-
-    var title: String {
-        switch self {
-        case .followPointer: return "Follow my pointer"
-        case .returnToOrigin: return "Return after clicking"
-        }
-    }
-}
-
-/// A local companion to the real pointer. Its flight never schedules remote input.
-/// Core Animation does the drawing and goes idle when the pointer has settled.
+/// One shaped cursor chases the local target dot and settles with its tip on
+/// it. It never schedules input. The lag is bounded, so the pointer trails
+/// the dot visibly but never reads as a distant second pointer.
 final class RemoteAgentCursorView: NSView {
-    var behavior: RemoteAgentCursorBehavior = .followPointer {
-        didSet { if behavior != oldValue { reset() } }
-    }
+    static let maximumSeparation: CGFloat = 36
+    static let catchUp: CFTimeInterval = 0.2
+
+    /// Cursor rectangles scope this to the controlled picture; AppKit restores
+    /// the normal pointer over local controls and outside the viewer.
+    static let controlCursor: NSCursor = {
+        let size = NSSize(width: 12, height: 12)
+        let image = NSImage(size: size, flipped: false) { _ in
+            NSColor(white: 0.08, alpha: 0.9).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 8, height: 8)).fill()
+            NSColor(white: 1, alpha: 0.98).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 3.5, y: 3.5, width: 5, height: 5)).fill()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: 6, y: 6))
+    }()
     private let pointer = CALayer()
     private let ripple = CAShapeLayer()
     private var hasPosition = false
-    private var hoverPoint: CGPoint?
-    private var home: CGPoint?
-    private var landing: Task<Void, Never>?
-    private(set) var isLanding = false
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -47,9 +45,10 @@ final class RemoteAgentCursorView: NSView {
         // A soft, squat pointer with a rounded nose and rounded shoulders.
         pointer.anchorPoint = .zero
         pointer.bounds = CGRect(x: 0, y: 0, width: 17, height: 19)
+        pointer.opacity = 0.9
         pointer.shadowColor = NSColor(srgbRed: 0.40, green: 0.52, blue: 1, alpha: 1).cgColor
-        pointer.shadowOpacity = 0.8
-        pointer.shadowRadius = 5
+        pointer.shadowOpacity = 0.35
+        pointer.shadowRadius = 3
         pointer.shadowOffset = .zero
         let arrow = CAShapeLayer()
         let path = CGMutablePath()
@@ -81,104 +80,41 @@ final class RemoteAgentCursorView: NSView {
     }
 
     func reset() {
-        landing?.cancel()
-        landing = nil
-        isLanding = false
         hasPosition = false
-        hoverPoint = nil
-        home = nil
         pointer.removeAllAnimations()
         ripple.removeAllAnimations()
         isHidden = true
     }
 
     func follow(_ point: CGPoint, reduceMotion: Bool) {
-        hoverPoint = point
-        guard !isLanding else { return }
-        if behavior == .returnToOrigin, hasPosition { return }
-        // Settle beside the real pointer with a gently varying offset. This is
-        // spatial drift, not idle jitter: once the mouse rests, the companion rests.
-        let drift = (point.x + point.y) * 0.012
-        let offset = CGPoint(x: 25 + sin(drift) * 4, y: 23 + cos(drift * 0.8) * 4)
-        let destination = CGPoint(x: min(max(7, point.x + offset.x), max(7, bounds.width - 22)),
-                                  y: min(max(7, point.y + offset.y), max(7, bounds.height - 27)))
-        let start = pointer.presentation()?.position ?? pointer.position
-        if !hasPosition { home = destination }
-        withoutActions { pointer.position = destination }
-        if hasPosition, !reduceMotion {
-            let flight = CABasicAnimation(keyPath: "position")
-            flight.fromValue = start
-            flight.toValue = destination
-            flight.duration = 0.34
-            flight.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            pointer.add(flight, forKey: "flight")
-        } else {
-            pointer.removeAnimation(forKey: "flight")
+        guard !hasPosition || point != pointer.position || reduceMotion else { return }
+        let previous = pointer.presentation()?.position ?? pointer.position
+        let dx = previous.x - point.x, dy = previous.y - point.y
+        let distance = hypot(dx, dy)
+        let fraction = distance > 0 ? min(1, Self.maximumSeparation / distance) : 0
+        let start = CGPoint(x: point.x + dx * fraction, y: point.y + dy * fraction)
+        pointer.removeAllAnimations()
+        withoutActions { pointer.position = point }
+        if hasPosition, !reduceMotion, distance > 0 {
+            let settle = CABasicAnimation(keyPath: "position")
+            settle.fromValue = start
+            settle.toValue = point
+            settle.duration = Self.catchUp
+            settle.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.7, 0.3, 1)
+            pointer.add(settle, forKey: "settle")
         }
         hasPosition = true
         isHidden = false
     }
 
     /// A visual receipt for a submitted click, not an acknowledgement from the host.
-    func land(at point: CGPoint, reduceMotion: Bool) {
-        if !hasPosition { follow(point, reduceMotion: reduceMotion) }
-        hoverPoint = point
-        let start = pointer.presentation()?.position ?? pointer.position
-        landing?.cancel()
-        pointer.removeAllAnimations()
+    func indicateClick(at point: CGPoint, reduceMotion: Bool) {
+        guard hasPosition else { return }
+        // Click feedback stays at the dot: no approach, pause or retreat.
         ripple.removeAllAnimations()
-        isLanding = true
-        isHidden = false
-        withoutActions { pointer.position = point }
-
-        let distance = hypot(point.x - start.x, point.y - start.y)
-        let duration: TimeInterval = reduceMotion ? 0 : min(0.30, 0.15 + distance / 2200)
-        if !reduceMotion {
-            let flight = CAKeyframeAnimation(keyPath: "position")
-            let path = CGMutablePath()
-            path.move(to: start)
-            path.addQuadCurve(to: point, control: CGPoint(x: (start.x + point.x) / 2,
-                                                        y: min(start.y, point.y) - min(42, 12 + distance * 0.08)))
-            flight.path = path
-            flight.duration = duration
-            flight.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            pointer.add(flight, forKey: "flight")
-        }
-
-        landing = Task { @MainActor [weak self] in
-            do {
-                if duration > 0 { try await Task.sleep(for: .seconds(duration)) }
-                guard let self, !Task.isCancelled else { return }
-                self.impact(at: point, reduceMotion: reduceMotion)
-                try await Task.sleep(for: .seconds(0.32))
-                guard !Task.isCancelled else { return }
-                self.isLanding = false
-                self.landing = nil
-                if self.behavior == .returnToOrigin, let home = self.home {
-                    self.returnHome(to: home, reduceMotion: reduceMotion)
-                } else if let hover = self.hoverPoint {
-                    self.follow(hover, reduceMotion: reduceMotion)
-                }
-            } catch { /* Leaving the picture or clicking again cancels this landing. */ }
-        }
-    }
-
-    private func returnHome(to home: CGPoint, reduceMotion: Bool) {
-        let start = pointer.presentation()?.position ?? pointer.position
-        withoutActions { pointer.position = home }
-        guard !reduceMotion else { return }
-        let flight = CABasicAnimation(keyPath: "position")
-        flight.fromValue = start
-        flight.toValue = home
-        flight.duration = 0.26
-        flight.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        pointer.add(flight, forKey: "flight")
-    }
-
-    private func impact(at point: CGPoint, reduceMotion: Bool) {
         withoutActions { ripple.position = point }
         let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0.85
+        fade.fromValue = 0.45
         fade.toValue = 0
         fade.duration = reduceMotion ? 0.18 : 0.38
         ripple.add(fade, forKey: "fade")
@@ -190,14 +126,6 @@ final class RemoteAgentCursorView: NSView {
         spread.timingFunction = CAMediaTimingFunction(name: .easeOut)
         ripple.add(spread, forKey: "spread")
 
-        let drop = CAKeyframeAnimation(keyPath: "transform")
-        drop.values = [CATransform3DIdentity,
-                       CATransform3DMakeScale(1.12, 0.82, 1),
-                       CATransform3DMakeScale(0.97, 1.04, 1), CATransform3DIdentity]
-        drop.keyTimes = [0, 0.22, 0.62, 1]
-        drop.duration = 0.30
-        drop.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: 3)
-        pointer.add(drop, forKey: "drop")
     }
 
     private func withoutActions(_ body: () -> Void) {

@@ -6,6 +6,7 @@
 //   lattices-host --describe           print capabilities and exit
 
 import { BUILD_IDENTITY } from "./build-info.ts";
+import * as cursorVeil from "./cursor-veil.ts";
 import { localRuntimeDirectory } from "../../desktop-client/local-ipc.ts";
 import { hostname, homedir } from "node:os";
 import { join } from "node:path";
@@ -77,6 +78,7 @@ async function main() {
     log: (line) => { if (!opts.quiet) console.error("[lattices-host] " + line); },
   });
   await stopEvents.ready;
+  await cursorVeil.recover();
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;
