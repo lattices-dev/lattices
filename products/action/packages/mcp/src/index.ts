@@ -14,6 +14,7 @@ import { type LayerView } from "./layer-primitives.js";
 import { LayerWorkspaces } from "./layer-workspaces.js";
 import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
+import { DeliveryError, delivery, withDelivery } from "./delivery.js";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -1219,7 +1220,7 @@ const tools: Tool[] = [
   tool(
     "action.act.execute",
     "Execute Action",
-    "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates.",
+    "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates. Every reply, success or error, carries delivery { status: not_delivered | delivery_uncertain | delivered_unverified, retrySafe, recovery }: resend only when retrySafe is true; on observe_then_retry, look before acting again.",
     objectSchema({
       action: objectProperty(
         "RuntimeAction object. kind is one of click, type, press-key, drag, scroll, focus-window, open-app. "
@@ -1995,6 +1996,9 @@ const handlers: Record<string, ToolHandler> = {
     }
 
     let hostDetail: string | undefined;
+    // Everything before the first host command left the app untouched. From it on,
+    // a throw may follow a click that already landed.
+    let dispatched = false;
     try {
       await guardLayerDispatch(initialLayer, {
         status: () => layerContext().director.status(),
@@ -2003,9 +2007,15 @@ const handlers: Record<string, ToolHandler> = {
           if (refusal) throw new Error(refusal);
         },
       });
-      hostDetail = engine instanceof MacOSCommandEngine
-        ? await engine.performAction(action, target, { agentLayer })
-        : (await engine.performAction(action, target)) ?? undefined;
+      if (engine instanceof MacOSCommandEngine) {
+        hostDetail = await engine.performAction(action, target, {
+          agentLayer,
+          onDispatch: () => { dispatched = true; },
+        });
+      } else {
+        dispatched = true;
+        hostDetail = (await engine.performAction(action, target)) ?? undefined;
+      }
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -2019,10 +2029,14 @@ const handlers: Record<string, ToolHandler> = {
           // The native lease expiry remains the independent cleanup path.
         }
       }
-      throw error;
+      throw withDelivery(error, dispatched ? "delivery_uncertain" : "not_delivered", action.kind);
     }
     if (!offScreen) {
-      await presentActCue({ lease, action, target });
+      try {
+        await presentActCue({ lease, action, target });
+      } catch (error) {
+        throw withDelivery(error, "delivered_unverified", action.kind);
+      }
     }
 
     return {
@@ -2037,6 +2051,7 @@ const handlers: Record<string, ToolHandler> = {
         // via=pointer borrowed focus or the pointer for a moment.
         ...(hostDetail ? { host: hostDetail } : {}),
         axTier,
+        delivery: delivery("delivered_unverified", action.kind),
       },
       action,
       target,
@@ -2579,8 +2594,14 @@ function createServer(): Server {
           stage: error.stage as unknown as JsonObject,
         });
       }
+      const failedDelivery = error instanceof DeliveryError
+        ? error.delivery
+        : canonical === "action.act.execute"
+          ? delivery("not_delivered", verbForTool(canonical, args))
+          : undefined;
       return mcpError(error instanceof Error ? error.message : String(error), {
         tool: request.params.name,
+        ...(failedDelivery ? { delivery: failedDelivery as unknown as JsonObject } : {}),
       });
     }
   });
