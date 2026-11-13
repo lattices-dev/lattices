@@ -72,6 +72,7 @@
     "test:unit": "bun test ./tests/*.test.ts ./apps/linux/test",
     "test:swift": "swift test --package-path swift",
     "test:app": "bash scripts/test-app.sh",
+    "test:app:release": "bash scripts/test-app.sh --release-profile",
     "test:dependencies": "bun test ./tests/dependency-free.test.ts",
     "test:e2e": "node --experimental-strip-types --test tests/e2e-daemon.test.mjs",
     "test:e2e:voice": "node --experimental-strip-types tests/eval-voice.js",
