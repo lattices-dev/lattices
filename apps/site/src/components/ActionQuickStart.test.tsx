@@ -10,13 +10,16 @@ describe("Action quick start", () => {
     const html = renderToStaticMarkup(createElement(ActionQuickStart));
     expect(html).toContain('id="get-started"');
     expect(html).toContain("Install Bun first");
-    expect(html).toContain("lats action install --launch");
-    expect(html).toContain("permissions.snapshot");
+    expect(html).toContain("action install --launch");
+    expect(html).toContain("action setup action-cua");
     expect(html).toContain("capture.screenshotScreen");
     expect(html).toContain("&quot;output&quot;");
     expect(html.match(/<li /g)).toHaveLength(3);
     expect(html.match(/<strong>Expect:<\/strong>/g)).toHaveLength(3);
-    expect(html.match(/<button /g)).toHaveLength(3);
+    // Two install-path toggles plus one copy button per step.
+    expect(html.match(/<button /g)).toHaveLength(5);
+    expect(html).toContain("With Lattices");
+    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('role="status"');
     expect(html).toContain("not a private workspace");
     expect(html).toContain("matching MCP runtime");

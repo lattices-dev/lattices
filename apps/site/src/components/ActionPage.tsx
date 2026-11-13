@@ -120,15 +120,15 @@ export default function ActionPage() {
             </div>
             <div className="action-demo-install">
               <div className="action-hero-actions">
-                <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-primary-cta action-primary-cta">
-                  Download for macOS
+                <a href="#get-started" className="hero-primary-cta action-primary-cta">
+                  Install Action
+                </a>
+                <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-secondary-cta action-secondary-cta">
+                  Download .dmg
                   <span aria-hidden="true">↓</span>
                 </a>
-                <a href="#get-started" className="hero-secondary-cta action-secondary-cta">
-                  Get started
-                </a>
               </div>
-              <p className="action-demo-platform">macOS + Linux · CLI + MCP</p>
+              <p className="action-demo-platform">Part of <a href="/">Lattices</a> · Works on its own · CLI + MCP</p>
             </div>
           </div>
           <ActionDemo />
@@ -160,33 +160,42 @@ export default function ActionPage() {
 
         <section className="action-purpose" aria-labelledby="action-purpose-title">
           <div className="action-section-heading">
-            <p className="action-kicker">Product boundaries</p>
-            <h2 id="action-purpose-title">Action and Lattices.</h2>
+            <p className="action-kicker">Part of Lattices</p>
+            <h2 id="action-purpose-title">One app, four ways in.</h2>
+            <p>
+              Every path installs the same signed Action.app, with the same agent and tools. Lattices finds Action when it is there. Action runs without Lattices.
+            </p>
           </div>
-          <div className="action-product-boundary">
-            <article>
-              <span className="action-boundary-label">Lattices</span>
-              <h3>Unified API for your workspace</h3>
-              <p>Windows, sessions, layouts, and a local API for keeping the whole Mac organized and programmable.</p>
+          <div className="action-paths">
+            <ol className="action-paths-doors" aria-label="Ways to install Action">
+              <li>
+                <span>Lattices menu bar</span>
+                <code>Install Action…</code>
+              </li>
+              <li>
+                <span>Lattices CLI</span>
+                <code>lats action install</code>
+              </li>
+              <li>
+                <span>Action CLI</span>
+                <code>bun add -g @lattices/action</code>
+              </li>
+              <li>
+                <span>Download</span>
+                <a href={downloadUrl} data-router="reload" onClick={startDownload}><code>Action.dmg</code></a>
+              </li>
+            </ol>
+            <article className="action-paths-app">
+              <span className="action-boundary-label action-boundary-label-product">Action.app</span>
+              <h3>Same app, same tools</h3>
+              <ul>
+                <li>Signed, in /Applications</li>
+                <li>Installs and updates on its own release line</li>
+                <li>The <code>action</code> and <code>lats action</code> CLIs, plus MCP for agents</li>
+              </ul>
               <a href="/">Explore Lattices &rarr;</a>
             </article>
-            <div className="action-boundary-bridge" aria-label="Shared product model">
-              <span>observe</span>
-              <i aria-hidden="true" />
-              <span>act</span>
-              <i aria-hidden="true" />
-              <span>verify</span>
-            </div>
-            <article>
-              <span className="action-boundary-label action-boundary-label-product">Action</span>
-              <h3>An API for computer use</h3>
-              <p>Target resolution, on-device actions, capture, trace, and review for one inspectable piece of work.</p>
-              <a href={downloadUrl} data-router="reload" onClick={startDownload}>Download Action &rarr;</a>
-            </article>
           </div>
-          <p className="action-boundary-note">
-            Use Action on its own, or pair it with Lattices when the whole workspace needs to stay organized and programmable.
-          </p>
         </section>
 
         <section className="action-proof" aria-labelledby="action-proof-title">
@@ -219,44 +228,14 @@ export default function ActionPage() {
           </div>
         </section>
 
-        <section className="action-source" aria-labelledby="action-source-title">
-          <div className="action-source-copy">
-            <p className="action-kicker">From source</p>
-            <h2 id="action-source-title">Build it. Launch it. Prove it.</h2>
-            <p>
-              Local commands live in <code>package.json</code>. Run them with bun from <code>products/action</code>.
-            </p>
-            <ul className="action-source-reqs">
-              <li>macOS on Apple Silicon</li>
-              <li>Bun and the Swift toolchain</li>
-              <li>Accessibility permission</li>
-              <li>Screen Recording permission</li>
-            </ul>
-            <a href="/action/getting-started.md" data-router="reload" className="action-source-link">Getting started &rarr;</a>
-          </div>
-          <div className="action-terminal" aria-label="Action source commands">
-            <div className="action-terminal-bar">products/action</div>
-            <pre className="action-terminal-body">
-              <code>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun install</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:app:build</span>
-                <span className="action-terminal-output">Action.app signed and ready</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:doctor</span>
-                <span className="action-terminal-output">Accessibility: granted · Screen Recording: granted</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:launch</span>
-                <span className="action-terminal-output">Action.app running</span>
-              </code>
-            </pre>
-          </div>
-        </section>
-
         <section className="action-final-cta" aria-labelledby="action-final-title">
           <div className="action-final-copy">
             <p className="action-kicker">Action for macOS</p>
             <h2 id="action-final-title">Give the agent a computer-use path you can review.</h2>
             <div className="action-final-links">
-              <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-primary-cta action-primary-cta">Download Action</a>
-              <a href={sourceUrl} className="hero-secondary-cta action-secondary-cta">View source</a>
+              <a href="#get-started" className="hero-primary-cta action-primary-cta">Install Action</a>
+              <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-secondary-cta action-secondary-cta">Download .dmg</a>
+              <a href="/action/getting-started.md" data-router="reload" className="action-final-source">Build from source &rarr;</a>
             </div>
           </div>
           <figure className="action-brand-study" aria-hidden="true">

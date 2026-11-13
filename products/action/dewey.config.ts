@@ -2,7 +2,7 @@
 export default {
   project: {
     name: 'action',
-    tagline: 'Native-first macOS demo automation with an AppKit UI and a local agent runtime',
+    tagline: 'Computer use for agents on macOS, part of Lattices',
     type: 'monorepo',
     version: '0.3.1',
   },
@@ -57,22 +57,20 @@ export default {
   },
 
   install: {
-    objective: 'On an authorized development host, build the signed Action.app bundle and verify native health. Installation targets receive a matched app/runtime with rollback; this source-build flow does not prove desktop isolation.',
+    objective: 'Install Action.app in /Applications, grant its permissions, and confirm the agent answers. Use the Lattices CLI when it is present; otherwise use the Action CLI. Both install the same signed app from the latest action-v* release. Build from source only when asked; see docs/getting-started.md.',
     doneWhen: {
-      command: 'bun run native:doctor',
+      command: 'action status',
     },
     prerequisites: [
       'macOS on Apple Silicon',
       'Bun 1.3+',
-      'Xcode command line tools and native build prerequisites for Swift/AppKit development',
-      'Accessibility and Screen Recording permissions may be required for capture and automation smoke tests',
+      'The user can approve Accessibility and Screen Recording prompts',
     ],
     steps: [
-      { description: 'Clone the repository', command: 'git clone https://github.com/arach/lattices.git && cd lattices/products/action' },
-      { description: 'Install JavaScript dependencies', command: 'bun install' },
-      { description: 'Build and sign the native app', command: 'bun run native:app:build' },
-      { description: 'Rebuild, sign, and verify native health on the development host', command: 'bun run native:doctor' },
-      { description: 'Run a screenshot smoke test', command: 'bun run native:test:screenshot' },
+      { description: 'Install the Action CLI (skip if `lats` is installed; use `lats action` in place of `action` below)', command: 'bun add -g @lattices/action' },
+      { description: 'Install and launch Action.app', command: 'action install --launch' },
+      { description: 'Grant Accessibility and Screen Recording', command: 'action setup action-cua' },
+      { description: 'Confirm the app and agent are ready', command: 'action status' },
     ],
   },
 }

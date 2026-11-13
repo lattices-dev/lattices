@@ -150,6 +150,35 @@
   outline-offset: 4px;
 }
 
+.action-start-paths {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.action-start-paths button {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--action-rule);
+  background: transparent;
+  color: var(--action-copy);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.action-start-paths button:hover {
+  color: var(--action-ink);
+}
+
+.action-start-paths button[aria-pressed="true"] {
+  border-color: var(--action-ink);
+  background: var(--action-paper-light);
+  color: var(--action-ink);
+}
+
 .action-start-steps {
   margin: 0;
   padding: 0;
@@ -319,5 +348,145 @@
   .action-demo figcaption {
     flex-direction: column;
     gap: 12px;
+  }
+}
+
+.action-demo-platform a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.action-demo-platform a:hover {
+  color: var(--action-ink);
+}
+
+/* Part of Lattices: four ways in, one app. */
+.action-paths {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border-top: 1px solid var(--action-rule-strong);
+}
+
+.action-paths-doors {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action-paths-doors li {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 20px 40px 20px 0;
+  border-bottom: 1px solid var(--action-rule);
+}
+
+/* Each way in runs into the app on the right. */
+.action-paths-doors li::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 28px;
+  height: 1px;
+  background: var(--action-rule-strong);
+}
+
+.action-paths-doors span {
+  color: var(--action-copy);
+  font-size: 14px;
+}
+
+.action-paths-doors code,
+.action-paths-app code {
+  color: var(--action-ink);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.action-paths-app code {
+  white-space: nowrap;
+}
+
+.action-paths-doors a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--action-rule-strong);
+}
+
+.action-paths-doors a:hover code {
+  color: var(--action-coral);
+}
+
+.action-paths-app {
+  padding: 24px 0 24px 32px;
+  border-left: 2px solid var(--action-coral);
+}
+
+.action-paths-app h3 {
+  margin: 20px 0 16px;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.action-paths-app ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.action-paths-app li {
+  padding: 6px 0;
+  color: var(--action-copy);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.action-paths-app > a {
+  display: inline-block;
+  margin-top: 20px;
+  color: var(--action-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.action-paths-app > a:hover {
+  color: var(--action-coral);
+}
+
+.action-final-source {
+  align-self: center;
+  color: var(--action-copy);
+  font-size: 13px;
+}
+
+.action-final-source:hover {
+  color: var(--action-ink);
+}
+
+@media (max-width: 760px) {
+  .action-paths {
+    grid-template-columns: 1fr;
+  }
+
+  .action-paths-doors li {
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 0;
+  }
+
+  .action-paths-doors li::after {
+    display: none;
+  }
+
+  .action-paths-app {
+    margin-top: 24px;
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 2px solid var(--action-coral);
   }
 }
