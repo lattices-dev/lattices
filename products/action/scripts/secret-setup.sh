@@ -7,8 +7,8 @@ MANIFEST="$ROOT_DIR/.env.secrets"
 COMMAND="${1:-status}"
 
 if [[ ! -f "$MANIFEST" ]]; then
-  echo "Missing secret manifest: $MANIFEST" >&2
-  exit 1
+  echo "Action needs no secrets (no manifest at $MANIFEST)." >&2
+  exit 0
 fi
 
 manifest_keys() {
@@ -49,15 +49,14 @@ case "$COMMAND" in
 Action secret setup
 
   Store a missing key once:
-    secret set MINIMAX_API_KEY
+    secret set <KEY>
 
   Import from a dotenv file instead:
     secret import .env.local
     secret import .env.local --prune
 
-  Run Action commands with secrets injected:
-    secret run MINIMAX_API_KEY -- bun run mcp
-    secret run MINIMAX_API_KEY -- bun run inspect:surface --vision
+  Run an Action command with a key injected:
+    secret run <KEY> -- bun run <script>
 
 EOF
     ;;

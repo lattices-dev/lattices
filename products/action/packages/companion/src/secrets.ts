@@ -10,7 +10,6 @@ export interface LoadedSecrets {
 }
 
 const DEFAULT_SECRET_NAMES = [
-  "MINIMAX_API_KEY",
   "ACTION_VISION_PROVIDER",
   "ACTION_MOONDREAM_PYTHON",
   "MOONDREAM_PYTHON",

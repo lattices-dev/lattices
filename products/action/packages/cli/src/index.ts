@@ -6,7 +6,6 @@ import { resolve } from "node:path";
 export function describeCli(): string[] {
   return [
     "action inspect current-surface",
-    "action settle current-surface",
     "action session create",
     "action guided stage",
     "action guided start",

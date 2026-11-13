@@ -224,8 +224,8 @@ function objectProperty(description: string): object {
 }
 
 
-function parseVisionProvider(value: unknown): "minimax" | "moondream" | undefined {
-  return value === "moondream" || value === "minimax" ? value : undefined;
+function parseVisionProvider(value: unknown): "moondream" | undefined {
+  return value === "moondream" ? value : undefined;
 }
 
 function enumProperty(values: string[], description: string): object {
@@ -942,9 +942,9 @@ const tools: Tool[] = [
       sessionId: textProperty("Optional session id. A new inspection session id is generated when omitted."),
       outputDir: textProperty("Optional absolute or Action-root-relative output directory."),
       includeOcr: booleanProperty("Whether to run Apple Vision OCR on the screenshot. Defaults to true."),
-      includeVision: booleanProperty("Whether to run vision analysis via MiniMax MCP. Defaults to false."),
+      includeVision: booleanProperty("Whether to run local Moondream vision analysis. Defaults to false."),
       visionPrompt: textProperty("Optional vision prompt when includeVision is true."),
-      visionProvider: enumProperty(["minimax", "moondream"], "Vision provider. Defaults to minimax when MINIMAX_API_KEY is set."),
+      visionProvider: enumProperty(["moondream"], "Vision provider. Moondream, running locally, is the only one."),
       direct: booleanProperty("Bypass action-companion and run as a one-shot MCP call."),
       mockNative: booleanProperty("Use companion mock native mode for verification when ActionAgent is unavailable."),
       leaseId: textProperty("Optional drive lease id to heartbeat while observing."),
@@ -965,12 +965,12 @@ const tools: Tool[] = [
   tool(
     "action.observe.vision",
     "Observe Vision",
-    "Run vision analysis on an existing screenshot or the current focused surface. Defaults to MiniMax MCP understand_image.",
+    "Run local Moondream vision analysis on an existing screenshot or the current focused surface.",
     objectSchema({
       imagePath: textProperty("Optional screenshot path. Captures the current surface when omitted."),
       outputPath: textProperty("Optional JSON output path for vision analysis."),
       prompt: textProperty("Optional vision prompt."),
-      provider: enumProperty(["minimax", "moondream"], "Vision provider. Defaults to minimax when MINIMAX_API_KEY is set."),
+      provider: enumProperty(["moondream"], "Vision provider. Moondream, running locally, is the only one."),
       direct: booleanProperty("Bypass action-companion and run as a one-shot MCP call."),
       mockNative: booleanProperty("Use companion mock native mode for verification when ActionAgent is unavailable."),
     }),

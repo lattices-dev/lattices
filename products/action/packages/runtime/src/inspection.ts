@@ -114,7 +114,7 @@ export interface InspectCurrentSurfaceOptions {
   includeOcr?: boolean;
   includeVision?: boolean;
   visionPrompt?: string;
-  visionProvider?: "minimax" | "moondream";
+  visionProvider?: "moondream";
 }
 
 export interface InspectCurrentSurfaceResult {

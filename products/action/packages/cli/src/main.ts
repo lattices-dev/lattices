@@ -7,7 +7,6 @@ import {
   agentLayerWorkspaces,
   CompanionClient,
   inspectCurrentSurface,
-  settleCurrentSurfaceViewport,
   StageDirector,
   StageSceneError,
 } from "@action/runtime";
@@ -76,8 +75,8 @@ async function tryCompanionJob(kind: string, payload: Record<string, unknown>, w
 }
 
 
-function parseVisionProvider(value: string | undefined): "minimax" | "moondream" | undefined {
-  return value === "moondream" || value === "minimax" ? value : undefined;
+function parseVisionProvider(value: string | undefined): "moondream" | undefined {
+  return value === "moondream" ? value : undefined;
 }
 
 /** How long a CLI-set drape stays up without an explicit `stage clear`. */
@@ -311,21 +310,6 @@ async function main(argv: string[]): Promise<void> {
     }
     if (arg !== "status") throw new Error(`Unknown layer command: ${arg}`);
     printJson({ ok: true, layer: await director.status() });
-    return;
-  }
-
-  if (command === "settle" && arg === "current-surface") {
-    const result = await settleCurrentSurfaceViewport({
-      targetViewport: {
-        x: requiredNumber(flags, "x"),
-        y: requiredNumber(flags, "y"),
-        width: requiredNumber(flags, "width"),
-        height: requiredNumber(flags, "height"),
-      },
-      providerId: flags.provider === "mock" ? "mock" : "pie-minimax",
-      maxTurns: flags["max-turns"] ? requiredNumber(flags, "max-turns") : undefined,
-    });
-    printJson(result);
     return;
   }
 

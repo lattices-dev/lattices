@@ -88,9 +88,9 @@ as its working directory. The default tool names include:
 | `record_start`, `record_status`, `record_stop` | Control and verify recording |
 | `artifacts_list` | Read session artifacts |
 
-The product-level `bun run mcp` script starts the same server through the local
-`secret` helper and requires `MINIMAX_API_KEY`. Native capture and Apple Vision
-OCR do not require that provider. Older docs use dotted tool names such as
+The product-level `bun run mcp` script starts the same server and needs no API
+keys. Native capture, accessibility and Apple Vision OCR run on the Mac;
+`observe_vision` uses a local Moondream install when one is configured. Older docs use dotted tool names such as
 `action.observe.snapshot`; the server advertises underscore names by default.
 
 ## At home in Lattices
