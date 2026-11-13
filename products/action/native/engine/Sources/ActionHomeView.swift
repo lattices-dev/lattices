@@ -480,6 +480,9 @@ struct ActionHomeView: View {
                 HStack(spacing: 14) {
                     detailFact("WHEN", absoluteTimestamp(session))
                     detailFact("BY", session.agent.isEmpty ? "—" : session.agent)
+                    if !session.project.isEmpty {
+                        detailFact("IN", session.project)
+                    }
                     if !session.client.isEmpty {
                         detailFact("VIA", session.client)
                     }

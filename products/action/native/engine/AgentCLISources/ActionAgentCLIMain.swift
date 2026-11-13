@@ -77,10 +77,11 @@ struct ActionAgentCLIMain {
                 continue
             }
 
-            if ["--stop-file", "--finished-file", "--debug-log"].contains(argument), let value = iterator.next() {
+            if ["--stop-file", "--finished-file", "--debug-log", "--frame-timing-file"].contains(argument), let value = iterator.next() {
                 let key = switch argument {
                 case "--stop-file": "stopFile"
                 case "--finished-file": "finishedFile"
+                case "--frame-timing-file": "frameTimingFile"
                 default: "debugLog"
                 }
                 params[key] = value

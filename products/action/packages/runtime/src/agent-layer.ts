@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import type {
@@ -25,6 +25,8 @@ const DEFAULT_CLOSE_WAIT_MS = 3000;
 const SIGTERM_WAIT_MS = 1500;
 const CONTROL_WAIT_MS = 1500;
 const RECORD_WAIT_MS = 5000;
+const RETURN_TO_MAC_SHORTCUT = "Control-Option-Command-Escape";
+const RETURN_WAIT_MS = 20_000;
 const workspaceMutations = new Map<string, Promise<unknown>>();
 
 export type AgentLayerHostRunner = (args: string[]) => Promise<{ stdout: string }>;
@@ -38,6 +40,9 @@ export interface AgentLayerDisplayState {
   width: number;
   height: number;
   serialNumber: number;
+  /** Opt-in owner-managed recovery shortcut; absent on older owners. */
+  returnToMac?: boolean;
+  returnShortcut?: string;
 }
 
 export interface AgentLayerDisplayStatus {
@@ -50,9 +55,34 @@ export interface AgentLayerDisplayStatus {
   detail?: string;
 }
 
+interface AgentLayerReturnRequest {
+  requestId: string;
+  workspace: string;
+  displayId: number;
+  displayOwnerPid: number;
+  displayStartedAt: string;
+  reason: string;
+}
+
+interface AgentLayerReturnStatus extends AgentLayerReturnRequest {
+  state: "recovering" | "failed" | "returned";
+  detail?: string;
+  updatedAt: string;
+}
+
+export interface AgentLayerReturnResult {
+  ok: boolean;
+  workspace: string;
+  requestId: string;
+  state: "returned" | "failed" | "recovery-pending";
+  statusFile: string;
+  detail?: string;
+}
+
 export interface AgentLayerOpenInput {
   previewDisplayId?: number;
   previewFull?: boolean;
+  previewViewport?: boolean;
   bundleId?: string;
   pid?: number;
   width?: number;
@@ -124,6 +154,7 @@ export interface AgentLayerDirectorOptions {
   terminate?: (pid: number) => void;
   stateWaitMs?: number;
   closeWaitMs?: number;
+  returnWaitMs?: number;
   safetyPath?: string;
 }
 
@@ -175,6 +206,7 @@ export function parseAgentLayerOpen(input: {
   windowless?: unknown;
   previewDisplayId?: unknown;
   previewFull?: unknown;
+  previewViewport?: unknown;
 }): AgentLayerOpenInput {
   const bundleId = typeof input.bundleId === "string" && input.bundleId.trim() ? input.bundleId.trim() : undefined;
   const pid = optionalPositiveInt(input.pid, "pid");
@@ -200,6 +232,7 @@ export function parseAgentLayerOpen(input: {
   const owner: AgentLayerOwner = input.owner === "detached" ? "detached" : DEFAULT_OWNER;
   const previewDisplayId = optionalPositiveInt(input.previewDisplayId, "previewDisplayId");
   if (input.previewFull !== undefined && typeof input.previewFull !== "boolean") throw new Error("previewFull must be a boolean");
+  if (input.previewViewport !== undefined && typeof input.previewViewport !== "boolean") throw new Error("previewViewport must be a boolean");
   if (previewDisplayId !== undefined && previewDisplayId > 0xffffffff) throw new Error("previewDisplayId must be a display identifier");
   return {
     ...(bundleId ? { bundleId } : {}),
@@ -212,6 +245,7 @@ export function parseAgentLayerOpen(input: {
     ...(input.windowless === true ? { windowless: true } : {}),
     ...(previewDisplayId !== undefined ? { previewDisplayId } : {}),
     ...(input.previewFull !== undefined ? { previewFull: input.previewFull as boolean } : {}),
+    ...(input.previewViewport !== undefined ? { previewViewport: input.previewViewport as boolean } : {}),
     owner,
   };
 }
@@ -278,6 +312,7 @@ export class AgentLayerDirector {
   private readonly terminate: (pid: number) => void;
   private readonly stateWaitMs: number;
   private readonly closeWaitMs: number;
+  private readonly returnWaitMs: number;
   private readonly safetyPath?: string;
 
   constructor(
@@ -292,6 +327,7 @@ export class AgentLayerDirector {
     this.terminate = options.terminate ?? defaultTerminate;
     this.stateWaitMs = options.stateWaitMs ?? DEFAULT_STATE_WAIT_MS;
     this.closeWaitMs = options.closeWaitMs ?? DEFAULT_CLOSE_WAIT_MS;
+    this.returnWaitMs = options.returnWaitMs ?? RETURN_WAIT_MS;
     this.safetyPath = options.safetyPath;
   }
 
@@ -307,6 +343,8 @@ export class AgentLayerDirector {
       displayState: resolve(this.root, "display.json"),
       displayStop: resolve(this.root, "display.stop"),
       displayLog: resolve(this.root, "display.log"),
+      returnRequest: resolve(this.root, "return-to-mac.request"),
+      returnStatus: resolve(this.root, "return-to-mac.status.json"),
     };
   }
 
@@ -324,6 +362,8 @@ export class AgentLayerDirector {
     if (!parsed || parsed.schemaVersion !== 1 || !positiveInteger(parsed.pid) || parsed.pid <= 1 || !unsignedID(parsed.displayId)
       || !positiveInteger(parsed.width) || parsed.width < 640 || parsed.width > 8192 || !positiveInteger(parsed.height) || parsed.height < 400 || parsed.height > 8192
       || parsed.serialNumber !== agentWorkspaceSerial(this.workspace) || (parsed.workspace ?? "default") !== this.workspace
+      || (parsed.returnToMac !== undefined && typeof parsed.returnToMac !== "boolean")
+      || (parsed.returnShortcut !== undefined && typeof parsed.returnShortcut !== "string")
       || typeof parsed.startedAt !== "string" || !Number.isFinite(Date.parse(parsed.startedAt))) {
       return { ...base, active: false, state: "invalid", detail: "Prepared display manifest has invalid identity or dimensions." };
     }
@@ -332,9 +372,12 @@ export class AgentLayerDirector {
       : { ...base, active: false, state: "stale", display: parsed, detail: "Prepared display owner is no longer running." };
   }
 
-  prepareDisplay(input: { width?: unknown; height?: unknown } = {}): Promise<AgentLayerDisplayStatus> {
+  prepareDisplay(input: { width?: unknown; height?: unknown; returnToMac?: unknown } = {}): Promise<AgentLayerDisplayStatus> {
     return this.serialize(async () => {
       const size = parseAgentLayerOpen({ width: input.width, height: input.height });
+      if (input.returnToMac !== undefined && typeof input.returnToMac !== "boolean") throw new Error("returnToMac must be a boolean");
+      const returnToMac = input.returnToMac as boolean | undefined;
+      await this.assertNoReturnRecovery(returnToMac === true);
       if ((size.width !== undefined && size.width < 640) || (size.height !== undefined && size.height < 400)) {
         throw new Error("Prepared display must be at least 640x400");
       }
@@ -345,6 +388,7 @@ export class AgentLayerDirector {
       if (existing.state === "invalid") throw new Error(existing.detail);
       if (existing.active && existing.display) {
         this.assertDisplaySize(existing.display, size);
+        this.assertDisplayReturnMode(existing.display, returnToMac);
         return existing;
       }
       if ((await this.status()).active) throw new Error("Close the active agent layer before preparing a display");
@@ -354,11 +398,13 @@ export class AgentLayerDirector {
       await rm(paths.displayStop, { force: true });
       const width = size.width ?? 1440;
       const height = size.height ?? 900;
-      const { stdout } = await this.runHost([
+      const args = [
         "agent-display", "--state-file", paths.displayState, "--stop-file", paths.displayStop,
         "--workspace", this.workspace,
         "--debug-log", paths.displayLog, "--width", String(width), "--height", String(height),
-      ]);
+      ];
+      if (returnToMac === true) args.push("--return-to-mac");
+      const { stdout } = await this.runHost(args);
       const response = JSON.parse(stdout.trim() || "{}") as { status?: string; detail?: string };
       const pid = Number(response.detail);
       if (response.status !== "agent-display-running" || !positiveInteger(pid) || pid <= 1) {
@@ -371,6 +417,7 @@ export class AgentLayerDirector {
           if (status.active && status.display) {
             if (status.display.pid !== pid) throw new Error("Prepared display owner changed during setup; refusing to use a different display");
             this.assertDisplaySize(status.display, { width, height });
+            this.assertDisplayReturnMode(status.display, returnToMac);
             return status;
           }
           if (status.state === "invalid") throw new Error(status.detail);
@@ -385,6 +432,7 @@ export class AgentLayerDirector {
 
   releaseDisplay(): Promise<AgentLayerDisplayStatus> {
     return this.serialize(async () => {
+      await this.assertNoReturnRecovery();
       const current = await this.displayStatus();
       if (current.state === "invalid") throw new Error(current.detail);
       if ((await this.status()).active) throw new Error("Close the active task explicitly before release; refusing to release its prepared display");
@@ -397,6 +445,7 @@ export class AgentLayerDirector {
       }
       const latest = await this.requirePreparedDisplay();
       this.assertSameDisplay(current.display, latest);
+      await this.assertNoReturnRecovery();
       await writeFile(this.paths().displayStop, "stop\n");
       if (!await this.waitForExit(current.display.pid, this.closeWaitMs)) {
         throw new Error("Prepared display owner did not exit; display remains prepared. No forced display removal was attempted.");
@@ -411,11 +460,75 @@ export class AgentLayerDirector {
     });
   }
 
+  /** Ask the prepared owner to recover every window before disconnecting its display. */
+  returnToMac(): Promise<AgentLayerReturnResult> {
+    return this.serialize(async () => {
+      const paths = this.paths();
+      const previous = await this.readReturnRequest();
+      const previousStatus = await this.readReturnStatus();
+      const before = await this.displayStatus();
+      if (!before.active && previous && previousStatus?.state === "returned"
+        && this.sameReturnRequest(previous, previousStatus) && !this.isAlive(previous.displayOwnerPid)) {
+        return { ok: true, workspace: this.workspace, requestId: previous.requestId, state: "returned",
+          statusFile: paths.returnStatus, detail: previousStatus.detail };
+      }
+      const display = await this.requirePreparedDisplay();
+      this.assertDisplayReturnMode(display, true);
+      if (previous && !this.returnRequestMatchesDisplay(previous, display)) {
+        throw new Error("Return to Mac request belongs to a different display owner; recovery evidence was preserved");
+      }
+      const pending = previous && (!previousStatus || !this.sameReturnRequest(previous, previousStatus)
+        || previousStatus.state === "recovering");
+      const request: AgentLayerReturnRequest = pending && previous ? previous : {
+        requestId: randomUUID(), workspace: this.workspace, displayId: display.displayId,
+        displayOwnerPid: display.pid, displayStartedAt: display.startedAt, reason: "cli",
+      };
+      if (!pending) {
+        this.assertSameDisplay(display, await this.requirePreparedDisplay());
+        const temporary = `${paths.returnRequest}.${request.requestId}.tmp`;
+        try {
+          await writeFile(temporary, `${JSON.stringify(request)}\n`, { mode: 0o600 });
+          await rename(temporary, paths.returnRequest);
+        } finally {
+          await rm(temporary, { force: true });
+        }
+      }
+      const result = (state: AgentLayerReturnResult["state"], detail?: string): AgentLayerReturnResult => ({
+        ok: state === "returned", workspace: this.workspace, requestId: request.requestId,
+        state, statusFile: paths.returnStatus, ...(detail ? { detail } : {}),
+      });
+      const deadline = Date.now() + this.returnWaitMs;
+      for (;;) {
+        const status = await this.readReturnStatus();
+        if (status && this.sameReturnRequest(request, status)) {
+          if (status.state === "returned") return result("returned", status.detail);
+          if (status.state === "failed") return result("failed", status.detail);
+        }
+        if (!this.isAlive(display.pid)) {
+          const final = await this.readReturnStatus();
+          if (final && this.sameReturnRequest(request, final) && (final.state === "returned" || final.state === "failed")) {
+            return result(final.state, final.detail);
+          }
+          return result("recovery-pending", "Display owner exited without a matching verified return result; recovery evidence was preserved.");
+        }
+        const current = await this.displayStatus();
+        if (current.display && !this.returnRequestMatchesDisplay(request, current.display)) {
+          return result("recovery-pending", "Display owner identity changed during recovery; no replacement owner was changed.");
+        }
+        if (Date.now() >= deadline) {
+          return result("recovery-pending", "Return to Mac has not confirmed recovery yet; inspect the status file. The monitor and recovery evidence were retained.");
+        }
+        await delay(STATE_POLL_MS);
+      }
+    });
+  }
+
   open(input: Parameters<typeof parseAgentLayerOpen>[0] = {}): Promise<AgentLayerStatus> {
     return this.serialize(() => this.openSession(input));
   }
 
   private async openSession(input: Parameters<typeof parseAgentLayerOpen>[0]): Promise<AgentLayerStatus> {
+    await this.assertNoReturnRecovery();
     const request = parseAgentLayerOpen(input);
     const display = await this.requirePreparedDisplay();
     this.assertDisplaySize(display, request);
@@ -425,6 +538,7 @@ export class AgentLayerDirector {
 
     const paths = this.paths();
     await mkdir(this.root, { recursive: true });
+    await this.assertNoReturnRecovery();
     await rm(paths.handoff, { force: true });
     await rm(paths.stop, { force: true });
     await rm(paths.state, { force: true });
@@ -437,6 +551,7 @@ export class AgentLayerDirector {
     args.push("--workspace", this.workspace);
     if (request.previewDisplayId !== undefined) args.push("--preview-display-id", String(request.previewDisplayId));
     if (request.previewFull !== undefined) args.push("--preview-full", String(request.previewFull));
+    if (request.previewViewport !== undefined) args.push("--preview-viewport", String(request.previewViewport));
     // Same rule as the stage drape: a caller-owned layer watches this process and
     // restores the windows if it dies. A one-shot CLI exits right after open, so it
     // asks for `detached` and relies on `layer close`.
@@ -542,6 +657,7 @@ export class AgentLayerDirector {
   }
 
   private async closeSession(): Promise<AgentLayerStatus> {
+    await this.assertNoReturnRecovery();
     const paths = this.paths();
     const request = await this.readRequest();
     const state = await this.readState();
@@ -559,12 +675,14 @@ export class AgentLayerDirector {
     await writeFile(paths.stop, "stop\n");
 
     let gone = pid ? await this.waitForExit(pid, this.closeWaitMs) : true;
+    await this.assertNoReturnRecovery();
     if (!gone && pid) {
       this.terminate(pid);
       gone = await this.waitForExit(pid, SIGTERM_WAIT_MS);
     }
 
     if (gone) {
+      await this.assertNoReturnRecovery();
       await rm(paths.state, { force: true });
       await rm(paths.request, { force: true });
       await rm(paths.stop, { force: true });
@@ -581,17 +699,19 @@ export class AgentLayerDirector {
   }
 
   /** Brings the PiP viewer back after the user dismissed it. The layer itself never stopped. */
-  async showViewer(input: { previewDisplayId?: number; previewFull?: boolean } = {}): Promise<AgentLayerStatus> {
+  async showViewer(input: { previewDisplayId?: number; previewFull?: boolean; previewViewport?: boolean } = {}): Promise<AgentLayerStatus> {
     return this.serialize(() => this.showViewerSession(input));
   }
 
-  private async showViewerSession(input: { previewDisplayId?: number; previewFull?: boolean }): Promise<AgentLayerStatus> {
+  private async showViewerSession(input: { previewDisplayId?: number; previewFull?: boolean; previewViewport?: boolean }): Promise<AgentLayerStatus> {
+    await this.assertNoReturnRecovery();
     const status = await this.status();
     if (!status.active || !status.layer) {
       throw new Error("No agent layer is up");
     }
     if (input.previewFull !== undefined && typeof input.previewFull !== "boolean") throw new Error("previewFull must be a boolean");
-    if (input.previewDisplayId !== undefined || input.previewFull !== undefined) {
+    if (input.previewViewport !== undefined && typeof input.previewViewport !== "boolean") throw new Error("previewViewport must be a boolean");
+    if (input.previewDisplayId !== undefined || input.previewFull !== undefined || input.previewViewport !== undefined) {
       if (input.previewDisplayId !== undefined) {
         if (!unsignedID(input.previewDisplayId)) throw new Error("previewDisplayId must be a display identifier");
         await this.validatePreviewDestination(status.layer.displayId, input.previewDisplayId);
@@ -665,6 +785,7 @@ export class AgentLayerDirector {
   }
 
   private async sendControl<T extends { ok: boolean; detail?: string }>(op: string, payload: Record<string, unknown>, budgetMs: number): Promise<T> {
+    await this.assertNoReturnRecovery();
     const status = await this.status();
     if (!status.active || !status.layer) {
       throw new Error("No agent layer is up");
@@ -722,6 +843,8 @@ export class AgentLayerDirector {
    * paused the layer from its viewer, or took the windows back.
    */
   async actRefusal(): Promise<string | undefined> {
+    const recovery = await this.returnRecoveryRefusal();
+    if (recovery) return recovery;
     const status = await this.status();
     const handoff = await readJson<{ at?: string; action?: string; pid?: number; displayId?: number; startedAt?: string }>(this.paths().handoff);
     if (handoff && (!status.active || !handoff.pid || (status.layer?.pid === handoff.pid
@@ -737,7 +860,62 @@ export class AgentLayerDirector {
 
   /** Routing input for the interaction layer, or undefined when no layer is up. */
   async routing(): Promise<AgentLayerRouting | undefined> {
+    if (await this.returnRecoveryRefusal()) return undefined;
     return agentLayerRouting(await this.status());
+  }
+
+  private sameReturnRequest(left: AgentLayerReturnRequest, right: AgentLayerReturnRequest): boolean {
+    return left.requestId === right.requestId && left.workspace === right.workspace
+      && left.displayId === right.displayId && left.displayOwnerPid === right.displayOwnerPid
+      && left.displayStartedAt === right.displayStartedAt;
+  }
+
+  private returnRequestMatchesDisplay(request: AgentLayerReturnRequest, display: AgentLayerDisplayState): boolean {
+    return request.workspace === this.workspace && request.displayId === display.displayId
+      && request.displayOwnerPid === display.pid && request.displayStartedAt === display.startedAt;
+  }
+
+  private async readReturnRequest(): Promise<AgentLayerReturnRequest | undefined> {
+    let value: AgentLayerReturnRequest;
+    try { value = JSON.parse(await readFile(this.paths().returnRequest, "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw new Error("Return to Mac request is unreadable; recovery evidence was preserved");
+    }
+    if (!value || typeof value.requestId !== "string" || !value.requestId
+      || value.workspace !== this.workspace || !unsignedID(value.displayId)
+      || !positiveInteger(value.displayOwnerPid) || value.displayOwnerPid <= 1
+      || typeof value.displayStartedAt !== "string" || !Number.isFinite(Date.parse(value.displayStartedAt))) {
+      throw new Error("Return to Mac request has invalid identity; recovery evidence was preserved");
+    }
+    return value;
+  }
+
+  private async readReturnStatus(): Promise<AgentLayerReturnStatus | undefined> {
+    const status = await readJson<AgentLayerReturnStatus>(this.paths().returnStatus);
+    return status && ["recovering", "failed", "returned"].includes(status.state)
+      && typeof status.updatedAt === "string" && Number.isFinite(Date.parse(status.updatedAt)) ? status : undefined;
+  }
+
+  private async returnRecoveryRefusal(allowReturned = false): Promise<string | undefined> {
+    let request: AgentLayerReturnRequest | undefined;
+    try { request = await this.readReturnRequest(); }
+    catch (error) { return error instanceof Error ? error.message : String(error); }
+    const status = await this.readReturnStatus();
+    if (request) {
+      if (allowReturned && status?.state === "returned" && this.sameReturnRequest(request, status)
+        && !this.isAlive(request.displayOwnerPid)) return undefined;
+      return "Return to Mac recovery owns this workspace. Wait for recovery or retry layer return-to-mac; retained window state must not be changed.";
+    }
+    if (status?.state === "recovering" || status?.state === "failed") {
+      return "Return to Mac recovery is unresolved; retained window state must not be changed.";
+    }
+    return undefined;
+  }
+
+  private async assertNoReturnRecovery(allowReturned = false): Promise<void> {
+    const refusal = await this.returnRecoveryRefusal(allowReturned);
+    if (refusal) throw new Error(refusal);
   }
 
   private describe(request: AgentLayerRequest, state: AgentLayerState, active: boolean): AgentLayerStatus {
@@ -807,6 +985,14 @@ export class AgentLayerDirector {
   private assertDisplaySize(display: AgentLayerDisplayState, size: { width?: number; height?: number }): void {
     if (size.width !== undefined && (size.width !== display.width || size.height !== display.height)) {
       throw new Error(`Prepared display is ${display.width}x${display.height}; release and explicitly prepare a new display to change its dimensions`);
+    }
+  }
+
+  private assertDisplayReturnMode(display: AgentLayerDisplayState, requested: boolean | undefined): void {
+    if (requested === undefined) return;
+    if ((display.returnToMac === true) !== requested
+      || (requested && display.returnShortcut !== RETURN_TO_MAC_SHORTCUT)) {
+      throw new Error("Prepared display does not match the requested Return to Mac mode; close its task, release and explicitly prepare a new display with the requested --return-to-mac setting");
     }
   }
 

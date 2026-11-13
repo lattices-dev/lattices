@@ -242,13 +242,23 @@ async function main(argv: string[]): Promise<void> {
       previewDisplayId = target.display.displayId;
     }
     if (arg === "prepare") {
-      const display = await director.prepareDisplay({ width: flags.width, height: flags.height });
+      const display = await director.prepareDisplay({
+        width: flags.width,
+        height: flags.height,
+        returnToMac: flags["return-to-mac"] === undefined ? undefined : flags["return-to-mac"] === "true",
+      });
       printJson({ ok: display.active, display });
       if (!display.active) process.exitCode = 1;
       return;
     }
     if (arg === "display-status") {
       printJson({ ok: true, display: await director.displayStatus() });
+      return;
+    }
+    if (arg === "return-to-mac") {
+      const result = await director.returnToMac();
+      printJson(result);
+      if (!result.ok) process.exitCode = 1;
       return;
     }
     if (arg === "release") {
@@ -266,6 +276,7 @@ async function main(argv: string[]): Promise<void> {
         pip: flags.pip,
         previewDisplayId,
         previewFull: flags["preview-full"] === undefined ? undefined : flags["preview-full"] === "true",
+        previewViewport: flags.viewport === undefined ? undefined : flags.viewport === "true",
         windowId: flags["window-id"],
         windowTitle: flags["window-title"],
         // This process exits once the layer is up, so the layer cannot watch it.
@@ -284,7 +295,11 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     if (arg === "pip") {
-      printJson({ ok: true, layer: await director.showViewer({ previewDisplayId, previewFull: flags["preview-full"] === undefined ? undefined : flags["preview-full"] === "true" }) });
+      printJson({ ok: true, layer: await director.showViewer({
+        previewDisplayId,
+        previewFull: flags["preview-full"] === undefined ? undefined : flags["preview-full"] === "true",
+        previewViewport: flags.viewport === undefined ? undefined : flags.viewport === "true",
+      }) });
       return;
     }
     if (arg === "record") {
@@ -320,19 +335,19 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage status",
       "bun packages/cli/src/main.ts capabilities",
       "bun packages/cli/src/main.ts layer list (list named workspaces; all other layer commands accept --workspace <name>, default: default)",
-      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] (connect a persistent monitor; may change desktop topology)",
+      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] [--return-to-mac true|false] (connect a persistent monitor; may change desktop topology)",
       "bun packages/cli/src/main.ts layer display-status",
-      "bun packages/cli/src/main.ts layer open [--workspace <name>] [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off] [--preview-workspace <name>] (attach to the prepared monitor)",
-      "bun packages/cli/src/main.ts layer pip [--workspace <name>] [--preview-workspace <name>] [--preview-full] (open also accepts --preview-full)",
+      "bun packages/cli/src/main.ts layer return-to-mac [--workspace <name>] (recover all monitor windows and disconnect only after verification)",
+      "bun packages/cli/src/main.ts layer open [--workspace <name>] [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off] [--preview-workspace <name>] [--viewport true|false] (attach to the prepared monitor; viewport is experimental)",
+      "bun packages/cli/src/main.ts layer pip [--workspace <name>] [--preview-workspace <name>] [--preview-full] [--viewport true|false] (open also accepts --preview-full; viewport is experimental)",
       "bun packages/cli/src/main.ts layer snapshot [--window-id <n> | --full] [--out <file.png>]",
       "bun packages/cli/src/main.ts layer record start [--out <file.mov>] | layer record stop",
       "bun packages/cli/src/main.ts layer close (restore task windows; keep the monitor connected)",
       "bun packages/cli/src/main.ts layer release (disconnect the monitor after explicit task closure)",
       "bun packages/cli/src/main.ts layer status",
-      "bun packages/cli/src/main.ts inspect current-surface [--direct] [--mock] [--no-ocr] [--vision] [--vision-provider minimax|moondream] [--vision-prompt <prompt>]",
+      "bun packages/cli/src/main.ts inspect current-surface [--direct] [--mock] [--no-ocr] [--vision] [--vision-provider moondream] [--vision-prompt <prompt>]",
       "bun packages/cli/src/main.ts vision log [--session-id <id>] [--limit <n>]",
       "bun packages/cli/src/main.ts companion status",
-      "bun packages/cli/src/main.ts settle current-surface --x <x> --y <y> --width <w> --height <h> [--provider mock|pie-minimax]",
       "bun run demo:calculator",
       "bun run demo:notes",
       "bun run demo:calculator:macos",
