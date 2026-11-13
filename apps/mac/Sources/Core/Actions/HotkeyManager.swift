@@ -47,7 +47,8 @@ class HotkeyManager {
     }
 
     /// Register a single global hotkey with a given ID, key code, and Carbon modifier mask
-    func registerSingle(id: UInt32, keyCode: UInt32, modifiers: UInt32, callback: @escaping () -> Void) {
+    @discardableResult
+    func registerSingle(id: UInt32, keyCode: UInt32, modifiers: UInt32, callback: @escaping () -> Void) -> Bool {
         ensureEventHandler()
 
         if let existing = hotKeyRefs[id] {
@@ -77,6 +78,7 @@ class HotkeyManager {
         } else {
             DiagnosticLog.shared.warn("HotkeyManager: failed to register id=\(id) keyCode=\(keyCode) mods=\(modifiers) status=\(status)")
         }
+        return status == noErr && ref != nil
     }
 
     /// Unregister one global hotkey and clear its active callback.
