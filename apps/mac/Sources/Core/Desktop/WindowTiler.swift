@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import LatticesLayoutKit
 
 // Private API: get CGWindowID from an AXUIElement
 @_silgen_name("_AXUIElementGetWindow")
@@ -2686,30 +2687,12 @@ enum WindowTiler {
     /// Returns array of column counts per row (top row first).
     /// e.g. 5 → [3, 2] means 3 on top row, 2 on bottom row.
     static func gridShape(for count: Int) -> [Int] {
-        switch count {
-        case 1:  return [1]
-        case 2:  return [2]
-        case 3:  return [3]
-        case 4:  return [2, 2]
-        case 5:  return [3, 2]
-        case 6:  return [3, 3]
-        case 7:  return [4, 3]
-        case 8:  return [4, 4]
-        case 9:  return [3, 3, 3]
-        case 10: return [5, 5]
-        case 11: return [4, 4, 3]
-        case 12: return [4, 4, 4]
-        default:
-            // General: bias toward more columns (landscape screens)
-            let cols = Int(ceil(sqrt(Double(count) * 1.5)))
-            var rows: [Int] = []
-            var remaining = count
-            while remaining > 0 {
-                rows.append(min(cols, remaining))
-                remaining -= cols
-            }
-            return rows
-        }
+        WindowGridPlanner.shape(for: count)
+    }
+
+    /// Unit grid slots shared by arrangement previews and actual placement.
+    static func normalizedGridSlots(count: Int) -> [CGRect] {
+        WindowGridPlanner.normalizedSlots(count: count)
     }
 
     /// Compute grid slot rects in AX coordinates (top-left origin) for N windows.
@@ -2724,42 +2707,15 @@ enum WindowTiler {
         guard count > 0 else { return [] }
         let visible = screen.visibleFrame
         guard let primaryScreen = NSScreen.screens.first else { return [] }
-        let primaryHeight = primaryScreen.frame.height
-
-        // Compute the target area — full visible frame or a fractional sub-region
-        let targetArea: CGRect
-        if let (rx, ry, rw, rh) = region {
-            targetArea = CGRect(
-                x: visible.origin.x + visible.width * rx,
-                y: visible.origin.y + visible.height * (1.0 - ry - rh),  // NSRect is bottom-left origin
-                width: visible.width * rw,
-                height: visible.height * rh
-            )
-        } else {
-            targetArea = visible
-        }
-
-        // AX Y of target area's top edge
-        let axTop = primaryHeight - targetArea.maxY
-        let resolvedShape: [Int]
-        if let shape, shape.reduce(0, +) == count, !shape.contains(where: { $0 <= 0 }) {
-            resolvedShape = shape
-        } else {
-            resolvedShape = gridShape(for: count)
-        }
-        let rowCount = resolvedShape.count
-        let rowH = targetArea.height / CGFloat(rowCount)
-
-        var slots: [CGRect] = []
-        for (row, cols) in resolvedShape.enumerated() {
-            let colW = targetArea.width / CGFloat(cols)
-            let axY = axTop + CGFloat(row) * rowH
-            for col in 0..<cols {
-                let x = targetArea.origin.x + CGFloat(col) * colW
-                slots.append(CGRect(x: x, y: axY, width: colW, height: rowH))
-            }
-        }
-        return slots
+        // Convert once from AppKit's bottom-left origin to AX's top-left origin.
+        let area = CGRect(
+            x: visible.minX,
+            y: primaryScreen.frame.height - visible.maxY,
+            width: visible.width,
+            height: visible.height
+        )
+        let fractionalRegion = region.map { CGRect(x: $0.0, y: $0.1, width: $0.2, height: $0.3) }
+        return WindowGridPlanner.slots(count: count, in: area, region: fractionalRegion, shape: shape)
     }
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
@@ -2795,12 +2751,7 @@ enum WindowTiler {
         let visible = screen.visibleFrame
         let screenFrame = screen.frame
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let effectiveShape: [Int]
-        if let shapeOverride, shapeOverride.reduce(0, +) == windows.count, !shapeOverride.contains(where: { $0 <= 0 }) {
-            effectiveShape = shapeOverride
-        } else {
-            effectiveShape = gridShape(for: windows.count)
-        }
+        let effectiveShape = WindowGridPlanner.shape(for: windows.count, requested: shapeOverride)
         let desc = effectiveShape.map(String.init).joined(separator: "+")
 
         diag.info("Grid layout: \(windows.count) windows → [\(desc)]")
