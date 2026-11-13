@@ -14,6 +14,7 @@ import { VERSION, capabilities, refreshCapabilities, registerEndpoints } from ".
 import * as hypr from "./hyprland.ts";
 import { updateEventHealth } from "./host-capabilities.ts";
 import * as live from "./live.ts";
+import * as moves from "./moves.ts";
 import { Router } from "./router.ts";
 import { serve } from "./server.ts";
 import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/server.ts";
@@ -64,6 +65,7 @@ async function main() {
     return;
   }
   const opts = parseArgs(process.argv.slice(2));
+  moves.load();
   await refreshCapabilities();
   let emit = (_event: string, _data: unknown) => {};
   let onDesktopEvent = (_event: string) => {};
