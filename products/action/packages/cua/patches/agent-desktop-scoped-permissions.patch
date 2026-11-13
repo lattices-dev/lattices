@@ -1,0 +1,1226 @@
+diff --git a/crates/core/src/adapter/system.rs b/crates/core/src/adapter/system.rs
+index 98e99604..fbaa4790 100644
+--- a/crates/core/src/adapter/system.rs
++++ b/crates/core/src/adapter/system.rs
+@@ -58,6 +58,18 @@ pub trait SystemOps: Send + Sync {
+         self.permission_report(lease.deadline())
+     }
+ 
++    fn scoped_permission_requests(&self) -> &'static [crate::PermissionKind] {
++        &[]
++    }
++
++    fn request_selected_permissions(
++        &self,
++        _permissions: &[crate::PermissionKind],
++        _lease: &InteractionLease,
++    ) -> Result<PermissionReport, AdapterError> {
++        Err(AdapterError::not_supported("request_selected_permissions"))
++    }
++
+     /// Starts a detached, on-screen guide that walks the user through granting
+     /// the missing permissions, and returns without waiting for it. The result
+     /// is `started`, `already_running`, or `not_needed`.
+diff --git a/crates/core/src/commands/permissions.rs b/crates/core/src/commands/permissions.rs
+index 05ca1d99..5e01d8f8 100644
+--- a/crates/core/src/commands/permissions.rs
++++ b/crates/core/src/commands/permissions.rs
+@@ -1,9 +1,47 @@
+-use crate::{AppError, PermissionReport, adapter::PlatformAdapter};
++use crate::{AppError, Deadline, PermissionKind, PermissionReport, adapter::PlatformAdapter};
+ use serde_json::{Value, json};
+ 
++pub const MAX_PERMISSION_REQUEST_TIMEOUT_MS: u64 = 120_000;
++
+ pub struct PermissionsArgs {
+     pub request: bool,
+     pub guide: bool,
++    pub only: Option<Vec<String>>,
++    pub timeout_ms: Option<u64>,
++}
++
++pub fn validate_request_args(
++    request: bool,
++    guide: bool,
++    only: Option<&[String]>,
++    timeout_ms: Option<u64>,
++) -> Result<Option<Vec<PermissionKind>>, AppError> {
++    if !request && (only.is_some() || timeout_ms.is_some()) {
++        return Err(AppError::invalid_input(
++            "--only and --timeout-ms require --request",
++        ));
++    }
++    if timeout_ms.is_some_and(|value| value > MAX_PERMISSION_REQUEST_TIMEOUT_MS) {
++        return Err(AppError::invalid_input(
++            "Permission request timeout exceeds 120000ms",
++        ));
++    }
++    only.map(|values| {
++        if values.is_empty() || guide {
++            return Err(AppError::invalid_input(
++                "--only requires a nonempty selection and cannot be combined with --guide",
++            ));
++        }
++        let mut selected = Vec::new();
++        for value in values {
++            let permission = PermissionKind::parse_flag(value)?;
++            if !selected.contains(&permission) {
++                selected.push(permission);
++            }
++        }
++        Ok(selected)
++    })
++    .transpose()
+ }
+ 
+ pub fn execute_with_report(
+@@ -11,9 +49,32 @@ pub fn execute_with_report(
+     adapter: &dyn PlatformAdapter,
+     report: &PermissionReport,
+ ) -> Result<Value, AppError> {
++    let selected = validate_request_args(
++        args.request,
++        args.guide,
++        args.only.as_deref(),
++        args.timeout_ms,
++    )?;
+     let report = if args.request {
+-        let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+-        adapter.request_permissions(&lease)?
++        if let Some(selected) = &selected {
++            if selected
++                .iter()
++                .any(|kind| !adapter.scoped_permission_requests().contains(kind))
++            {
++                return Err(
++                    crate::AdapterError::not_supported("request_selected_permissions").into(),
++                );
++            }
++        }
++        let deadline = args
++            .timeout_ms
++            .map_or_else(Deadline::standard, Deadline::after)?;
++        deadline.ensure_remaining()?;
++        let lease = adapter.acquire_interaction_lease(deadline)?;
++        match selected {
++            Some(selected) => adapter.request_selected_permissions(&selected, &lease)?,
++            None => adapter.request_permissions(&lease)?,
++        }
+     } else {
+         report.clone()
+     };
+@@ -22,8 +83,16 @@ pub fn execute_with_report(
+         "screen_recording": report.screen_recording,
+         "automation": report.automation
+     });
++    let supported = adapter.scoped_permission_requests();
++    if !supported.is_empty() {
++        data["request_capabilities"] = json!({"scoped": true, "permissions": supported});
++    }
+     if args.guide {
+         data["guide"] = json!(adapter.start_permission_guide()?);
+     }
+     Ok(data)
+ }
++
++#[cfg(test)]
++#[path = "permissions_tests.rs"]
++mod tests;
+diff --git a/crates/core/src/commands/status.rs b/crates/core/src/commands/status.rs
+index 13bd3e11..9eda15ca 100644
+--- a/crates/core/src/commands/status.rs
++++ b/crates/core/src/commands/status.rs
+@@ -16,6 +16,8 @@ pub fn execute_with_report_with_context(
+         PermissionsArgs {
+             request: false,
+             guide: false,
++            only: None,
++            timeout_ms: None,
+         },
+         adapter,
+         report,
+diff --git a/crates/core/src/lib.rs b/crates/core/src/lib.rs
+index c88d0e79..8e7a6264 100644
+--- a/crates/core/src/lib.rs
++++ b/crates/core/src/lib.rs
+@@ -127,6 +127,7 @@ pub use system::image_buffer::{ImageBuffer, MAX_PNG_INPUT_BYTES, parse_png_dimen
+ pub use system::image_format::ImageFormat;
+ pub use system::operation_report::OperationReport;
+ pub use system::operation_target::OperationTarget;
++pub use system::permission_kind::PermissionKind;
+ pub use system::permission_report::PermissionReport;
+ pub use system::permission_state::PermissionState;
+ pub use system::process_id::ProcessId;
+diff --git a/crates/core/src/system/mod.rs b/crates/core/src/system/mod.rs
+index ca0ea1d7..ae3cae29 100644
+--- a/crates/core/src/system/mod.rs
++++ b/crates/core/src/system/mod.rs
+@@ -12,6 +12,7 @@ pub(crate) mod operation_report;
+ pub(crate) mod operation_report_build;
+ pub(crate) mod operation_report_dispatch;
+ pub(crate) mod operation_target;
++pub(crate) mod permission_kind;
+ pub mod permission_report;
+ pub mod permission_state;
+ pub(crate) mod process_id;
+diff --git a/crates/macos/src/system/adapter.rs b/crates/macos/src/system/adapter.rs
+index a1a8d01d..dd22d013 100644
+--- a/crates/macos/src/system/adapter.rs
++++ b/crates/macos/src/system/adapter.rs
+@@ -61,7 +61,22 @@ impl SystemOps for MacOSAdapter {
+         &self,
+         lease: &InteractionLease,
+     ) -> Result<PermissionReport, AdapterError> {
+-        crate::system::permissions::request_report(lease.deadline())
++        crate::system::permissions::request_report(
++            lease.deadline(),
++            &agent_desktop_core::PermissionKind::ALL,
++        )
++    }
++
++    fn scoped_permission_requests(&self) -> &'static [agent_desktop_core::PermissionKind] {
++        &agent_desktop_core::PermissionKind::ALL
++    }
++
++    fn request_selected_permissions(
++        &self,
++        permissions: &[agent_desktop_core::PermissionKind],
++        lease: &InteractionLease,
++    ) -> Result<PermissionReport, AdapterError> {
++        crate::system::permissions::request_report(lease.deadline(), permissions)
+     }
+ 
+     fn start_permission_guide(&self) -> Result<&'static str, AdapterError> {
+diff --git a/crates/macos/src/system/permissions/mod.rs b/crates/macos/src/system/permissions/mod.rs
+index a54a8252..a1d0771c 100644
+--- a/crates/macos/src/system/permissions/mod.rs
++++ b/crates/macos/src/system/permissions/mod.rs
+@@ -1,4 +1,6 @@
+-use agent_desktop_core::{AdapterError, Deadline, PermissionReport, PermissionState};
++use agent_desktop_core::{
++    AdapterError, Deadline, PermissionKind, PermissionReport, PermissionState,
++};
+ 
+ const ACCESSIBILITY_SUGGESTION: &str = "Run agent-desktop permissions --guide. It opens System Settings > Privacy & Security > Accessibility (Device Control and Data Access on macOS 27 and later) with a guide that shows which app to drag into the list: the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
+ const SCREEN_RECORDING_SUGGESTION: &str = "Run agent-desktop permissions --guide. It opens System Settings > Privacy & Security > Screen Recording with a guide that shows which app to drag into the list: the app that launches agent-desktop, such as Terminal, iTerm, or Codex. If macOS lists the built binary separately, add that binary too.";
+@@ -140,9 +142,15 @@ pub(crate) fn report(deadline: Deadline) -> Result<PermissionReport, AdapterErro
+     Ok(report)
+ }
+ 
+-pub(crate) fn request_report(deadline: Deadline) -> Result<PermissionReport, AdapterError> {
++pub(crate) fn request_report(
++    deadline: Deadline,
++    selected: &[PermissionKind],
++) -> Result<PermissionReport, AdapterError> {
++    let before = report(deadline)?;
+     request_report_with(
+         deadline,
++        selected,
++        &before,
+         crate::system::permissions::permission_helper::request,
+         report,
+     )
+@@ -150,27 +158,28 @@ pub(crate) fn request_report(deadline: Deadline) -> Result<PermissionReport, Ada
+ 
+ fn request_report_with(
+     deadline: Deadline,
++    selected: &[PermissionKind],
++    before: &PermissionReport,
+     mut request: impl FnMut(
+         crate::system::permissions::permission_operation::PermissionOperation,
+         Deadline,
+     ) -> Result<bool, AdapterError>,
+     report: impl FnOnce(Deadline) -> Result<PermissionReport, AdapterError>,
+ ) -> Result<PermissionReport, AdapterError> {
++    use permission_operation::PermissionOperation;
+     deadline.ensure_remaining()?;
+-    let _ = request(
+-        crate::system::permissions::permission_operation::PermissionOperation::Accessibility,
+-        deadline,
+-    )?;
+-    deadline.ensure_remaining()?;
+-    let _ = request(
+-        crate::system::permissions::permission_operation::PermissionOperation::ScreenRecording,
+-        deadline,
+-    )?;
+-    deadline.ensure_remaining()?;
+-    let _ = request(
+-        crate::system::permissions::permission_operation::PermissionOperation::Automation,
+-        deadline,
+-    )?;
++    for permission in PermissionKind::ALL {
++        if !selected.contains(&permission) || !permission.is_missing(before) {
++            continue;
++        }
++        deadline.ensure_remaining()?;
++        let operation = match permission {
++            PermissionKind::Accessibility => PermissionOperation::Accessibility,
++            PermissionKind::ScreenRecording => PermissionOperation::ScreenRecording,
++            PermissionKind::Automation => PermissionOperation::Automation,
++        };
++        let _ = request(operation, deadline)?;
++    }
+     deadline.ensure_remaining()?;
+     report(deadline)
+ }
+diff --git a/crates/macos/src/system/permissions/permission_helper.rs b/crates/macos/src/system/permissions/permission_helper.rs
+index 136ab26f..a840e6e7 100644
+--- a/crates/macos/src/system/permissions/permission_helper.rs
++++ b/crates/macos/src/system/permissions/permission_helper.rs
+@@ -4,17 +4,21 @@ use std::process::Command;
+ 
+ use super::permission_operation::PermissionOperation;
+ 
++#[path = "permission_helper_lifetime.rs"]
++mod lifetime;
++
+ const MARKER: &str = "AGENT_DESKTOP_PERMISSION_HELPER";
+ const OPERATION: &str = "AGENT_DESKTOP_PERMISSION_OPERATION";
+ const TOKEN: &str = "AGENT_DESKTOP_PERMISSION_TOKEN";
+ const PARENT_PID: &str = "AGENT_DESKTOP_PERMISSION_PARENT_PID";
+ const PARENT_INSTANCE: &str = "AGENT_DESKTOP_PERMISSION_PARENT_INSTANCE";
+ const EXECUTABLE: &str = "AGENT_DESKTOP_PERMISSION_EXECUTABLE";
+-const PROTOCOL_VERSION: &str = "v1";
++const DEADLINE_NS: &str = "AGENT_DESKTOP_PERMISSION_DEADLINE_NS";
++const PROTOCOL_VERSION: &str = "v2";
+ const TOKEN_BYTES: usize = 32;
+ const MAX_OUTPUT_BYTES: usize = 4 * 1024;
+ 
+-type HelperRequest = (PermissionOperation, String, i32, String, String);
++type HelperRequest = (PermissionOperation, String, i32, String, String, u64);
+ 
+ pub fn entry_from_env() -> Option<(u8, String)> {
+     let get = |name: &str| std::env::var(name).ok();
+@@ -41,6 +45,8 @@ pub(crate) fn request(
+     let parent_instance = crate::system::process::process_identity::token_for_pid(parent_pid)?
+         .ok_or_else(|| AdapterError::internal("Permission helper parent identity disappeared"))?;
+     let correlation_token = random_token()?;
++    let expires_at =
++        lifetime::expires_after(deadline.remaining()).map_err(AdapterError::internal)?;
+     let mut command = Command::new(&executable);
+     command
+         .env(MARKER, PROTOCOL_VERSION)
+@@ -48,7 +54,8 @@ pub(crate) fn request(
+         .env(TOKEN, &correlation_token)
+         .env(PARENT_PID, parent_pid.to_string())
+         .env(PARENT_INSTANCE, parent_instance)
+-        .env(EXECUTABLE, executable_text);
++        .env(EXECUTABLE, executable_text)
++        .env(DEADLINE_NS, expires_at.to_string());
+     let output = crate::system::process::run_with_deadline(
+         &mut command,
+         "macOS permission prompt helper",
+@@ -70,14 +77,7 @@ pub(crate) fn request(
+ }
+ 
+ fn execute_child(get: &impl Fn(&str) -> Option<String>) -> Result<Value, String> {
+-    let request = parse_request(get)?;
+-    validate_request(
+-        &request,
+-        unsafe { libc::getppid() },
+-        canonical_current_executable_text()?,
+-        crate::system::process::process_identity::matches_instance,
+-    )?;
+-    let granted = match request.0 {
++    execute_child_with(get, |operation| match operation {
+         PermissionOperation::Accessibility => {
+             crate::system::permissions::prompt_accessibility();
+             crate::system::permissions::preflight_accessibility()
+@@ -87,7 +87,22 @@ fn execute_child(get: &impl Fn(&str) -> Option<String>) -> Result<Value, String>
+             crate::system::permissions::preflight_screen_recording()
+         }
+         PermissionOperation::Automation => crate::system::permissions::prompt_automation(),
+-    };
++    })
++}
++
++fn execute_child_with(
++    get: &impl Fn(&str) -> Option<String>,
++    prompt: impl FnOnce(PermissionOperation) -> bool,
++) -> Result<Value, String> {
++    let request = parse_request(get)?;
++    validate_request(
++        &request,
++        unsafe { libc::getppid() },
++        canonical_current_executable_text()?,
++        crate::system::process::process_identity::matches_instance,
++    )?;
++    let _watchdog = lifetime::watch_parent(request.2, request.3.clone(), request.5)?;
++    let granted = prompt(request.0);
+     Ok(json!({
+         "version": 1,
+         "token": request.1,
+@@ -104,6 +119,7 @@ fn helper_environment_present(get: &impl Fn(&str) -> Option<String>) -> bool {
+         PARENT_PID,
+         PARENT_INSTANCE,
+         EXECUTABLE,
++        DEADLINE_NS,
+     ]
+     .into_iter()
+     .any(|name| get(name).is_some())
+@@ -130,7 +146,18 @@ fn parse_request(get: &impl Fn(&str) -> Option<String>) -> Result<HelperRequest,
+     let executable = get(EXECUTABLE)
+         .filter(|value| !value.is_empty() && value.len() <= 16 * 1024)
+         .ok_or_else(|| "invalid permission helper executable".to_string())?;
+-    Ok((operation, token, parent_pid, parent_instance, executable))
++    let expires_at = get(DEADLINE_NS)
++        .and_then(|value| value.parse::<u64>().ok())
++        .ok_or_else(|| "invalid permission helper deadline".to_string())?;
++    lifetime::remaining_until(expires_at)?;
++    Ok((
++        operation,
++        token,
++        parent_pid,
++        parent_instance,
++        executable,
++        expires_at,
++    ))
+ }
+ 
+ fn validate_request(
+diff --git a/crates/macos/src/system/permissions/permission_helper_tests.rs b/crates/macos/src/system/permissions/permission_helper_tests.rs
+index 52502485..2c06c25d 100644
+--- a/crates/macos/src/system/permissions/permission_helper_tests.rs
++++ b/crates/macos/src/system/permissions/permission_helper_tests.rs
+@@ -8,6 +8,7 @@ fn valid_request() -> HelperRequest {
+         42,
+         "macos-proc-v1:1:2".into(),
+         "/tmp/agent-desktop".into(),
++        lifetime::expires_after(std::time::Duration::from_secs(1)).unwrap(),
+     )
+ }
+ 
+@@ -29,6 +30,12 @@ fn parser_accepts_only_the_closed_protocol_and_correlation_token_shape() {
+         (PARENT_PID.to_string(), "42".to_string()),
+         (PARENT_INSTANCE.to_string(), "macos-proc-v1:1:2".to_string()),
+         (EXECUTABLE.to_string(), "/tmp/agent-desktop".to_string()),
++        (
++            DEADLINE_NS.to_string(),
++            lifetime::expires_after(std::time::Duration::from_secs(1))
++                .unwrap()
++                .to_string(),
++        ),
+     ]);
+ 
+     assert!(parse_request(&|name| values.get(name).cloned()).is_ok());
+@@ -37,6 +44,23 @@ fn parser_accepts_only_the_closed_protocol_and_correlation_token_shape() {
+     assert!(parse_request(&|name| invalid.get(name).cloned()).is_err());
+ }
+ 
++#[test]
++fn missing_expired_or_unbounded_helper_deadlines_are_rejected() {
++    let mut values = HashMap::from([
++        (MARKER.to_string(), PROTOCOL_VERSION.to_string()),
++        (OPERATION.to_string(), "accessibility".to_string()),
++        (TOKEN.to_string(), "ab".repeat(TOKEN_BYTES)),
++        (PARENT_PID.to_string(), "42".to_string()),
++        (PARENT_INSTANCE.to_string(), "macos-proc-v1:1:2".to_string()),
++        (EXECUTABLE.to_string(), "/tmp/agent-desktop".to_string()),
++    ]);
++    assert!(parse_request(&|name| values.get(name).cloned()).is_err());
++    for deadline in ["0", "18446744073709551615", "nan"] {
++        values.insert(DEADLINE_NS.to_string(), deadline.to_string());
++        assert!(parse_request(&|name| values.get(name).cloned()).is_err());
++    }
++}
++
+ #[test]
+ fn detached_replayed_or_substituted_helper_invocations_are_rejected() {
+     let request = valid_request();
+diff --git a/crates/macos/src/system/permissions/permissions_tests.rs b/crates/macos/src/system/permissions/permissions_tests.rs
+index 06acc164..5cd34041 100644
+--- a/crates/macos/src/system/permissions/permissions_tests.rs
++++ b/crates/macos/src/system/permissions/permissions_tests.rs
+@@ -23,6 +23,11 @@ fn post_helper_preflight_is_the_authoritative_permission_state() {
+     let mut requested = Vec::new();
+     let report = request_report_with(
+         Deadline::after(1_000).unwrap(),
++        &PermissionKind::ALL,
++        &PermissionReport {
++            automation: PermissionState::Unknown,
++            ..PermissionReport::default()
++        },
+         |operation, _| {
+             requested.push(operation);
+             Ok(false)
+@@ -43,6 +48,65 @@ fn post_helper_preflight_is_the_authoritative_permission_state() {
+     assert_eq!(report.automation, PermissionState::Unknown);
+ }
+ 
++#[test]
++fn scoped_permission_request_skips_unselected_and_already_granted_permissions() {
++    let before = PermissionReport {
++        accessibility: PermissionState::Granted,
++        screen_recording: PermissionState::Unknown,
++        automation: PermissionState::Unknown,
++    };
++    let mut requested = Vec::new();
++    let result = request_report_with(
++        Deadline::after(1_000).unwrap(),
++        &[
++            PermissionKind::Accessibility,
++            PermissionKind::ScreenRecording,
++        ],
++        &before,
++        |operation, _| {
++            requested.push(operation);
++            Ok(true)
++        },
++        |_| Ok(before.clone()),
++    )
++    .unwrap();
++
++    assert_eq!(
++        requested,
++        vec![permission_operation::PermissionOperation::ScreenRecording]
++    );
++    assert_eq!(result.accessibility, PermissionState::Granted);
++    assert_eq!(result.screen_recording, PermissionState::Unknown);
++    assert_eq!(result.automation, PermissionState::Unknown);
++}
++
++#[test]
++fn expired_request_and_not_required_permissions_never_prompt() {
++    let before = PermissionReport {
++        accessibility: PermissionState::NotRequired,
++        screen_recording: PermissionState::Granted,
++        automation: PermissionState::NotRequired,
++    };
++    let result = request_report_with(
++        Deadline::after(1_000).unwrap(),
++        &PermissionKind::ALL,
++        &before,
++        |_, _| panic!("already satisfied permissions must not prompt"),
++        |_| Ok(before.clone()),
++    )
++    .unwrap();
++    assert_eq!(result, before);
++    let error = request_report_with(
++        Deadline::after(0).unwrap(),
++        &PermissionKind::ALL,
++        &PermissionReport::default(),
++        |_, _| panic!("expired requests must not prompt"),
++        |_| panic!("expired requests must not report"),
++    )
++    .unwrap_err();
++    assert_eq!(error.code, agent_desktop_core::ErrorCode::Timeout);
++}
++
+ #[test]
+ fn authorization_denial_is_structured_and_nonprompting() {
+     let error = automation_permission_error(-1744);
+diff --git a/src/batch/execution_tests.rs b/src/batch/execution_tests.rs
+index a72c06b9..c9372a7a 100644
+--- a/src/batch/execution_tests.rs
++++ b/src/batch/execution_tests.rs
+@@ -62,6 +62,10 @@ fn validates_every_entry_before_the_first_side_effect() {
+             {"command": "clipboard-clear", "args": {}},
+             {"command": "click", "args": {"ref_id": "not-a-ref"}}
+         ]),
++        json!([
++            {"command": "clipboard-clear", "args": {}},
++            {"command": "permissions", "args": {"request": true, "only": []}}
++        ]),
+     ] {
+         let error = execute(
+             args(commands, 60_000),
+diff --git a/src/cli_args/system.rs b/src/cli_args/system.rs
+index de906ac5..da316e51 100644
+--- a/src/cli_args/system.rs
++++ b/src/cli_args/system.rs
+@@ -333,6 +333,24 @@ pub(crate) struct PermissionsArgs {
+     )]
+     #[serde(default)]
+     pub guide: bool,
++    #[arg(long, value_delimiter = ',', requires = "request", conflicts_with = "guide",
++        value_parser = ["accessibility", "screen-recording", "automation"],
++        help = "Request only these permissions (comma-separated)")]
++    #[serde(default, deserialize_with = "deserialize_permission_selection")]
++    pub only: Option<Vec<String>>,
++    #[arg(long, requires = "request", value_parser = clap::value_parser!(u64).range(0..=120_000),
++        help = "Permission request deadline in milliseconds (default 5000; maximum 120000)")]
++    #[serde(default)]
++    pub timeout_ms: Option<u64>,
++}
++
++fn deserialize_permission_selection<'de, D>(
++    deserializer: D,
++) -> Result<Option<Vec<String>>, D::Error>
++where
++    D: serde::Deserializer<'de>,
++{
++    Vec::<String>::deserialize(deserializer).map(Some)
+ }
+ 
+ #[cfg(test)]
+diff --git a/src/cli_args/system_tests.rs b/src/cli_args/system_tests.rs
+index 20163ad5..7e7adcfd 100644
+--- a/src/cli_args/system_tests.rs
++++ b/src/cli_args/system_tests.rs
+@@ -1,5 +1,75 @@
+ use super::*;
+ 
++#[test]
++fn permissions_scoped_request_cli_accepts_explicit_selection_and_deadline() {
++    let args = PermissionsArgs::try_parse_from([
++        "permissions",
++        "--request",
++        "--only",
++        "accessibility,screen-recording",
++        "--timeout-ms",
++        "120000",
++    ])
++    .unwrap();
++    assert_eq!(
++        args.only,
++        Some(vec!["accessibility".into(), "screen-recording".into()])
++    );
++    assert_eq!(args.timeout_ms, Some(120_000));
++    assert!(
++        PermissionsArgs::try_parse_from(["permissions", "--request"])
++            .unwrap()
++            .only
++            .is_none()
++    );
++}
++
++#[test]
++fn permissions_scoped_request_cli_rejects_invalid_or_unrequested_selections() {
++    for flags in [
++        vec!["--only", "accessibility"],
++        vec!["--request", "--only", ""],
++        vec!["--request", "--only", "accessibility,"],
++        vec!["--request", "--only", "camera"],
++        vec!["--request", "--only", "accessibility", "--guide"],
++        vec!["--request", "--timeout-ms", "120001"],
++        vec!["--timeout-ms", "37"],
++    ] {
++        let mut command = vec!["permissions"];
++        command.extend(flags);
++        assert!(PermissionsArgs::try_parse_from(command).is_err());
++    }
++}
++
++#[test]
++fn permissions_batch_selection_is_validated_before_dispatch() {
++    assert!(
++        serde_json::from_value::<PermissionsArgs>(
++            serde_json::json!({"request": true, "only": null})
++        )
++        .is_err()
++    );
++    for fields in [
++        serde_json::json!({"only":["accessibility"]}),
++        serde_json::json!({"request":true,"only":[]}),
++        serde_json::json!({"request":true,"only":[""]}),
++        serde_json::json!({"request":true,"only":["accessibility","camera"]}),
++        serde_json::json!({"request":true,"only":["accessibility"],"timeout_ms":120001}),
++    ] {
++        let args: PermissionsArgs = serde_json::from_value(fields).unwrap();
++        let command = crate::cli::Commands::Permissions(args);
++        assert_eq!(
++            crate::command_policy::preflight(
++                &command,
++                &agent_desktop_core::PermissionReport::default()
++            )
++            .unwrap_err()
++            .code(),
++            "INVALID_ARGS"
++        );
++    }
++}
++
+ /// Chromium switches all start with `--`, and `--arg` passthrough exists
+ /// specifically to forward them; clap rejects a hyphen-leading value on a
+ /// plain option unless `allow_hyphen_values` says otherwise.
+diff --git a/src/command_policy/mod.rs b/src/command_policy/mod.rs
+index 03d8a995..74525fbe 100644
+--- a/src/command_policy/mod.rs
++++ b/src/command_policy/mod.rs
+@@ -141,6 +141,14 @@ pub(crate) fn requires_permission_report(cmd: &Commands) -> bool {
+ 
+ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
+     match cmd {
++        Commands::Permissions(args) => {
++            agent_desktop_core::commands::permissions::validate_request_args(
++                args.request,
++                args.guide,
++                args.only.as_deref(),
++                args.timeout_ms,
++            )?;
++        }
+         Commands::Snapshot(args) => {
+             if let Some(root) = &args.root {
+                 if args.surface != crate::cli_args::Surface::Window {
+@@ -242,7 +250,6 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
+         | Commands::ClipboardSet(_)
+         | Commands::ClipboardClear
+         | Commands::Status
+-        | Commands::Permissions(_)
+         | Commands::Version
+         | Commands::Batch(_)
+         | Commands::Skills(_)
+diff --git a/src/dispatch/system.rs b/src/dispatch/system.rs
+index 26d24e09..4e19fbf0 100644
+--- a/src/dispatch/system.rs
++++ b/src/dispatch/system.rs
+@@ -56,6 +56,8 @@ pub(super) fn permissions(
+         permissions_command::PermissionsArgs {
+             request: args.request,
+             guide: args.guide,
++            only: args.only,
++            timeout_ms: args.timeout_ms,
+         },
+         adapter,
+         permission_report,
+diff --git a/crates/core/src/commands/permissions_tests.rs b/crates/core/src/commands/permissions_tests.rs
+new file mode 100644
+index 00000000..1b61c998
+--- /dev/null
++++ b/crates/core/src/commands/permissions_tests.rs
+@@ -0,0 +1,162 @@
++use super::*;
++use crate::{AdapterError, InteractionLease, SystemOps};
++use std::sync::{
++    Mutex,
++    atomic::{AtomicUsize, Ordering},
++};
++
++struct PermissionAdapter {
++    leases: AtomicUsize,
++    legacy: AtomicUsize,
++    selected: Mutex<Vec<PermissionKind>>,
++    supported: bool,
++}
++
++impl crate::ObservationOps for PermissionAdapter {}
++impl crate::InputOps for PermissionAdapter {}
++impl crate::ActionOps for PermissionAdapter {}
++impl SystemOps for PermissionAdapter {
++    fn acquire_interaction_lease(
++        &self,
++        deadline: Deadline,
++    ) -> Result<InteractionLease, AdapterError> {
++        self.leases.fetch_add(1, Ordering::SeqCst);
++        assert_eq!(deadline.timeout_ms(), 37);
++        InteractionLease::guarded(deadline, ())
++    }
++
++    fn scoped_permission_requests(&self) -> &'static [PermissionKind] {
++        if self.supported {
++            &PermissionKind::ALL
++        } else {
++            &[]
++        }
++    }
++
++    fn request_selected_permissions(
++        &self,
++        permissions: &[PermissionKind],
++        _: &InteractionLease,
++    ) -> Result<PermissionReport, AdapterError> {
++        *self.selected.lock().unwrap() = permissions.to_vec();
++        Ok(PermissionReport::default())
++    }
++
++    fn request_permissions(&self, _: &InteractionLease) -> Result<PermissionReport, AdapterError> {
++        self.legacy.fetch_add(1, Ordering::SeqCst);
++        Ok(PermissionReport::default())
++    }
++}
++
++fn adapter(supported: bool) -> PermissionAdapter {
++    PermissionAdapter {
++        leases: AtomicUsize::new(0),
++        legacy: AtomicUsize::new(0),
++        selected: Mutex::new(Vec::new()),
++        supported,
++    }
++}
++
++fn args(request: bool, only: Option<Vec<&str>>, timeout_ms: Option<u64>) -> PermissionsArgs {
++    PermissionsArgs {
++        request,
++        guide: false,
++        only: only.map(|values| values.into_iter().map(str::to_owned).collect()),
++        timeout_ms,
++    }
++}
++
++#[test]
++fn permissions_scoped_requests_never_fall_back_to_legacy() {
++    let adapter = adapter(true);
++    execute_with_report(
++        args(
++            true,
++            Some(vec!["accessibility", "screen-recording", "accessibility"]),
++            Some(37),
++        ),
++        &adapter,
++        &PermissionReport::default(),
++    )
++    .unwrap();
++    assert_eq!(
++        *adapter.selected.lock().unwrap(),
++        vec![
++            PermissionKind::Accessibility,
++            PermissionKind::ScreenRecording
++        ]
++    );
++    assert_eq!(adapter.legacy.load(Ordering::SeqCst), 0);
++    assert_eq!(adapter.leases.load(Ordering::SeqCst), 1);
++
++    execute_with_report(
++        args(true, None, Some(37)),
++        &adapter,
++        &PermissionReport::default(),
++    )
++    .unwrap();
++    assert_eq!(adapter.legacy.load(Ordering::SeqCst), 1);
++}
++
++#[test]
++fn permissions_invalid_selection_never_acquires_lease_or_prompts() {
++    let adapter = adapter(true);
++    for request in [
++        args(false, Some(vec!["accessibility"]), None),
++        args(true, Some(vec![]), None),
++        args(true, Some(vec![""]), None),
++        args(true, Some(vec!["accessibility", "camera"]), None),
++        args(true, Some(vec!["accessibility"]), Some(120_001)),
++        args(false, None, Some(37)),
++    ] {
++        assert_eq!(
++            execute_with_report(request, &adapter, &PermissionReport::default())
++                .unwrap_err()
++                .code(),
++            "INVALID_ARGS"
++        );
++    }
++    assert_eq!(adapter.leases.load(Ordering::SeqCst), 0);
++    assert_eq!(adapter.legacy.load(Ordering::SeqCst), 0);
++    assert!(adapter.selected.lock().unwrap().is_empty());
++}
++
++#[test]
++fn permissions_expired_or_unsupported_selection_never_prompts() {
++    for (adapter, timeout_ms, code) in [
++        (adapter(true), 0, "TIMEOUT"),
++        (adapter(false), 37, "PLATFORM_NOT_SUPPORTED"),
++    ] {
++        let error = execute_with_report(
++            args(true, Some(vec!["accessibility"]), Some(timeout_ms)),
++            &adapter,
++            &PermissionReport::default(),
++        )
++        .unwrap_err();
++        assert_eq!(error.code(), code);
++        assert_eq!(adapter.leases.load(Ordering::SeqCst), 0);
++        assert_eq!(adapter.legacy.load(Ordering::SeqCst), 0);
++    }
++}
++
++#[test]
++fn permissions_plain_report_advertises_only_implemented_scoped_requests() {
++    for supported in [false, true] {
++        let adapter = adapter(supported);
++        let result = execute_with_report(
++            args(false, None, None),
++            &adapter,
++            &PermissionReport::default(),
++        )
++        .unwrap();
++        if supported {
++            assert_eq!(
++                result["request_capabilities"],
++                json!({"scoped": true, "permissions": ["accessibility", "screen_recording", "automation"]})
++            );
++        } else {
++            assert!(result.get("request_capabilities").is_none());
++        }
++        assert_eq!(adapter.leases.load(Ordering::SeqCst), 0);
++    }
++}
+diff --git a/crates/core/src/system/permission_kind.rs b/crates/core/src/system/permission_kind.rs
+new file mode 100644
+index 00000000..219211f6
+--- /dev/null
++++ b/crates/core/src/system/permission_kind.rs
+@@ -0,0 +1,36 @@
++use crate::{AppError, PermissionReport, PermissionState};
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
++#[serde(rename_all = "snake_case")]
++pub enum PermissionKind {
++    Accessibility,
++    ScreenRecording,
++    Automation,
++}
++
++impl PermissionKind {
++    pub const ALL: [Self; 3] = [Self::Accessibility, Self::ScreenRecording, Self::Automation];
++
++    pub fn parse_flag(value: &str) -> Result<Self, AppError> {
++        match value {
++            "accessibility" => Ok(Self::Accessibility),
++            "screen-recording" => Ok(Self::ScreenRecording),
++            "automation" => Ok(Self::Automation),
++            _ => Err(AppError::invalid_input(
++                "--only accepts accessibility, screen-recording, or automation",
++            )),
++        }
++    }
++
++    pub fn is_missing(self, report: &PermissionReport) -> bool {
++        let state = match self {
++            Self::Accessibility => &report.accessibility,
++            Self::ScreenRecording => &report.screen_recording,
++            Self::Automation => &report.automation,
++        };
++        !matches!(
++            state,
++            PermissionState::Granted | PermissionState::NotRequired
++        )
++    }
++}
+diff --git a/crates/macos/src/system/permissions/permission_helper_lifetime.rs b/crates/macos/src/system/permissions/permission_helper_lifetime.rs
+new file mode 100644
+index 00000000..433eae7e
+--- /dev/null
++++ b/crates/macos/src/system/permissions/permission_helper_lifetime.rs
+@@ -0,0 +1,127 @@
++use agent_desktop_core::AdapterError;
++use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
++use std::thread::{self, JoinHandle};
++use std::time::Duration;
++
++const MAX_LIFETIME: Duration = Duration::from_secs(120);
++const PARENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
++const EXPIRED_EXIT_CODE: i32 = 2;
++
++pub(super) struct HelperLifetime {
++    stop: Sender<()>,
++    worker: Option<JoinHandle<()>>,
++}
++
++impl Drop for HelperLifetime {
++    fn drop(&mut self) {
++        let _ = self.stop.send(());
++        if let Some(worker) = self.worker.take() {
++            let _ = worker.join();
++        }
++    }
++}
++
++pub(super) fn expires_after(remaining: Duration) -> Result<u64, String> {
++    if remaining.is_zero() || remaining > MAX_LIFETIME {
++        return Err("permission helper lifetime must be positive and at most 120 seconds".into());
++    }
++    let nanos = u64::try_from(remaining.as_nanos())
++        .map_err(|_| "permission helper lifetime is out of range".to_string())?;
++    monotonic_nanos()?
++        .checked_add(nanos)
++        .ok_or_else(|| "permission helper deadline is out of range".into())
++}
++
++pub(super) fn remaining_until(expires_at: u64) -> Result<Duration, String> {
++    let remaining = expires_at
++        .checked_sub(monotonic_nanos()?)
++        .map(Duration::from_nanos)
++        .filter(|value| !value.is_zero() && *value <= MAX_LIFETIME)
++        .ok_or_else(|| "permission helper deadline expired or exceeds 120 seconds".to_string())?;
++    Ok(remaining)
++}
++
++pub(super) fn watch_parent(
++    parent_pid: i32,
++    parent_instance: String,
++    expires_at: u64,
++) -> Result<HelperLifetime, String> {
++    arm(expires_at, move || {
++        parent_is_current(
++            parent_pid,
++            &parent_instance,
++            unsafe { libc::getppid() },
++            crate::system::process::process_identity::matches_instance,
++        )
++    })
++}
++
++fn parent_is_current(
++    expected_pid: i32,
++    expected_instance: &str,
++    actual_parent: i32,
++    matches_instance: impl FnOnce(i32, &str) -> Result<bool, AdapterError>,
++) -> bool {
++    expected_pid > 0
++        && actual_parent == expected_pid
++        && matches!(matches_instance(expected_pid, expected_instance), Ok(true))
++}
++
++fn arm(
++    expires_at: u64,
++    parent_is_current: impl Fn() -> bool + Send + 'static,
++) -> Result<HelperLifetime, String> {
++    remaining_until(expires_at)?;
++    if !parent_is_current() {
++        return Err("permission helper parent changed before its watchdog started".into());
++    }
++    let (stop, receiver) = mpsc::channel();
++    let worker = thread::Builder::new()
++        .name("permission-helper-lifetime".into())
++        .spawn(move || supervise(expires_at, receiver, parent_is_current))
++        .map_err(|error| format!("Could not start permission helper watchdog: {error}"))?;
++    Ok(HelperLifetime {
++        stop,
++        worker: Some(worker),
++    })
++}
++
++fn supervise(expires_at: u64, stop: Receiver<()>, parent_is_current: impl Fn() -> bool) {
++    loop {
++        let remaining = match remaining_until(expires_at) {
++            Ok(remaining) if parent_is_current() => remaining,
++            _ => unsafe { libc::_exit(EXPIRED_EXIT_CODE) },
++        };
++        match stop.recv_timeout(remaining.min(PARENT_POLL_INTERVAL)) {
++            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
++            Err(RecvTimeoutError::Timeout) => {}
++        }
++    }
++}
++
++fn monotonic_nanos() -> Result<u64, String> {
++    let mut time = libc::timespec {
++        tv_sec: 0,
++        tv_nsec: 0,
++    };
++    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) } != 0 {
++        return Err(format!(
++            "Could not read permission helper clock: {}",
++            std::io::Error::last_os_error()
++        ));
++    }
++    let seconds = u64::try_from(time.tv_sec)
++        .map_err(|_| "permission helper clock is out of range".to_string())?;
++    let nanos = u64::try_from(time.tv_nsec)
++        .ok()
++        .filter(|nanos| *nanos < 1_000_000_000)
++        .ok_or_else(|| "permission helper clock fraction is out of range".to_string())?;
++    seconds
++        .checked_mul(1_000_000_000)
++        .and_then(|value| value.checked_add(nanos))
++        .ok_or_else(|| "permission helper clock is out of range".into())
++}
++
++#[cfg(test)]
++#[path = "permission_helper_lifetime_tests.rs"]
++mod tests;
+diff --git a/crates/macos/src/system/permissions/permission_helper_lifetime_tests.rs b/crates/macos/src/system/permissions/permission_helper_lifetime_tests.rs
+new file mode 100644
+index 00000000..23b3fda4
+--- /dev/null
++++ b/crates/macos/src/system/permissions/permission_helper_lifetime_tests.rs
+@@ -0,0 +1,202 @@
++use super::*;
++use std::collections::HashMap;
++use std::io::{BufRead, BufReader, Write};
++use std::process::{Child, Command, ExitStatus, Stdio};
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::time::Instant;
++
++const TEST_MODE: &str = "AGENT_DESKTOP_PERMISSION_LIFETIME_TEST";
++const CHILD_TEST: &str =
++    "system::permissions::permission_helper::lifetime::tests::inert_watchdog_subprocess";
++
++fn spawn(mode: &str) -> Child {
++    Command::new(std::env::current_exe().unwrap())
++        .args(["--exact", CHILD_TEST, "--nocapture"])
++        .env(TEST_MODE, mode)
++        .stdout(Stdio::piped())
++        .stderr(Stdio::null())
++        .spawn()
++        .unwrap()
++}
++
++fn wait_for_marker(child: &mut Child) -> String {
++    let stdout = child.stdout.take().unwrap();
++    let (sender, receiver) = mpsc::channel();
++    thread::spawn(move || {
++        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
++            if let Some((_, marker)) = line.split_once("LIFETIME_READY ") {
++                let _ = sender.send(marker.to_string());
++            }
++        }
++    });
++    match receiver.recv_timeout(Duration::from_secs(5)) {
++        Ok(marker) => marker,
++        Err(error) => {
++            let _ = child.kill();
++            let _ = child.wait();
++            panic!("inert helper did not become ready: {error}");
++        }
++    }
++}
++
++fn wait_for_exit(child: &mut Child) -> ExitStatus {
++    let deadline = Instant::now() + Duration::from_secs(5);
++    loop {
++        if let Some(status) = child.try_wait().unwrap() {
++            return status;
++        }
++        if Instant::now() >= deadline {
++            let _ = child.kill();
++            let _ = child.wait();
++            panic!("inert helper survived its lifetime guard");
++        }
++        thread::sleep(Duration::from_millis(10));
++    }
++}
++
++fn parent_identity() -> (i32, String) {
++    let parent = unsafe { libc::getppid() };
++    let instance = crate::system::process::process_identity::token_for_pid(parent)
++        .unwrap()
++        .unwrap();
++    (parent, instance)
++}
++
++fn helper_environment(expires_at: u64) -> HashMap<String, String> {
++    use super::super::{
++        DEADLINE_NS, EXECUTABLE, MARKER, OPERATION, PARENT_INSTANCE, PARENT_PID, PROTOCOL_VERSION,
++        TOKEN, TOKEN_BYTES,
++    };
++    let (parent, instance) = parent_identity();
++    HashMap::from([
++        (MARKER.into(), PROTOCOL_VERSION.into()),
++        (OPERATION.into(), "accessibility".into()),
++        (TOKEN.into(), "ab".repeat(TOKEN_BYTES)),
++        (PARENT_PID.into(), parent.to_string()),
++        (PARENT_INSTANCE.into(), instance),
++        (
++            EXECUTABLE.into(),
++            super::super::canonical_current_executable_text().unwrap(),
++        ),
++        (DEADLINE_NS.into(), expires_at.to_string()),
++    ])
++}
++
++fn signal_ready() {
++    println!("LIFETIME_READY {}", std::process::id());
++    std::io::stdout().flush().unwrap();
++}
++
++#[test]
++fn inert_watchdog_subprocess() {
++    let Ok(mode) = std::env::var(TEST_MODE) else {
++        return;
++    };
++    if mode == "parent" {
++        let mut child = spawn("orphan");
++        wait_for_marker(&mut child);
++        println!("LIFETIME_READY {}", child.id());
++        std::io::stdout().flush().unwrap();
++        let _ = child.wait();
++        return;
++    }
++    let expires_at = expires_after(Duration::from_millis(
++        if matches!(mode.as_str(), "orphan" | "replacement") {
++            15_000
++        } else {
++            500
++        },
++    ))
++    .unwrap();
++    if mode == "replacement" {
++        let checks = AtomicUsize::new(0);
++        let _guard = arm(expires_at, move || {
++            checks.fetch_add(1, Ordering::SeqCst) < 3
++        })
++        .unwrap();
++        signal_ready();
++        loop {
++            thread::park();
++        }
++    }
++    let environment = helper_environment(expires_at);
++    super::super::execute_child_with(&|name| environment.get(name).cloned(), |_| {
++        signal_ready();
++        if mode == "complete" {
++            return true;
++        }
++        loop {
++            thread::park();
++        }
++    })
++    .unwrap();
++    thread::sleep(Duration::from_millis(650));
++}
++
++#[test]
++fn blocked_helper_exits_at_absolute_deadline_while_parent_lives() {
++    let mut child = spawn("deadline");
++    wait_for_marker(&mut child);
++    assert_eq!(wait_for_exit(&mut child).code(), Some(EXPIRED_EXIT_CODE));
++}
++
++#[test]
++fn blocked_helper_exits_when_parent_identity_probe_changes() {
++    let mut child = spawn("replacement");
++    wait_for_marker(&mut child);
++    assert_eq!(wait_for_exit(&mut child).code(), Some(EXPIRED_EXIT_CODE));
++}
++
++#[test]
++fn completed_helper_disarms_watchdog_without_delayed_exit() {
++    let mut child = spawn("complete");
++    wait_for_marker(&mut child);
++    assert!(wait_for_exit(&mut child).success());
++}
++
++#[test]
++fn orphaned_helper_exits_before_its_remaining_deadline() {
++    let mut parent = spawn("parent");
++    let child_pid: i32 = wait_for_marker(&mut parent).parse().unwrap();
++    let instance = crate::system::process::process_identity::token_for_pid(child_pid)
++        .unwrap()
++        .unwrap();
++    parent.kill().unwrap();
++    parent.wait().unwrap();
++    let deadline = Instant::now() + Duration::from_secs(3);
++    while crate::system::process::process_identity::matches_instance(child_pid, &instance).unwrap()
++    {
++        if Instant::now() >= deadline {
++            unsafe { libc::kill(child_pid, libc::SIGKILL) };
++            panic!("owned orphan helper did not exit after parent death");
++        }
++        thread::sleep(Duration::from_millis(10));
++    }
++}
++
++#[test]
++fn parent_checks_reject_reparenting_replacement_and_unreadable_identity() {
++    assert!(parent_is_current(42, "instance", 42, |pid, instance| {
++        assert_eq!((pid, instance), (42, "instance"));
++        Ok(true)
++    }));
++    assert!(!parent_is_current(42, "instance", 1, |_, _| panic!(
++        "detached parent must not be inspected"
++    )));
++    assert!(!parent_is_current(42, "instance", 42, |_, _| Ok(false)));
++    assert!(!parent_is_current(42, "instance", 42, |_, _| Err(
++        AdapterError::internal("no identity")
++    )));
++}
++
++#[test]
++fn lifetime_is_bounded_and_uses_an_absolute_clock() {
++    assert!(expires_after(Duration::ZERO).is_err());
++    assert!(expires_after(Duration::from_secs(121)).is_err());
++    assert!(remaining_until(0).is_err());
++    assert!(remaining_until(u64::MAX).is_err());
++    let deadline = expires_after(Duration::from_secs(1)).unwrap();
++    let first = remaining_until(deadline).unwrap();
++    thread::sleep(Duration::from_millis(5));
++    assert!(remaining_until(deadline).unwrap() < first);
++}

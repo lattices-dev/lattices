@@ -15,6 +15,8 @@ import { LayerWorkspaces } from "./layer-workspaces.js";
 import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
 import { DeliveryError, delivery, withDelivery } from "./delivery.js";
+import { backendHandlers, backendRefusalMetadata, backendTools } from "./backend-tools.js";
+import { BackendHost } from "@action/runtime";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -1296,6 +1298,10 @@ const tools: Tool[] = [
   ),
 ];
 
+// Computer-use backends (codex-cua, trycua-cua): started lazily, one generation per MCP process.
+const backendHost = new BackendHost();
+tools.push(...backendTools(backendHost));
+
 
 async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, direct: boolean | undefined): Promise<JsonObject | undefined> {
   // The companion worker drives the local Mac; remote runs go through the engine directly.
@@ -2476,6 +2482,15 @@ const handlers: Record<string, ToolHandler> = {
   },
 };
 
+Object.assign(handlers, backendHandlers({
+  host: backendHost,
+  ensureLease: ensureDriveLeaseForAct,
+  actRefusal: () => layerContext().director.actRefusal(),
+  assertLocal: (name) => {
+    if (isRemote()) nativeOnly(name);
+  },
+}));
+
 /** Grok (and the MCP 2025 name grammar) reject dots in tool names.
  *  `action.health` stays the handler key for Hermes. Spec names
  *  (`health`, `observe_snapshot`, …) are what tools/list advertises
@@ -2594,6 +2609,7 @@ function createServer(): Server {
           stage: error.stage as unknown as JsonObject,
         });
       }
+      // An act that throws before its handler tags it never reached the host.
       const failedDelivery = error instanceof DeliveryError
         ? error.delivery
         : canonical === "action.act.execute"
@@ -2602,6 +2618,7 @@ function createServer(): Server {
       return mcpError(error instanceof Error ? error.message : String(error), {
         tool: request.params.name,
         ...(failedDelivery ? { delivery: failedDelivery as unknown as JsonObject } : {}),
+        ...(backendRefusalMetadata(error) ?? {}),
       });
     }
   });

@@ -2,5 +2,8 @@
   "name": "@action/runtime",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@lattices/action": "workspace:*"
+  }
 }

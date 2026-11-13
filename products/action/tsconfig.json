@@ -13,6 +13,9 @@
       ],
       "@action/compiler": [
         "packages/compiler/src/index.ts"
+      ],
+      "@lattices/action": [
+        "packages/cua/src/index.ts"
       ]
     },
     "types": [

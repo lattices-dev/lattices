@@ -7,6 +7,7 @@ export * from "./stage.js";
 export * from "./agent-layer.js";
 export * from "./agent-layer-browser.js";
 export * from "./adapters/index.js";
+export * from "./backends.js";
 export * from "./interaction/index.js";
 export * from "./session.js";
 export * from "./session-storage.js";
