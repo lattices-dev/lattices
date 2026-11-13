@@ -2266,7 +2266,7 @@ struct SettingsContentView: View {
                                     Text("Screen text recognition")
                                         .font(Typo.mono(12))
                                         .foregroundColor(Palette.text)
-                                    Text("Vision OCR on visible windows")
+                                    Text("Accessibility text and local OCR from eligible windows")
                                         .font(Typo.caption(10))
                                         .foregroundColor(Palette.textMuted)
                                 }
@@ -2302,6 +2302,61 @@ struct SettingsContentView: View {
                                     PermissionDragAssistantWindowController.shared.show(focus: .screenSearch, openSettings: true)
                                 }
                             )
+                        }
+                    }
+                }
+
+                settingsCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ocrSectionLabel("Excluded apps")
+                        Text("Excluded apps are skipped by quick scans, deep scans and single-window scans. Existing saved history stays until it expires or you clear it.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(prefs.ocrExcludedBundleIDs.sorted(), id: \.self) { bundleID in
+                            HStack {
+                                Text(bundleID).font(Typo.mono(10)).textSelection(.enabled)
+                                Spacer()
+                                Button("Remove") {
+                                    ScreenText.shared.setExcludedBundleIDs(prefs.ocrExcludedBundleIDs.subtracting([bundleID]))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(Palette.textMuted)
+                            }
+                        }
+                        Menu("Exclude a running app") {
+                            ForEach(NSWorkspace.shared.runningApplications.filter {
+                                $0.activationPolicy == .regular && $0.bundleIdentifier != nil
+                            }.sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }, id: \.processIdentifier) { app in
+                                if let bundleID = app.bundleIdentifier {
+                                    Button(app.localizedName ?? bundleID) {
+                                        ScreenText.shared.setExcludedBundleIDs(prefs.ocrExcludedBundleIDs.union([bundleID]))
+                                    }
+                                    .disabled(prefs.ocrExcludedBundleIDs.contains(bundleID))
+                                }
+                            }
+                        }
+                        Text("Secure accessibility fields are skipped. Text shown in ordinary documents, terminals or browser pages can still be indexed.")
+                            .font(Typo.caption(10))
+                            .foregroundColor(Palette.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if ScreenText.shared.history != nil {
+                            cardDivider
+                            HStack {
+                                Text("Keep saved history for")
+                                    .font(Typo.mono(10))
+                                Stepper("\(prefs.ocrRetentionDays) days", value: $prefs.ocrRetentionDays, in: 1...30)
+                                    .font(Typo.mono(10))
+                                Spacer()
+                            }
+                            Button("Clear saved history", role: .destructive) {
+                                clearOcrHistoryConfirmation = true
+                            }
+                            .confirmationDialog("Clear saved screen-text history?", isPresented: $clearOcrHistoryConfirmation) {
+                                Button("Clear saved history", role: .destructive) { ScreenText.shared.clearHistory() }
+                            } message: {
+                                Text("This removes saved text. New scans continue while recognition is on.")
+                            }
                         }
                     }
                 }
@@ -3139,6 +3194,7 @@ struct SettingsContentView: View {
     }
 
     @State private var expandedOcrWindow: UInt32?
+    @State private var clearOcrHistoryConfirmation = false
     @State private var collapsedOcrApps: Set<String> = []
 
     @State private var activeTilePopover: HotkeyAction?
