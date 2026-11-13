@@ -3,6 +3,19 @@ import SwiftUI
 
 // MARK: - Space Switch HUD
 
+/// Validate the real Here origin before touching the retained strip. Full-screen
+/// app Spaces are absent from desktop cards and cannot borrow another origin.
+struct SpaceSwitchCanvasEntry {
+    let current: Int
+    let selected: Int
+
+    init?(spaceIDs: [Int], currentSpaceID: Int, selected: Int? = nil) {
+        guard let current = spaceIDs.firstIndex(of: currentSpaceID) else { return nil }
+        self.current = current
+        self.selected = selected.flatMap { spaceIDs.indices.contains($0) ? $0 : nil } ?? current
+    }
+}
+
 /// One retained filmstrip and backdrop. All input is already cached by the
 /// desktop inventory; showing this never scans windows or captures pixels.
 /// Main-thread only. The switch queue synchronizes only the compositor clock
@@ -35,6 +48,8 @@ final class SpaceSwitchBezel {
     private var transitGeneration = 0
     private var canvasPanel: SpaceCanvasPanel?
     private var canvasView: SpaceCanvasView?
+    private var pendingCanvasOpening: ((CGImage?) -> Void)?
+    private var canvasEntranceCapture: Task<Void, Never>?
     /// Closing surfaces still participate in screen-freeze clock ownership.
     private var departingCanvases: [ObjectIdentifier: SpaceCanvasPanel] = [:]
     /// After Enter, the canvas stays as the landing cover: it holds the
@@ -47,6 +62,10 @@ final class SpaceSwitchBezel {
     private var landingToken = 0
     private var previewSpaces: [SpaceInfo] = []
     private var previewBounds: CGRect = .zero
+    private var previewDisplayID: CGDirectDisplayID?
+    /// Activation waits for the exact departing surface to leave. A new
+    /// navigation session invalidates it rather than focusing a stale choice.
+    private var pendingCanvasActivation: (panel: ObjectIdentifier, window: SpaceFilmstripWindow)?
     private var pendingInventory: [WindowEntry]?
     private var refreshQueued = false
     private let overlaySpace = SpaceSwitchOverlaySpace()
@@ -115,9 +134,19 @@ final class SpaceSwitchBezel {
                     zoom: @escaping (_ out: Bool, _ exitsAtMinimum: Bool) -> Void) -> Bool {
         guard canvasPanel == nil, let strip = panel, let screen = target ?? strip.screen,
               !filmstrip.cardModels.isEmpty else { return false }
-        let started = CACurrentMediaTime()
         let cards = filmstrip.cardModels
-        let selected = filmstrip.selected ?? 0
+        guard let entry = SpaceSwitchCanvasEntry(spaceIDs: cards.map(\.id),
+            currentSpaceID: currentSpaceID, selected: filmstrip.selected) else {
+            showCanvasUnavailable(on: screen)
+            return false
+        }
+        pendingCanvasActivation = nil
+        let started = CACurrentMediaTime()
+        let focusedWindowID = DesktopModel.shared.captureFocusedWindowID()
+        // The retained strip may be pointing at a different desktop. Here
+        // starts at the actual current desktop and resets the navigator's
+        // destination before Enter can commit it.
+        choose(cards[entry.current].id)
         // Grow out of the strip only when the strip is what the user sees.
         let fromStrip = strip.isVisible && !isDismissing
         let p = SpaceCanvasPanel(contentRect: screen.frame,
@@ -131,14 +160,53 @@ final class SpaceSwitchBezel {
         p.animationBehavior = .none
         p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         let panelAt = CACurrentMediaTime()
-        let view = SpaceCanvasView(cards: cards, selected: selected,
-            current: cards.firstIndex(where: { $0.id == currentSpaceID }) ?? selected,
+        let view = SpaceCanvasView(cards: cards, selected: entry.selected,
+            current: entry.current,
             room: screen.frame.size, scale: screen.backingScaleFactor,
+            displayName: screen.localizedName, focusedWindowID: focusedWindowID,
             handlers: .init(choose: { [weak self] index in
                 guard cards.indices.contains(index) else { return }
+                self?.pendingCanvasOpening?(nil)
                 self?.canvasView?.select(index, animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
                 choose(cards[index].id)
-            }, land: land, cancel: cancel))
+            }, land: land, cancel: cancel, activateWindow: { [weak self, weak p] window in
+                guard let self, let p, self.canvasPanel === p, window.wid != 0 else { return }
+                self.pendingCanvasActivation = (ObjectIdentifier(p), window)
+                // Clear the navigator's held desktop before the existing
+                // window-navigation path takes over. It switches to the
+                // window's Space; `focusWindow` would relocate the window.
+                cancel()
+                if self.canvasPanel === p { self.pendingCanvasActivation = nil }
+            }, moveWindow: { [weak self, weak p] drop, complete in
+                // Mission Control's carry fallback posts pointer events. Keep
+                // the opaque board visible while those reach the real windows.
+                guard let pointerLease = SpaceCanvasPointerProtection.acquire() else {
+                    complete(.failure(SpaceCanvasWindowMovement.Failure(
+                        message: "The window could not be moved safely while the canvas is open. Try again.")))
+                    return
+                }
+                p?.ignoresMouseEvents = true
+                SpaceCanvasWindowMovement.move(windowID: drop.window.wid, pid: drop.window.pid,
+                    sourceSpaceID: drop.sourceSpaceID, destinationSpaceID: drop.destinationSpaceID,
+                    normalizedOrigin: drop.normalizedOrigin, on: screen) { result in
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let windows = DesktopModel.shared.refreshNow()
+                            DispatchQueue.main.async {
+                                if let self, let p, self.canvasPanel === p {
+                                    p.ignoresMouseEvents = false
+                                    // Replace any inventory captured mid-carry before
+                                    // the view releases its deferred drag snapshot.
+                                    let fresh = SpaceFilmstripLayout.cards(spaces: self.previewSpaces,
+                                        windows: windows, bounds: self.previewBounds)
+                                    _ = self.canvasView?.refresh(cards: fresh)
+                                    self.receiveInventory(windows)
+                                }
+                                pointerLease.end()
+                                complete(result.map(\.normalizedFrame).mapError { $0 as Error })
+                            }
+                        }
+                }
+            }))
         let builtAt = CACurrentMediaTime()
         p.contentView = view
         let attachedAt = CACurrentMediaTime()
@@ -153,8 +221,9 @@ final class SpaceSwitchBezel {
         dismissTimer?.invalidate()
         generation &+= 1
         SpaceZoomInput.onCanvasZoom = zoom
-        SpaceZoomInput.onCanvasZoomKey = { [weak view] key, pressed, opening in
-            guard let view else { return }
+        SpaceZoomInput.onCanvasZoomKey = { [weak self, weak view] key, pressed, opening in
+            if !opening { self?.pendingCanvasOpening?(nil) }
+            guard let view, !view.hasWindowInteraction else { return }
             if pressed && !opening && key == 125 && view.atMinimum {
                 zoom(true, true)
             } else {
@@ -163,52 +232,88 @@ final class SpaceSwitchBezel {
             }
         }
         SpaceZoomInput.setCanvas(true)
-        SpaceCanvasKeyboard.shared.begin { [weak view] key, pressed, repeated in
+        SpaceCanvasKeyboard.shared.begin { [weak self, weak view] key, pressed, repeated in
+            self?.pendingCanvasOpening?(nil)
             view?.handleKey(key, pressed: pressed, repeated: repeated)
         }
         Self.setStripShown(false)
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        // Author the entrance on a stopped clock. AppKit's first ordering can
-        // block long enough to consume the fade before any pixels are visible.
-        let openingClock = view.layer.map { SpaceOverlayAnimationClock(layer: $0) }
-        view.open(from: card, reduceMotion: reduced) { [weak self, weak p] in
-            guard let self, let p, self.canvasPanel === p else { return }
-            // Keep a superseded landing behind the replacement until its
-            // entrance is actually visible, including any paused layer clock.
-            self.abortLanding()
-            // Follow actual fade completion, not a wall-clock timer: ordering
-            // and a Dock screen freeze can both delay presentation.
-            self.panel?.orderOut(nil)
-            self.backdrop?.orderOut(nil)
+        var consumed = false
+        let begin: (CGImage?) -> Void = { [weak self, weak p, weak view] image in
+            guard let self, let p, let view, self.canvasPanel === p, !consumed else { return }
+            consumed = true
+            self.pendingCanvasOpening = nil
+            self.canvasEntranceCapture?.cancel()
+            self.canvasEntranceCapture = nil
+            if let image { view.installDepartureStill(image) }
+            DiagnosticLog.shared.info("SpaceCanvas: entry=\(fromStrip ? "filmstrip" : "desktop") departureStill=\(image != nil)")
+            let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            // Author the entrance on a stopped clock. AppKit's first ordering can
+            // block long enough to consume the fade before any pixels are visible.
+            let openingClock = view.layer.map { SpaceOverlayAnimationClock(layer: $0) }
+            view.open(from: card, reduceMotion: reduced) { [weak self, weak p] in
+                guard let self, let p, self.canvasPanel === p else { return }
+                // Keep a superseded landing behind the replacement until its
+                // entrance is actually visible, including any paused layer clock.
+                self.abortLanding()
+                // Follow actual fade completion, not a wall-clock timer: ordering
+                // and a Dock screen freeze can both delay presentation.
+                self.panel?.orderOut(nil)
+                self.backdrop?.orderOut(nil)
+            }
+            CATransaction.flush()
+            let preparedAt = CACurrentMediaTime()
+            p.orderFrontRegardless()
+            p.acceptsMouseMovedEvents = true
+            let orderedAt = CACurrentMediaTime()
+            DiagnosticLog.shared.info("SpaceCanvas: openMs=\(String(format: "%.2f", (orderedAt - started) * 1000)) panelMs=\(String(format: "%.2f", (panelAt - started) * 1000)) buildMs=\(String(format: "%.2f", (builtAt - panelAt) * 1000)) attachMs=\(String(format: "%.2f", (attachedAt - builtAt) * 1000)) prepareMs=\(String(format: "%.2f", (preparedAt - attachedAt) * 1000)) orderMs=\(String(format: "%.2f", (orderedAt - preparedAt) * 1000))")
+            if self.pausedClocks.isEmpty {
+                openingClock?.resume()
+            } else {
+                // This canvas did not exist when the Dock freeze began; transfer
+                // its stopped clock to the same owner as the existing surfaces.
+                if let openingClock { self.pausedClocks.append(openingClock) }
+            }
+            CATransaction.flush()
+            self.queuePreviewRefresh()
         }
-        CATransaction.flush()
-        let preparedAt = CACurrentMediaTime()
-        p.orderFrontRegardless()
-        p.acceptsMouseMovedEvents = true
-        let orderedAt = CACurrentMediaTime()
-        DiagnosticLog.shared.info("SpaceCanvas: openMs=\(String(format: "%.2f", (orderedAt - started) * 1000)) panelMs=\(String(format: "%.2f", (panelAt - started) * 1000)) buildMs=\(String(format: "%.2f", (builtAt - panelAt) * 1000)) attachMs=\(String(format: "%.2f", (attachedAt - builtAt) * 1000)) prepareMs=\(String(format: "%.2f", (preparedAt - attachedAt) * 1000)) orderMs=\(String(format: "%.2f", (orderedAt - preparedAt) * 1000))")
-        if pausedClocks.isEmpty {
-            openingClock?.resume()
-        } else {
-            // This canvas did not exist when the Dock freeze began; transfer
-            // its stopped clock to the same owner as the existing surfaces.
-            if let openingClock { pausedClocks.append(openingClock) }
-        }
-        CATransaction.flush()
-        queuePreviewRefresh()
+        pendingCanvasOpening = begin
+        if !fromStrip, let id = Self.displayID(screen) {
+            let overlays = [p.windowNumber, strip.windowNumber]
+                + [backdrop, landingPanel].compactMap { $0?.windowNumber }
+                + departingCanvases.values.map(\.windowNumber)
+                + transitCovers.values.map(\.windowNumber)
+            let excluded = Self.captureWindowIDs(overlays)
+            canvasEntranceCapture = Task { @MainActor [weak self, weak p] in
+                let image = await WindowCapture.display(displayID: id, showsCursor: false,
+                    excludingWindowIDs: excluded, maximumPixelSize: 2560)
+                guard !Task.isCancelled, let self, let p, self.canvasPanel === p else { return }
+                self.pendingCanvasOpening?(image)
+            }
+            // A cold or denied ScreenCaptureKit request cannot hold navigation.
+            // Input consumes this same one-shot gate before acting on the camera.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self, weak p] in
+                guard let self, let p, self.canvasPanel === p else { return }
+                self.pendingCanvasOpening?(nil)
+            }
+        } else { begin(nil) }
         return true
     }
 
     /// The strip is what the user is looking at, not merely prepared.
     var stripVisible: Bool { panel?.isVisible == true && !isDismissing }
 
-    func moveCanvas(offset: Int) { canvasView?.moveSelection(offset: offset) }
+    func moveCanvas(offset: Int) {
+        pendingCanvasOpening?(nil)
+        canvasView?.moveSelection(offset: offset)
+    }
 
     /// The canvas camera is at its smallest zoom: the whole map in view.
-    var canvasAtMinimum: Bool { canvasView?.atMinimum ?? false }
+    var canvasAtMinimum: Bool { canvasView.map { !$0.hasWindowInteraction && $0.atMinimum } ?? false }
+    var canvasHasWindowInteraction: Bool { canvasView?.hasWindowInteraction ?? false }
 
     func zoomCanvas(out: Bool) -> Bool {
-        canvasView?.zoom(out: out, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) ?? false
+        pendingCanvasOpening?(nil)
+        return canvasView?.zoom(out: out, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) ?? false
     }
 
     var canvasDisplayID: CGDirectDisplayID? { (canvasPanel ?? landingPanel)?.screen.flatMap(Self.displayID) }
@@ -218,7 +323,10 @@ final class SpaceSwitchBezel {
     /// behind it with the screen live. Otherwise Escape: the camera returns
     /// into the current desktop and the canvas dissolves as it gets there.
     func closeCanvas(landing: Bool, covered: @escaping () -> Void = {}) {
+        pendingCanvasOpening?(nil)
         guard let p = canvasPanel, let view = canvasView else { return }
+        canvasEntranceCapture?.cancel()
+        canvasEntranceCapture = nil
         // AppKit ordering can deliver pending mouse events. Seal the chosen
         // destination before any window operation can re-enter this view.
         view.endInteraction()
@@ -308,14 +416,25 @@ final class SpaceSwitchBezel {
             let orderStarted = CACurrentMediaTime()
             p.orderOut(nil)
             DiagnosticLog.shared.info("SpaceCanvas: dismissed reason=\(reason) elapsedMs=\(String(format: "%.2f", (CACurrentMediaTime() - started) * 1000)) orderMs=\(String(format: "%.2f", (CACurrentMediaTime() - orderStarted) * 1000))")
+            let activation = self.pendingCanvasActivation.flatMap { $0.panel == id ? $0.window : nil }
+            if activation != nil { self.pendingCanvasActivation = nil }
             // The lease was held for the switch; give it back if no strip took it.
             guard self.canvasPanel == nil, self.landingPanel == nil, self.panel?.isVisible != true else { return }
             Self.setStripShown(false)
+            if let activation {
+                DiagnosticLog.shared.info("SpaceCanvas: activate wid=\(activation.wid) pid=\(activation.pid)")
+                WindowTiler.navigateToWindowById(wid: activation.wid, pid: activation.pid)
+            }
         }
     }
 
     static func displayID(_ screen: NSScreen) -> CGDirectDisplayID? {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    func showCanvasUnavailable(on screen: NSScreen?) {
+        PlacementBezel.shared.show(glyph: "viewfinder", title: "Here is unavailable in full screen",
+            subtitle: "Switch to a desktop, then open Here.", on: screen)
     }
 
     /// Read on the event tap thread: Ctrl+− / Ctrl+= are claimed only while
@@ -335,6 +454,7 @@ final class SpaceSwitchBezel {
     /// the reel, nil to leave it.
     func show(direction: Int, targetIndex: Int?, currentIndex: Int?, display: DisplaySpaces, holding: Bool = false, scrubbing: Bool = false, fullscreenOrdinal: Int? = nil, zoomed: Bool? = nil, on screen: NSScreen? = nil, reveal: Bool = true) {
         guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+        pendingCanvasActivation = nil
         let desktopTarget = display.spaces.firstIndex(where: { $0.index == targetIndex })
         guard desktopTarget != nil || fullscreenOrdinal != nil else { return }
         let target = desktopTarget ?? filmstrip.selected ?? 0
@@ -345,7 +465,13 @@ final class SpaceSwitchBezel {
         dismissTimer?.invalidate()
         generation &+= 1
         holdingForSwitch = holding
-        if scrubbing, filmstrip.isScrubbing, panel?.isVisible == true, displayID == display.displayId {
+        let screenID = Self.displayID(screen)
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let bounds = CGRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
+                            width: screen.frame.width, height: screen.frame.height)
+        let changedScreen = previewDisplayID != screenID || previewBounds != bounds
+        if scrubbing, filmstrip.isScrubbing, panel?.isVisible == true,
+           displayID == display.displayId, !changedScreen {
             filmstrip.scrub(number: fullscreenOrdinal ?? targetIndex ?? 1,
                 total: display.orderedSpaceIds.count,
                 animated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
@@ -386,15 +512,13 @@ final class SpaceSwitchBezel {
             ? [filmstrip.layer, backdrop?.contentView?.layer].compactMap { $0 }
                 .map { SpaceOverlayAnimationClock(layer: $0) }
             : []
-        if opening || changedDisplay || spaceIDs != ids || sizeChanged {
+        if opening || changedDisplay || changedScreen || spaceIDs != ids || sizeChanged {
             displayID = display.displayId
             spaceIDs = ids
             pendingInventory = nil
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-            let bounds = CGRect(x: screen.frame.minX, y: primaryHeight - screen.frame.maxY,
-                                width: screen.frame.width, height: screen.frame.height)
             previewSpaces = display.spaces
             previewBounds = bounds
+            previewDisplayID = screenID
             let cards = SpaceFilmstripLayout.cards(spaces: display.spaces,
                 windows: Array(DesktopModel.shared.windows.values), bounds: bounds)
             rebuilt = filmstrip.configure(cards: cards, size: size, scale: screen.backingScaleFactor)

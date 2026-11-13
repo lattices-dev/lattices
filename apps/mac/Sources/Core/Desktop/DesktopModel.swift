@@ -399,7 +399,31 @@ final class DesktopModel: ObservableObject {
     }
 
     private static func cgWindowList() -> [[String: Any]]? {
-        CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        guard let all = CGWindowListCopyWindowInfo(
+            [.optionAll, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        let onScreen = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]]
+        return orderedWindowList(all: all, onScreen: onScreen)
+    }
+
+    /// The all-window query can place a newly raised window behind older
+    /// windows even when the on-screen query reports its correct visual order.
+    /// Prefer that latest order and metadata, then retain every other window
+    /// in the all-window inventory's relative order for inactive Spaces.
+    static func orderedWindowList(all: [[String: Any]], onScreen: [[String: Any]]?) -> [[String: Any]] {
+        var ordered: [[String: Any]] = []
+        ordered.reserveCapacity(all.count + (onScreen?.count ?? 0))
+        var seen: Set<UInt32> = []
+        for list in [onScreen ?? [], all] {
+            for info in list {
+                if let wid = info[kCGWindowNumber as String] as? UInt32,
+                   !seen.insert(wid).inserted { continue }
+                ordered.append(info)
+            }
+        }
+        return ordered
     }
 
     // MARK: - Inventory

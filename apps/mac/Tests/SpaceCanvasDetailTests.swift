@@ -2,31 +2,14 @@ import XCTest
 @testable import Lattices
 
 final class SpaceCanvasDetailTests: XCTestCase {
-    func testDetailAppearsOnlyWithinOnePointTwoTimesFullSize() {
-        let fill: CGFloat = 1440
-        let hiddenRatios: [CGFloat] = [0, 0.2, SpaceCanvasDetail.prepareRatio, 1 / 1.2]
-        for ratio in hiddenRatios {
-            XCTAssertEqual(SpaceCanvasDetail.opacity(scale: fill * ratio, fillScale: fill), 0)
-        }
-        let middle = (CGFloat(1 / 1.2) + 0.98) / 2
-        XCTAssertEqual(SpaceCanvasDetail.opacity(scale: fill * middle, fillScale: fill), 0.5, accuracy: 0.0001)
-        let fullRatios: [CGFloat] = [0.98, 1, 1.2]
-        for ratio in fullRatios {
-            XCTAssertEqual(SpaceCanvasDetail.opacity(scale: fill * ratio, fillScale: fill), 1)
-        }
-        XCTAssertEqual(SpaceCanvasDetail.opacity(scale: 1, fillScale: 0), 0)
-    }
-
-    func testFarMapDoesNotAttachPixelsFromAnEarlyArrival() throws {
+    func testAtlasPhotographsStayVisibleAtEveryZoom() throws {
         let view = canvas()
         let photo = try layer("SpaceCanvas.photo.101", in: XCTUnwrap(view.layer))
         let pixels = try layer("SpaceCanvas.pixels", in: photo)
         let camera = view.camera
-
         view.installPreviews([101: try image()], at: 0)
-
-        XCTAssertEqual(photo.opacity, 0)
-        XCTAssertNil(pixels.contents)
+        XCTAssertEqual(photo.opacity, 1)
+        XCTAssertNotNil(pixels.contents)
         XCTAssertEqual(view.camera, camera)
     }
 
@@ -70,7 +53,6 @@ final class SpaceCanvasDetailTests: XCTestCase {
         view.installPreviews([101: try image()], at: 0)
         let camera = view.camera
         let cameraMotion = try XCTUnwrap(plane.animation(forKey: "transform") as? CAKeyframeAnimation)
-        let photoMotion = try XCTUnwrap(photo.animation(forKey: "opacity") as? CAKeyframeAnimation)
         let pixelFade = CABasicAnimation(keyPath: "opacity")
         pixelFade.fromValue = 0.25
         pixelFade.toValue = 1
@@ -90,13 +72,10 @@ final class SpaceCanvasDetailTests: XCTestCase {
         XCTAssertEqual(pixels.contentsRect, crop)
         XCTAssertEqual(view.camera, camera)
         let cameraAfter = try XCTUnwrap(plane.animation(forKey: "transform") as? CAKeyframeAnimation)
-        let photoAfter = try XCTUnwrap(photo.animation(forKey: "opacity") as? CAKeyframeAnimation)
         XCTAssertEqual(cameraAfter.values as? [NSValue], cameraMotion.values as? [NSValue])
         XCTAssertEqual(cameraAfter.beginTime, cameraMotion.beginTime)
         XCTAssertEqual(cameraAfter.duration, cameraMotion.duration)
-        XCTAssertEqual(photoAfter.values as? [NSNumber], photoMotion.values as? [NSNumber])
-        XCTAssertEqual(photoAfter.beginTime, photoMotion.beginTime)
-        XCTAssertEqual(photoAfter.duration, photoMotion.duration)
+        XCTAssertEqual(photo.opacity, 1)
         let pixelsAfter = try XCTUnwrap(pixels.animation(forKey: "opacity") as? CABasicAnimation)
         XCTAssertEqual(pixelsAfter.beginTime, pixelFade.beginTime)
         XCTAssertEqual(pixelsAfter.duration, pixelFade.duration)
@@ -130,7 +109,7 @@ final class SpaceCanvasDetailTests: XCTestCase {
         XCTAssertEqual(view.camera, camera)
     }
 
-    func testZoomingBackOutReleasesPixelsAndRejectsLateArrival() throws {
+    func testZoomingBackOutRetainsPixelsAndAcceptsAtlasArrival() throws {
         let view = canvas()
         zoomToFull(view)
         let photo = try layer("SpaceCanvas.photo.101", in: XCTUnwrap(view.layer))
@@ -141,15 +120,15 @@ final class SpaceCanvasDetailTests: XCTestCase {
 
         for _ in 0..<12 { view.zoom(out: true, reduceMotion: true) }
         XCTAssertEqual(view.camera.scale, view.layout.fitScale)
-        XCTAssertNil(pixels.contents)
-        XCTAssertEqual(photo.opacity, 0)
-        XCTAssertEqual(pixels.opacity, 0)
+        XCTAssertNotNil(pixels.contents)
+        XCTAssertEqual(photo.opacity, 1)
+        XCTAssertEqual(pixels.opacity, 1)
 
         view.installPreviews([101: still], at: 0)
-        XCTAssertNil(pixels.contents, "An old near-selection result must not refill the distant map")
+        XCTAssertNotNil(pixels.contents, "Returning to the atlas keeps its captured windows visible")
     }
 
-    func testSelectionChangeRejectsPreviousDesktopArrival() throws {
+    func testSelectionChangeKeepsOtherDesktopPhotographs() throws {
         let view = canvas()
         zoomToFull(view)
         let root = try XCTUnwrap(view.layer)
@@ -160,12 +139,12 @@ final class SpaceCanvasDetailTests: XCTestCase {
 
         view.select(1, animated: false)
         view.installPreviews([101: still], at: 0)
-        XCTAssertNil(oldPixels.contents)
+        XCTAssertNotNil(oldPixels.contents)
         XCTAssertNil(newPixels.contents)
 
         view.installPreviews([102: still], at: 1)
         XCTAssertNotNil(newPixels.contents)
-        XCTAssertNil(oldPixels.contents)
+        XCTAssertNotNil(oldPixels.contents)
     }
 
     func testWindowSpanningDisplaysKeepsIdentityAndCropsEachSide() throws {

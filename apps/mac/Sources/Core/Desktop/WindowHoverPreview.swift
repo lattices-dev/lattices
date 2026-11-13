@@ -1,9 +1,15 @@
 import AppKit
 
-/// One gray hover plate for tiling previews. Reveals onto the first frame,
-/// then shape-shifts to the next instead of popping a new overlay per target.
+/// The landing plate for Command-drag and Hyperspace. One plate morphs between
+/// targets. A set of plates previews a split, and a held plate is the same
+/// outline with a deeper fill.
 final class WindowHoverPreview {
     static let shared = WindowHoverPreview()
+    private let windowLevel: NSWindow.Level
+
+    init(level: NSWindow.Level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))) {
+        windowLevel = level
+    }
 
     private var overlayWindow: NSWindow?
     private var plate: CALayer?
@@ -13,21 +19,32 @@ final class WindowHoverPreview {
     private var generation: UInt64 = 0
     private var autoHideWork: DispatchWorkItem?
     private var stickyUntil: CFTimeInterval = 0
+    private var groupPlates: [CALayer] = []
+    private var groupLabels: [CATextLayer] = []
 
     private let plateInset: CGFloat = 3
     private let shadowPad: CGFloat = 28
     private let morphDuration: CFTimeInterval = 0.10
     private let revealDuration: CFTimeInterval = 0.08
     private let dismissDuration: CFTimeInterval = 0.06
-    private let cornerRadius: CGFloat = 10
+    private let cornerRadius: CGFloat = plateCornerRadius
 
-    private static let fillColor = NSColor(calibratedWhite: 0.28, alpha: 0.46).cgColor
-    private static let strokeColor = NSColor(calibratedWhite: 1.0, alpha: 0.78).cgColor
+    /// Shared with Hyperspace landing spots so a suggested frame reads as the
+    /// same plate Command-drag draws around a window.
+    static let plateFill = NSColor(calibratedWhite: 0.28, alpha: 0.46)
+    static let plateStroke = NSColor(calibratedWhite: 1.0, alpha: 0.78)
+    static let plateBorderWidth: CGFloat = 2
+    static let plateFillHeld = NSColor(calibratedWhite: 0.48, alpha: 0.62)
+    static let plateStrokeHeld = NSColor(calibratedWhite: 1, alpha: 0.95)
+    static let plateBorderWidthHeld: CGFloat = 2.5
+    static let plateCornerRadius: CGFloat = 10
+    private static let fillColor = plateFill.cgColor
+    private static let strokeColor = plateStroke.cgColor
     /// Frosted (Ctrl+Option pointer tiling): blur carries the shape, so the
     /// tint gets more opaque and the border drops to a hairline.
     private static let frostedFillColor = NSColor(calibratedWhite: 0.24, alpha: 0.55).cgColor
     private static let frostedStrokeColor = NSColor(calibratedWhite: 1.0, alpha: 0.30).cgColor
-    private static let standardBorderWidth: CGFloat = 2
+    private static let standardBorderWidth: CGFloat = plateBorderWidth
     private static let frostedBorderWidth: CGFloat = 1
     private static let morphTiming = CAMediaTimingFunction(controlPoints: 0.16, 1.00, 0.30, 1.00)
     enum PlateStyle {
@@ -35,7 +52,71 @@ final class WindowHoverPreview {
         case frosted
     }
 
+    /// Several landing spots at once. Hyperspace uses this for a split, and
+    /// passes `held` once the drag has been released. Command-drag keeps the
+    /// single morphing plate from `show(frame:)`.
+    func show(_ frames: [(CGRect, String)], held: Bool, guides: [(CGRect, String)] = []) {
+        autoHideWork?.cancel()
+        autoHideWork = nil
+        stickyUntil = 0
+        generation += 1
+        let spots = guides.filter {
+            $0.0.insetBy(dx: plateInset, dy: plateInset).width > 8
+                && $0.0.insetBy(dx: plateInset, dy: plateInset).height > 8
+        }.map { (rect: $0.0, title: $0.1, guide: true) }
+        let usable = spots + frames.filter {
+            $0.0.insetBy(dx: plateInset, dy: plateInset).width > 8
+                && $0.0.insetBy(dx: plateInset, dy: plateInset).height > 8
+        }.map { (rect: $0.0, title: $0.1, guide: false) }
+        guard !usable.isEmpty else {
+            clear()
+            return
+        }
+
+        let (window, primary) = ensureWindow()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        primary.opacity = 0
+        blurView?.isHidden = true
+        if groupPlates.count != usable.count {
+            removeGroupPlates()
+            groupPlates = usable.map { _ in makeGroupPlate() }
+            groupLabels = groupPlates.map { plate in
+                let label = makeGroupLabel()
+                plate.addSublayer(label)
+                return label
+            }
+            if let host = window.contentView?.layer {
+                groupPlates.forEach { host.addSublayer($0) }
+            }
+        }
+        let union = usable.reduce(CGRect.null) { partial, item in
+            partial.union(item.rect.insetBy(dx: plateInset, dy: plateInset))
+        }
+        placeWindow(window, frame: paddedRect(union))
+        let scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
+        for index in usable.indices {
+            let item = usable[index]
+            let target = item.rect.insetBy(dx: plateInset, dy: plateInset)
+            let plate = groupPlates[index]
+            let label = groupLabels[index]
+            plate.frame = layerRect(target, in: window)
+            plate.contentsScale = scale
+            applyGroupStyle(held && !item.guide, guide: item.guide, to: plate)
+            label.string = item.title
+            label.contentsScale = scale
+            label.foregroundColor = NSColor.white.withAlphaComponent(item.guide ? 0.72 : (held ? 0.96 : 0.82)).cgColor
+            label.frame = CGRect(x: 12, y: max(0, plate.bounds.height - 28), width: max(1, plate.bounds.width - 24), height: 16)
+            plate.opacity = 1
+        }
+        CATransaction.commit()
+        window.orderFrontRegardless()
+        currentTarget = union
+        visuallyPresent = true
+    }
+
     func show(frame windowFrame: NSRect, autoHideAfter: TimeInterval? = nil, style: PlateStyle = .standard) {
+        removeGroupPlates()
         let target = windowFrame.insetBy(dx: plateInset, dy: plateInset)
         guard target.width > 8, target.height > 8 else { return }
 
@@ -99,6 +180,7 @@ final class WindowHoverPreview {
         autoHideWork = nil
         stickyUntil = 0
         generation += 1
+        removeGroupPlates()
         snapHide()
         overlayWindow?.close()
         overlayWindow = nil
@@ -194,7 +276,7 @@ final class WindowHoverPreview {
         )
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
+        window.level = windowLevel
         window.hasShadow = false
         window.hidesOnDeactivate = false
         window.sharingType = .readOnly
@@ -287,6 +369,49 @@ final class WindowHoverPreview {
         plate.contentsScale = scale
         overlayWindow?.contentView?.layer?.contentsScale = scale
         blurView?.layer?.contentsScale = scale
+    }
+
+    private func makeGroupPlate() -> CALayer {
+        let plate = CALayer()
+        plate.cornerRadius = cornerRadius
+        plate.cornerCurve = .continuous
+        plate.zPosition = 2
+        plate.shadowColor = NSColor.black.cgColor
+        plate.shadowRadius = 16
+        plate.shadowOffset = CGSize(width: 0, height: -2)
+        plate.allowsEdgeAntialiasing = true
+        applyGroupStyle(false, guide: false, to: plate)
+        return plate
+    }
+
+    private func makeGroupLabel() -> CATextLayer {
+        let label = CATextLayer()
+        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.fontSize = 11
+        label.alignmentMode = .left
+        label.truncationMode = .end
+        label.contentsScale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
+        return label
+    }
+
+    private func applyGroupStyle(_ held: Bool, guide: Bool, to plate: CALayer) {
+        if guide {
+            plate.backgroundColor = Self.plateFill.withAlphaComponent(0.22).cgColor
+            plate.borderColor = Self.plateStroke.withAlphaComponent(0.55).cgColor
+            plate.borderWidth = 1.5
+            plate.shadowOpacity = 0
+            return
+        }
+        plate.backgroundColor = (held ? Self.plateFillHeld : Self.plateFill).cgColor
+        plate.borderColor = (held ? Self.plateStrokeHeld : Self.plateStroke).cgColor
+        plate.borderWidth = held ? Self.plateBorderWidthHeld : Self.plateBorderWidth
+        plate.shadowOpacity = held ? 0.36 : 0.28
+    }
+
+    private func removeGroupPlates() {
+        groupPlates.forEach { $0.removeFromSuperlayer() }
+        groupPlates.removeAll()
+        groupLabels.removeAll()
     }
 
     private func similar(_ a: NSRect, _ b: NSRect) -> Bool {

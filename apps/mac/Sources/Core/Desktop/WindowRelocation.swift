@@ -147,6 +147,15 @@ enum WindowRelocation {
                     snapshot.frame.map { framesClose($0, destination.frame, tolerance: tolerance) } == true
             }
             current = environment.wait(transferred)
+            // AppKit clamps a size written while the window is still on a shorter
+            // source display; the trailing size write can race the position change.
+            // Once the window is on the target display, one more write takes.
+            if current.displayId == target.id,
+               current.frame.map({ !framesClose($0, destination.frame, tolerance: tolerance) }) == true {
+                trace.append("frame clamped on transfer \(current.frame.map { NSStringFromRect($0) } ?? "unknown"); reapplying on display \(target.index)")
+                environment.moveFrame(destination.frame)
+                current = environment.wait(transferred)
+            }
             trace.append("frame transfer observed display=\(current.displayId ?? "unknown") desktops=\(current.spaceIds) frame=\(current.frame.map { NSStringFromRect($0) } ?? "unknown")")
             guard transferred(current) else {
                 return "Display transfer did not reach the target display, an ordinary desktop, and requested frame"

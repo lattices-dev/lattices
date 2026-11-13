@@ -67,17 +67,11 @@ struct OverviewStage: View {
                                 OverviewDisplayBlock(
                                     model: model, monitor: monitor,
                                     mapSize: layout.maps[index], thumbSize: layout.thumbs[index],
-                                    mapRowHeight: layout.mapRowHeight,
-                                    quiet: model.workingRows.isEmpty
+                                    mapRowHeight: layout.mapRowHeight
                                 )
                             }
                         }
                         .frame(minWidth: geo.size.width, minHeight: geo.size.height)
-                    }
-                    .overlay {
-                        if model.workingRows.isEmpty, !model.projection.desk.isEmpty {
-                            OverviewEmptyScope(model: model)
-                        }
                     }
                 }
                 .padding(.horizontal, 24)
@@ -119,8 +113,6 @@ struct OverviewDisplayBlock: View {
     let mapSize: CGSize
     let thumbSize: CGSize
     let mapRowHeight: CGFloat
-    /// Nothing anywhere is in scope; the stage says so once.
-    let quiet: Bool
 
     /// The focused Desktop if it's this monitor's, else the one it shows.
     private var viewed: OverviewDeskSpace? {
@@ -139,7 +131,7 @@ struct OverviewDisplayBlock: View {
                 .frame(width: mapSize.width, height: OverviewStage.headHeight)
             Group {
                 if let viewed {
-                    OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize, quiet: quiet || scopedOut)
+                    OverviewMap(model: model, display: monitor.display, space: viewed, size: mapSize)
                         .opacity(scopedOut ? 0.55 : 1)
                 } else {
                     Color.clear
@@ -240,7 +232,7 @@ struct OverviewDisplayBlock: View {
         .modifier(OverviewWindowDropTarget(model: model, display: monitor.display, spaceId: space.spaceId, compact: true))
         .help((focused ? "\(space.title) on \(monitor.display.name) · click for every Desktop" : "\(space.title) on \(monitor.display.name), \(state)")
             + (space.desktop == nil ? "" : " · drop a window to move it here"))
-        .accessibilityLabel("\(space.title) on \(monitor.display.name), \(state), \(count == 0 ? "nothing in scope" : "\(count) in scope")")
+        .accessibilityLabel("\(space.title) on \(monitor.display.name), \(state), \(count) windows in scope")
         .accessibilityHint(focused ? "Show every Desktop" : "Focus the list on this Desktop")
         .accessibilityAddTraits(focused ? .isSelected : [])
     }
@@ -256,9 +248,6 @@ struct OverviewMap: View {
     let display: OverviewDisplay
     let space: OverviewDeskSpace
     let size: CGSize
-    /// Don't say "nothing in scope" here: another monitor has the focus, or
-    /// the stage says it once for all of them.
-    let quiet: Bool
     var connected = false
 
     var body: some View {
@@ -266,13 +255,6 @@ struct OverviewMap: View {
             RoundedRectangle(cornerRadius: connected ? 0 : 6).fill(Color.black.opacity(0.35))
             ForEach(context, id: \.wid) { tile in contextView(tile) }
             ForEach(tiles.reversed(), id: \.row.wid) { tile in tileView(tile) }
-            if !quiet, !space.rows.contains(where: \.inScope) {
-                Text("Nothing in scope here")
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-                    .frame(width: size.width, height: size.height)
-                    .allowsHitTesting(false)
-            }
             if !space.isCurrent && !connected {
                 peekBar
             }
@@ -430,78 +412,6 @@ struct OverviewMap: View {
             .offset(x: tile.rect.minX, y: tile.rect.minY)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Empty scope
-
-/// Nothing anywhere is in scope: what the scope is, and a way out of each
-/// part of it. Every filter that can empty the list has a button here.
-struct OverviewEmptyScope: View {
-    @ObservedObject var model: OverviewModel
-
-    /// Index picks (several layers, Unassigned) that aren't one ⌘⌥ layer.
-    private var pickedLabels: [String] {
-        guard model.scope.layerId == nil, let ids = model.scope.layerIds, !ids.isEmpty else { return [] }
-        return ids.map { id in model.layerIndexRows.first { $0.id == id }?.label ?? id }
-    }
-
-    private var hasLayerScope: Bool {
-        model.scope.layerId != nil || !(model.scope.layerIds ?? []).isEmpty || model.scope.scopedWindowIds != nil
-    }
-
-    private var sentence: String {
-        var parts: [String] = [model.scope.preset.map { $0.lowercased() } ?? "windows"]
-        if let id = model.scope.layerId {
-            parts.append("in " + (model.layers.first { $0.id == id }?.label ?? id))
-        } else if !pickedLabels.isEmpty {
-            parts.append("in " + pickedLabels.joined(separator: ", "))
-        }
-        if let id = model.scope.spaceId, let title = model.projection.desk.flatMap(\.spaces).first(where: { $0.spaceId == id })?.title {
-            parts.append("on " + title)
-        } else if let index = model.scope.display, let name = model.displays.first(where: { $0.index == index })?.name {
-            parts.append("on " + name)
-        }
-        if !model.scope.search.isEmpty { parts.append("matching “\(model.scope.search)”") }
-        return "No \(parts.joined(separator: " "))."
-    }
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Text("Nothing in scope")
-                .font(Typo.monoBold(11))
-                .foregroundColor(Palette.text)
-            Text(sentence)
-                .font(Typo.mono(9))
-                .foregroundColor(Palette.textDim)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                if model.scope.preset != nil {
-                    Button("Clear kind") { model.scope.preset = nil }
-                        .buttonStyle(.overview)
-                }
-                if !model.scope.search.isEmpty {
-                    Button("Clear search") { model.scope.search = "" }
-                        .buttonStyle(.overview)
-                }
-                if model.scope.spaceId != nil {
-                    Button("Every Desktop") { model.chooseDesktop(nil) }
-                        .buttonStyle(.overview)
-                } else if model.scope.display != nil {
-                    Button("All monitors") { model.scope.display = nil }
-                        .buttonStyle(.overview)
-                }
-                if hasLayerScope {
-                    Button("No layer") { model.chooseLayer(nil) }
-                        .buttonStyle(.overview)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: 320)
-        .overviewCard(radius: 9)
     }
 }
 

@@ -69,6 +69,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
     /// Ctrl+− / Ctrl+= claimed while the strip was up. Their key-ups never
     /// land a selection; only Ctrl's release does.
     private var ownedZoomKeys: Set<Int64> = []
+    private var ownedDesktopCanvasKeys: Set<Int64> = []
     /// Invalidates queued key callbacks when their event tap is torn down.
     /// Guarded by pendingLock, like the owned key sets.
     private var zoomInputGeneration: UInt64 = 0
@@ -217,6 +218,7 @@ final class SpaceSwitchInterceptor: ObservableObject {
         pendingLock.lock()
         ownedArrows.removeAll()
         ownedZoomKeys.removeAll()
+        ownedDesktopCanvasKeys.removeAll()
         zoomInputGeneration &+= 1
         zoomScroll = SpaceZoomScroll()
         pendingLock.unlock()
@@ -271,6 +273,28 @@ final class SpaceSwitchInterceptor: ObservableObject {
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        // Use the same HID path as desktop navigation. Keep ownership through
+        // key-up even when the modifier is released first; Escape also has an
+        // independent Carbon registration for recovery without this tap.
+        if keyCode == 125 || keyCode == 126 {
+            pendingLock.lock()
+            let owned = type == .keyUp ? ownedDesktopCanvasKeys.remove(keyCode) != nil
+                : ownedDesktopCanvasKeys.contains(keyCode)
+            let claim = type == .keyDown && DesktopCanvasModel.usesGesture(event.flags)
+            let generation = zoomInputGeneration
+            if claim { ownedDesktopCanvasKeys.insert(keyCode) }
+            pendingLock.unlock()
+            if claim, !owned, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                let point = event.location
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.isCurrentZoomInput(generation) else { return }
+                    DiagnosticLog.shared.info("DesktopCanvas: input key=\(keyCode)")
+                    if keyCode == 125 { DesktopCanvasController.shared.open(point: point) }
+                    else { DesktopCanvasController.shared.returnToNormal() }
+                }
+            }
+            if owned || claim { return nil }
+        }
         if SpaceCanvasKeyboard.shared.handle(key: keyCode, pressed: type == .keyDown,
             repeated: event.getIntegerValueField(.keyboardEventAutorepeat) != 0, flags: event.flags) {
             return nil
@@ -411,6 +435,15 @@ final class SpaceSwitchInterceptor: ObservableObject {
 
     private func handleZoomScroll(_ event: CGEvent) -> Unmanaged<CGEvent>? {
         let flags = event.flags
+        if DesktopCanvasModel.usesGesture(flags) {
+            let precise = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+            let delta = event.getDoubleValueField(precise ? .scrollWheelEventPointDeltaAxis1 : .scrollWheelEventDeltaAxis1) * (precise ? 1 : 12)
+            let point = event.location
+            // Momentum cannot reopen a canvas after its return shortcut.
+            guard event.getIntegerValueField(.scrollWheelEventMomentumPhase) == 0 else { return nil }
+            DispatchQueue.main.async { DesktopCanvasController.shared.scroll(delta: delta, point: point) }
+            return nil
+        }
         guard flags.contains([.maskControl, .maskAlternate]),
               !flags.contains(.maskCommand), !flags.contains(.maskShift) else { return Unmanaged.passUnretained(event) }
         let began = event.getIntegerValueField(.scrollWheelEventScrollPhase) & 1 != 0
@@ -439,6 +472,12 @@ final class SpaceSwitchInterceptor: ObservableObject {
             }
         }
         return nil
+    }
+
+    func prepareForDesktopCanvas() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        cancelPlacementPreview()
+        return navigator.yieldForDesktopCanvas()
     }
 
     private func enqueue(offset: Int, point: CGPoint?, landscape: Bool) {

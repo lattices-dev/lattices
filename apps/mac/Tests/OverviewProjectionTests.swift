@@ -114,6 +114,59 @@ final class OverviewProjectionTests: XCTestCase {
 
     // MARK: Scope and selection (plan 1–7)
 
+    func testWindowsApplicationGroupingCrossesMonitorsAndDesktops() throws {
+        let extra = window(9, "Ghostty", "Side terminal", spaces: [10],
+                           frame: CGRect(x: 3500, y: 100, width: 900, height: 600))
+        let projection = OverviewProjection.make(inputs(windows: windows + [extra]), scope: .all, selection: [])
+        let sections = WindowsDeskTableSection.make(rows: projection.rows, displays: displays, grouping: .application)
+        let terminals = try XCTUnwrap(sections.first { $0.title == "Ghostty" })
+        XCTAssertEqual(Set(terminals.rows.map(\.wid)), [1, 8, 9])
+        XCTAssertEqual(Set(terminals.rows.compactMap(\.display)), [0, 1])
+        XCTAssertEqual(Set(terminals.rows.compactMap(\.spaceId)), [1, 2, 10])
+    }
+
+    func testWindowsNestedGroupingKeepsEveryWindowOnceAndOffscreenLast() {
+        let projection = project()
+        let rows = projection.rows + projection.rows
+        let sections = WindowsDeskTableSection.make(rows: rows, displays: displays,
+                                                   grouping: .monitor, subgrouping: .application)
+        let ids = sections.flatMap { $0.rows.map(\.wid) }
+        XCTAssertEqual(ids.count, Set(projection.rows.map(\.wid)).count)
+        XCTAssertEqual(Set(ids), Set(projection.rows.map(\.wid)))
+        XCTAssertEqual(Set(sections.map(\.id)).count, sections.count)
+        XCTAssertEqual(sections.compactMap(\.title), ["Studio", "Side", "Off screen"])
+        XCTAssertTrue(sections.allSatisfy { $0.subtitle != nil })
+    }
+
+    func testWindowsDesktopGroupingKeepsDisplayLocalDesktopNumbersDistinct() throws {
+        let extra = window(9, "Ghostty", "Side terminal", spaces: [10],
+                           frame: CGRect(x: 3500, y: 100, width: 900, height: 600))
+        let projection = OverviewProjection.make(inputs(windows: windows + [extra]), scope: .all, selection: [])
+        let sections = WindowsDeskTableSection.make(rows: projection.rows, displays: displays, grouping: .desktop)
+        let studio = try XCTUnwrap(sections.first { $0.rows.contains { $0.wid == 1 } })
+        let side = try XCTUnwrap(sections.first { $0.rows.contains { $0.wid == 9 } })
+        XCTAssertEqual(studio.title, "Studio · Desktop 1")
+        XCTAssertEqual(side.title, "Side · Desktop 1")
+        XCTAssertNotEqual(studio.id, side.id)
+    }
+
+    func testWindowsUngroupedTableRetainsFilteredRowsWithoutHeadings() {
+        let projection = OverviewProjection.make(inputs(), scope: OverviewScope(search: "ghostty"), selection: [])
+        let sections = WindowsDeskTableSection.make(rows: projection.rows, displays: displays, grouping: .none)
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertNil(sections.first?.title)
+        XCTAssertNil(sections.first?.subtitle)
+        XCTAssertEqual(Set(sections.flatMap { $0.rows.map(\.wid) }), [1, 8])
+    }
+
+    func testWindowsShiftSelectionUsesTheDisplayedGroupingOrder() {
+        let model = model()
+        model.select(1)
+        model.extend(to: 3, orderedRows: [1, 8, 3, 2, 4, 5, 6, 7])
+        XCTAssertEqual(model.selection, [1, 8, 3])
+        XCTAssertEqual(spy.calls, [], "selecting table rows never moves windows")
+    }
+
     func testFirstOpenIsAllAndASavedScopeComesBack() {
         XCTAssertEqual(OverviewScope.load(from: defaults), .all)
         let first = model()

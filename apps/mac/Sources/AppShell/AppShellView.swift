@@ -96,9 +96,12 @@ struct AppShellView: View {
     /// rail. Both bindings are caller-owned — the host previews during the drag
     /// and commits through these on release.
     @AppStorage("sidebar.labelWidth") private var sidebarLabelWidth = 120.0
+    @AppStorage("windows.classicOverview") private var classicOverview = false
     /// Actions the visible page published with `.pageActions(_:)`.
     @State private var pageActions: [PageAction] = []
     @ObservedObject private var desktop = DesktopModel.shared
+    @ObservedObject private var preferences = Preferences.shared
+    @ObservedObject private var permissions = PermissionChecker.shared
 
     private var manifest: HudAppManifest {
         HudAppManifest(name: "Lattices", accent: Palette.textDim, targetLabel: "Machine")
@@ -114,12 +117,23 @@ struct AppShellView: View {
         )
     }
 
+    /// Expanded, each group is named. Compact, a titled section would still
+    /// cost its full header height with nothing in it, so the first group's
+    /// header goes and later ones become a one-row gap on the row grid.
     private var entries: [HudSidebarEntry<AppPage>] {
-        AppPage.navigationGroups.flatMap { group -> [HudSidebarEntry<AppPage>] in
-            [.section(id: group.title, title: group.title)]
-                + group.pages.map { .item(HudSidebarItem(id: $0, title: $0.label, icon: $0.icon)) }
+        AppPage.navigationGroups.enumerated().flatMap { pair -> [HudSidebarEntry<AppPage>] in
+            let (i, group) = pair
+            let header: [HudSidebarEntry<AppPage>] = !sidebarCompact
+                ? [.section(id: group.title, title: group.title)]
+                : i == 0 ? [] : [.section(id: group.title, title: "")]
+            return header + group.pages.map { .item(HudSidebarItem(id: $0, title: $0.label, icon: $0.icon)) }
         }
     }
+
+    /// The selected page's tint, in the rail and its footer alike: full ink
+    /// against the muted rest, so the current page is unmistakable without
+    /// adding a hue to the chrome.
+    private static let railSelection = Palette.text
 
     var body: some View {
         // Read the inset before extending the sidebar beneath the titlebar.
@@ -187,7 +201,7 @@ struct AppShellView: View {
             selection: selection,
             entries: entries,
             isCompact: sidebarCompact,
-            accent: Palette.textDim,
+            accent: Self.railSelection,
             labelWidth: CGFloat(sidebarLabelWidth),
             onHeaderTap: nil
         ) {
@@ -220,7 +234,7 @@ struct AppShellView: View {
                         isActive: windowController.activePage == page,
                         isCompact: sidebarCompact,
                         labelWidth: CGFloat(sidebarLabelWidth),
-                        accent: Palette.textDim
+                        accent: Self.railSelection
                     ) {
                         windowController.showPage(page)
                     }
@@ -242,7 +256,20 @@ struct AppShellView: View {
     /// actions that belong to that page at the trailing edge. Pages publish
     /// their own set with `.pageActions(_:)`; Search is the chrome's, because
     /// ⌘K works everywhere.
+    @ViewBuilder
     private func titleBar(compact: Bool) -> some View {
+        if windowController.activePage == .overview && !classicOverview {
+            WindowsDeskHeader(model: overview) { compact in
+                PageActionButton(action: hereAction, compact: compact)
+                    .help(hereHelp)
+                PageActionButton(action: searchAction, compact: compact)
+            }
+        } else {
+            standardTitleBar(compact: compact)
+        }
+    }
+
+    private func standardTitleBar(compact: Bool) -> some View {
         let layers = windowController.activePage == .layers
         let wrap = layers && compact && pageActions.contains { $0.id == "layers.arrangement" }
         return VStack(spacing: wrap ? 5 : 0) {
@@ -258,6 +285,8 @@ struct AppShellView: View {
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }
+                PageActionButton(action: hereAction, compact: compact)
+                    .help(hereHelp)
                 PageActionButton(action: searchAction, compact: compact)
             }
             if wrap {
@@ -287,6 +316,25 @@ struct AppShellView: View {
         PageAction(id: "chrome.search", title: "Search", icon: "magnifyingglass", shortcut: "⌘K") {
             UnifiedCommandBarWindow.shared.show(mode: .search)
         }
+    }
+
+    private var hereAction: PageAction {
+        PageAction(id: "chrome.here", title: "Here", icon: "viewfinder",
+            isEnabled: preferences.spaceSwitchKeysEnabled && permissions.accessibility) {
+            // Use the page's physical display, including when several displays
+            // share one SkyLight Space list. Keep the page and its drafts alive
+            // beneath the nonactivating navigation overlay.
+            guard let screen = windowController.nsWindow?.screen ?? NSScreen.main,
+                  let id = SpaceSwitchBezel.displayID(screen) else { return }
+            let bounds = CGDisplayBounds(id)
+            SpaceSwitchInterceptor.shared.openCanvas(from: CGPoint(x: bounds.midX, y: bounds.midY))
+        }
+    }
+
+    private var hereHelp: String {
+        if !permissions.accessibility { return "Allow Accessibility in Settings to open Here." }
+        if !preferences.spaceSwitchKeysEnabled { return "Enable Instant Space Switching in Settings to open Here." }
+        return "Start with this screen, then zoom out to nearby desktops. Escape returns to this page."
     }
 
     // MARK: - Status Bar
@@ -464,7 +512,9 @@ struct AppShellView: View {
 /// geometry and color states of the nav rail icons: the glyph centers in the
 /// fixed rail column, and the label rides a width-collapsing column so it
 /// animates in lockstep with the rail's compact toggle (and is clipped to the
-/// rail when compact, never spilling into content).
+/// rail when compact, never spilling into content). Hudson insets its rows by
+/// `railContentInset` so glyphs centre under the close button; the footer slot
+/// gets no such inset, so the button applies it itself to share that column.
 private struct SidebarFooterButton: View {
     let icon: String
     let label: String
@@ -509,8 +559,36 @@ private struct SidebarFooterButton: View {
                 .clipped()
                 .opacity(isCompact ? 0 : 1)
         }
+        .padding(.leading, HudSidebarLayout.railContentInset)
         .background { hoverUnderlay }
+        .background { activeUnderlay }
+        .overlay(alignment: .bottomLeading) { compactBar }
         .contentShape(Rectangle())
+    }
+
+    /// The nav rows' selected state on the same metrics: Hudson's tint pill
+    /// when expanded, its 16×2 bar under the glyph when compact.
+    @ViewBuilder
+    private var activeUnderlay: some View {
+        if isActive, !isCompact {
+            RoundedRectangle(cornerRadius: HudSidebarLayout.selectionCornerRadius)
+                .fill(HudSurface.tintFill(accent))
+                .padding(.horizontal, HudSidebarLayout.selectionHorizontalInset)
+                .padding(.vertical, HudSidebarLayout.selectionVerticalInset)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder
+    private var compactBar: some View {
+        if isActive, isCompact {
+            RoundedRectangle(cornerRadius: HudStrokeWidth.standard)
+                .fill(accent)
+                .frame(width: HudSidebarLayout.compactAccentBarWidth, height: HudSidebarLayout.compactAccentBarHeight)
+                .frame(width: HudSidebarLayout.railWidth)
+                .padding(.leading, HudSidebarLayout.railContentInset)
+                .allowsHitTesting(false)
+        }
     }
 
     /// The nav rows' hover pill, on the same metrics: surface fill, subtle

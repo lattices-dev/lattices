@@ -77,6 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
+        DesktopCanvasController.shared.start()
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
@@ -165,6 +166,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                DesktopCanvasSession.shared.restore()
                 LayerStage.shared.restoreParked(reason: "signal \(sig)")
                 SpaceSwitchHotkeys.restoreForTermination()
                 SpaceZoomInput.terminate()
@@ -175,7 +177,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Remote app windows hand their apps back to the host before we go; a few
+    /// seconds at most, and the next launch finishes any that didn't answer.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard RemoteAppWindows.shared.hasOpenWindows else { return .terminateNow }
+        Task { @MainActor in
+            let deadline = Task { try? await Task.sleep(for: .seconds(4)); return false }
+            let released = Task { await RemoteAppWindows.shared.closeAll(); return true }
+            _ = await withTaskGroup(of: Bool.self) { group in
+                group.addTask { await released.value }
+                group.addTask { await deadline.value }
+                let first = await group.next()
+                group.cancelAll()
+                return first
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        DesktopCanvasSession.shared.restore()
         SpaceZoomInput.terminate()
         LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()

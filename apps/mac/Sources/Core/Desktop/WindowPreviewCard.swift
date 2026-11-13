@@ -7,6 +7,8 @@ struct WindowPreviewCardStyle {
     var imagePadding: CGFloat = 8
     var background: Color = Palette.surface.opacity(0.8)
     var border: Color = Palette.border
+    var placeholderForeground: Color = Palette.textMuted
+    var placeholderSecondary: Color = Palette.textDim
 }
 
 struct WindowPreviewCard<Overlay: View>: View {
@@ -39,13 +41,17 @@ struct WindowPreviewCard<Overlay: View>: View {
                 WindowPreviewPlaceholder(
                     icon: "photo",
                     title: loadingTitle,
-                    subtitle: appName
+                    subtitle: appName,
+                    foreground: style.placeholderForeground,
+                    secondary: style.placeholderSecondary
                 )
             } else {
                 WindowPreviewPlaceholder(
                     icon: "eye.slash",
                     title: unavailableTitle,
-                    subtitle: appName
+                    subtitle: appName,
+                    foreground: style.placeholderForeground,
+                    secondary: style.placeholderSecondary
                 )
             }
 
@@ -81,18 +87,20 @@ private struct WindowPreviewPlaceholder: View {
     let icon: String
     let title: String
     let subtitle: String
+    let foreground: Color
+    let secondary: Color
 
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .medium))
-                .foregroundColor(Palette.textMuted.opacity(0.7))
+                .foregroundColor(foreground.opacity(0.7))
             Text(title)
                 .font(Typo.monoBold(10))
-                .foregroundColor(Palette.textMuted)
+                .foregroundColor(foreground)
             Text(subtitle)
                 .font(Typo.mono(9))
-                .foregroundColor(Palette.textDim)
+                .foregroundColor(secondary)
                 .lineLimit(1)
         }
         .padding(16)
