@@ -41,6 +41,7 @@ enum ActionHostCommand: String {
     case openScreenRecordingSettings = "open-screen-recording-settings"
     case currentSurface = "current-surface"
     case supervisionOverlay = "supervision-overlay"
+    case askUser = "ask-user"
     case supervisorStop = "supervisor-stop"
     case stageOverlay = "stage-overlay"
     case drape
@@ -78,6 +79,9 @@ enum ActionHostCommand: String {
     case pressAccessibilityElement = "press-accessibility-element"
     case performAccessibilityAction = "perform-accessibility-action"
     case setAccessibilityValue = "set-accessibility-value"
+    case pressAccessibilityPath = "press-accessibility-path"
+    case setAccessibilityValuePath = "set-accessibility-value-path"
+    case performAccessibilityActionPath = "perform-accessibility-action-path"
     case setFocusedAccessibilityValue = "set-focused-accessibility-value"
     case setAccessibilityRoleValue = "set-accessibility-role-value"
     case clickCalculatorButton = "click-calculator-button"
@@ -646,6 +650,9 @@ func postKeyPressToApp(
 /// How long a plain click holds the mouse button down. Long enough for any app to see a
 /// press and a release as one click, short enough that nothing reads it as a press-and-hold.
 let defaultClickHoldMilliseconds = 30
+
+/// Real hardware input this recent means a person is using the Mac alongside the agent.
+let coDrivingIdleSeconds: Double = 5
 
 /// Clicks at a screen point, holding the button down for `holdMs` before releasing.
 /// The default is a plain click; larger values produce a press-and-hold, which is how
@@ -3956,7 +3963,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             )
         )
     case .capabilities:
-        try writer.write(ActionBuildProvenance.current)
+        try writer.write(ActionNativeHostCapabilities())
     case .isolationContext:
         try writer.write(ActionIsolationContext.capture())
     case .status:
@@ -3975,6 +3982,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         try writer.write(try currentSurface())
     case .supervisionOverlay:
         throw ActionHostError.unsupportedOS("supervision-overlay should be started via runUICommand")
+    case .askUser:
+        throw ActionHostError.unsupportedOS("ask-user should be started via runUICommand")
     case .supervisorStop:
         let count = ActionSupervisionRegistry.triggerStopAll()
         try writer.write(
@@ -4098,8 +4107,17 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             throw ActionHostError.unsupportedOS("Window screenshots require macOS 14.0 or newer.")
         }
 
-        let app = try resolveTargetApplication(from: options)
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
         let outputPath = try options.required("output")
+        if selection.windowNumber != nil {
+            try ActionNativeAutomation.screenshotWindow(selection: selection, outputPath: outputPath)
+            try writer.write(ActionHostResponse(status: "screenshot", outputPath: outputPath, detail: nil))
+            break
+        }
+        let app = try selection.application()
         var params: [String: String] = [
             "pid": String(app.processIdentifier),
             "output": outputPath,
@@ -4212,6 +4230,10 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         }
         try writer.write(windowOrder(bounds: bounds))
     case .listAppWindows:
+        if options.options["pid"] == nil, options.options["bundle-id"] == nil, options.options["bundle-path"] == nil {
+            try writer.write(ActionNativeAutomation.listAppWindows())
+            break
+        }
         let app = try resolveTargetApplication(from: options)
         let response = try listAppWindows(
             app: app,
@@ -4432,6 +4454,15 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             throw ActionHostError.missingOption("--x/--y")
         }
         let holdMs = Int(options.double("hold-ms", default: Double(defaultClickHoldMilliseconds)))
+        // --restore hands the pointer and focus straight back once the click is posted:
+        // true/false force it; auto restores only when a person is co-driving, i.e. real
+        // hardware input arrived in the last few seconds. A clean run (a demo) is left alone.
+        let restoreMode = (options.options["restore"] ?? "false").lowercased()
+        let hardwareIdle = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!)
+        let coDriving = hardwareIdle < coDrivingIdleSeconds
+        let restore = restoreMode == "auto" ? coDriving : options.bool("restore", default: false)
+        let priorPointer = restore ? CGEvent(source: nil)?.location : nil
+        let priorFrontmost = restore ? NSWorkspace.shared.frontmostApplication : nil
         let gesture = try clickPoint(
             CGPoint(x: x, y: y),
             holdMs: holdMs,
@@ -4443,6 +4474,35 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         if gesture.recorded {
             clickDetail += " pointerEvent=\(gesture.correlationId)"
         }
+        if restore {
+            // Let the target take the click before focus goes back, or the activation can race it.
+            usleep(60_000)
+            // Only undo what the click changed: skip the warp when the pointer was already there,
+            // or when someone has moved it since (their hand wins).
+            if let priorPointer, let now = CGEvent(source: nil)?.location,
+               hypot(now.x - x, now.y - y) < 2, hypot(priorPointer.x - x, priorPointer.y - y) >= 2 {
+                CGWarpMouseCursorPosition(priorPointer)
+            }
+            // The clicked app activates asynchronously; wait briefly for the switch before undoing it.
+            func frontmostPid() -> pid_t? {
+                RunLoop.current.run(until: Date())
+                return NSWorkspace.shared.frontmostApplication?.processIdentifier
+            }
+            var waited = 0
+            while let priorFrontmost, frontmostPid() == priorFrontmost.processIdentifier, waited < 300 {
+                usleep(20_000); waited += 20
+            }
+            if let priorFrontmost, frontmostPid() != priorFrontmost.processIdentifier {
+                // Cooperative activation ignores activate() from a background host, so ask
+                // through Accessibility (which Action holds) and fall back to activate().
+                let app = AXUIElementCreateApplication(priorFrontmost.processIdentifier)
+                if AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue) != .success {
+                    priorFrontmost.activate()
+                }
+            }
+            clickDetail += " restored"
+        }
+        if restoreMode == "auto" { clickDetail += coDriving ? " co-driving" : " clean-run" }
         try writer.write(ActionHostResponse(status: "clicked", outputPath: nil, detail: clickDetail))
     case .drag:
         let fromX = options.double("from-x", default: .nan)
@@ -4511,6 +4571,29 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
                 detail: "\(Int(x)),\(Int(y)) delta=\(Int(deltaX)),\(Int(deltaY))"
             )
         )
+    case .pressAccessibilityPath, .setAccessibilityValuePath, .performAccessibilityActionPath:
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
+        let target = try ActionAccessibilityPathTarget(
+            path: options.required("path"),
+            root: options.options["root"] ?? "window",
+            expectRole: options.options["expect-role"],
+            expectLabel: options.options["expect-label"],
+            expectFrame: options.options["expect-frame"]
+        )
+        let operation: ActionAccessibilityPathOperation
+        switch command {
+        case .setAccessibilityValuePath:
+            guard let value = options.options["value"] else { throw ActionHostError.missingOption("--value") }
+            operation = .setValue(value)
+        case .performAccessibilityActionPath:
+            operation = .performAction(try options.required("action"))
+        default:
+            operation = .press
+        }
+        try writer.write(ActionNativeAutomation.actOnAccessibilityPath(selection: selection, target: target, operation: operation))
     case .pressAccessibilityElement:
         let bundleId = try options.required("bundle-id")
         let label = try options.required("label")
@@ -4604,14 +4687,19 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
     case .inspectCalculatorUI:
         try writer.write(ActionNativeAutomation.calculatorAccessibilityNodes())
     case .inspectAppUI:
-        let app = try resolveTargetApplication(from: options)
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
         let maxDepth = Int(options.double("max-depth", default: 6))
         let maxNodes = Int(options.double("max-nodes", default: 250))
+        let root = try ActionAccessibilityRoot.parse(options.options["root"] ?? "window")
         try writer.write(
             ActionNativeAutomation.accessibilityNodes(
-                pid: app.processIdentifier,
+                selection: selection,
                 maxDepth: maxDepth,
-                maxNodes: maxNodes
+                maxNodes: maxNodes,
+                root: root
             )
         )
     case .getCalculatorDisplay:
@@ -4725,6 +4813,19 @@ struct ActionHostMain {
 
     private static func runUICommandIfNeeded(command: ActionHostCommand, options: CommandOptions) -> Bool {
         switch command {
+        case .askUser:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionOperatorAskController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionOperatorAskReply.error(detail: error.localizedDescription))
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
         case .supervisionOverlay:
             let replyFile = options.options["reply-file"]
             let debugLogPath = options.options["debug-log"]
