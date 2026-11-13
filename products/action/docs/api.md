@@ -51,7 +51,7 @@ and Lattices CLI 0.15.1. Earlier TCP clients do not automatically fall back.
 
 Every connection now needs the token, not only the privileged methods. The
 privileged methods above still check `authToken` in their params as well. The
-Action runtime and `lats action call` read the token for you.
+Action runtime and `action call` read the token for you.
 
 Remote machines cannot reach this socket. A paired tailnet client can call a
 reviewed subset of Action methods through the Lattices gateway, one exact grant
@@ -198,14 +198,14 @@ See [Recording](/action/docs/recording).
 
 ## From the Lattices CLI
 
-`lats action call <method> [params-json]` sends one request and prints the
+`action call <method> [params-json]` sends one request and prints the
 result. In released builds it does not attach a capability token, so it cannot
 call privileged methods. The matching runtime reads and attaches the token automatically;
 see [Private connection](#private-connection).
 
 ```sh
-lats action call status
-lats action call window.getFrame '{"bundleId":"com.apple.calculator"}'
+action call status
+action call window.getFrame '{"bundleId":"com.apple.calculator"}'
 ```
 
 ## Remote Linux hosts

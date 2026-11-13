@@ -106,7 +106,7 @@ Should provide:
 
 Should not provide:
 
-- direct Minimax or OpenAI client logic
+- direct model client logic
 - prompt templating
 - provider-specific parsing
 
@@ -132,7 +132,7 @@ Should provide:
 
 Examples:
 
-- Minimax M2.7 adapter
+- local Moondream adapter
 - OpenAI vision adapter
 - local CLI adapter for custom workflows
 

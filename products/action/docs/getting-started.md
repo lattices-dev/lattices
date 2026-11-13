@@ -11,14 +11,14 @@ To build Action from source, see [Build from source](#build-from-source).
 
 - macOS on Apple Silicon.
 - [Bun](https://bun.sh/docs/installation).
-- The Lattices CLI. Install it with `bun add --global @lattices/lattices`.
+- The Action CLI. Install it with `bun add -g @lattices/action`.
 
 ## Install and launch
 
 1. Install the app:
 
    ```sh
-   lats action install
+   action install
    ```
 
    The command downloads `Action.dmg` from the latest `action-v*` GitHub
@@ -28,31 +28,36 @@ To build Action from source, see [Build from source](#build-from-source).
 2. Launch the app:
 
    ```sh
-   lats action launch
+   action launch
    ```
 
-3. Grant Accessibility and Screen Recording to `Action.app` when macOS asks.
-   Native control needs Accessibility. Screenshots and recording need Screen
-   Recording.
+3. Grant Accessibility and Screen Recording to `Action.app`:
+
+   ```sh
+   action setup action-cua
+   ```
+
+   Setup asks macOS for both and waits until they are granted. Native control
+   needs Accessibility. Screenshots and recording need Screen Recording.
 
 4. Check the status:
 
    ```sh
-   lats action status --json
+   action status --json
    ```
 
-   Expect `installed: true`, `running: true`, and `agentReachable: true`. The
-   `agentUrl` is `ws://127.0.0.1:4319`.
+   Under `app`, expect `installed: true`, `running: true`, and
+   `agentReachable: true`. `backends` reports each computer-use backend.
 
-If `agentReachable` is `false`, launch the app again with `lats action launch`.
+If `agentReachable` is `false`, launch the app again with `action launch`.
 `Action.app` starts its agent helper when it launches.
 
 ## Query the agent
 
 ```sh
-lats action call ping
-lats action call status
-lats action call permissions.snapshot
+action call ping
+action call status
+action call permissions.snapshot
 ```
 
 `status` lists the supported methods, the protocol version, and the path of
@@ -60,7 +65,7 @@ the capability-token file. Parameters are a JSON object; the CLI sends each
 value as a string:
 
 ```sh
-lats action call capture.screenshotScreen '{"output":"/tmp/action-screen.png"}'
+action call capture.screenshotScreen '{"output":"/tmp/action-screen.png"}'
 ```
 
 See [API](/action/docs/api) for every method.
@@ -73,7 +78,7 @@ described in [Agent setup](/action/docs/agent-setup). After that, verify the
 install:
 
 ```sh
-lats action capabilities
+action capabilities
 ```
 
 Expect `runtimeParity.state` to be `matched-source-digest`. A version number
@@ -82,7 +87,7 @@ alone does not prove that the app and runtime match.
 ## Quit
 
 ```sh
-lats action quit
+action quit
 ```
 
 This quits the Action launcher. Prepared [agent-layer](/action/docs/agent-layer)

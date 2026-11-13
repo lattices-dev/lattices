@@ -185,11 +185,11 @@ When this roadmap lands, `action` should support this loop:
   - [ ] optional recommended actions
   - [ ] raw response reference
 
-### 4.2 Minimax Adapter
+### 4.2 Local Moondream Adapter
 
-- [ ] Add a concrete Minimax M2.7 adapter.
-- [ ] Read credentials from environment or config, not from the native app.
-- [ ] Save the exact request payload sent to Minimax as an artifact.
+- [ ] Add a local Moondream adapter.
+- [ ] Read the Moondream install path from environment or config, not from the native app.
+- [ ] Save the exact request payload sent to the model as an artifact.
 - [ ] Save the raw response as an artifact.
 - [ ] Normalize the response into the internal findings format.
 
@@ -388,7 +388,7 @@ This is the order that keeps the architecture practical.
 ### Phase C: Reflection
 
 - [ ] add provider adapter interface
-- [ ] add Minimax adapter
+- [ ] add local Moondream adapter
 - [ ] add prompt preset registry
 - [ ] add findings persistence
 
