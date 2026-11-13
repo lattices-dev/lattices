@@ -6,6 +6,9 @@ type JsonObject = Record<string, unknown>;
 
 export class BrowserTimeoutError extends Error {}
 
+/** Owned background lifecycles must not inherit a completed tool request deadline. */
+export function outsideRequestDeadline<T>(work: () => T): T { return scope.exit(work); }
+
 export function checkDeadline(): void {
   const current = scope.getStore();
   if (current && performance.now() >= current.expiresAt) current.expire();

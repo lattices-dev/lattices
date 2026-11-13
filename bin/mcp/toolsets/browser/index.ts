@@ -1,3 +1,7 @@
+import { BrowserRecordings, parseFrameScheduling, frameSchedulingFlags, frameSchedulingFromCommand, supportsScreenRecording, type FrameScheduling } from "./recording.ts";
+import { BrowserAnimationSamples } from "./animation-sample.ts";
+import { BrowserCaptureDiagnostics } from "./capture-diagnostics.ts";
+import { BrowserScreencasts } from "./screencast.ts";
 import { BrowserTimeoutError, CDPSession, deadlineFetchJson, withDeadline, checkDeadline, boundedWait, deadlineSleep, remainingTimeout } from "./transport.ts";
 import { localHTTPGet } from "../../../../packages/desktop-client/local-http.ts";
 import { localEndpoint } from "../../../../packages/desktop-client/local-ipc.ts";
@@ -147,6 +151,12 @@ let currentTargetId: string | undefined;
  * real window size whenever that action finishes.
  */
 const viewportOverrides = new ViewportSessions();
+const recordings = new BrowserRecordings(artifactRoot);
+const animationSamples = new BrowserAnimationSamples(artifactRoot);
+const screencasts = new BrowserScreencasts(artifactRoot);
+const captureDiagnostics = new BrowserCaptureDiagnostics(artifactRoot);
+let lastScreencastId: string | undefined;
+let launchFrameScheduling: FrameScheduling | undefined;
 /**
  * Targets that already carry the page-side console recorder. The script is
  * installed with Page.addScriptToEvaluateOnNewDocument, which re-runs it on every
@@ -401,6 +411,7 @@ export const tools = [
           type: "string",
           description: "Action mode only. Action browser identity to use, e.g. agent-browser (blank) or work (seeded from a regular Chrome profile). Created on first use.",
         },
+        frameScheduling: { type: "string", enum: ["default", "uncapped", "no-vsync", "capture-60"], description: "Action mode only. Explicit launch policy; uncapped removes Chromium frame/vsync limiting; no-vsync disables presentation vsync while retaining frame scheduling limits. capture-60 requests Chromium's experimental fixed Mac 60Hz timer. No mode promises a particular output rate. Requires a fresh or matching owned browser." },
         background: { type: "boolean", default: true, description: "Action mode only: keep Chrome hidden in the background. Regular mode is always visible." },
         waitMs: { type: "number", minimum: 0, maximum: 2_147_483_647, default: 15_000, description: "Total deadline in milliseconds, including startup, connection, navigation, and readiness. Zero fails immediately." },
         newTab: { type: "boolean", default: false, description: "Action mode only: create a separate tab instead of reusing this session's current tab." },
@@ -593,6 +604,51 @@ export const tools = [
       additionalProperties: false,
     },
     annotations: { readOnlyHint: true, idempotentHint: true },
+  },
+  {
+    name: "browser_capture_diagnostics",
+    title: "Trace Browser Capture",
+    description: "Opt-in bounded tracing and GPU feature diagnostics for the Action-owned browser. Captures compositor, raster and timeline events without screenshots; adds measurement overhead. Start returns immediately. Stop saves a private trace and GPU metadata. One trace per owner; no user-browser access.",
+    inputSchema: {type: "object", properties: {
+      operation: {type: "string", enum: ["start", "stop"]},
+      traceId: {type: "string"}, durationMs: {type: "integer", minimum: 1000, maximum: 60000, default: 40000},
+    }, required: ["operation"], additionalProperties: false},
+    annotations: {readOnlyHint: true, idempotentHint: false},
+  },
+  {
+    name: "browser_animation_sample",
+    title: "Sample Browser Animation Timing",
+    description: "Bounded read-only diagnostics on an Action-owned page. Start returns immediately; result or stop saves rAF timing, long tasks, visibility, revision changes and a few animation/opacity samples to a private JSON artifact. It does not alter DOM, animation playback or capture frames. rAF callbacks do not prove rendered FPS.",
+    inputSchema: { type: "object", properties: {
+      tabId: { type: "string" },
+      operation: { type: "string", enum: ["start", "result", "stop"] },
+      sampleId: { type: "string" },
+      durationMs: { type: "integer", minimum: 1000, maximum: 60000, default: 30000 },
+      selector: { type: "string", maxLength: 300, description: "At most four matching containers and six children each are observed." },
+      revisionSelector: { type: "string", maxLength: 300, description: "Element whose data-revision attribute is observed." },
+    }, required: ["operation"], additionalProperties: false },
+    annotations: { readOnlyHint: true, idempotentHint: false },
+  },
+  {
+    name: "browser_record_start",
+    title: "Start Browser Recording",
+    description: "Record an Action-owned page. direct uses experimental Page.startScreenRecording; jpeg stores each Page.screencastFrame in bounded memory, ACKs immediately after acceptance, then encodes H264 with hardware after stop while preserving source timestamps. Both are real-time, audio-off and bounded; neither guarantees frame cadence. One recording per MCP owner.",
+    inputSchema: { type: "object", properties: {
+      tabId: { type: "string" },
+      backend: { type: "string", enum: ["direct", "jpeg"], default: "direct" },
+      frameRate: { type: "integer", minimum: 1, maximum: 120, default: 60 },
+      maxWidth: { type: "integer", minimum: 16, maximum: 3840, default: 1920 },
+      maxHeight: { type: "integer", minimum: 16, maximum: 2160, default: 1080 },
+      maxDurationMs: { type: "integer", minimum: 1000, maximum: 120000, default: 60000 },
+    }, additionalProperties: false },
+    annotations: { readOnlyHint: false, idempotentHint: false },
+  },
+  {
+    name: "browser_record_stop",
+    title: "Finish Browser Recording",
+    description: "Stop this owner's recording, flush Chrome's original binary stream to a private local artifact, and return its path. Finished means the stream reached EOF and the file was closed; it does not certify rendered frame rate. Repeating the same recordingId returns its completed result.",
+    inputSchema: { type: "object", properties: { recordingId: { type: "string" } }, required: ["recordingId"], additionalProperties: false },
+    annotations: { readOnlyHint: false, idempotentHint: true },
   },
   {
     name: "browser_close",
@@ -828,6 +884,9 @@ async function closeChrome(): Promise<boolean> {
 }
 
 async function releaseBrowser(reason: string): Promise<ReleaseOutcome> {
+  await captureDiagnostics.shutdown();
+  await screencasts.shutdown();
+  await recordings.shutdown();
   viewportOverrides.clear();
   releaseClaim();
   const { liveOwners } = sweepClaims();
@@ -846,6 +905,9 @@ async function releaseOwnedBrowser(reason: string): Promise<ReleaseOutcome | und
 }
 
 function releaseBrowserSync(): void {
+  captureDiagnostics.closeSync();
+  screencasts.closeSync();
+  recordings.closeSync();
   viewportOverrides.clear();
   if (!ownsBrowser) return;
   releaseClaim();
@@ -928,6 +990,7 @@ async function useProfile(nextName: string): Promise<{
   checkDeadline();
   profileName = name;
   profileDir = nextDir;
+  launchFrameScheduling = undefined;
   writeProfileMeta(profileName, profileDir);
   return { profile: profileName, profileDir, switched: true, closedPrevious };
 }
@@ -984,8 +1047,15 @@ async function companionStatus(): Promise<JsonObject> {
   };
 }
 
-async function ensureChrome(background = true): Promise<void> {
+async function ensureChrome(background = true, frameScheduling?: FrameScheduling): Promise<void> {
   if (await chromeIsReady()) {
+    if (frameScheduling !== undefined) {
+      const pid = chromeProcessId();
+      const command = pid === undefined ? "" : probe(["/bin/ps", "-p", String(pid), "-o", "command="]);
+      const actual = command ? frameSchedulingFromCommand(command) : undefined;
+      if (actual !== frameScheduling) throw new Error("frameScheduling does not match this running Action browser. Close it or choose a fresh profile and debugging port.");
+      launchFrameScheduling = actual;
+    }
     claimBrowser();
     return;
   }
@@ -1012,6 +1082,7 @@ async function ensureChrome(background = true): Promise<void> {
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
+    ...frameSchedulingFlags(frameScheduling),
     `--window-size=${DEFAULT_WINDOW_SIZE.width},${DEFAULT_WINDOW_SIZE.height}`,
     "about:blank",
   );
@@ -1026,6 +1097,7 @@ async function ensureChrome(background = true): Promise<void> {
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
     if (await chromeIsReady()) {
+      launchFrameScheduling = frameScheduling ?? "default";
       claimBrowser();
       return;
     }
@@ -1632,7 +1704,9 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       const inputUrl = asString(args.url, "url");
       const url = normalizeURL(inputUrl);
       const mode = browserOpenMode(args.mode);
+      const frameScheduling = parseFrameScheduling(args.frameScheduling);
       if (mode === "regular") {
+        if (frameScheduling !== undefined) throw new Error("frameScheduling is only available in action mode.");
         if (typeof args.profile === "string" && args.profile.trim()) {
           throw new Error("profile is only available in action mode; regular mode uses the user's normal Chrome profile.");
         }
@@ -1669,7 +1743,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       }
       const background = args.background !== false;
       const timeoutMs = Math.max(0, optionalNumber(args.waitMs, 15_000));
-      await ensureChrome(background);
+      await ensureChrome(background, frameScheduling);
       let target: ChromeTarget | undefined;
       let reusedTab = false;
       if (shouldReuseCurrentTab({
@@ -1751,6 +1825,7 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
             profileDir,
             background,
             debugPort,
+            frameScheduling: launchFrameScheduling ?? "unverified",
             session: sessionName,
           },
         };
@@ -2120,6 +2195,48 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
       });
     }
 
+    case "browser_capture_diagnostics": {
+      if (args.operation === "stop") return textResult({ok: true, ...await captureDiagnostics.stop(asString(args.traceId, "traceId"))});
+      if (args.operation !== "start") throw new Error("operation must be start or stop.");
+      await ensureChrome();
+      const version = await fetchJson<{webSocketDebuggerUrl?: string}>("/json/version");
+      if (!version.webSocketDebuggerUrl) throw new Error("Owned browser has no browser diagnostics endpoint.");
+      const session = await CDPSession.connect(version.webSocketDebuggerUrl);
+      return textResult({ok: true, ...await captureDiagnostics.start(session, args)});
+    }
+
+    case "browser_animation_sample":
+      return withTarget(args.tabId, async (session, target) => {
+        const evaluate = (expression: string) => evaluateValue(session, expression);
+        if (args.operation === "start") return textResult({ok: true, ...await animationSamples.start(target.id, args, evaluate)});
+        if (args.operation !== "result" && args.operation !== "stop") throw new Error("operation must be start, result, or stop.");
+        return textResult({ok: true, ...await animationSamples.result(target.id, asString(args.sampleId, "sampleId"), args.operation === "stop", evaluate)});
+      });
+
+    case "browser_record_start": {
+      if (recordings.tabId || screencasts.tabId) throw new Error("Stop the current browser recording before starting another.");
+      if (args.backend !== undefined && args.backend !== "direct" && args.backend !== "jpeg") throw new Error("backend must be direct or jpeg.");
+      if (args.backend === "jpeg") {
+        if (!Bun.which("ffmpeg") || !Bun.which("ffprobe")) throw new Error("JPEG recording requires ffmpeg and ffprobe; no recording was started.");
+        const target = await targetFor(args.tabId);
+        const session = await CDPSession.connect(target.webSocketDebuggerUrl!);
+        try {
+          const result = await screencasts.start(session, target.id, args); lastScreencastId = String(result.recordingId);
+          return textResult({ok: true, ...result});
+        } catch (error) { session.close(); throw error; }
+      }
+      const protocol = await fetchJson<unknown>("/json/protocol");
+      if (!supportsScreenRecording(protocol)) throw new Error("This Chrome does not advertise Page.startScreenRecording and Page.stopScreenRecording. No recording was started.");
+      const target = await targetFor(args.tabId);
+      const session = await CDPSession.connect(target.webSocketDebuggerUrl!);
+      try { return textResult({ ok: true, ...await recordings.start(session, target.id, args) }); }
+      catch (error) { session.close(); throw error; }
+    }
+    case "browser_record_stop": {
+      const id = asString(args.recordingId, "recordingId");
+      return textResult({ ok: true, ...await (id === lastScreencastId ? screencasts.stop(id) : recordings.stop(id)) });
+    }
+
     case "browser_close": {
       if (args.scope === "browser") {
         const outcome = await releaseBrowser("browser_close");
@@ -2134,6 +2251,8 @@ async function callToolImpl(name: string, args: JsonObject): Promise<ToolResult>
         });
       }
       const target = await targetFor(args.tabId);
+      if (recordings.tabId === target.id) await recordings.shutdown();
+      if (screencasts.tabId === target.id) await screencasts.shutdown();
       const response = await boundedWait(fetch(`${chromeBaseURL}/json/close/${encodeURIComponent(target.id)}`, { signal: AbortSignal.timeout(10_000) }), "Close Chrome tab");
       if (!response.ok) {
         throw new Error(`Chrome could not close tab ${target.id}.`);
@@ -2163,6 +2282,7 @@ export const browserToolset = {
     "Three browsers exist. (1) The user's regular Chrome: browser_open mode=regular opens a URL there and nothing else; control it with Action's native screen + accessibility tools (action.observe.* then action.act.execute). (2) An Action browser: the default agent-browser identity, blank and isolated, with full DOM tools. (3) An Action browser identity seeded from a regular Chrome profile: same DOM tools, already signed in.",
     "To act on a signed-in site, seed rather than hand off: browser_import_cookies { into: \"work\", source: \"Profile 1\", domains: [\"github.com\"] } to preview, again with confirm: true to write, then browser_open { url, profile: \"work\" }.",
     "Fast path for anything public: browser_open \u2192 browser_screenshot.",
+    "Live capture on macOS: browser_open { frameScheduling: \"capture-60\" } with a fresh Action profile, then browser_record_start and browser_record_stop. Actual frame cadence must be measured from the output; no frame-rate promise or synthetic frames.",
     "Responsive checks: browser_open \u2192 browser_resize { width, height } \u2192 browser_screenshot. The size sticks to that tab until browser_resize { reset: true }.",
     "Reviewing one component: browser_screenshot { selector } captures just that element at scale 1, so no cropping and no rescaling. Add padding for breathing room.",
     "Interactions can be awaited instead of guessed at: browser_click { selector, waitForSelector } fails if the expected result never appears, and settle: \"navigation\" or \"network-idle\" waits for the page the click produced.",
