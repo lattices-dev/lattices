@@ -19,14 +19,14 @@ const ACCENTS: Record<Accent, string> = { coral: "#ef6a47", white: "rgba(255,255
 
 /* ── Shell: mirrors AppShellView (sidebar on the window background, content in an inset panel) ── */
 
-function Sidebar() {
-  const item = (icon: React.ReactNode, label: string, active = false) =>
-    <div className="wp-nav" data-active={active}>{icon}<span>{label}</span></div>;
+export function Sidebar({ active = "Windows" }: { active?: string }) {
+  const item = (icon: React.ReactNode, label: string) =>
+    <div className="wp-nav" data-active={label === active}>{icon}<span>{label}</span></div>;
   return <aside className="wp-sidebar">
     <div className="wp-traffic"><i /><i /><i /></div>
     <div className="wp-brand"><span className="wp-mark"><i /><i /><i /><i /></span>Lattices</div>
     <div className="wp-nav-label">Workspace</div>
-    {item(<Home />, "Home")}{item(<Columns2 />, "Windows", true)}{item(<Layers />, "Layers")}{item(<Monitor />, "Machines")}
+    {item(<Home />, "Home")}{item(<Columns2 />, "Windows")}{item(<Layers />, "Layers")}{item(<Monitor />, "Machines")}
     <div className="wp-nav-label">Agents</div>
     {item(<MessagesSquare />, "Assistant")}{item(<CircleDot />, "Runs")}
     <div className="wp-sidebar-foot">{item(<Stethoscope />, "Diagnostics")}{item(<BookOpen />, "Docs")}{item(<Settings />, "Settings")}</div>
@@ -49,7 +49,7 @@ function AppWindow({ variant, loading, accent }: { variant: "desk"; loading: boo
 }
 
 /** Shrinks the 1280-wide window to fit the stage, so every direction is judged whole. */
-function useFit() {
+export function useFit() {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {

@@ -38,6 +38,18 @@ const studioPages: readonly LatticesPage[] = [
     ],
   },
   {
+    href: "/studio/studies/layers-page",
+    label: "Layers page — the mapping",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb: "The Layers page as a mapping, not a map: which apps and windows go to which layer, by a rule that matches app and title or by a window pinned by hand.",
+    source: [
+      "design/studio/src/studio/studies/LayersPage.tsx",
+      "apps/mac/Sources/Core/Workspace/LayerMembership.swift",
+    ],
+  },
+  {
     href: "/studio/studies/windows-page",
     label: "Windows page — the desk",
     bucket: "studies",
