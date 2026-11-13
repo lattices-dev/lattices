@@ -1,7 +1,18 @@
 import AppKit
 import SwiftUI
 
+/// One executable, two apps: Lattices itself, or a saved remote app when this
+/// is one of the bundles RemoteAppBundles builds from a clone of it.
 @main
+enum LatticesMain {
+    static func main() {
+        if let id = RemoteAppBundles.currentDefinition {
+            MainActor.assumeIsolated { RemoteAppShell.run(id: id) }
+        }
+        LatticesApp.main()
+    }
+}
+
 struct LatticesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 

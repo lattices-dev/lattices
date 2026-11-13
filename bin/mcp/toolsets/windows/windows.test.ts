@@ -48,6 +48,7 @@ test("the registry serves the windows toolset", async () => {
   const [windows] = await loadToolsets(["windows"]);
   expect(windows!.tools.map((t) => t.name)).toEqual([
     "windows_search", "windows_place", "windows_focus", "layers_list", "layers_switch", "history_undo",
+    "views_list", "views_save", "views_open", "views_remove",
   ]);
 });
 

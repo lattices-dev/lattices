@@ -84,6 +84,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             LayerStage.shared.restoreParked(reason: "launch")
         }
+        // Likewise remote apps left on a host's headless display.
+        Task { await RemoteAppWindows.shared.recoverStranded() }
+        DispatchQueue.global(qos: .utility).async { RemoteAppBundles.refresh() }
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -377,6 +380,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") },
             uniquingKeysWith: { _, last in last }
         )
+        if let app = query["app"], !app.isEmpty, query["wid"] == nil {
+            // lattices://view/<host>?app=Spotify opens the app as its own window.
+            Task { @MainActor in
+                do { try await RemoteAppWindows.shared.open(app: app, on: host.name) }
+                catch { DiagnosticLog.shared.warn("DeepLink: \(app) on \(host.name): \(error.localizedDescription)") }
+            }
+            return
+        }
         let target: RemoteView.Target
         if let wid = query["wid"].flatMap(UInt32.init) {
             target = .window(wid: wid, app: query["app"] ?? "", title: query["title"] ?? "")

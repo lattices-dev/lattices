@@ -59,6 +59,9 @@ final class DaemonServer: ObservableObject {
         "windows.move",
         "windows.place",
         "windows.present",
+        // Sets up a headless display and moves the app on the host first.
+        "hosts.view",
+        "views.open",
         "actions.execute",
         "history.undo",
         // Frames must not queue behind input handlers that sleep.

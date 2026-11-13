@@ -3463,6 +3463,54 @@ switch (command) {
   case "visit":
     await visitCommand(args[1], args.slice(2));
     break;
+  case "view":
+    await withDaemon(async ({ daemonCall }) => {
+      const [host, ...app] = args.slice(1);
+      if (!host) throw new Error("Usage: lats view <saved id> | lats view <host> <app>");
+      if (app.length === 0) {
+        const result = await daemonCall("views.open", { id: host }, 45000) as any;
+        console.log(result.reused ? `${host} is already open (window ${result.window})` : `${host} is open here (window ${result.window})`);
+        return;
+      }
+      const result = await daemonCall("hosts.view", { host, app: app.join(" ") }, 45000) as any;
+      console.log(result.reused ? `${app.join(" ")} on ${host} is already open` : `${app.join(" ")} on ${host} is open here (display ${result.display})`);
+    });
+    break;
+  case "views":
+    await withDaemon(async ({ daemonCall }) => {
+      const [sub = "list", ...rest] = args.slice(1);
+      const flag = (name: string) => {
+        const at = rest.indexOf(`--${name}`);
+        if (at < 0) return undefined;
+        const [value] = rest.splice(at, 2).slice(1);
+        if (!value) throw new Error(`--${name} needs a value`);
+        return value;
+      };
+      if (sub === "list" || sub === "ls") {
+        const views = await daemonCall("views.list") as any[];
+        if (args.includes("--json")) { console.log(JSON.stringify(views, null, 2)); return; }
+        if (views.length === 0) { console.log("No saved remote apps. Save one with lats views save <host> <app>"); return; }
+        for (const v of views) console.log(`${v.id}  ${v.name} on ${v.host}${v.window ? `  open (window ${v.window})` : ""}`);
+      } else if (sub === "save") {
+        const name = flag("name"), id = flag("id");
+        const [host, ...app] = rest;
+        if (!host || app.length === 0) throw new Error("Usage: lats views save <host> <app> [--name <name>] [--id <id>]");
+        const saved = await daemonCall("views.save", { host, app: app.join(" "), ...(name ? { name } : {}), ...(id ? { id } : {}) }) as any;
+        console.log(`Saved ${saved.id}: ${saved.name} on ${saved.host}. Open it with lats view ${saved.id}`);
+        if (saved.app_path) console.log(`Its Mac app, for the Dock, ⌘Tab and Spotlight: ${saved.app_path}`);
+      } else if (sub === "open") {
+        if (!rest[0]) throw new Error("Usage: lats views open <id>");
+        const result = await daemonCall("views.open", { id: rest[0] }, 45000) as any;
+        console.log(result.reused ? `${rest[0]} is already open (window ${result.window})` : `${rest[0]} is open here (window ${result.window})`);
+      } else if (sub === "rm" || sub === "remove") {
+        if (!rest[0]) throw new Error("Usage: lats views rm <id>");
+        const result = await daemonCall("views.remove", { id: rest[0] }) as any;
+        console.log(result.removed ? `Forgot ${rest[0]}` : `No saved remote app named ${rest[0]}`);
+      } else {
+        throw new Error("Usage: lats views [list | save <host> <app> [--name <name>] [--id <id>] | open <id> | rm <id>]");
+      }
+    });
+    break;
   case "long":
     await withDaemon(async ({ daemonCall }) => {
       const result = await daemonCall("long.show", { on: args[1] !== "hide" }) as any;

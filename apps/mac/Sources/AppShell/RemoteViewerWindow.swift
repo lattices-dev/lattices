@@ -150,12 +150,24 @@ final class RemoteViewerWindows: NSObject, NSWindowDelegate {
 struct RemoteViewerView: View {
     @ObservedObject var session: RemoteViewSession
     @ObservedObject var presentation: RemoteViewerPresentation
-    @AppStorage("remoteView.agentHands.behavior") private var cursorBehavior = RemoteAgentCursorBehavior.followPointer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focusedControl: Control?
-    private enum Control: Hashable { case monitor, app, region, resolution, control, hands, keyboard, screenSharing, fullScreen, close }
+    private enum Control: Hashable { case monitor, app, region, resolution, control, keyboard, screenSharing, fullScreen, close }
+    /// A remote app in an ordinary window: the picture alone, edge to edge.
+    var plain = false
 
     var body: some View {
+        if plain {
+            ZStack { Color.black; picture; overlay }
+                .background(Color.black)
+                .foregroundStyle(Palette.text)
+                .font(Typo.body(11))
+        } else {
+            chromed
+        }
+    }
+
+    private var chromed: some View {
         ZStack(alignment: .top) {
             framedPicture
                 .padding([.horizontal, .bottom], presentation.isFullScreen ? 0 : 12)
