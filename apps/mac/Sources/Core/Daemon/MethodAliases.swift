@@ -80,14 +80,46 @@ enum MethodAliases {
         "actions.undo": Alias("history.undo"),
     ]
 
+    /// Whole domains accepted under a second name, as prefix pairs.
+    ///
+    /// `cua` is the computer-use domain's name. Its endpoints still register as
+    /// `computer.*` until every host accepts `cua.*`; then the registrations
+    /// flip and `computer.*` becomes the alias.
+    static let domainAliases: [(alias: String, target: String)] = [
+        (alias: "cua.", target: "computer."),
+    ]
+
+    /// `method` with a domain alias prefix swapped for its target, or itself.
+    static func domainResolved(_ method: String) -> String {
+        for pair in domainAliases where method.hasPrefix(pair.alias) {
+            return pair.target + method.dropFirst(pair.alias.count)
+        }
+        return method
+    }
+
     /// The registered method name for `method`: its alias target, or itself.
     static func canonical(_ method: String) -> String {
-        table[method]?.method ?? method
+        let method = domainResolved(method)
+        return table[method]?.method ?? method
     }
 
     /// The method and params to dispatch for a request sent as `method`.
     static func resolve(_ method: String, params: JSON?) -> (method: String, params: JSON?) {
+        let method = domainResolved(method)
         guard let alias = table[method] else { return (method, params) }
         return (alias.method, alias.params?(params) ?? params)
+    }
+
+    /// Every alias `api.schema` advertises for the registered `methods`:
+    /// table entries, plus one domain-alias name per registered method.
+    static func advertised(for methods: some Collection<String>) -> [String: String] {
+        let registered = Set(methods)
+        var aliases = table.filter { registered.contains($0.value.method) }.mapValues(\.method)
+        for method in registered {
+            for pair in domainAliases where method.hasPrefix(pair.target) {
+                aliases[pair.alias + method.dropFirst(pair.target.count)] = method
+            }
+        }
+        return aliases
     }
 }

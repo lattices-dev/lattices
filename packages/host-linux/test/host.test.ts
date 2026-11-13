@@ -29,6 +29,14 @@ describe("router", () => {
     expect(await router.dispatch("tmux.sessions", null)).toBe(false);
   });
 
+  test("cua.* dispatches to computer.* and the schema lists the cua names", async () => {
+    const r = new Router(() => new Set());
+    r.register({ method: "computer.observe", description: "", access: "read", returns: "", handler: () => "seen" });
+    expect(await r.dispatch("cua.observe", {})).toBe("seen");
+    expect(r.lookup("cua.observe")?.method).toBe("computer.observe");
+    expect(r.schema().aliases["cua.observe"]).toBe("computer.observe");
+  });
+
   test("window.tile maps position to placement", () => {
     expect(resolveAlias("window.tile", { session: "a", position: "left" })).toEqual({
       method: "windows.place",

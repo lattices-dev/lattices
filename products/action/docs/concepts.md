@@ -65,7 +65,7 @@ Several Lattices family commands look related to Action. Only some reach it.
 | `lats action call <method>` | Action agent, port 4319 | Raw RPC. The CLI does not add credentials; privileged methods require `protocolVersion` and `authToken` parameters. |
 | `lats action mcp` | Action MCP server (stdio) | Needs a runtime bundle, `ACTION_ROOT`, or a checkout |
 | `lats action capabilities`, `layer …`, other verbs | Action CLI | Forwarded with `bun --cwd <action-root> action …`. Fails without a runtime or checkout. |
-| `lats computer …` | Lattices core daemon, port 9399 | `computer.*` methods are implemented in Lattices core, not in Action |
+| `lats cua …` (alias `lats computer`) | Lattices core daemon, port 9399 | `cua.*` methods (alias `computer.*`) are implemented in Lattices core, not in Action |
 | `lats mcp` (`browser_*` tools) | Lattices MCP server | Drives Action-owned Chrome profiles over CDP. It does not call Action.app. |
 | Action MCP with `ACTION_REMOTE_HOST` | `lattices-host` on the remote machine, port 9399 | The Linux path uses the Lattices host protocol, not the Action agent |
 
@@ -79,7 +79,7 @@ The Lattices CLI finds an Action root in this order: `ACTION_ROOT`, the
 These product boundaries apply to both runtime versions. They are documented here so that a reader
 does not infer a different owner from the command name.
 
-- `lats computer` sounds like computer use, but it calls the Lattices core
+- `lats cua` sounds like Action, but it calls the Lattices core
   daemon. Action's native observe and act tools are in the Action MCP server.
 - The `browser_*` tools are documented with Action because they drive
   Action-owned Chrome identities, but the Lattices CLI serves them.

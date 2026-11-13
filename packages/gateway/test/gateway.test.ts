@@ -46,6 +46,9 @@ test("gateway grants are exact, scoped to products, and fail closed on aliases a
   expect(authorizeMethod(read, "lattices", "window.place")).toContain("scope_denied");
   expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "new.execute")).toContain("method_denied");
   expect(authorizeMethod(read, "speech", "speech.status")).toContain("scope_denied");
+  expect(authorizeMethod(read, "lattices", "cua.observe")).toBe(authorizeMethod(read, "lattices", "computer.observe"));
+  expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "cua.click")).toBeNull();
+  expect(authorizeMethod(read, "lattices", "cua.click")).toContain("scope_denied: missing lattices:computer.click");
   expect(authorizeMethod(["action:status"], "action", "status")).toBeNull();
   expect(() => requestedGrants({ grants: ["action:*"], scope: "drive" })).toThrow();
   expect(() => requestedGrants({ grants: ["lattices:clients.approve"] })).toThrow();

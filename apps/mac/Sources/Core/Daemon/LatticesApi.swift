@@ -250,9 +250,8 @@ final class LatticesApi {
             ]),
             "models": .array(modelsList),
             "methods": .array(methodsList),
-            "aliases": .object(MethodAliases.table
-                .filter { endpoints[$0.value.method] != nil }
-                .mapValues { JSON.string($0.method) })
+            "aliases": .object(MethodAliases.advertised(for: endpoints.keys)
+                .mapValues { JSON.string($0) })
         ])
     }
 

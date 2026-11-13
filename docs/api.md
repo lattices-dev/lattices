@@ -315,6 +315,10 @@ Runs are local executions that produce trace events and artifacts. Capture
 methods write into the Lattices run store under
 `~/Library/Application Support/Lattices/Runs/`.
 
+The computer-use domain is `cua`. Every `computer.*` method below also answers
+as `cua.*` (for example `cua.click`), and `api.schema` lists the `cua.*` names
+under `aliases`. The CLI is `lats cua`; `lats computer` is an alias.
+
 | Method | Type | Description |
 |--------|------|-------------|
 | `runs.create` | write | Create a run record and artifact directory |
@@ -617,18 +621,17 @@ lats runs
 lats runs run_20260617-120000_a1b2c3
 lats terminals
 lats terminals --refresh
-lats computer prepare --text "# hello" --treatment stage
+lats cua prepare --text "# hello" --treatment stage
 lats call computer.windowState '{"app":"Finder","maxDepth":4}'
 lats call computer.pressKey '{"app":"Finder","key":"escape","treatment":"stage"}'
 lats call computer.hotkey '{"app":"Xcode","shortcut":"command+b","treatment":"stage"}'
-lats computer focus-window --wid 7258 --treatment present
-lats computer cursor --style marker --shape chevron --angle-deg -8 --label typing
-lats computer launch-app Scout
-lats computer scout --treatment present
-lats computer scout "Draft memo text" --execute
-lats computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
-lats computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
-lats cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+lats cua focus-window --wid 7258 --treatment present
+lats cua cursor --style marker --shape chevron --angle-deg -8 --label typing
+lats cua launch-app Scout
+lats cua scout --treatment present
+lats cua scout "Draft memo text" --execute
+lats cua type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
+lats cua click --app Scout --x-ratio .5 --y-ratio .86 --execute
 lats call computer.scroll '{"app":"Safari","direction":"down","amount":420,"treatment":"stage"}'
 lats call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
 lats call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
@@ -638,8 +641,8 @@ lats call capture.screenshotRegion '{"app":"Safari","filename":"safari-region.pn
 lats call vision.analyzeWindow '{"app":"Safari","instruction":"Read visible text"}'
 lats call browser.getText '{"app":"Safari"}'
 lats call browser.queryDom '{"app":"Safari","selector":"h1","allowAutomation":true}'
-lats computer type-text --text "# hello from lattices"
-lats computer demo-terminal --dry-run
+lats cua type-text --text "# hello from lattices"
+lats cua demo-terminal --dry-run
 ```
 
 ---

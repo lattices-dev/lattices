@@ -28,6 +28,30 @@ final class MethodAliasesTests: XCTestCase {
         XCTAssertEqual(MethodAliases.canonical("actions.execute"), "actions.execute")
     }
 
+    func testCuaDomainResolvesToComputer() {
+        XCTAssertEqual(MethodAliases.canonical("cua.click"), "computer.click")
+        XCTAssertEqual(MethodAliases.canonical("cua.typeText"), "computer.typeText")
+        XCTAssertEqual(MethodAliases.canonical("computer.click"), "computer.click")
+        // Only the leading domain is swapped.
+        XCTAssertEqual(MethodAliases.canonical("cuaz.click"), "cuaz.click")
+        XCTAssertEqual(MethodAliases.canonical("windows.cua.x"), "windows.cua.x")
+    }
+
+    func testDispatchAcceptsCuaAndSchemaListsIt() throws {
+        let api = LatticesApi()
+        api.register(Endpoint(
+            method: "computer.click",
+            description: "test",
+            access: .mutate,
+            params: [],
+            returns: .ok,
+            handler: { _ in .string("clicked") }
+        ))
+        XCTAssertEqual(try api.dispatch(method: "cua.click", params: nil), .string("clicked"))
+        XCTAssertEqual(api.schema()["aliases"]?["cua.click"], .string("computer.click"))
+        XCTAssertNil(api.schema()["aliases"]?["cua.drag"])
+    }
+
     func testWindowTileMapsPositionToPlacement() {
         let resolved = MethodAliases.resolve("window.tile", params: .object([
             "session": .string("vox"),

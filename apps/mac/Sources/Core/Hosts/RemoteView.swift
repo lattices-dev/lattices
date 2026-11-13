@@ -261,6 +261,8 @@ enum RemoteView {
     /// Ordinary typing does not require Linux's held-key transport. Mac hosts
     /// accept named key presses even when interactiveInput is absent.
     static func keyboardSupport(platform: String?, methods: Set<String>, interactive: [String: Any]?) -> KeyboardSupport {
+        // Hosts may advertise the computer-use domain as `cua.*` or `computer.*`.
+        let methods = Set(methods.map(MethodAliases.domainResolved))
         let physical = interactive?["keyboard"] as? Bool == true && methods.contains("computer.pressKey")
         let namedKeys = methods.contains("computer.pressKey")
         return KeyboardSupport(canSend: namedKeys && (platform == "macos" || physical || methods.contains("computer.typeText")),
@@ -268,7 +270,8 @@ enum RemoteView {
     }
 
     static func isKeyboardMethod(_ method: String) -> Bool {
-        ["computer.pressKey", "computer.hotkey", "computer.typeText", "computer.typeWindowText"].contains(method)
+        ["computer.pressKey", "computer.hotkey", "computer.typeText", "computer.typeWindowText"]
+            .contains(MethodAliases.domainResolved(method))
     }
 
     /// The Mac's existing global pressKey contract takes physical base keys,

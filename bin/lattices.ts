@@ -1217,22 +1217,21 @@ async function computerCommand(subcommand?: string, ...rawArgs: string[]): Promi
   const method = aliases[sub];
 
   if (!method) {
-    console.log(`lats computer — run bounded computer-use actions
+    console.log(`lats cua — run bounded computer-use actions (alias: lats computer)
 
 Usage:
-  lats computer prepare [--json] [--text "hello"]
-  lats computer focus-window [--json] [--wid id] [--app name]
-  lats computer launch-app Scout [--json]
-  lats computer type-window --app Scout --text "hello" [--x-ratio .5 --y-ratio .86] [--execute]
-  lats computer click --app Scout --x-ratio .5 --y-ratio .86 --treatment execute
-  lats computer click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+  lats cua prepare [--json] [--text "hello"]
+  lats cua focus-window [--json] [--wid id] [--app name]
+  lats cua launch-app Scout [--json]
+  lats cua type-window --app Scout --text "hello" [--x-ratio .5 --y-ratio .86] [--execute]
+  lats cua click --app Scout --x-ratio .5 --y-ratio .86 --treatment execute
   lats cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
-  lats computer magic-scout "draft text" --execute
-  lats computer scout [message] [--treatment present|execute] [--send]
-  lats computer cursor [--json] [--style marker] [--shape arrow] [--size tiny] [--trail thread]
-  lats computer type-text --text "hello" [--json] [--enter]
-  lats computer demo-terminal [--json] [--dry-run]
-  lats computer demo-terminal --text "hello" [--wid id] [--tty tty] [--iterm-session-id id] [--app iTerm2]
+  lats cua magic-scout "draft text" --execute
+  lats cua scout [message] [--treatment present|execute] [--send]
+  lats cua cursor [--json] [--style marker] [--shape arrow] [--size tiny] [--trail thread]
+  lats cua type-text --text "hello" [--json] [--enter]
+  lats cua demo-terminal [--json] [--dry-run]
+  lats cua demo-terminal --text "hello" [--wid id] [--tty tty] [--iterm-session-id id] [--app iTerm2]
 
 Common flags:
   --treatment observe|stage|present|execute
@@ -3389,10 +3388,8 @@ switch (command) {
   case "run":
     await runsCommand(args.slice(1));
     break;
-  case "computer":
-    await computerCommand(args[1], ...args.slice(2));
-    break;
   case "cua":
+  case "computer": // alias
     await computerCommand(args[1], ...args.slice(2));
     break;
   case "voice":

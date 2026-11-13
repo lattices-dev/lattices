@@ -337,4 +337,11 @@ final class RemoteViewTests: XCTestCase {
         XCTAssertEqual(displays[0].scale, 1.25)
         XCTAssertEqual(displays[1].frame.minX, 2560)
     }
+
+    func testHostsAdvertisingCuaNamesGetKeyboardSupport() {
+        XCTAssertEqual(RemoteView.keyboardSupport(platform: "linux", methods: ["cua.pressKey", "cua.typeText"], interactive: nil),
+                       .init(canSend: true, canCapture: false))
+        XCTAssertTrue(RemoteView.isKeyboardMethod("cua.hotkey"))
+        XCTAssertFalse(RemoteView.isKeyboardMethod("cua.click"))
+    }
 }

@@ -114,16 +114,16 @@ Usage:
                          Record a target while running an action command
   lats capture stop <run-id> Stop a running capture recording
   lats runs [id] [--json] List recent runs or inspect one run
-  lats computer prepare      Resolve/stage a safe terminal action
-  lats computer focus-window Focus and verify a target window
-  lats computer launch-app  Launch/focus a normal macOS app
-  lats computer type-window Type into a normal app window
-  lats computer click       Stage or post a window-relative click
-  lats cua click            CLI alias for the CUA SDK click action
-  lats computer scout       Scout warm-up run for memo/demo recording
-  lats computer cursor       Show a recorded cursor appearance
-  lats computer type-text    Type text into a safe terminal target
-  lats computer demo-terminal  Record/focus/type a safe terminal demo
+  lats cua prepare           Resolve/stage a safe terminal action
+  lats cua focus-window      Focus and verify a target window
+  lats cua launch-app        Launch/focus a normal macOS app
+  lats cua type-window       Type into a normal app window
+  lats cua click             Stage or post a window-relative click
+  lats cua scout             Scout warm-up run for memo/demo recording
+  lats cua cursor            Show a recorded cursor appearance
+  lats cua type-text         Type text into a safe terminal target
+  lats cua demo-terminal     Record/focus/type a safe terminal demo
+                         (lats computer … is an alias for lats cua …)
   lats tile <position>    Tile the frontmost window (left, right, top, etc.)
   lats tile family [app] [region]  Smart-grid the frontmost app family, or a named app
   lats window move <wid> --display <n> [--placement <slot>]

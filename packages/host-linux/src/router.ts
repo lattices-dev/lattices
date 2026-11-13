@@ -76,7 +76,23 @@ export const METHOD_ALIASES: Record<string, string> = {
   "ocr.recent": "ocr.history",
 };
 
+/** Domain renames: `cua.*` is the computer-use domain's new name for `computer.*`. */
+export const DOMAIN_ALIASES: ReadonlyArray<readonly [alias: string, target: string]> = [["cua.", "computer."]];
+
+/** A method with any renamed domain prefix mapped to the name endpoints register under. */
+export function domainResolved(method: string): string {
+  for (const [alias, target] of DOMAIN_ALIASES) if (method.startsWith(alias)) return target + method.slice(alias.length);
+  return method;
+}
+
+/** The registered name a method (or any alias of it) dispatches to. */
+export function canonicalName(method: string): string {
+  const resolved = domainResolved(method);
+  return METHOD_ALIASES[resolved] ?? resolved;
+}
+
 export function resolveAlias(method: string, params: Params): { method: string; params: Params } {
+  method = domainResolved(method);
   const target = METHOD_ALIASES[method];
   if (!target) return { method, params };
   if (method === "window.tile" && params.placement == null) {
@@ -97,7 +113,7 @@ export class Router {
 
   /** The endpoint a method (or its alias) names, if any. */
   lookup(method: string): Endpoint | undefined {
-    return this.endpoints.get(METHOD_ALIASES[method] ?? method);
+    return this.endpoints.get(canonicalName(method));
   }
 
   /** Endpoints this host can serve right now. */
@@ -143,7 +159,10 @@ export class Router {
       returns: { type: "custom", description: e.returns },
     }));
     const served = new Set(methods.map((m) => m.method));
-    const aliases = Object.fromEntries(Object.entries(METHOD_ALIASES).filter(([, to]) => served.has(to)));
+    const aliases: Record<string, string> = Object.fromEntries(Object.entries(METHOD_ALIASES).filter(([, to]) => served.has(to)));
+    for (const name of served) for (const [alias, target] of DOMAIN_ALIASES) {
+      if (name.startsWith(target)) aliases[alias + name.slice(target.length)] = name;
+    }
     return { version: "1.0", models: [], methods, aliases };
   }
 }
