@@ -544,7 +544,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 outputPath: outputPath,
                 stopSignalPath: request.params["stopFile"],
                 finishedSignalPath: request.params["finishedFile"],
-                debugLogPath: request.params["debugLog"]
+                debugLogPath: request.params["debugLog"],
+                frameTimingPath: request.params["frameTimingFile"]
             )
         case .recordRegion:
             guard #available(macOS 15.0, *) else {
@@ -570,7 +571,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 debugLogPath: request.params["debugLog"],
                 fps: request.params["fps"].flatMap(Double.init) ?? 15,
                 scale: request.params["scale"].flatMap(Double.init) ?? 1,
-                includeSupervisionOverlay: request.params["includeSupervisionOverlay"] != "false"
+                includeSupervisionOverlay: request.params["includeSupervisionOverlay"] != "false",
+                frameTimingPath: request.params["frameTimingFile"]
             )
         case .screenshotAppWindow:
             guard let outputPath = request.params["output"], !outputPath.isEmpty else {

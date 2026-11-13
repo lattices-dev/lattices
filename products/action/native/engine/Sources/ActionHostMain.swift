@@ -1466,6 +1466,7 @@ func composeRoundedScreenshot(
 final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegate {
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
+    private var frameObserver: WindowRecordingFrameObserver?
     private let writer: ResponseWriter
     private let logger: DebugLogger
     private var finishedSignalPath: String?
@@ -1491,7 +1492,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         )
     }
 
-    func recordRegion(rect: CGRect, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, fps: Double, scale: Double, includeSupervisionOverlay: Bool = true) async throws {
+    func recordRegion(rect: CGRect, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, fps: Double, scale: Double, includeSupervisionOverlay: Bool = true, frameTimingPath: String? = nil) async throws {
         logger.log("record-region: begin rect=\(rect) outputPath=\(outputPath)")
         self.finishedSignalPath = finishedSignalPath
         let outputURL = URL(fileURLWithPath: outputPath)
@@ -1524,6 +1525,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         logger.log("record-region: fps=\(fps) scale=\(scale) output=\(configuration.width)x\(configuration.height)")
 
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try attachFrameObserver(to: stream, timingPath: frameTimingPath)
         let recordingConfiguration = SCRecordingOutputConfiguration()
         recordingConfiguration.outputURL = outputURL
         recordingConfiguration.outputFileType = .mov
@@ -1541,13 +1543,14 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         try writer.write(ActionHostResponse(status: "recording", outputPath: outputPath, detail: nil))
 
         if let stopSignalPath {
-            try waitForStopSignal(at: stopSignalPath)
+            try await ActionRecordingStopSignal.wait(at: stopSignalPath)
         } else {
-            _ = try FileHandle.standardInput.readToEnd()
+            _ = try await Task.detached { try FileHandle.standardInput.readToEnd() }.value
         }
 
         try await stream.stopCapture()
         try await waitForRecordingFinish()
+        try writeFrameTiming(to: frameTimingPath)
         try writer.write(ActionHostResponse(status: "finished", outputPath: outputPath, detail: nil))
         try writeSignalFile(path: finishedSignalPath, contents: "finished\n")
     }
@@ -1561,7 +1564,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         )
     }
 
-    func recordAppWindow(bundleId: String, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?) async throws {
+    func recordAppWindow(bundleId: String, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, frameTimingPath: String? = nil) async throws {
         logger.log("record: begin bundleId=\(bundleId) outputPath=\(outputPath)")
         self.finishedSignalPath = finishedSignalPath
         let outputURL = URL(fileURLWithPath: outputPath)
@@ -1575,17 +1578,23 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         let window = selection.window
         logger.log("record: window id=\(window.windowID) frame=\(window.frame)")
         logger.log("record: creating content filter")
-        let filter = SCContentFilter(display: selection.display, including: [window])
+        // An app-window recording follows the window's own content, rather than
+        // cropping a display. This remains correct when its display origin changes
+        // or part of the window is occluded or outside the display's bounds.
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        logger.log("record: filter=desktopIndependentWindow contentRect=\(filter.contentRect)")
         logger.log("record: creating stream configuration")
         let configuration = SCStreamConfiguration()
         configuration.width = max(Int(window.frame.width), 1)
         configuration.height = max(Int(window.frame.height), 1)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        configuration.sourceRect = window.frame
-        logger.log("record: configuration width=\(configuration.width) height=\(configuration.height)")
+        // The default sourceRect captures the full independent window. A global
+        // window frame is a display-space crop and must not be supplied here.
+        logger.log("record: configuration width=\(configuration.width) height=\(configuration.height) queueDepth=\(configuration.queueDepth) minimumFrameInterval=\(CMTimeGetSeconds(configuration.minimumFrameInterval))")
 
         logger.log("record: creating stream")
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try attachFrameObserver(to: stream, timingPath: frameTimingPath)
         let recordingConfiguration = SCRecordingOutputConfiguration()
         recordingConfiguration.outputURL = outputURL
         recordingConfiguration.outputFileType = .mov
@@ -1608,26 +1617,33 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
 
         if let stopSignalPath {
             logger.log("record: waiting for stop file \(stopSignalPath)")
-            try waitForStopSignal(at: stopSignalPath)
+            try await ActionRecordingStopSignal.wait(at: stopSignalPath)
         } else {
             logger.log("record: waiting for stdin EOF")
-            _ = try FileHandle.standardInput.readToEnd()
+            _ = try await Task.detached { try FileHandle.standardInput.readToEnd() }.value
         }
 
         logger.log("record: stopping capture")
         try await stream.stopCapture()
         logger.log("record: capture stopped")
         try await waitForRecordingFinish()
+        try writeFrameTiming(to: frameTimingPath)
         try writer.write(ActionHostResponse(status: "finished", outputPath: outputPath, detail: nil))
         try writeSignalFile(path: finishedSignalPath, contents: "finished\n")
         logger.log("record: wrote finished reply")
     }
 
-    private func waitForStopSignal(at path: String) throws {
-        let stopURL = URL(fileURLWithPath: path)
-        while !FileManager.default.fileExists(atPath: stopURL.path) {
-            Thread.sleep(forTimeInterval: 0.1)
-        }
+    private func attachFrameObserver(to stream: SCStream, timingPath: String?) throws {
+        guard let timingPath, !timingPath.isEmpty else { return }
+        let observer = WindowRecordingFrameObserver()
+        try stream.addStreamOutput(observer, type: .screen, sampleHandlerQueue: observer.queue)
+        frameObserver = observer
+        logger.log("record: incoming frame timing enabled path=\(timingPath)")
+    }
+
+    private func writeFrameTiming(to path: String?) throws {
+        guard let path else { return }
+        try frameObserver?.write(to: path)
     }
 
     private func waitForRecordingStart() async throws {
@@ -3981,6 +3997,9 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             "output": outputPath,
             "finishedFile": finishedSignalPath,
         ]
+        if let frameTimingFile = options.options["frame-timing-file"] {
+            params["frameTimingFile"] = frameTimingFile
+        }
         if let debugLog = options.options["debug-log"] {
             params["debugLog"] = debugLog
         }
@@ -4011,7 +4030,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             bundleId: bundleId,
             outputPath: outputPath,
             stopSignalPath: options.options["stop-file"],
-            finishedSignalPath: options.options["finished-file"]
+            finishedSignalPath: options.options["finished-file"],
+            frameTimingPath: options.options["frame-timing-file"]
         )
     case .recordRegion:
         guard #available(macOS 15.0, *) else {
@@ -4032,6 +4052,9 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             "scale": String(describing: options.double("scale", default: 1)),
             "includeSupervisionOverlay": String(options.bool("include-supervision-overlay", default: true)),
         ]
+        if let frameTimingFile = options.options["frame-timing-file"] {
+            params["frameTimingFile"] = frameTimingFile
+        }
         if let debugLog = options.options["debug-log"] {
             params["debugLog"] = debugLog
         }
@@ -4065,7 +4088,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             finishedSignalPath: options.options["finished-file"],
             fps: options.double("fps", default: 15),
             scale: options.double("scale", default: 1),
-            includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true)
+            includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true),
+            frameTimingPath: options.options["frame-timing-file"]
         )
     case .recordingProbe:
         throw ActionHostError.unsupportedOS("recording-probe must be started through the UI command path")
@@ -4956,6 +4980,7 @@ struct ActionHostMain {
                 outputPath: outputPath,
                 stopSignalPath: options.options["stop-file"],
                 finishedSignalPath: options.options["finished-file"],
+                frameTimingPath: options.options["frame-timing-file"],
                 fps: options.double("fps", default: 15),
                 scale: options.double("scale", default: 1),
                 includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true)

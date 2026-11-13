@@ -16,7 +16,8 @@ public enum ActionRecordingProbeLauncher {
         debugLogPath: String?,
         fps: Double,
         scale: Double,
-        includeSupervisionOverlay: Bool
+        includeSupervisionOverlay: Bool,
+        frameTimingPath: String? = nil
     ) async throws -> [String: String] {
         var arguments = [
             "recording-probe",
@@ -42,6 +43,10 @@ public enum ActionRecordingProbeLauncher {
             arguments.append(contentsOf: ["--debug-log", debugLogPath])
         }
 
+        if let frameTimingPath, !frameTimingPath.isEmpty {
+            arguments.append(contentsOf: ["--frame-timing-file", frameTimingPath])
+        }
+
         return try await launch(arguments: arguments, outputPath: outputPath)
     }
 
@@ -50,7 +55,8 @@ public enum ActionRecordingProbeLauncher {
         outputPath: String,
         stopSignalPath: String?,
         finishedSignalPath: String?,
-        debugLogPath: String?
+        debugLogPath: String?,
+        frameTimingPath: String? = nil
     ) async throws -> [String: String] {
         var arguments = [
             "recording-probe",
@@ -68,6 +74,10 @@ public enum ActionRecordingProbeLauncher {
 
         if let debugLogPath, !debugLogPath.isEmpty {
             arguments.append(contentsOf: ["--debug-log", debugLogPath])
+        }
+
+        if let frameTimingPath, !frameTimingPath.isEmpty {
+            arguments.append(contentsOf: ["--frame-timing-file", frameTimingPath])
         }
 
         return try await launch(arguments: arguments, outputPath: outputPath, detail: bundleId)

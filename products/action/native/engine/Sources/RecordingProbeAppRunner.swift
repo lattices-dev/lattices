@@ -17,6 +17,7 @@ final class RecordingProbeAppRunner: NSObject, NSApplicationDelegate, NSWindowDe
         let outputPath: String
         let stopSignalPath: String?
         let finishedSignalPath: String?
+        let frameTimingPath: String?
         let fps: Double
         let scale: Double
         let includeSupervisionOverlay: Bool
@@ -110,14 +111,16 @@ final class RecordingProbeAppRunner: NSObject, NSApplicationDelegate, NSWindowDe
                         finishedSignalPath: configuration.finishedSignalPath,
                         fps: configuration.fps,
                         scale: configuration.scale,
-                        includeSupervisionOverlay: configuration.includeSupervisionOverlay
+                        includeSupervisionOverlay: configuration.includeSupervisionOverlay,
+                        frameTimingPath: configuration.frameTimingPath
                     )
                 case .appWindow(let bundleId):
                     try await recorder.recordAppWindow(
                         bundleId: bundleId,
                         outputPath: configuration.outputPath,
                         stopSignalPath: configuration.stopSignalPath,
-                        finishedSignalPath: configuration.finishedSignalPath
+                        finishedSignalPath: configuration.finishedSignalPath,
+                        frameTimingPath: configuration.frameTimingPath
                     )
                 }
 
