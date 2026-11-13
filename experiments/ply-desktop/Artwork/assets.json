@@ -1,0 +1,12 @@
+{
+  "asset": "Sources/PlyDesktop/Resources/ply-desktop-v1.png",
+  "source": "/Users/arach/.codex/generated_images/01a1b716-1b96-7111-84ab-a24196880c09/exec-d540146c-43a8-4c59-ac8c-b9aa7507a1b8.png",
+  "sha256": "9bc82458c49a678bfa23d57cfe64b6422a5ac47c58069a89738692a58c42aa31",
+  "sourceIdentical": true,
+  "width": 1774,
+  "height": 887,
+  "mode": "RGBA",
+  "columns": 4,
+  "rows": 2,
+  "processing": "No artwork modification. CGImage crops complete atlas cells at runtime."
+}
