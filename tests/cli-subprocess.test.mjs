@@ -95,6 +95,65 @@ test("codesign metadata remains readable from stderr and fails closed", () => {
   }
 });
 
+for (const scenario of ["success", "compile failure", "changed inputs", "failed quit"]) {
+  test(`app restart keeps the running bundle safe: ${scenario}`, () => {
+    const events = [];
+    let running = true;
+    let metadataReads = 0;
+    const refusal = new Error("running bundle cannot be replaced");
+    const write = (operation) => {
+      assert.equal(running, false, `${operation} must not touch a running bundle`);
+      events.push(operation);
+    };
+    const build = loadFunction("lattices-app.ts", "buildFromSource", {
+      process: { env: {} },
+      console: { log() {}, error() {} },
+      cliRoot: "/fixture",
+      appDir: "/fixture/apps/mac",
+      bundlePath: "/fixture/Lattices.app",
+      binaryDir: "/fixture/Lattices.app/Contents/MacOS",
+      binaryPath: "/fixture/Lattices.app/Contents/MacOS/Lattices",
+      resolveBuildEnv: () => ({}),
+      readBuildMetadata() {
+        metadataReads++;
+        return { revision: "revision", sourceDigest: scenario === "changed inputs" && metadataReads > 1 ? "changed" : "original" };
+      },
+      execSync() {
+        assert.equal(running, true, "keep the app running during compilation");
+        events.push("compile");
+        if (scenario === "compile failure") throw new Error("compiler failed");
+      },
+      existsSync: () => true,
+      quit() {
+        events.push("quit");
+        if (scenario !== "failed quit") running = false;
+        return !running;
+      },
+      requireBundleNotRunningForBuild() {
+        events.push("guard");
+        if (running) throw refusal;
+      },
+      mkdirSync: () => write("mkdir"),
+      execFileSync: (command) => write(command),
+      writeInfoPlist: () => write("plist"),
+      syncBundleResources: () => write("resources"),
+      embedHelpers: () => write("helpers"),
+      signBundle: () => write("sign"),
+    });
+    if (scenario === "failed quit") {
+      assert.throws(() => build(true), (error) => error === refusal);
+      assert.deepEqual(events, ["compile", "quit", "guard"]);
+    } else if (scenario !== "success") {
+      assert.equal(build(true), false);
+      assert.equal(running, true);
+      assert.deepEqual(events, ["compile"]);
+    } else {
+      assert.equal(build(true), true);
+      assert.deepEqual(events, ["compile", "quit", "guard", "mkdir", "cp", "plist", "resources", "helpers", "sign", "touch"]);
+    }
+  });
+}
+
 test("tmux receives the target as one literal argument for attach and switch", () => {
   const target = 'workspace " $(touch SHOULD_NOT_EXIST)';
   for (const inside of [false, true]) {

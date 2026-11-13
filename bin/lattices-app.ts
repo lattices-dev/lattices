@@ -595,7 +595,7 @@ function syncBundleResources(): void {
 
 // ── Build from source (current arch only) ────────────────────────────
 
-function buildFromSource(): boolean {
+function buildFromSource(restart = false): boolean {
   console.log("Building lattices app from source...");
   const channel = process.env.LATTICES_BUILD_CHANNEL ?? "dev";
   if (channel !== "dev" && channel !== "release") throw new Error("LATTICES_BUILD_CHANNEL must be dev or release");
@@ -621,6 +621,12 @@ function buildFromSource(): boolean {
     console.error("Build inputs changed during compilation; rebuild from a stable checkout.");
     return false;
   }
+
+  // Compilation can take minutes. Keep the current app and its input hooks
+  // alive until a valid replacement is ready, then stop before touching the
+  // signed bundle. Recheck even for ordinary builds to catch a launch race.
+  if (restart) quit();
+  requireBundleNotRunningForBuild();
 
   mkdirSync(binaryDir, { recursive: true });
   execFileSync("cp", [builtPath, binaryPath]);
@@ -903,13 +909,12 @@ if (cmd === "build") {
     console.log("lattices app is not running.");
   }
 } else if (cmd === "restart") {
-  // Quit → rebuild → relaunch
-  quit();
+  // Compile while running → quit → replace the bundle → relaunch.
   if (!hasSwift()) {
     console.error("Swift is required. Install with: xcode-select --install");
     process.exit(1);
   }
-  if (!buildFromSource()) {
+  if (!buildFromSource(true)) {
     console.error("Build failed.");
     process.exit(1);
   }
