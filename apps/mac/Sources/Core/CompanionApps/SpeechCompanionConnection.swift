@@ -47,6 +47,9 @@ actor SpeechCompanionConnection {
         guard !pending.contains(request.id) else {
             response(DaemonResponse(id: request.id, result: nil, error: "Duplicate in-flight request id")); return
         }
+        // Only the request that owns this ID may remove its pending response.
+        // An expired duplicate must leave the original request correlated.
+        guard !rejectExpired(request) else { return }
         pending.insert(request.id)
         if endpoint == nil {
             var generation = unixGeneration
@@ -62,6 +65,7 @@ actor SpeechCompanionConnection {
                 try await unixConnecting?.value
                 guard let connection = unixSocket, generation == unixGeneration else { return }
                 unixConnecting = nil
+                guard !rejectExpired(request) else { return }
                 let data = try JSONEncoder().encode(request)
                 try await connection.send(data)
             } catch { if let generation { failedUnix(generation: generation) } }
@@ -88,10 +92,20 @@ actor SpeechCompanionConnection {
                     } catch { await self?.failed(for: connection) }
                 }
             }
+            guard !rejectExpired(request) else { return }
             let data = try JSONEncoder().encode(request)
             sendingConnection = socket
             try await sendingConnection?.send(.string(String(decoding: data, as: UTF8.self)))
         } catch { failed(for: sendingConnection) }
+    }
+    /// Actor admission and connection setup can both outlive the caller's
+    /// deadline. An expired request must never be newly sent to Speech.
+    private func rejectExpired(_ request: DaemonRequest) -> Bool {
+        guard request.isExpired else { return false }
+        pending.remove(request.id)
+        response(DaemonResponse(id: request.id, result: nil,
+                               error: "deadline_exceeded: Request expired before forwarding"))
+        return true
     }
     private func receiveUnix(_ data: Data, generation: UUID) {
         guard unixGeneration == generation else { return }

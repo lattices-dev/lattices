@@ -1,10 +1,6 @@
 import DeckKit
-import AVFoundation
 import SwiftUI
 import HudsonUI
-#if LATTICES_VOICE && canImport(HudsonVoice)
-import HudsonVoice
-#endif
 
 /// Settings content with internal General / Shortcuts tabs.
 /// Can also render the Docs page when `page == .docs`.
@@ -93,7 +89,7 @@ struct SettingsContentView: View {
             case .hyperspace:
                 return "Per-display window surveys, lighting, zoom, and layout for Hyperspace."
             case .voice:
-                return "Lattices hosts the embedded voice runtime, microphone access, command shortcuts, and the provider-backed voice model."
+                return "Local dictation, the microphone it uses, and the shortcuts that start listening."
             case .ai:
                 return "Provider auth, chat readiness, and assistant runtime state."
             case .search:
@@ -147,6 +143,7 @@ struct SettingsContentView: View {
     @ObservedObject var keyboardRemapController: KeyboardRemapController = .shared
     @ObservedObject var spaceSwitchInterceptor: SpaceSwitchInterceptor = .shared
     @ObservedObject var assistantSession: WorkspaceAssistantSession = .shared
+    @StateObject private var voiceSettings = VoiceSettingsModel()
     var onBack: (() -> Void)? = nil
 
     @State private var selectedTab: SettingsSection = .general
@@ -1862,9 +1859,7 @@ struct SettingsContentView: View {
             VStack(alignment: .leading, spacing: 0) {
                 voiceMicrophoneAccessCard
                 generalRule
-                voiceRuntimeBlock
-                generalRule
-                voiceModelCard
+                voiceDictationCard
                 generalRule
                 voiceShortcutsCard
             }
@@ -1874,65 +1869,50 @@ struct SettingsContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
-            assistantSession.prepareForDisplay()
+            voiceSettings.refresh()
         }
     }
 
-    private var voiceRuntimeBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            settingsPrefRow("Runtime") {
-                #if LATTICES_VOICE && canImport(HudsonVoice)
-                Text(LatticesVoiceRuntime.isRunning ? "Running" : "Not running")
-                    .font(Typo.caption(11))
-                    .foregroundColor(LatticesVoiceRuntime.isRunning ? Palette.textDim : Palette.kill)
-                #else
-                Text("Not in this build")
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textMuted)
-                #endif
-            }
-
-            #if LATTICES_VOICE && canImport(HudsonVoice)
-            Text(LatticesLocalEndpoints.voiceRuntimeWebSocketURL)
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textMuted)
-            if !LatticesVoiceRuntime.isRunning {
-                Text("Restart Lattices if dictation fails.")
-                    .font(Typo.caption(11))
-                    .foregroundColor(Palette.textMuted)
-            }
-            #else
-            Text("Build with HUDSONKIT_WITH_VOICE=1 to host the voice runtime.")
-                .font(Typo.caption(11))
-                .foregroundColor(Palette.textMuted)
-            #endif
-        }
-    }
-
-    private var voiceModelCard: some View {
+    private var voiceDictationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            settingsPrefRow("Command model") {
-                Picker("Command model", selection: $assistantSession.commandModelPreference) {
-                    ForEach(CommandModelPreference.allCases, id: \.rawValue) { preference in
-                        Text(preference.label).tag(preference.rawValue)
-                    }
-                }.labelsHidden().frame(width: 220)
+            settingsPrefRow("Dictation", caption: "\(voiceSettings.modelTitle) runs on this Mac. No API key.") {
+                Text(voiceSettings.modelState)
+                    .font(Typo.caption(11))
+                    .foregroundColor(voiceSettings.modelState == "Ready" || voiceSettings.modelState == "Installed"
+                        ? Palette.textDim : Palette.detach)
             }
-            Text(assistantSession.commandModelStatus)
-                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
+            Text(voiceSettings.modelDetail)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Automatic uses Codex Luna, Claude Code Haiku, then connected Grok or Flash models through Pi, with configured API connections as fallbacks. Clear commands run locally. Your assistant model stays unchanged.")
-                .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
-            DisclosureGroup("API connection") {
-                settingsPrefRow("Provider") {
-                    SettingsChoiceBar(selection: $assistantSession.authProviderID,
-                        options: assistantSession.providerOptions.map { ($0.id, $0.name) })
+            HStack(spacing: 14) {
+                Button("Check") {
+                    Task { await voiceSettings.reloadStatus() }
                 }
-                Text(assistantSession.currentProvider.helpText)
-                    .font(Typo.caption(11)).foregroundColor(Palette.textMuted)
-                assistantCredentialControls
-                assistantAuthMessage
+                .buttonStyle(.plain)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+                .disabled(voiceSettings.busy)
+
+                if voiceSettings.modelState == "Not installed" || voiceSettings.modelState == "Installed" || voiceSettings.modelState == "Failed" {
+                    Button(voiceSettings.modelState == "Not installed" ? "Download model" : "Load model") {
+                        Task { await voiceSettings.loadModel() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(Typo.caption(11))
+                    .foregroundColor(Palette.textDim)
+                    .disabled(voiceSettings.busy)
+                }
+
+                Button("Restart voice") {
+                    Task { await voiceSettings.restart() }
+                }
+                .buttonStyle(.plain)
+                .font(Typo.caption(11))
+                .foregroundColor(Palette.textMuted)
+                .disabled(voiceSettings.busy)
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -1954,6 +1934,23 @@ struct SettingsContentView: View {
                 voiceMicrophoneTrailing
             }
 
+            if permChecker.microphone == .authorized {
+                settingsPrefRow("Input", caption: voiceSettings.inputNote ?? "Choose the microphone dictation listens to.") {
+                    Picker("Input", selection: Binding(
+                        get: { voiceSettings.inputID },
+                        set: { voiceSettings.selectInput($0) }
+                    )) {
+                        Text("System default").tag("")
+                        ForEach(voiceSettings.devices) { device in
+                            Text(device.isSystemDefault ? "\(device.name) · default" : device.name).tag(device.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 240)
+                    .disabled(voiceSettings.devices.isEmpty)
+                }
+            }
+
             HStack(spacing: 14) {
                 if voiceMicrophoneNeedsAttention {
                     Button(voiceMicrophonePrimaryLabel) {
@@ -1966,6 +1963,7 @@ struct SettingsContentView: View {
 
                 Button("Recheck") {
                     permChecker.check()
+                    voiceSettings.refresh()
                 }
                 .buttonStyle(.plain)
                 .font(Typo.caption(11))
