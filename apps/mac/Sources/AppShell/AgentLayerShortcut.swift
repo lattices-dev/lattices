@@ -1,88 +1,86 @@
+import Combine
 import Foundation
 
-/// "Show agent layer": brings back Action's floating preview of a running
-/// agent task. It reads `lats action layer list` once when asked (page change
-/// or click), never on a timer, and never prepares or releases a display.
+/// Reads Action status on page/focus changes and on click, never on a timer.
+/// Showing a preview never prepares or releases a display.
 @MainActor
 final class AgentLayerShortcut: ObservableObject {
     static let shared = AgentLayerShortcut()
+    typealias Command = @Sendable ([String]) async throws -> AgentLayerReply
 
-    /// Workspaces with an agent task attached right now.
     @Published private(set) var activeWorkspaces: [String] = []
     @Published private(set) var busy = false
+    @Published private(set) var refreshing = false
     @Published private(set) var lastError: String?
 
-    private var refreshing = false
+    // An empty or failed snapshot must still allow a click to check again.
+    var canShow: Bool { !busy }
+
+    private let command: Command
+    private var operation: Task<Void, Never>?
+    private var pendingRefresh = false
+    private var pendingShow = false
+
+    init(command: @escaping Command = { try await AgentLayerCommand.run($0) }) {
+        self.command = command
+    }
 
     func refresh() {
-        guard !refreshing else { return }
-        refreshing = true
-        Task.detached(priority: .utility) {
-            let result = Self.run(["layer", "list"])
-            let active = result.flatMap(Self.activeWorkspaces(in:)) ?? []
-            await MainActor.run {
-                self.activeWorkspaces = active
-                self.refreshing = false
-            }
+        guard operation == nil else {
+            pendingRefresh = true
+            return
         }
+        start(show: false)
     }
 
     func show() {
         guard !busy else { return }
         busy = true
-        lastError = nil
-        Task.detached(priority: .userInitiated) {
-            let active = Self.run(["layer", "list"]).flatMap(Self.activeWorkspaces(in:)) ?? []
-            var error: String? = active.isEmpty ? "No agent task is running" : nil
-            for workspace in active {
-                guard let reply = Self.run(["layer", "pip", "--workspace", workspace]) else {
-                    error = "Action did not answer"; continue
-                }
-                if reply["ok"] as? Bool != true {
-                    error = reply["error"] as? String ?? "Action could not show the layer"
-                }
-            }
-            if let error { DiagnosticLog.shared.warn("Show agent layer: \(error)") }
-            await MainActor.run {
-                self.activeWorkspaces = active
-                self.lastError = error
-                self.busy = false
-            }
+        guard operation == nil else {
+            pendingShow = true
+            return
         }
+        start(show: true)
     }
 
-    nonisolated static func activeWorkspaces(in list: [String: Any]) -> [String]? {
-        guard let workspaces = list["workspaces"] as? [[String: Any]] else { return nil }
-        return workspaces.compactMap { entry in
-            guard let layer = entry["layer"] as? [String: Any], layer["active"] as? Bool == true else { return nil }
-            return entry["workspace"] as? String
+    private func start(show: Bool) {
+        refreshing = true
+        operation = Task {
+            do {
+                let active = try await command(["layer", "list"]).activeWorkspaces()
+                activeWorkspaces = active
+                lastError = nil
+                if show {
+                    if active.isEmpty { lastError = "No agent task is running. Click to check again." }
+                    var failures: [String] = []
+                    for workspace in active {
+                        do {
+                            let reply = try await command(["layer", "pip", "--workspace", workspace])
+                            try reply.requireVisiblePreview()
+                        } catch {
+                            failures.append("\(workspace): \(error.localizedDescription)")
+                        }
+                    }
+                    if !failures.isEmpty { lastError = failures.joined(separator: "\n") }
+                }
+            } catch {
+                // A failed read is unknown status, not a successful empty list.
+                lastError = error.localizedDescription
+            }
+            if let lastError { DiagnosticLog.shared.warn("Agent layer: \(lastError)") }
+            refreshing = false
+            if show { busy = false }
+            operation = nil
+            // Serialize requests and replay changes received during a read.
+            // A queued click always does its own fresh list before showing.
+            if pendingShow {
+                pendingShow = false
+                pendingRefresh = false
+                start(show: true)
+            } else if pendingRefresh {
+                pendingRefresh = false
+                start(show: false)
+            }
         }
-    }
-
-    /// `lats action <args>` → the JSON object it prints (after the `$ …` echo).
-    nonisolated private static func run(_ args: [String]) -> [String: Any]? {
-        let proc = Process()
-        var env = ProcessInfo.processInfo.environment
-        env.removeValue(forKey: "CLAUDECODE")
-        proc.environment = env
-        if let bun = LatticesRuntime.bunPath, let root = LatticesRuntime.cliRoot,
-           FileManager.default.fileExists(atPath: root + "/bin/lattices.ts") {
-            proc.executableURL = URL(fileURLWithPath: bun)
-            proc.arguments = [root + "/bin/lattices.ts", "action"] + args
-        } else if let cli = LatticesRuntime.cliExecutablePath {
-            proc.executableURL = URL(fileURLWithPath: cli)
-            proc.arguments = ["action"] + args
-        } else { return nil }
-        let out = Pipe()
-        proc.standardOutput = out
-        proc.standardError = FileHandle.nullDevice
-        do { try proc.run() } catch { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        proc.waitUntilExit()
-        guard let text = String(data: data, encoding: .utf8),
-              let start = text.firstIndex(of: "{"),
-              let json = try? JSONSerialization.jsonObject(with: Data(text[start...].utf8)) as? [String: Any]
-        else { return nil }
-        return json
     }
 }

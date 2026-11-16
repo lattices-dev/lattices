@@ -295,7 +295,7 @@ struct AppShellView: View {
 
     private var agentLayerAction: PageAction {
         PageAction(id: "chrome.agentLayer", title: "Agent layer", icon: "pip",
-            isEnabled: !agentLayer.activeWorkspaces.isEmpty && !agentLayer.busy) {
+            isEnabled: agentLayer.canShow) {
             agentLayer.show()
         }
     }
@@ -303,7 +303,7 @@ struct AppShellView: View {
     private var agentLayerHelp: String {
         if let error = agentLayer.lastError { return error }
         switch agentLayer.activeWorkspaces.count {
-        case 0: return "Shows an agent's virtual display while an agent task is running"
+        case 0: return "Check for an agent task and show its virtual display"
         case 1: return "Show the \(agentLayer.activeWorkspaces[0]) agent layer"
         default: return "Show \(agentLayer.activeWorkspaces.count) agent layers"
         }
