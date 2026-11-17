@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lattices-site",
+  "account_id": "7f500c31ebdac9ae0271933b83f09722",
+  "main": "server/worker.ts",
+  "compatibility_date": "2026-11-08",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "lattices.dev", "custom_domain": true },
+    { "pattern": "www.lattices.dev", "custom_domain": true }
+  ],
+  "vars": { "EMAIL_FROM": "welcome@lattices.dev" },
+  "send_email": [
+    { "name": "EMAIL", "allowed_sender_addresses": ["welcome@lattices.dev"] }
+  ],
+  "kv_namespaces": [
+    { "binding": "ACCESS_CONTACTS", "id": "e31cdb2e27904131a23862bed061f97f" }
+  ],
+  "assets": {
+    "directory": ".worker-assets",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "ratelimits": [
+    { "name": "EMAIL_RATE_LIMITER", "namespace_id": "8311001", "simple": { "limit": 3, "period": 60 } },
+    { "name": "CODE_RATE_LIMITER", "namespace_id": "8311002", "simple": { "limit": 10, "period": 60 } }
+  ]
+}

@@ -6,21 +6,32 @@ import { actionMarkBox } from "../lib/marks";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
 import { ActionDemo } from "./ActionDemo";
 import { ActionQuickStart } from "./ActionQuickStart";
-import { ActionBackends } from "./ActionBackends";
+import { ActionBackends, ActionEngineStrip } from "./ActionBackends";
 import { actionSchema } from "../lib/action-schema";
 import "../styles/action-demo.css";
+import "../styles/action-standalone.css";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
-import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { ThemeToggle } from "./ThemeToggle";
 
 const downloadUrl = "/action/download";
 const sourceUrl = "https://github.com/lattices-dev/lattices/tree/main/products/action";
+const installCommand = "bun add -g @lattices/action";
 
 export default function ActionPage() {
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "loading" | "requested">("idle");
   const downloading = useRef(false);
   const downloadFrame = useRef<HTMLIFrameElement>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+
+  async function copyInstallCommand() {
+    try {
+      await navigator.clipboard.writeText(installCommand);
+      setCopyStatus("Install command copied.");
+    } catch {
+      setCopyStatus("Select the command to copy it manually.");
+    }
+  }
 
   async function startDownload(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
@@ -82,23 +93,20 @@ export default function ActionPage() {
       )}
       <nav className="nav action-nav" aria-label="Action navigation">
         <div className="nav-inner">
-          <a href="/" className="nav-brand action-family-lockup" aria-label="Lattices home">
-            <LatticesMark />
-            <span className="nav-name">lattices</span>
-            <span className="action-lockup-divider" aria-hidden="true">/</span>
+          <a href="/action" className="nav-brand action-product-brand" aria-label="Action home">
             <ActionMark
               palette={{ ink: "currentColor" }}
               guides={false}
               background={false}
               viewBox={actionMarkBox.join(" ")}
               decorative
-              style={{ width: 16, height: 16 }}
+              style={{ width: 26, height: 26 }}
             />
-            <span className="action-lockup-product">action</span>
+            <span className="nav-name">action</span>
           </a>
           <div className="nav-links">
             <ProductsMenu />
-            <a href="/" className="nav-link action-nav-optional">Lattices</a>
+            <a href="#backends" className="nav-link action-nav-engines">Engines</a>
             <a href="/action/docs" className="nav-link action-nav-optional">Docs</a>
             <a href={sourceUrl} className="nav-link action-nav-source">Source</a>
             <ThemeToggle
@@ -112,14 +120,18 @@ export default function ActionPage() {
 
       <main className="action-shell">
         <section className="action-demo-hero" aria-labelledby="action-title">
-          <div className="action-demo-intro">
+          <div className="action-demo-intro action-standalone-intro">
             <div>
               <h1 id="action-title">An API for agents to use your computer.</h1>
               <p className="action-demo-lead">
-                Give agents a workspace of their own. Follow their work in a live preview.
+                A standalone CLI, MCP server and native Mac app. Give your agent computer use through the engine you choose.
               </p>
             </div>
-            <div className="action-demo-install">
+            <div className="action-demo-install action-standalone-install">
+              <div className="action-install-command">
+                <code>{installCommand}</code>
+                <button type="button" onClick={copyInstallCommand} aria-label="Copy Action install command">Copy</button>
+              </div>
               <div className="action-hero-actions">
                 <a href="#get-started" className="hero-primary-cta action-primary-cta">
                   Install Action
@@ -130,11 +142,16 @@ export default function ActionPage() {
                 </a>
               </div>
               <p className="action-demo-platform">Part of <a href="/">Lattices</a> · Works on its own · CLI + MCP</p>
+              <p className="action-install-status" role="status" aria-live="polite">{copyStatus}</p>
             </div>
           </div>
+          <ActionEngineStrip />
           <ActionDemo />
-          <ActionQuickStart />
         </section>
+
+        <ActionBackends />
+
+        <div className="action-standalone-start"><ActionQuickStart /></div>
 
         <div className="action-tech-rail" aria-label="Core technologies">
           <span>AppKit lifecycle</span>
@@ -143,16 +160,14 @@ export default function ActionPage() {
           <span>CLI + MCP</span>
         </div>
 
-        <ActionBackends />
-
         <section id="architecture" className="action-architecture" aria-labelledby="action-architecture-title">
           <div className="action-architecture-copy">
             <h2 id="action-architecture-title">
-              <span>Local control</span>
-              <span>and capture.</span>
+              <span>Inside Action’s</span>
+              <span>native engine.</span>
             </h2>
             <p>
-              An agent or operator calls the local Action runtime, which owns the session, targets, and orchestration. ActionAgent bridges those requests into native macOS work.
+              With Action’s native engine, an agent or operator calls the local runtime. It owns sessions, targets and orchestration, while ActionAgent bridges requests into native macOS work.
             </p>
             <p>
               Action.app owns AppKit, WebKit, permissions, and capture. The run comes back with its receipts attached, including an explicit finished marker when recording is actually complete.
@@ -205,10 +220,9 @@ export default function ActionPage() {
           <img className="action-proof-art" src={actionTraceField} alt="" aria-hidden="true" />
           <div className="action-proof-inner">
             <div className="action-section-heading">
-              <p className="action-kicker">Built for macOS</p>
               <h2 id="action-proof-title">See what happened.</h2>
               <p>
-                Review the video, screenshots, and activity log after a run. Action also records when capture has finished.
+                Action’s native runtime keeps screenshots and an activity log with each session. When you record a run, it also tracks when capture has finished.
               </p>
             </div>
             <div className="action-proof-lines">
@@ -225,7 +239,7 @@ export default function ActionPage() {
               <article>
                 <span>03</span>
                 <h3>Review the recording</h3>
-                <p>Each run keeps its video, screenshots, activity log, and capture completion status together.</p>
+                <p>A recorded native session keeps its video, screenshots, activity log, and capture completion status together.</p>
               </article>
             </div>
           </div>
@@ -233,13 +247,13 @@ export default function ActionPage() {
 
         <section className="action-final-cta" aria-labelledby="action-final-title">
           <div className="action-final-copy">
-            <p className="action-kicker">Action for macOS</p>
             <h2 id="action-final-title">Give the agent a computer-use path you can review.</h2>
             <div className="action-final-links">
               <a href="#get-started" className="hero-primary-cta action-primary-cta">Install Action</a>
               <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-secondary-cta action-secondary-cta">Download .dmg</a>
               <a href="/action/getting-started.md" data-router="reload" className="action-final-source">Build from source &rarr;</a>
             </div>
+            <p className="action-family-note">Part of the <a href="/">Lattices family</a>. Install and use Action on its own.</p>
           </div>
           <figure className="action-brand-study" aria-hidden="true">
             <ActionMark theme={theme} padding={36} decorative />

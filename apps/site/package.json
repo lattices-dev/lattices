@@ -4,10 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run blink:styles && vite",
-    "clean": "rm -rf dist .astro",
-    "build": "bun run blink:styles && bun run clean && vite build && bun scripts/export-static.mjs && pagefind --site dist",
-    "agent-docs": "node scripts/agent-docs.mjs",
+    "dev": "bun run content:prepare && bun run blink:styles && vite",
+    "clean": "rm -rf dist .astro private-dist .worker-assets",
+    "build": "bun run content:prepare && bun run blink:styles && bun run clean && vite build && bun scripts/export-static.mjs && bun scripts/audit-access-build.ts && pagefind --site dist && bun scripts/assemble-worker-assets.ts",
+    "test:analytics": "bun test scripts/analytics.test.ts scripts/static-preview.test.ts",
+    "test:analytics:integration": "bun test scripts/analytics.integration.test.ts",
+    "check:analytics": "bun run test:analytics && bun run build && bun run test:analytics:integration",
+    "agent-docs": "bun run build",
     "audit:learning": "bun scripts/audit-learning.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -15,7 +18,11 @@
     "og": "node scripts/generate-og.js",
     "render:gesture": "remotion render scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix.mp4 --codec h264 --pixel-format yuv420p",
     "render:gesture:poster": "remotion still scripts/remotion/gesture-completion.tsx GestureCompletion public/blog/gesture-completion-matrix-poster.png --frame 344",
-    "blink:styles": "node scripts/build-blink-styles.mjs"
+    "blink:styles": "node scripts/build-blink-styles.mjs",
+    "content:prepare": "bun scripts/prepare-doc-content.ts",
+    "preview:access": "bun scripts/serve-access.ts",
+    "test:access": "bun test server/access.test.ts scripts/doc-access.test.ts",
+    "deploy:cloudflare": "bun run test:access && bun run check:analytics && wrangler deploy"
   },
   "dependencies": {
     "@arach/arc": "^0.9.1",
@@ -49,6 +56,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "wrangler": "4.158.0"
   }
 }

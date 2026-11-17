@@ -14,11 +14,13 @@ describe("ActionDemo", () => {
     expect(html).not.toContain('autoPlay=');
   });
 
-  test("discloses the scripted development sequence and provides a text alternative", () => {
+  test("keeps the text alternative available to screen readers without a visible disclosure", () => {
     const html = renderToStaticMarkup(createElement(ActionDemo));
-    expect(html).toContain('aria-describedby="action-demo-caption"');
+    expect(html).toContain('aria-describedby="action-demo-description"');
+    expect(html).toContain('id="action-demo-description" class="action-demo-description"');
     expect(html).toContain('29-second development preview. Scripted sequence, real MCP calls.');
-    expect(html).toContain('What happens in the demo');
+    expect(html).not.toContain('<details');
+    expect(html).not.toContain('What happens in the demo');
     expect(html).toContain('There is no audio.');
     expect(html).toContain('Open full-size video');
   });
