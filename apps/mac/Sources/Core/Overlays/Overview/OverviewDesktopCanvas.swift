@@ -94,7 +94,7 @@ struct OverviewDesktopCanvas: View {
                                 .allowsHitTesting(false)
                         }
                         OverviewMap(model: model, display: monitor.display, space: space,
-                                    size: rect.size, quiet: true, connected: true)
+                                    size: rect.size, connected: true)
                             .overlay(alignment: .bottomLeading) {
                                 HStack(spacing: 5) {
                                     if space.isCurrent { Circle().fill(Palette.running).frame(width: 4, height: 4) }

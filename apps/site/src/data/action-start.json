@@ -1,26 +1,30 @@
 {
   "siteUrl": "https://lattices.dev",
-  "title": "Try Action’s native engine",
-  "description": "Install Action.app, grant permissions, and take your first screenshot.",
+  "title": "Try Action on your Mac",
+  "description": "Install Action from Lattices or on its own, grant permissions, and take your first screenshot.",
   "prerequisites": "macOS on Apple Silicon, with Bun installed. No source build needed.",
   "steps": [
     {
       "id": "install",
       "title": "Install and launch",
       "command": "bun add -g @lattices/action\naction install --launch",
-      "expected": "Action.app opens from Applications. The CLI is available as action."
+      "expected": "Action.app opens from Applications. The CLI is available as action.",
+      "latticesCommand": "lats action install --launch",
+      "latticesExpected": "Action.app opens from Applications. In the Lattices menu bar, Install Action… does the same."
     },
     {
       "id": "permissions",
       "title": "Allow access",
       "command": "action setup action-cua",
-      "expected": "Approve Accessibility and Screen Recording when macOS asks. Setup waits for both, then reports action-cua: ready."
+      "expected": "Approve Accessibility and Screen Recording when macOS asks. Setup waits for both, then reports action-cua: ready.",
+      "latticesCommand": "lats action setup action-cua"
     },
     {
       "id": "screenshot",
       "title": "Take a screenshot",
       "command": "action call capture.screenshotScreen \\\n  '{\"output\":\"/tmp/action-first.png\"}'\nopen /tmp/action-first.png",
-      "expected": "The reply reports status: screenshot. Your main display capture opens in Preview. This captures your screen, not a private workspace."
+      "expected": "The reply reports status: screenshot. Your main display capture opens in Preview. This captures your screen, not a private workspace.",
+      "latticesCommand": "lats action call capture.screenshotScreen \\\n  '{\"output\":\"/tmp/action-first.png\"}'\nopen /tmp/action-first.png"
     }
   ],
   "troubleshooting": "Agent not reachable? Run action launch, then retry. Permission denied? Enable Action in System Settings → Privacy & Security, quit and reopen Action, then run action status.",

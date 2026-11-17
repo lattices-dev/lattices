@@ -81,6 +81,10 @@ Examples:
   action setup action-cua
   action call capture.screenshotScreen '{"output":"/tmp/action.png"}'
   action observe codex-cua com.google.Chrome --roles 'AXRadioButton|AXButton'
+  action setup agent-desktop
+  action ask agent-desktop
+  action targets agent-desktop
+  action observe agent-desktop Calculator
   action press codex-cua com.google.Chrome --label '^Project notes$' --role AXRadioButton
   action act trycua-cua Chrome '{"kind":"key","combo":"cmd+l"}' --allow attention
   action act trycua-cua Chrome '{"kind":"press"}' --label '^Save$'
@@ -101,13 +105,20 @@ function targetLine(target: BackendTarget): string {
   return [target.app, target.title, target.bundleId, target.targetId].filter(Boolean).join(" | ");
 }
 
-/** Select by identity first (a window's bundle:pid:windowNumber, or a bundle ID), then a case-insensitive app/window regex. Never match positional IDs. */
+/** Select stable window/process identities first, then bundle IDs or app/window regex. Never match positional IDs. */
 export function selectTarget(targets: BackendTarget[], selector: string, opts: { first?: boolean } = {}): BackendTarget {
   if (!selector.trim()) throw invalid("target must not be empty.");
   // A window identity (bundle:pid:windowNumber) is stable across runs, so a window targetId
   // from an earlier run, or one without its generation, still selects it. Positional IDs never do.
   const windowId = /^(?:[0-9a-f]{8}:)?([^:\s]+:\d+:\d+)$/.exec(selector.trim())?.[1];
-  const byId = windowId ? targets.filter((target) => target.targetId.replace(/^[0-9a-f]{8}:/, "") === windowId) : [];
+  // agent-desktop encodes the OS window, PID and process instance together.
+  // The process instance makes this stable selector reject a reused window/PID.
+  const desktopId = /^(?:[0-9a-f]{8}:)?(agent-desktop:[A-Za-z0-9_-]+)$/.exec(selector.trim())?.[1];
+  const stableId = desktopId ?? windowId;
+  const byId = stableId ? targets.filter((target) => target.targetId.replace(/^[0-9a-f]{8}:/, "") === stableId) : [];
+  if (desktopId && byId.length === 0) {
+    throw new BackendRefusal("unknown-target", "This agent-desktop window/process identity is no longer available. List targets again.");
+  }
   const exact = byId.length ? byId : targets.filter((target) => target.bundleId === selector);
   const regex = exact.length ? undefined : pattern(selector, "target");
   const matches = exact.length ? exact : targets.filter((target) => regex!.test(target.app) || regex!.test(target.title ?? ""));
@@ -214,6 +225,7 @@ function bodyOf(reply: CallToolResult): Record<string, unknown> {
 
 function observationLines(observation: BackendObservation): string[] {
   const lines = [`Observation ${observation.observationId} (${observation.targetId})`];
+  if (observation.complete === false) lines.push(`Partial accessibility observation${observation.nodesObserved !== undefined ? ` (${observation.nodesObserved} nodes read)` : ""}; missing elements may lie outside the captured tree.`);
   if (observation.screenshot) lines.push(`Screenshot: ${observation.screenshot.path}`);
   for (const node of observation.ax ?? []) {
     lines.push(`${"  ".repeat(Math.max(0, Math.min(node.depth, 20)))}${node.ref} ${node.role}${node.label !== undefined ? ` ${JSON.stringify(node.label)}` : ""}${node.value !== undefined ? ` = ${JSON.stringify(node.value)}` : ""}${node.actions?.length ? ` [${node.actions.join(", ")}]` : ""}`);

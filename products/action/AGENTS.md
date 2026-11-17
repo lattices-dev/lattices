@@ -9,9 +9,9 @@
 - Migration is complete: the original Action main history was merged into arach/lattices at products/action on August 27, 2026 (import commit b1ad511adf509c0c60d7f3edce7cd15257601db2). Use arach/lattices for ongoing development; arach/action is historical.
 - On Arach's Mac, /Users/arach/dev/action is a compatibility symlink to /Users/arach/dev/lattices/products/action. Both paths share the Lattices Git checkout and its uncommitted work. Verify the Git root and status before changing files.
 - Read ../../AGENTS.md for Lattices workspace rules before applying these product instructions. Keep Action.app, its local agent, and its recording lifecycle independent from the Lattices menu bar app.
-- Private layers: read docs/agent-layer.md. Check CLI/MCP capabilities, native/source provenance, host quarantine and `acceptance.privateLayer.state=accepted` before opening. MCP `layer_open {browser:true}` binds a CDP-only session; input failures never authorize native fallback. Reconnect after updates. Version and raw WS methods do not prove feature parity.
-- Persistent monitor: `layer prepare` explicitly connects a display and may change desktop topology. Tasks attach with `layer open`; `layer close` restores task windows but leaves the monitor connected. Only explicit `layer release` disconnects it. Check `layer display-status`; never provision or release silently during a task.
-- Installation targets use a matched signed app and MCP runtime with rollback. `native:doctor` rebuilds; use it only on an authorized development host.
+- Private layers: read docs/agent-layer.md. Check CLI/MCP capabilities, native/source provenance, host quarantine and acceptance.privateLayer.state=accepted before opening. MCP layer_open {browser:true} binds a CDP-only session; input failures never authorize native fallback. Reconnect after updates. Version and raw WS methods do not prove feature parity.
+- Persistent monitor: layer prepare explicitly connects a display and may change desktop topology. Tasks attach with layer open; layer close restores task windows but leaves the monitor connected. Only explicit layer release disconnects it. Check layer display-status; never provision or release silently during a task.
+- Installation targets use a matched signed app and MCP runtime with rollback. native:doctor rebuilds; use it only on an authorized development host.
 - Use bun as the JavaScript package manager for this repo.
 - Action lives at `products/action/` inside the Lattices monorepo. Run product-local commands from this directory or use the root `action:*` scripts.
 - The public product page and published Action documentation live at `https://lattices.dev/action`; source links point into `arach/lattices`.
@@ -42,183 +42,1372 @@
 - Working with **record**? → Read docs/recording.md and native/engine/CoreSources/ActionRecordingProbeLauncher.swift before changing recording behavior.
 - Working with **agent**? → Read docs/native-runtime.md and native/engine/CoreSources/ActionAgentRuntime.swift for the current app/agent split.
 - Working with **permission**? → Check native/engine/Sources/ActionLauncherViewModel.swift and the native wrapper scripts in native/engine/scripts/.
-- Working with **build**? → On the authorized development host, use native/engine/scripts/build-app.sh. `native:doctor` rebuilds; it is not read-only installation-target QA.
+- Working with **build**? → On the authorized development host, use native/engine/scripts/build-app.sh to produce a signed app bundle. native:doctor rebuilds; do not run it as read-only installation-target QA.
+- Working with **theme**? → Read docs/theming.agent.md before changing colour, type or metrics. Views paint through StageHUDTheme, which resolves whichever ActionTheme is installed; themes are patches authored as JSON.
 
-## Overview
+## Getting started
 
-# Overview
+> Install Action.app, grant permissions, and check the local agent
 
-`action` is a native-first macOS demo automation project.
-
-It is aimed at a workflow where a human operator or an AI agent can:
-
-- inspect an app, browser surface, or bounded region
-- execute deterministic actions
-- record raw capture plus structured runtime traces
-- turn those traces into polished demo or promo outputs later
-
-## What Exists Today
-
-The current repo is early, but it already has a meaningful native core:
-
-- a signed `Action.app` bundle
-- a real AppKit launcher with menus and WebKit support
-- a local `Action` agent runtime reachable over WebSocket
-- native screenshot and recording commands
-- permission and diagnostics wrappers for local development
-
-The strongest proof point right now is native capture:
-
-- screenshot flows work
-- `ScreenCaptureKit` recording now works through a real app lifecycle path
-
-## Current Architecture Direction
-
-The project is deliberately split into two responsibilities:
-
-- `Action.app` owns AppKit lifecycle, menus, WebKit, settings, and permission UX
-- the local agent owns transport, automation-facing methods, and runtime orchestration
-
-This split exists because UI lifecycle and automation lifecycle are not the same
-problem on macOS. Earlier experiments showed that trying to make a command-style
-runtime also own WebKit and recording behavior leads to brittle failures.
-
-## Repository Shape
-
-- [README.md](README.md): top-level project framing
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): deeper product and systems architecture
-- [docs/VISION.md](docs/VISION.md): product intent and precedent learnings
-- [native/engine](native/engine): Swift native engine, app host, local agent, and scripts
-- [packages](packages): JS-side tooling and operator surfaces
-
-## What Matters Most Right Now
-
-At this stage, the most important technical goal is reliable native capture.
-
-That means:
-
-- real AppKit lifecycle correctness
-- stable `ScreenCaptureKit` recording behavior
-- clear artifacts and finished markers
-- preserving a clean boundary between UI-owned behavior and agent-owned behavior
-
-## Getting-started
-
-# Getting Started
-
-This is the shortest path to a useful local dev loop for `action`.
+This page installs the released `Action.app` and checks that its agent runs.
+To build Action from source, see [Build from source](#build-from-source).
 
 ## Prerequisites
 
-- macOS on Apple Silicon
-- Bun
-- Swift/Xcode native build tooling
-- willingness to grant Accessibility and Screen Recording permissions for native automation tests
+- macOS on Apple Silicon.
+- [Bun](https://bun.sh/docs/installation).
+- The Action CLI. Install it with `bun add -g @lattices/action`.
 
-## Install
+## Install and launch
 
-```bash
-bun install
+1. Install the app:
+
+   ```sh
+   action install
+   ```
+
+   The command downloads `Action.dmg` from the latest `action-v*` GitHub
+   release and installs `/Applications/Action.app`. It does not need a source
+   checkout. Add `--launch` to open the app after installation.
+
+2. Launch the app:
+
+   ```sh
+   action launch
+   ```
+
+3. Grant Accessibility and Screen Recording to `Action.app`:
+
+   ```sh
+   action setup action-cua
+   ```
+
+   Setup asks macOS for both and waits until they are granted. Native control
+   needs Accessibility. Screenshots and recording need Screen Recording.
+
+4. Check the status:
+
+   ```sh
+   action status --json
+   ```
+
+   Under `app`, expect `installed: true`, `running: true`, and
+   `agentReachable: true`. `backends` reports each computer-use backend.
+
+If `agentReachable` is `false`, launch the app again with `action launch`.
+`Action.app` starts its agent helper when it launches.
+
+## Query the agent
+
+```sh
+action call ping
+action call status
+action call permissions.snapshot
 ```
 
-## Build The Native App
+`status` lists the supported methods, the protocol version, and the path of
+the capability-token file. Parameters are a JSON object; the CLI sends each
+value as a string:
 
-```bash
-bun run native:app:build
+```sh
+action call capture.screenshotScreen '{"output":"/tmp/action-screen.png"}'
 ```
 
-This produces a signed app bundle at:
+See [API](/action/docs/api) for every method.
 
-`native/dist/Action.app`
+## Connect an agent
 
-## Check Native Health
+The app alone does not include the MCP server. To connect Claude Code, Codex,
+or another MCP harness, install the matching runtime bundle and configure it as
+described in [Agent setup](/action/docs/agent-setup). After that, verify the
+install:
 
-On an authorized development host, use the doctor wrapper before debugging capture:
-
-```bash
-bun run native:doctor
+```sh
+action capabilities
 ```
 
-This command changes the native build. Do not use it as read-only preflight on
-an installation target; install a matched app/runtime with rollback there.
-For private layers, read [Agent layer](agent-layer.md) and verify capabilities,
-host quarantine, and desktop-preservation acceptance before opening.
+Expect `runtimeParity.state` to be `matched-source-digest`. A version number
+alone does not prove that the app and runtime match.
 
-The development-host doctor command:
+## Quit
 
-- builds the app if needed
-- signs it
-- verifies signature state
-- reports current Accessibility and Screen Recording status
-
-## Launch The App
-
-```bash
-bun run native:launch
+```sh
+action quit
 ```
 
-Rebuild and relaunch after a native change:
+This quits the Action launcher. Prepared [agent-layer](/action/docs/agent-layer)
+displays stay connected until you release them explicitly.
 
-```bash
-bun run native:relaunch
+## Build from source
+
+Use this path only on a development host. Requirements are macOS 14 or newer,
+Bun, and a Swift 6.2 toolchain. Without a developer signing identity, the build
+uses ad hoc signing, and permission checks are not stable across rebuilds.
+
+From `products/action` in a Lattices checkout:
+
+1. Install dependencies:
+
+   ```sh
+   bun install
+   ```
+
+2. Build the signed app:
+
+   ```sh
+   bun run native:app:build
+   ```
+
+   The build writes `native/dist/Action.app`, including the agent helper.
+
+3. Launch the app:
+
+   ```sh
+   bun run native:launch
+   ```
+
+   The launch command rebuilds only if the app is missing or older than its
+   sources. After a native change, use `bun run native:relaunch`.
+
+4. Check the bundle and permissions:
+
+   ```sh
+   bun run native:verify
+   bun run native:permissions:status
+   ```
+
+5. With permissions granted, run the capture smoke checks:
+
+   ```sh
+   bun run native:test:screenshot
+   bun run native:test:record
+   ```
+
+   The recording check waits for completion and reports the video, the
+   `.finished` marker, and the debug log.
+
+`bun run native:doctor` builds, signs, verifies, and reports permissions in one
+step. It changes the native build. Do not run it as a read-only check on an
+installation target. From the Lattices repository root, `bun run action:launch`
+and `bun run action:dev` call the same launch and relaunch scripts.
+
+## Recording is asynchronous
+
+A recording start reply means that startup was accepted. It does not mean that
+the recording finished. Completion is the movie file plus a `.finished` marker.
+See [Recording](/action/docs/recording).
+
+## Next steps
+
+- [Concepts](/action/docs/concepts)
+- [Native runtime](/action/docs/native-runtime)
+- [Browser](/action/docs/browser)
+
+## Concepts
+
+> Action's processes, ports, command routes, sessions, leases, and capture lifecycle
+
+This page names the parts of Action and shows which process receives each
+command.
+
+## Runtime versions
+
+The port numbers and connection behavior below describe published builds.
+Matching development builds use private IPC: the Action agent listens on
+`~/.lattices/run/action.sock`, and the runtime and `action call` supply
+the connection token. Lattices core uses its own private socket. Remote access
+goes through a separate, explicitly started gateway with approved method grants.
+See [Private transport](/action/docs/api#private-connection) and
+[Remote Linux setup](/action/docs/remote-engine) for those builds.
+
+## Processes
+
+| Process | Role | Address or entry point |
+| --- | --- | --- |
+| `Action.app` | AppKit lifecycle, launcher, menus, WebKit, permission UI. Also runs one-shot native host commands. | `/Applications/Action.app` |
+| Action agent | Long-lived local RPC server for native requests and drive leases | `ws://127.0.0.1:4319` |
+| Recording probe | A fresh `Action.app` instance in `recording-probe` mode that performs one ScreenCaptureKit capture | Launched per recording |
+| Agent runtime | TypeScript sessions, observations, targets, actions, artifacts | `products/action/packages/runtime` |
+| Action CLI | Product CLI over the runtime | `products/action/packages/cli/src/main.ts` |
+| Action MCP | Stdio MCP server over the runtime | `products/action/packages/mcp/src/index.ts` |
+
+`Action.app` starts the agent as a child process from
+`Contents/Helpers/ActionAgent.app`. The helper has its own bundle id and runs
+as a UI-less app, so macOS does not count it as a second `Action.app`
+instance. The agent exits with its parent.
+
+## Three native paths
+
+The runtime reaches native code in three ways. Each path exists for a reason.
+
+```text
+runtime ──WebSocket──▶ Action agent (4319)       drive leases, capture methods, raw RPC
+runtime ──open -n────▶ Action.app <command>     one-shot host commands with a JSON reply file
+agent ────open -n────▶ Action.app recording-probe  one ScreenCaptureKit recording
 ```
 
-From the Lattices repo root, `bun run action:launch` and `bun run action:dev` call the same scripts.
+- **Agent RPC.** Fast, persistent, connection-scoped. Drive leases live here
+  because a lease must end when its connection closes.
+- **Host commands.** `native/engine/scripts/run-app-host.sh` launches
+  `Action.app` with a command such as `drape`, `raise-window`, `agent-layer`,
+  `click-point`, or `blink-click`, and reads a JSON reply file. These commands
+  carry the app bundle's permission identity, and some need AppKit windows.
+  They are not agent WebSocket methods.
+- **Recording probe.** ScreenCaptureKit recording is reliable only inside a
+  real app lifecycle, so each recording gets its own app instance. See
+  [Recording](/action/docs/recording).
 
-## Useful Smoke Commands
+## Command destinations
 
-Check permissions:
+Several Lattices family commands look related to Action. Only some reach it.
 
-```bash
-bun run native:permissions:status
+| Command | Receiver | Notes |
+| --- | --- | --- |
+| `action install`, `update` | `@lattices/action` | Downloads `Action.dmg` from the latest `action-v*` release to `/Applications` |
+| `action launch`, `quit`, `status` | `@lattices/action` and `Action.app` | Starts or stops the app. Prepared layer displays survive `quit`. `status` also reports each computer-use backend. |
+| `action call <method>` | Action agent, `action.sock` | Raw RPC. The CLI supplies the local token and protocol version. |
+| `action setup`, `observe`, `press`, `set`, `act` | `@lattices/action` | Computer use through `action-cua`, `codex-cua`, or `trycua-cua` |
+| `action mcp` | `@lattices/action` MCP server (stdio) | The computer-use tools (`cua_*`). The full Action MCP server, with drive and layer tools, is `lats action mcp`. |
+| `action capabilities`, `layer …`, other verbs | Action runtime CLI | Forwarded to `<action-root>/packages/cli`. Fails without a runtime or checkout. |
+| `lats action …` | Lattices CLI | The same app commands from the Lattices CLI, plus `lats action mcp` |
+| `lats cua …` (alias `lats computer`) | Lattices core daemon, port 9399 | `cua.*` methods (alias `computer.*`) are implemented in Lattices core, not in Action |
+| `lats mcp` (`browser_*` tools) | Lattices MCP server | Drives Action-owned Chrome profiles over CDP. It does not call Action.app. |
+| Action MCP with `ACTION_REMOTE_HOST` | `lattices-host` on the remote machine, port 9399 | The Linux path uses the Lattices host protocol, not the Action agent |
+
+The Lattices CLI finds an Action root in this order: `ACTION_ROOT`, the
+`products/action` directory next to the CLI, the managed runtime at
+`~/Library/Application Support/Lattices/runtime/current/products/action`, and
+`products/action` in the current Git checkout.
+
+### Current mismatches
+
+These product boundaries apply to both runtime versions. They are documented here so that a reader
+does not infer a different owner from the command name.
+
+- `lats cua` sounds like Action, but it calls the Lattices core
+  daemon. Action's native observe and act tools are in the Action MCP server.
+- The `browser_*` tools are documented with Action because they drive
+  Action-owned Chrome identities, but the Lattices CLI serves them.
+- On Linux, the Action runtime's `RemoteEngine` uses the Lattices host protocol
+  and the Lattices CLI's paired identity. Published builds connect to the host
+  on port 9399; matching development builds connect through the gateway.
+  No Action agent runs on the Linux host.
+
+## Sessions and artifacts
+
+The runtime records each run as a session. A session directory holds
+observations (screenshots, accessibility snapshots, OCR), the action trace, a
+manifest, and any recordings. CLI inspection writes sessions under
+`artifacts/sessions/`. MCP `session_create` creates one, and
+`artifacts_list` reads it.
+
+## Observe, resolve, act
+
+The MCP tools follow one loop:
+
+1. `observe_snapshot` captures the surface: screenshot, accessibility, and OCR.
+2. `resolve_target` turns a query (a label, text, or point) into a target.
+3. `act_execute` runs one act: click, type, press-key, drag, scroll,
+   focus-window, or open-app.
+
+Accessibility comes first. A target with a bundle id and label is pressed or
+set through accessibility. The pointer is a fallback.
+
+Every `act_execute` reply, success or error, carries `delivery`. It says how
+far the act got, so an agent knows whether to send it again:
+
+| `status` | Meaning | `retrySafe` |
+| --- | --- | --- |
+| `not_delivered` | Refused or failed before any host command ran. Nothing happened. | true |
+| `delivery_uncertain` | A host command ran and failed. The act may have landed. | false, except focus-window and open-app |
+| `delivered_unverified` | The host ran the act. Nothing read the result back. | false, except focus-window and open-app |
+
+`recovery` is `retry`, `observe_then_retry` (observe first, then act only if
+the change is missing) or `none`.
+
+## Drive leases
+
+A drive lease marks that an agent is acting on the desktop. The supervision
+HUD shows the lease's agent and task. `drive_begin` and `drive_release` manage
+leases from MCP. An `attention` lease, which takes the system pointer, requires
+explicit approval and the agent's capability token. See [API](/action/docs/api).
+
+## Stage and agent layer
+
+These features solve opposite problems.
+
+| Feature | Use it to | Changes |
+| --- | --- | --- |
+| [Stage](/action/docs/stage) | Present listed windows on a flat backdrop for a recording | Puts a sheet behind the listed windows on the user's screen |
+| [Agent layer](/action/docs/agent-layer) | Work an app or browser out of the user's sight | Moves the task to a prepared virtual display |
+
+## Capability discovery
+
+Version strings do not prove feature parity. Before private-layer work, read
+`action capabilities` or the MCP `capabilities` tool. Check the source and
+native fingerprints, `runtimeParity.state`, host quarantine, and
+`acceptance.privateLayer.state`.
+
+## MCP tool names
+
+The Action MCP server advertises underscore names by default
+(`observe_snapshot`, `layer_open`, `drive_begin`). Dotted names such as
+`action.observe.snapshot` are compatibility aliases, enabled with
+`ACTION_MCP_TOOL_NAMES=legacy` or `both`. Use the names from the active
+`tools/list`.
+
+## API
+
+> The Action agent WebSocket protocol over authenticated private action.sock
+
+The Action agent is a local WebSocket server inside `Action.app`. This page
+documents its raw RPC protocol. Most agents use the Action MCP server instead
+(see [Agent setup](/action/docs/agent-setup)). The MCP server adds sessions,
+target resolution, recording status, stage, and private layers on top of this
+protocol.
+
+Source of truth:
+[`ActionAgentProtocol.swift`](https://github.com/arach/lattices/blob/main/products/action/native/engine/CoreSources/ActionAgentProtocol.swift)
+and
+[`ActionAgentRuntime.swift`](https://github.com/arach/lattices/blob/main/products/action/native/engine/CoreSources/ActionAgentRuntime.swift).
+
+## Transport
+
+| Property | Value |
+| --- | --- |
+| Protocol | WebSocket, text frames, JSON |
+| Address | `~/.lattices/run/action.sock` |
+| Protocol version | `2`, reported by `status` |
+| Authentication | Connection token for every WebSocket; additional capability token for privileged methods |
+
+`status` reports `authentication: "capability-token"` and `authTokenFile`, the
+path of a token file that the agent writes at each launch. The file is
+user-only (`0600`) in a user-only directory (`0700`).
+
+Privileged requests must include `protocolVersion` and `authToken` in their
+params. The privileged requests are:
+
+- `drive.begin` with `mode: "attention"`;
+- `workspace.dragFile`;
+- `workspace.cancelOperation`.
+
+Every method requires an authenticated connection.
+
+### Private connection
+
+Action 0.4.0 uses the private connection below. Install its matching runtime
+and Lattices CLI 0.15.1. Earlier TCP clients do not automatically fall back.
+
+| Property | Value |
+| --- | --- |
+| Address | Unix socket `~/.lattices/run/action.sock` (override with `ACTION_SOCKET_PATH`) |
+| Connection token | `~/.lattices/run/action.token`, sent as `x-lattices-token` on the WebSocket upgrade with `Host: localhost` and no `Origin` |
+| Local access | User-owned directory mode `0700`, socket and token mode `0600`, plus the connection token. The server does not perform a separate peer-UID check. |
+| TCP | `127.0.0.1:4319` opens only with `ACTION_ALLOW_TCP=1`, and still requires the connection token |
+
+Every connection now needs the token, not only the privileged methods. The
+privileged methods above still check `authToken` in their params as well. The
+Action runtime and `action call` read the token for you.
+
+Remote machines cannot reach this socket. A paired tailnet client can call a
+reviewed subset of Action methods through the Lattices gateway, one exact grant
+per method, for example `--grant action:status`. The gateway opens one Action
+connection per call. It therefore denies `drive.begin`, `drive.touch`,
+`drive.release`, `workspace.dragFile` and `workspace.cancelOperation`, which
+create or use a lease owned by a persistent connection. `drive.status` remains
+available with its own read grant. See
+[Private IPC and the gateway](/lattices/docs/concepts#private-ipc-and-the-gateway).
+
+The receive side stays armed while a request runs, so a cancellation can arrive
+during a gesture. Responses are serialized and correlated by request `id`.
+
+## Request
+
+```json
+{
+  "id": "4f2c9b1e",
+  "method": "capture.screenshotScreen",
+  "params": { "output": "/tmp/screen.png" }
+}
 ```
 
-Request permissions:
+- `id`: request id. Native clients default to a UUID.
+- `method`: a method name from the table below.
+- `params`: a flat map of string keys to string values. Send numbers and
+  booleans as strings (`"1440"`, `"true"`).
 
-```bash
-bun run native:permissions:request
+## Response
+
+```json
+{
+  "id": "4f2c9b1e",
+  "ok": true,
+  "result": { "outputPath": "/tmp/screen.png", "status": "screenshot" },
+  "error": null
+}
 ```
 
-Run a screenshot smoke test:
+- `ok`: success flag.
+- `result`: a flat string map. Structured values, such as a drive lease, arrive
+  as JSON strings inside this map.
+- `error`: an error string when `ok` is `false`.
 
-```bash
-bun run native:test:screenshot
+## Methods
+
+### Runtime and permissions
+
+| Method | Purpose | Params |
+| --- | --- | --- |
+| `ping` | Liveness check | none |
+| `status` | Service metadata, method list, protocol version, build provenance, token path | none |
+| `permissions.snapshot` | Accessibility and Screen Recording state | none |
+| `permissions.request` | Prompt for both permissions | none |
+| `permissions.requestAccessibility` | Prompt for Accessibility | none |
+| `settings.openAccessibility` | Open the Accessibility settings pane | none |
+| `settings.openScreenRecording` | Open the Screen Recording settings pane | none |
+
+### Apps, windows, and input
+
+| Method | Purpose | Params |
+| --- | --- | --- |
+| `app.launch` | Launch an app | `bundleId` |
+| `app.activate` | Bring an app forward | `bundleId` |
+| `window.setFrame` | Move and resize the app's window | `bundleId`, `x`, `y`, `width`, `height` |
+| `window.getFrame` | Read the app's window frame | `bundleId` |
+| `input.typeText` | Type text into the focused element | `text` |
+| `input.drag` | Pointer drag | `fromX`, `fromY`, `toX`, `toY`, optional `durationMs` (default 300), optional `filePath` |
+| `accessibility.pressElement` | Press an element by label | `bundleId`, `label`, optional `role` |
+| `accessibility.setValue` | Set an element's value | `bundleId`, `label`, `value`, optional `role` |
+
+`calculator.buttons`, `calculator.clickButton`, and `calculator.displayValue`
+exist for the Calculator demo scenario. They are not a general API.
+
+### Drive leases
+
+A drive lease tells other clients that an agent is acting on the desktop. The
+lease belongs to the connection that created it. Closing the connection
+cancels that connection's leases only.
+
+| Method | Purpose | Params |
+| --- | --- | --- |
+| `drive.begin` | Acquire a lease | `agent`, `task`, optional `mode`, `sessionId`; attention mode also needs approval, run and workspace ids, capability, resource, `protocolVersion`, `authToken` |
+| `drive.touch` | Renew a lease | `leaseId`, optional `axTier`, `actionKind` |
+| `drive.release` | Release a lease | `leaseId`, optional `outcome`, `summary` |
+| `drive.status` | Snapshot of current leases | none |
+| `sessions.prune` | Remove stale drive sessions | none |
+| `sessions.clear` | Remove all drive sessions | none |
+
+### Workspace drag
+
+| Method | Purpose | Params |
+| --- | --- | --- |
+| `workspace.dragFile` | Drag one exact run fixture from Finder into one exact Scout drop zone | lease, run, and workspace ids; fixture URL; Finder and Scout window identities; destination AX identifier; display bounds; `protocolVersion`; `authToken` |
+| `workspace.cancelOperation` | Cancel one in-flight operation | `leaseId`, `operationId`, `protocolVersion`, `authToken` |
+
+`workspace.dragFile` is not a generic coordinate drag. It rejects unknown
+params and accepts no source point, destination point, duration, command, or
+executable. Action resolves exactly one Finder item by AXURL inside exactly one
+titled Finder window. Action resolves exactly one run-scoped AX drop-zone
+identifier inside exactly one titled `app.openscout.scout` window. All resolved
+frames and points must be inside the supplied display bounds.
+
+An approved attention `drive.begin` acquires the global `system-pointer`
+resource and grants one `workspace.drag-file` capability. The capability is
+bound to the connection, run, and workspace, and is consumed before the
+gesture. During the drag, Action checks the lease and operation stop signals
+on every step. Cleanup always attempts mouse-up and restores the saved pointer
+position.
+
+### Capture
+
+| Method | Purpose | Params |
+| --- | --- | --- |
+| `capture.screenshotScreen` | Screenshot the main display | `output` |
+| `capture.screenshotRegion` | Screenshot a region | `x`, `y`, `width`, `height`, `output` |
+| `capture.screenshotAppWindow` | Screenshot an app window | `output`, `bundleId` or `pid` |
+| `capture.recordRegion` | Record a region | `x`, `y`, `width`, `height`, `output`, optional `fps`, `scale`, `stopFile`, `finishedFile`, `debugLog`, `includeSupervisionOverlay` |
+| `capture.recordAppWindow` | Record an app window | `bundleId`, `output`, optional `stopFile`, `finishedFile`, `debugLog` |
+
+## Recording contract
+
+The agent does not record in its own process. A record method launches a fresh
+`Action.app` instance in `recording-probe` mode, and that probe performs the
+ScreenCaptureKit capture.
+
+- A successful reply means the probe started.
+- The recording ends when the `stopFile` appears.
+- Completion is the movie at `output` plus the `finishedFile` marker. The
+  marker can also contain a recording error.
+- Pass `debugLog` to collect probe logs.
+
+See [Recording](/action/docs/recording).
+
+## What is not in this protocol
+
+- Private layers (`layer_*`), stage, observation, target resolution, and
+  session artifacts are MCP and runtime features. The raw agent does not
+  orchestrate them. See [Agent layer](/action/docs/agent-layer).
+- The `browser_*` tools belong to the Lattices MCP. See
+  [Browser](/action/docs/browser).
+- `computer.*` methods belong to the Lattices core daemon on `lattices.sock`, not to
+  this agent. See the [Lattices API](/lattices/docs/api).
+
+## From the Lattices CLI
+
+`action call <method> [params-json]` sends one request and prints the
+result. In released builds it does not attach a capability token, so it cannot
+call privileged methods. The matching runtime reads and attaches the token automatically;
+see [Private connection](#private-connection).
+
+```sh
+action call status
+action call window.getFrame '{"bundleId":"com.apple.calculator"}'
 ```
 
-Run a recording smoke test:
+## Remote Linux hosts
 
-```bash
-bun run native:test:record
+The raw agent protocol is local to the Mac. For a Linux desktop, the Action
+runtime connects to `lattices-host` instead. See
+[Remote engine](/action/docs/remote-engine).
+
+## Browser
+
+> The three browser surfaces an agent can drive with Action, and which tools reach each one
+
+An agent can use a browser with Action in three ways. They differ in which
+tools reach the page, which identity the page has, and whether the user sees it.
+
+## Choose a surface
+
+| Surface | Served by | Control | Identity |
+| --- | --- | --- | --- |
+| Your regular Chrome | Action MCP native tools | Screen capture and accessibility only (`observe_snapshot`, `resolve_target`, `act_execute`) | Your real Chrome profiles |
+| An Action browser | Lattices MCP `browser_*` tools | DOM control over the Chrome DevTools Protocol (CDP) | An Action-owned Chrome profile, blank or seeded |
+| A private-layer browser | Action MCP `layer_*` tools | CDP only, on a prepared virtual display | An Action-owned profile per workspace |
+
+Use regular Chrome when the task needs your live session and visible tabs. Use
+an Action browser for DOM-level work in a window you can watch. Use a
+private-layer browser when the work must stay off your screens.
+
+## Regular Chrome
+
+`browser_open {mode:"regular"}` opens a URL in your own Chrome as a visible
+handoff. Nothing attaches DevTools to it. To act in that window, use the Action
+MCP native loop: `observe_snapshot`, then `resolve_target`, then
+`act_execute`.
+
+## Action browsers
+
+The `browser_*` tools are part of the Lattices MCP server, not `Action.app`.
+Register it once:
+
+```sh
+claude mcp add lattices -s user -- lattices mcp
 ```
 
-## Important Runtime Note
+The tools launch a real, non-headless Chrome on an Action-owned user data
+directory and drive it over CDP. The debug port defaults to `9334` and can be
+set with `ACTION_BROWSER_DEBUG_PORT`.
 
-Recording is asynchronous.
+| Tool | Purpose |
+| --- | --- |
+| `browser_open` | Open a URL in an Action browser, or hand it to regular Chrome |
+| `browser_snapshot` | Read the page as an element list with refs |
+| `browser_click`, `browser_fill` | Act on an element ref |
+| `browser_screenshot`, `browser_resize` | Capture or size the viewport |
+| `browser_tabs`, `browser_close` | List or close tabs |
+| `browser_console` | Read console output |
+| `browser_profiles`, `browser_profile_info`, `browser_use_profile` | List and select browser identities |
+| `browser_import_cookies` | Seed an identity with cookies from one of your Chrome profiles |
+| `browser_companion_status` | Check the optional Chrome companion bridge on `ws://127.0.0.1:4321` |
 
-The initial CLI response means recording startup was accepted. Completion is
-represented by the artifact plus a finished marker file written later by the
-recording path.
+Identities, cookie seeding, and the companion bridge are covered in
+[Browser profiles](/action/docs/browser-profiles). The full tool reference is
+in the [Lattices MCP](/lattices/docs/mcp) page.
 
-If you are debugging recording, inspect:
+## Private-layer browsers
 
-- the `.mov` output
-- the `.finished` marker
-- the debug log passed through `--debug-log`
+A private-layer browser runs on a prepared virtual display in an agent-layer
+workspace. Prepare the display once with the CLI, then use the Action MCP:
 
-## Where To Read Next
+```text
+layer_open     {workspace, browser:true, url, task}
+layer_snapshot {workspace}
+layer_click / layer_type / layer_press / layer_js / layer_go
+layer_close    {workspace}
+```
 
-- [docs/native-runtime.md](docs/native-runtime.md)
-- [docs/recording.md](docs/recording.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- `layer_open` begins a drive lease unless you pass an existing `leaseId`.
+  `layer_close` releases it.
+- Coordinates come from the last `layer_snapshot`.
+- The path is CDP only. There is no native fallback, so do not mix in desktop
+  `observe_*` or `drive_aim` calls.
+- Browser flags, navigation, input, and JavaScript need MCP. The CLI `layer`
+  commands cover lifecycle, snapshot, picture-in-picture, and recording.
 
-## Native-runtime
+Read `capabilities` first and confirm that the host and build accept private
+layers. See [Agent layer](/action/docs/agent-layer).
 
-# Native Runtime
+## Browser profiles
+
+> Regular Chrome, Action browsers, and identities seeded from your Chrome profiles
+
+How Action gives an agent a **browser identity** without taking over your daily
+Chrome, and which kind of control you get in each case.
+
+## Three browsers, two kinds of control
+
+When an agent says "I'll open it in Chrome", it can mean one of three things.
+They are not interchangeable.
+
+| | What it is | What the agent can do |
+|---|---|---|
+| **1. Your regular Chrome** | The browser you use all day. Your real profiles (`Default`, `Profile 1` / "Work"), your tabs, history, extensions, and logins. | **Open a URL, and that's it.** `browser_open { mode: "regular" }` is a visible handoff with no DevTools attachment. To make the agent *act* there, use Action's native macOS control: screen capture + accessibility (`action.observe.snapshot`, `action.resolve.target`, `action.act.execute`). |
+| **2. An Action browser** | A real, non-headless Chrome that Action owns, on its own user-data-dir under `~/Library/Application Support/Action/ChromeProfiles/`. The default identity `agent-browser` is blank and signed into nothing. | **Full DOM control** over CDP: `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_tabs`. |
+| **3. An Action browser identity seeded from one of your Chrome profiles** | The same Action-owned Chrome under a name you choose (`work`, `mira`, …), carrying cookies copied from one of your real profiles for an explicit allowlist of domains. | **Full DOM control, on sites you're already signed in to.** |
+
+The tradeoff in one line: **your regular Chrome has your session but only
+screen-and-accessibility control; an Action browser has DOM control but starts
+as a stranger.** Seeding (option 3) is how you get both.
+
+This is a boundary Action does not try to cross. [Chrome 136 and later ignore
+remote-debugging switches for the default personal data
+directory](https://developer.chrome.com/blog/remote-debugging-port), and Action
+does not attempt to bypass it. Pointing automation at your everyday user-data-dir
+would also fight Chrome's directory lock and hand an agent your full history,
+extensions, and sessions by accident.
+
+### Picking one
+
+- The user wants to *look* at something in their own browser → **regular**.
+- The agent needs to click through a public site → **Action browser**.
+- The agent needs to click through a site you're logged into → **seeded identity**.
+- The agent needs to act inside your real signed-in session, and cookies aren't
+  enough (passkeys, SSO device trust, an extension's state) → **regular Chrome
+  plus Action's native observe/act**, not the browser tools.
+
+## The canonical example: seed "Profile 1" into `work`, then drive it
+
+Your Chrome profile *directory* names are `Default`, `Profile 1`, `Profile 2`, …
+and are not the display names you see in Chrome's avatar menu. A browser you
+call "Work" is usually the `Profile 1` directory. Map them first, then seed.
+
+From an agent, over MCP:
+
+```text
+browser_import_cookies { listSourceProfiles: true }
+# -> [{ dir: "Default", name: "Personal" }, { dir: "Profile 1", name: "Work" }, ...]
+
+browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"] }
+# dry run: lists exactly which cookies would be copied
+
+browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"], confirm: true }
+# writes them into the Action identity `work`
+
+browser_open { url: "https://github.com/notifications", profile: "work" }
+browser_snapshot
+browser_screenshot
+```
+
+The same thing from the terminal:
+
+```bash
+# map display names to profile directories
+bun run chrome:companion:import:cookies -- --list-profiles
+
+# dry run
+bun run chrome:companion:import:cookies -- list --into work --source "Profile 1" --domains github.com
+
+# write
+bun run chrome:companion:import:cookies -- import --into work --source "Profile 1" --domains github.com --confirm
+```
+
+After that, `work` is an ordinary Action identity: `browser_use_profile
+{ profile: "work" }` or `browser_open { url, profile: "work" }`, and every DOM
+tool works against it.
+
+## Named identities
+
+Identities are created on first use: any unused name gives you a fresh blank
+one. Shipped conventions:
+
+- `agent-browser`: the default blank agent identity
+- `work`: seeded from your work Chrome profile, per the example above
+- `mira`: the creative/Midjourney identity used by the companion tooling
+
+Create and prepare one with the companion extension loaded:
+
+```bash
+# from the Action product root (`products/action`)
+bun run chrome:companion:profile -- setup work
+```
+
+This builds the companion extension, creates the profile directory, opens
+`chrome://extensions` in that profile, and reveals `packages/chrome-companion/dist`
+so you can **Load unpacked** once.
+
+Later:
+
+```bash
+bun run chrome:companion:profile -- launch work
+bun run chrome:companion:profile -- check work
+bun run chrome:companion:profile -- path work
+```
+
+Environment aliases (shared between companion tooling and Action Browser MCP):
+
+| Variable | Meaning |
+|----------|---------|
+| `ACTION_BROWSER_PROFILE` / `ACTION_CHROME_COMPANION_PROFILE` | Active identity name |
+| `ACTION_BROWSER_PROFILE_DIR` / `ACTION_CHROME_COMPANION_PROFILE_DIR` | Absolute user-data-dir override |
+| `ACTION_BROWSER_PROFILE_ROOT` / `ACTION_CHROME_COMPANION_PROFILE_ROOT` | Root for named identities |
+| `ACTION_BROWSER_DEBUG_PORT` | CDP port (MCP default `9334`) |
+| `ACTION_ROOT` | Action product root (`<lattices-checkout>/products/action`); cookie tools use it when the MCP process starts elsewhere |
+
+## Cookie seeding
+
+Copy **selected** cookies from a regular Chrome profile into an Action identity:
+
+```bash
+# list your Chrome profiles (directory + display name)
+bun run chrome:companion:import:cookies -- --list-profiles
+
+# list Action identities
+bun run chrome:companion:import:cookies -- --list-action-profiles
+
+# dry-run
+bun run chrome:companion:import:cookies -- list --into work --domains github.com
+
+# write
+bun run chrome:companion:import:cookies -- import --into work --domains github.com --confirm
+
+# narrow to specific cookies
+bun run chrome:companion:import:cookies -- import --into mira \
+  --domains midjourney.com \
+  --only cf_clearance \
+  --confirm
+```
+
+Or via the profile CLI:
+
+```bash
+bun run chrome:companion:profile -- import-cookies import --into work --domains github.com --confirm
+```
+
+Notes:
+
+- Requires a Keychain allow for Chrome Safe Storage only when decrypting values;
+  the import path copies encrypted blobs as-is for same-machine use.
+- Prefer domain allowlists over full-jar dumps.
+- Cookies are not a complete identity (localStorage / passkeys may still need a
+  one-time interactive login in the Action identity).
+
+## Chrome companion (generic extension)
+
+Package: `packages/chrome-companion`
+
+- Manifest V3 extension with DOM observe / resolve / act helpers
+- In Action versions before 0.4.0, a localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
+- One-time **Load unpacked** per Action identity (`dist/` after build)
+
+Action 0.4.0 uses Chrome native messaging instead
+of the extension's TCP connection. The registered native host connects to
+`~/.lattices/run/action-chrome.sock` with `action-chrome.token`. Use the matching
+extension, native host, and Action runtime, including for a local installation.
+Register the host for the exact extension ID and Chrome user-data directory;
+registration for regular Chrome does not cover a separate Action identity.
+
+```bash
+bun run chrome:companion:build
+bun run chrome:companion:bridge
+bun run chrome:companion:health
+bun run chrome:companion:profile -- setup work
+```
+
+Chrome Stable often ignores `--load-extension`; the reliable path is manual
+unpacked install inside the Action-owned identity.
+
+## Action browser MCP
+
+Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root. The
+browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
+See [the Lattices MCP doc](/lattices/docs/mcp).
+
+### Tools
+
+| Tool | Purpose |
+|------|---------|
+| `browser_profiles` | List Action identities, the active one, and the three-surface policy |
+| `browser_use_profile` | Switch the active identity (`agent-browser`, `work`, `mira`, …) |
+| `browser_profile_info` | Active path, cookie readiness, companion hints |
+| `browser_import_cookies` | Dry-run or confirm a seed from a regular Chrome profile |
+| `browser_companion_status` | Extension dist + bridge health |
+| `browser_open` | Open in an Action browser, or `mode: "regular"` for an open-only handoff |
+| `browser_tabs` / `browser_snapshot` / `browser_click` / `browser_fill` / `browser_screenshot` / `browser_close` | DOM automation via CDP, Action browsers only |
+| `browser_console` | Read console messages from an Action browser tab |
+| `browser_resize` | Set a tab to an explicit viewport width and height for responsive checks; `target: "window"` resizes the real Chrome window instead |
+
+### Two MCP surfaces
+
+- **Native runtime MCP** (`action`): observe / resolve / act / record on macOS
+  through Action.app. This is what controls your *regular* Chrome window, and
+  every other native app, via screen capture and accessibility.
+- **Browser MCP** (the `browser` toolset of `lattices mcp`): Action-owned Chrome
+  identities plus DOM-level tools over CDP.
+
+Register it. The entry names the `lattices` binary and no path, so a repo move or
+a version bump cannot break it:
+
+```bash
+claude mcp add lattices -s user -- lattices mcp
+```
+
+To pin a default identity, add the environment variable to that same entry:
+
+```bash
+claude mcp add lattices -s user -e ACTION_BROWSER_PROFILE=work -- lattices mcp
+```
+
+`ACTION_ROOT` is only needed for the Chrome Companion paths below, and only when
+the tools run from a published `lattices` install rather than a checkout.
+
+### Agent workflow
+
+```text
+browser_profiles                                   # what identities exist
+browser_use_profile { profile: "work" }            # pick one
+browser_open { url: "https://github.com" }         # drive it
+browser_snapshot
+browser_screenshot
+browser_companion_status                           # optional richer DOM path
+browser_close { scope: "browser" }                 # when the task is done
+```
+
+To open a URL in the user's own Chrome instead:
+
+```text
+browser_open { url: "https://github.com", mode: "regular" }
+```
+
+Regular mode is deliberately not controllable, and the result says so:
+`controlAvailable: false`, plus the native control path. Snapshot, click, fill,
+and screenshot continue to target the Action browser.
+
+### Responsive breakpoints
+
+`browser_resize` gives an already-open tab an explicit viewport, so a narrow
+layout can be captured instead of assumed.
+
+```text
+browser_open   { url: "http://localhost:3000" }
+browser_resize { width: 1440, height: 900 }
+browser_screenshot
+browser_resize { width: 390, height: 844, mobile: true, matchMedia: ["(max-width: 767px)"] }
+browser_screenshot
+browser_resize { reset: true }
+```
+
+Two targets, deliberately not interchangeable:
+
+| | What moves | Cost |
+|---|---|---|
+| `target: "tab"` (default) | CSS emulation for that one tab | Exact to the pixel, other tabs unaffected, fully reversible |
+| `target: "window"` | The real Chrome window hosting the tab | Every tab in that window moves, the display is a hard ceiling, and the tab's emulated viewport is dropped first |
+
+A device-metrics override belongs to the CDP session that set it, and Action
+Browser opens a fresh session per tool call. Two consequences shape the design:
+
+- The server keeps the requested viewport in memory and re-applies it on every
+  session, so a resize survives the later `browser_screenshot` that is the whole
+  point of it. It is per-tab, in-memory only, and dropped when the tab or the
+  browser closes. Nothing is written to the profile.
+- `reset` cannot simply call `clearDeviceMetricsOverride`: a foreign session's
+  clear is accepted and does nothing, leaving Chrome stuck at the stale size. The
+  reset re-sets the metrics to adopt ownership first, then clears them.
+
+`deviceScaleFactor` defaults to `1`, which makes screenshot pixels equal CSS
+pixels: a 390-wide viewport returns a 390px-wide PNG. Read `exact` in the reply
+before trusting a capture: a page with a hard `min-width` can refuse to lay out
+as narrow as it was asked to.
+
+## Plugin versioning
+
+Harnesses cache the Action Browser skill and interface metadata by plugin
+version. Bump all seven manifests together when that metadata changes:
+
+```bash
+bun run plugin:version              # check that every manifest agrees
+bun run plugin:version -- 0.4.1     # set them all
+```
+
+The check covers the root and Action product marketplace/Kimi manifests, plus
+the browser plugin's Claude, Codex, and Kimi manifests. Reinstall or refresh the
+plugin in each harness so its cached skill is replaced.
+
+The plugin no longer carries an MCP server or a `SERVER_VERSION`. Browser tools
+ship with the lattices CLI; updating that CLI and restarting its MCP process
+updates the server separately from refreshing this skill-only plugin.
+
+## What is intentionally not done
+
+- Automation attachment to the currently open regular Chrome window
+- Silent full cookie jar import
+- Claiming a page is authenticated without observing it after seed/login
+
+## Related
+
+- [packages/chrome-companion/README.md](../packages/chrome-companion/README.md)
+- [ACT-001 surface adapter architecture](decisions/ACT-001-surface-adapter-architecture.md)
+- [plugins/action-browser/skills/action-browser/SKILL.md](../plugins/action-browser/skills/action-browser/SKILL.md)
+
+## Browser request deadlines
+
+`browser_open.waitMs` is the total operation budget (15,000 ms by default),
+including profile selection, Chrome startup, HTTP/CDP connection, navigation,
+and readiness checks. Zero fails immediately without opening a tab. Expiry
+returns an MCP tool error and cancels pending transport work; increasing
+`waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
+
+Configure the MCP server as `command: "lattices", args: ["mcp"]`, no path, so it
+cannot be pinned to a stale checkout or plugin cache. On the next MCP process
+start, `initialize` reports the lattices version, and `tools/list` exposes
+`browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their
+loaded implementation until reloaded.
+
+The `lattices` launcher resolves Bun from `LATTICES_BUN_BIN`, PATH, or the
+standard user and Homebrew locations, so it survives the bare system PATH a
+GUI-launched harness hands it. An explicit invalid override fails with an
+actionable error.
+
+## Agent layer
+
+> Work an app or Action-owned browser on a prepared private virtual display
+
+Action's agent layer attaches an app or Action-owned browser to a prepared,
+persistent virtual monitor. The monitor and each task have separate lifetimes.
+Use MCP for the complete browser workflow.
+
+## Named virtual workspaces
+
+The multi-workspace candidate adds independent virtual displays. This is not a
+host-isolation acceptance result. Validate the matched native app and runtime
+on the target host before using it for desktop-preserving work.
+
+Use `--workspace <name>` on each CLI layer command. Use `workspace` on each MCP
+layer call. Omission selects `default`; it never selects the last workspace
+used. Names contain 1–32 lowercase letters, digits, or hyphens and start with a
+letter. The existing unnamed display remains the `default` workspace.
+
+Each workspace has its own display owner, task, browser profile, preview,
+operator controls, and recording. Closing a task leaves its display connected.
+Opening a task never replaces an active task. An MCP caller cannot close another
+caller's task. Cross-process transaction locks protect each workspace's lifecycle
+and control files; concurrent mutations fail without overwriting another request.
+An app process can belong to only one active workspace. Use separate browser
+processes for browser tasks on different workspaces.
+
+Preparation changes the macOS display topology. Arrange a setup interval before
+running these commands. Build only in the native development workspace; copy a
+matched bundle and runtime to installation targets.
+
+```bash
+action layer prepare --workspace stage --width 1920 --height 1080
+action layer prepare --workspace agent --width 1440 --height 900
+action layer list
+```
+
+After preflight and host acceptance, attach tasks through MCP:
+
+```text
+layer_open {workspace:"stage", previewFull:true}
+layer_open {workspace:"agent", browser:true, url:"https://lattices.dev/action", previewWorkspace:"stage"}
+layer_snapshot {workspace:"agent"}
+layer_snapshot {workspace:"stage", full:true}
+layer_record {workspace:"stage", action:"start", out:"/absolute/path/stage.mov"}
+layer_record {workspace:"agent", action:"start", out:"/absolute/path/agent.mov"}
+layer_go {workspace:"agent", url:"https://lattices.dev/docs/agents"}
+layer_record {workspace:"agent", action:"stop"}
+layer_record {workspace:"stage", action:"stop"}
+```
+
+`previewWorkspace` places the agent preview on the prepared stage display. The
+displays are peers, not nested virtual machines. The outer recording captures
+the stage and embedded preview. The inner recording captures the agent display.
+Verify both recording completion results and movie files before reporting a take
+as finished. An empty stage task does not populate or arrange application windows.
+
+Set `previewFull:true` on the stage's `layer_open` or `layer_pip` call to show its
+entire display, including the embedded agent preview. Otherwise the preview follows
+the subject windows and can crop out the embedded preview. CLI equivalent:
+`action layer pip --workspace stage --preview-full`. Each preview identifies
+its workspace and host. Preview framing does not change full-display recording.
+
+Use `layer_pip {workspace:"agent", previewWorkspace:"stage"}` to move an existing
+preview. CLI equivalent:
+
+```bash
+action layer pip --workspace agent --preview-workspace stage
+```
+
+Action rejects self-previews and recursive preview chains. A preview that loses
+its destination must not fall back to a physical screen. A display cannot be
+released while another workspace previews onto it. Close the dependent agent
+task before releasing the stage display:
+
+```text
+layer_close {workspace:"agent"}
+layer_close {workspace:"stage"}
+```
+
+```bash
+action layer release --workspace agent
+action layer release --workspace stage
+```
+
+Browser profiles are separate for each named workspace. A busy debugging port
+is reusable only when its process matches the expected browser executable,
+profile path, and port. A mismatch fails without adopting or stopping that
+process. Port overrides for named workspaces use
+`ACTION_LAYER_BROWSER_PORT_<WORKSPACE>`, with uppercase letters and underscores
+in place of hyphens. `ACTION_LAYER_BROWSER_PORT` applies to `default` only.
+
+Multiple virtual displays do not create independent macOS keyboards or focus.
+Browser interactions use CDP. Native input uses a shared exclusive input lease
+and can still cause temporary focus changes. Validate physical display modes,
+arrangement, pointer, frontmost app, and unrelated window frames throughout the
+two-workspace lifecycle. Also verify independent pause, stop, recording, crash
+cleanup, and preview-destination loss. Passing a one-display test does not prove
+that the two-display configuration is accepted.
+
+## Prepare the monitor once
+
+Provision the monitor explicitly when the user is ready for a display topology
+change. Preparation creates the virtual display and may change macOS modes,
+arrangement, or window placement; it does not promise an unchanged desktop.
+Check capabilities and quarantine first. Preparation never clears quarantine.
+
+```bash
+action layer display-status
+action layer prepare --width 1440 --height 900
+```
+
+`display-status` is read-only. `prepare` reuses an existing live monitor when
+the requested size matches, or when no size is supplied. A new monitor defaults
+to 1440×900. A different size requires explicit release and preparation; an
+ordinary task must not silently resize or recreate the monitor.
+
+Once prepared, `layer open` attaches a task without connecting another display.
+`layer close` restores that task's windows and leaves the monitor connected.
+When the user wants to disconnect the monitor, use `action layer release`;
+it refuses while a task is active, so close the task first with `layer close`. Release can
+also change the desktop topology. A restart, crashed monitor owner, or missing
+monitor requires explicit preparation again, not automatic recovery during
+the next task.
+
+## Check capabilities before opening
+
+Run `action capabilities`, then call `capabilities` on the active MCP
+connection. Check its `tools/list` for `layer_open`, `layer_snapshot`,
+`layer_click`, `layer_type`, `layer_js`, and `layer_close`.
+Use `action layer display-status` to confirm a prepared monitor is active.
+If it is missing, stop the task and report the preparation requirement.
+
+Compare the orchestration source digest, signed native build manifest, and
+native executable hash with the intended deployment. A version match or an
+installer message saying the app is current does not prove feature parity.
+For a standard packaged runtime, require `runtimeParity.state` to be
+`matched-source-digest`; resolve `source-digest-mismatch` or `unverified`
+before use. This compares bundled artifacts; it does not verify a running app.
+An overridden native host is unverified until its own artifact is checked.
+Reconnect MCP after changing its runtime or configuration, then repeat discovery.
+
+Check `safety.privateLayer` before any display or browser is opened. If blocked,
+stop and report its reason and evidence path. Do not clear the quarantine or
+retry through the CLI/native host. Do not replace requested isolation with
+ordinary background browser opening; it can still activate or reflow the desktop.
+
+An absent quarantine means only that no host block is recorded. It does not
+prove acceptance. Inspect `acceptance.privateLayer` in the capabilities reply.
+Require `state: "accepted"` for ordinary use that requires desktop preservation;
+missing, stale, invalid, or unverified evidence means stop before opening.
+The record lives at `~/Library/Application Support/Action/agent-layer/isolation-acceptance.json`.
+It binds acceptance to the native executable and source, orchestration source,
+host/OS, and physical display configuration. Capabilities checks that binding;
+it does not run display QA or certify a build automatically. Older servers
+without the field are unverified. See [Acceptance](#acceptance) for evidence
+requirements. Controlled QA requires authorization for that host and a
+preserved rollback and layout; do not manufacture a passing record.
+
+**Known failed acceptance, 2026-10-11:** the retained Air trace shows the
+physical display change from 2560×1664 to 1470×956 during
+`CGVirtualDisplay.applySettings`, before browser setup and Action's positioning
+transaction. Air remains quarantined. The guarded build prevents display
+creation; it does not repair the display defect. A successful close or restored
+focus does not pass the preservation requirement.
+
+**Mini foreground check, 2026-10-11:** retained desktop traces from both the
+PiP and no-PiP browser runs show no physical-display, pointer, or unrelated
+window-frame drift. Both show the frontmost process changing to macOS
+`UserNotificationCenter` during `layer_open`, before the first snapshot or
+page input. That foreground check failed and is confounded by system
+notification UI; it is not evidence of a Chrome/CDP input defect or an
+isolation pass.
+
+Those traces exercised the earlier per-task display-creation path. Keeping a
+monitor connected removes that hotplug step from ordinary task opening; it
+does not retroactively pass those runs.
+
+**Bounded arts-mini task pass, 2026-10-11:** two task sessions reused the same
+prepared display and passed strict, continuous 50 ms desktop-preservation
+monitoring across open, interaction, and close. This evidence covers that host
+and tested build, which predates the new persistent viewer controls. It does
+not certify the current controls build, Air, cold provisioning, monitor-owner
+restart, or release. Provisioning, task attachment, and release need distinct
+evidence. Acceptance for ordinary tasks uses a baseline taken with the
+persistent monitor already prepared; a passing run is not a current matching
+acceptance record by itself.
+
+Build and diagnose on the development host. `native:doctor` rebuilds and signs;
+it is not a read-only preflight and must not be used to repair an installation
+target implicitly. Install a matched native app and orchestration runtime with
+rollback instead. For a packaged runtime, set `ACTION_ROOT=<extract>/products/action`,
+not the extraction root. Keep the archive's sibling `bin/` and `products/`
+directories together so the runtime can import `bin/host-pairing.ts`.
+
+## Private browser workflow
+
+Current MCP servers advertise underscore names. Use the active `tools/list`;
+dotted `action.*` names are optional compatibility aliases.
+
+```text
+layer_open      { browser: true, url: "https://example.com", task: "Read the page", pip: true }
+layer_snapshot  {}
+layer_click     { label: "More" }
+layer_type      { text: "Search text" }
+layer_js        { code: "document.title" }
+layer_go        { url: "https://example.com/next" }
+layer_close     { outcome: "done", summary: "Read the page" }
+```
+
+`browser: true` selects Action-owned Chrome. Browser page interaction uses
+CDP exclusively. If CDP is missing, a label or selector cannot be resolved,
+coordinates reach browser chrome or leave the viewport, or a shortcut is not
+supported by the page route, the operation fails without native input.
+Use `layer_go` for navigation instead of `cmd+l`. This input contract does not
+establish that virtual-display creation preserves the physical desktop.
+CDP-only input also does not prevent page JavaScript from requesting popups
+or focus, system permission/notification UI from appearing, or display
+creation from changing the desktop. Acceptance must observe those effects.
+
+Retain `session` from `layer_open`: `mode`, `pid`, `displayId`, `startedAt`,
+and `browserPid` when present. Action results include the session and execution
+route (`devtools` with `pageTargetId`, or `blink` with a native `host`). A
+replacement layer invalidates the binding; do not reuse an earlier snapshot
+or act against the replacement. Check `layer_status` after a connection loss
+or timeout before retrying. Reobserve before repeating an operation whose
+outcome is uncertain.
+
+Use the layer's own snapshot and primitives. `layer_open` begins a drive lease
+unless `leaseId` supplies one; it returns that lease and `layer_close` releases
+the lease it created. A supplied lease remains the caller's responsibility.
+Do not begin a second drive for the layer or use a desktop snapshot as its
+coordinate reference. If setup fails, MCP attempts to close the layer it created
+and reports any unconfirmed cleanup. Inspect `layer_status` before retrying.
+Check `layer_status` before the first open too: opening fails while the
+workspace already has an active task. Close it explicitly first, and do not
+close another caller's task without user authority.
+
+For native apps, open `{ bundleId: "com.apple.calculator", width: 1280,
+height: 800, pip: true }`. Select `windowId` or `windowTitle` to borrow only
+matching windows. Native input can temporarily borrow focus or the pointer;
+that path does not guarantee continuous focus isolation.
+
+## Transport boundaries
+
+| Surface | Layer support |
+| --- | --- |
+| Action MCP | Complete `layer_*` workflow, including `browser: true`, URL navigation, input, and JavaScript |
+| CLI | Monitor `layer prepare`, `display-status`, `release`; task `open`, `status`, `snapshot`, `pip`, `record start/stop`, `close` |
+| Native host | Native display/app primitives; no MCP browser orchestration |
+| Action WebSocket | Raw agent RPC catalog; route private-layer work to MCP |
+| Lattices daemon | Workspace window groups; route private-layer work to Action MCP |
+
+CLI `layer open` accepts `--bundle-id` or `--pid`, `--width`, `--height`,
+`--window-id` or `--window-title`, and `--pip`. It rejects `--browser`, `--url`,
+unknown flags, and unsupported interaction verbs with an MCP routing error.
+The CLI task lifetime is detached; always close it when work ends. Width and
+height on `open` must match the prepared monitor; they do not configure a new
+display. Closing a task does not release the monitor.
+
+## Acceptance
+
+Read-only lookup is `action capabilities` or MCP `capabilities`, under
+`acceptance.privateLayer`. The native host supplies the current host and
+physical-display context; inability to read that context leaves acceptance
+unverified. The record's matching status does not override `safety.privateLayer`
+quarantine, prove the running process matches the installed bundle, or replace
+review of the retained evidence.
+
+The operator-reviewed record has this schema:
+
+| Field | Required value |
+| --- | --- |
+| `schemaVersion`, `outcome` | `1`, `"passed"` |
+| `acceptedAt`, `expiresAt`, `reviewer` | Valid ISO timestamps and a nonempty reviewer; expired records are stale. |
+| `binding` | `executableSha256`, `nativeSourceDigest`, `orchestrationSourceDigest`, `hostFingerprint`, `osBuild`, `displayConfigurationDigest`, matching the current context. |
+| `checks` | `physicalDisplayMode`, `scale`, `arrangement`, `frontmostApp`, `pointer`, `unrelatedWindowFrames`, each `"unchanged-throughout"`. |
+| `phases` | `["open", "interaction", "close"]` |
+| `evidence` | Nonempty list of `{ path, sha256 }` entries; absolute local artifact paths with verified hashes. |
+
+Capabilities discovers and validates this record. It does not write one.
+Create or renew it only from reviewed, authorized acceptance evidence.
+
+For ordinary task acceptance, prepare the monitor first under authorized setup
+conditions, then capture physical modes (logical and pixel sizes, scale and refresh rate),
+display arrangement/mirroring, frontmost app, pointer, and unrelated window
+frames before opening. Monitor those values throughout task attachment, interaction,
+and teardown. Verify a layer snapshot and a real browser interaction, then
+confirm closure and window restoration. Fail on the first unexpected change.
+A final sample that matches the baseline cannot erase an earlier failure.
+Test initial preparation, monitor-owner restart, and explicit release
+separately; those operations change display topology and must not be folded
+into a claim that ordinary tasks never connect or disconnect a display.
+
+## What it does
+
+- Attaches to the prepared monitor and moves the subject app's windows onto it. The original frame of each window is recorded. The persistent monitor owner holds the `CGVirtualDisplay` independently of the task.
+- `windowId` (the `kCGWindowNumber`) or `windowTitle` (a case-insensitive substring) moves only the matching windows. Use it to borrow one window of an app the user is also in, such as a browser.
+- Starts one ScreenCaptureKit stream on the layer display and keeps it running for the layer's life. The viewer, snapshots and recordings all come off that stream (see [Feed](#feed)).
+- Launches the subject in the background if it isn't running, and asks an app with no windows for one (the reopen a Dock click sends). Background launch requests no activation; this is not an isolation acceptance result.
+- `url` (a URL, a bare host read as `https`, or a file path) opens in the subject without activating it, once its windows are on the layer. It needs `bundleId` or `pid`, and can't be combined with `windowId` or `windowTitle`.
+- Adopts windows the subject opens while the layer is up, such as a `cmd+n` window, a pop-up, or an `open-app` with `input.url`. They move onto the layer as they appear, cascaded. A layer that borrowed one window by `windowId` or `windowTitle` adopts nothing more.
+- Shows the PiP viewer unless `pip` is `false`.
+- Writes a state file: display id, global bounds (top-left origin, points), PiP state, and the moved windows with their original frames.
+- Keeps one task per workspace. Opening while a task is active fails; close the task first.
+
+## Primitives
+
+The layer's own tools are the short way to work it. Look, then act on what you saw:
+
+```
+layer_open     { bundleId: "com.apple.Safari", url: "news.ycombinator.com" }
+layer_snapshot {}                                  → p.png, 950×560
+layer_click    { x: 475, y: 196 }                  pixels in that snapshot
+layer_click    { label: "new" }                    or a control by its label
+layer_type     { text: "lobste.rs\n" }             a trailing \n submits
+layer_press    { key: "cmd+l" }
+layer_drag     { from: [95, 224], to: [570, 252] }
+layer_scroll   { x: 475, y: 280, dy: -600 }
+layer_close    {}
+```
+
+Points are pixels in the last `layer_snapshot` image, read through its crop and scale, so an agent never adds the layer's origin or works out the display's scale. `space: "layer"` takes points on the layer display instead. A point outside the last snapshot is an error, and so is a point with no snapshot taken yet.
+
+Browser primitives use the bound CDP page and return `route: "devtools"` with
+`pageTargetId`. Native primitives use `action.act.execute` and return
+`route: "blink"` with the native `host`. Both report the layer session; input
+primitives normally return a fresh snapshot (`look: false` skips it). A lease
+is taken for the caller when none is passed. The native routing below is not a
+fallback for a browser session.
+
+## Native blink acts
+
+While a layer is up, `action.act.execute` routes these acts as blink acts:
+
+| Act | Host command | When |
+|---|---|---|
+| `click` with a point | `blink-click` | the point is on the layer display |
+| `type` | `blink-type` | no accessibility label path applies |
+| `press-key` | `blink-key` | always |
+| `drag` | `blink-drag` | both points are on the layer, and no `filePath` |
+| `scroll` | `blink-scroll` | the point is on the layer |
+
+Accessibility comes first. A target with a bundle id and label is pressed or set through accessibility and never blinks. `blink-click` hit-tests its point before it touches the pointer: if the element there is a button, checkbox, radio, pop-up, menu item, disclosure triangle, link or tab that takes `AXPress`, it is pressed and the result says `via=ax`. A text field, text area, combo box or search field there is focused through accessibility instead of clicked into. Nothing moves and focus does not change.
+
+`blink-type` works the same way. It inserts the text at the caret of the app's focused text field through accessibility (`via=ax`), and only borrows focus for keystrokes (`via=keys`) when the field doesn't take it, is secure, or a `delayMs` cadence is requested. Web fields usually take keystrokes. When the field's value is readable, the blink holds focus until the text shows up in it (`via=keys verified`), because a web view consumes keys in its own content process after the app's main loop has already drained. A trailing newline in `type` text (`"lobste.rs\n"`) splits off: the text goes in through accessibility and the field is submitted with `AXConfirm`, a Return that moves nothing. `press-key` tries accessibility too: a chord that is a menu item's shortcut (`cmd+l`, `cmd+n`) presses that menu item (`via=ax menu="Open Location…"`), and a bare Return or Escape in a text field confirms or cancels it. Anything else borrows focus for the keystroke (`via=keys`).
+
+`press-key` takes a chord in `input.key`, written however the agent reads it: `"return"`, `"cmd+l"`, `"Cmd-Shift-T"`, `"⌘⇧T"`, `["cmd", "l"]` in `input.keys`, or `key` plus `input.modifiers`. Aliases such as `enter`, `esc`, `backspace` and `ArrowDown` map to the host's names. An unknown key is an error that points at `type`, never text typed one character at a time.
+
+The pointer is the fallback: no pressable element at the point, a requested `holdMs`, or `--pointer` on the host command. A pointer blink saves the cursor position and the frontmost app, clicks, and restores both within tens of milliseconds. Its result says `via=pointer`.
+
+`type` and `press-key` land in the app's focused window. If that window is off the layer, the blink raises the app's layer window first, without activating the app, and refuses if focus still isn't on the layer. Keystrokes never reach a window on the user's screen.
+
+`type` and `press-key` target `input.bundleId` or `input.pid` if given, else the layer's app. Accessibility paths (`press-accessibility-element`, `set-accessibility-value`) do not change. A click outside the layer display uses `click-point`.
+
+Drag and scroll have no accessibility equivalent and always use the pointer. It leaves the user's screens for the length of the gesture (200 ms for a drag by default; an instant for a scroll) and comes back. Scroll wheel events activate nothing. A drag's mouse-down activates the app it lands in for up to a second, and focus is handed back afterwards.
+
+Blink acts report the `blink` tier. A background drive lease allows them. They do not show the pointer-focus countdown.
+
+## Feed
+
+The layer captures its own display, not the subject app. A stream that targets an app makes macOS badge that app's windows as shared, and the badge is drawn into the window, so it would show in every frame. The framing to the subject's windows happens downstream, by crop. The stream only delivers frames when something on the layer changes, so an idle layer costs next to nothing.
+
+- **Viewer.** The PiP grows out of the screen corner on its first frame and frames the subject's windows, following them as they move and resize. Drag the header to move it; double-click the header to enlarge it, and double-click again to restore its size. Hide leaves the layer running; `layer pip` / `layer_pip` brings it back.
+- **State.** One dot in the viewer's bottom-right corner: solid coral while the agent can act, breathing while a take records, hollow while paused.
+- **Marks.** The host posts where native acts landed and the viewer rings it: a circle for a click, an outline around the focused field for typing and keys. Accessibility paths can avoid pointer movement; pointer and key fallbacks may temporarily borrow pointer or focus.
+- **Note.** The latest `action.drive.note` shows along the bottom edge for about 12 seconds.
+- **Snapshot.** `layer snapshot` / `layer_snapshot` writes a PNG from the latest frame: the subject's windows by default, one window with `windowId`, or the whole layer with `full`. Nothing is captured on request, so it answers in tens of milliseconds. `unchangedMs` is how long the layer has been still, not how stale the picture is.
+- **Recording.** `layer record start|stop` / `layer_record` adds a recording output to the running stream, so the take starts on the next frame. It records the whole layer display at its native size. One take at a time; closing the layer finishes a take in progress.
+
+## Operator controls
+
+The viewer has a persistent hostname header and native controls outside the captured image:
+
+- **Pause / Resume.** Pauses layer input dispatch. While paused, `state.json` has `"paused": true`; observations remain available. Resume is an operator action. Events or page scripts already dispatched cannot be undone.
+- **Stop.** Pauses input, records a session-specific `handoff.json`, and ends the layer without activating the target app. This stops the layer session, not the agent's entire harness or unrelated work.
+- **Agent.** Looks for the opener's app on this host. Action records its process chain at `open` (`--owner-pids`), activates the nearest app in that chain, and otherwise asks Lattices (`terminals.search`, then `window.focus`) which local terminal window shows it. If nothing resolves, the viewer beeps. This does not return from an SSH host to a conversation on another machine.
+- **Take over.** Records a session-specific handoff, ends the layer, and activates the target app. Borrowed windows return to their recorded frames; windows created on the layer are closed, subject to unsaved-changes prompts. This is not an in-place remote-control mode.
+- **Hide.** Hides only the viewer; the layer keeps running.
+
+Stop and Take over refuse further agent input during teardown and after cleanup. `layer close` does not clear the handoff. A new explicit `layer open` acknowledges it; callers must obtain fresh user authorization before opening again. The prepared monitor remains connected after either action.
+
+These are host-local controls. An interactive viewer streamed to another machine or into a chat is not implemented.
+
+Requests go through `control.request.json` next to the state file and a `SIGUSR2`; the reply lands in `control.reply.json`.
+
+## Lifetime
+
+`layer_close` is the intended teardown. It creates the stop file and waits for the layer to put the windows back and exit. Windows that were opened after the layer went up (`born` in the state file) never sat on the user's screen, so they are closed instead of moved there. One that asks before closing (unsaved changes) stays open and goes back to the frame it appeared at. If the layer does not exit, Action sends `SIGTERM`.
+
+This tears down the task's feed and window attachment, not the monitor.
+`layer release` stops the persistent monitor owner only after its task has been
+explicitly closed. It refuses active tasks and incoming previews without closing
+them. Close dependent tasks first, then release their displays.
+
+The layer also tears down when its owner dies:
+
+- **MCP.** The layer watches the MCP server (`--parent-pid`) and restores the windows if the server exits.
+- **CLI.** The CLI exits once the layer is up, so the layer is detached. Run `layer close` to take it down when the work is done.
+
+A detached layer doesn't wait for `layer close` forever. It also comes down when:
+
+- **Its owners exit.** Every process in the opener's chain that was alive at `open` has exited.
+- **It goes idle.** 30 minutes pass with no act, no snapshot or recording request, and no use of the viewer. A recording in progress keeps the layer up. Pass `--idle-timeout <seconds>` to the host to change the lease; `0` turns it off.
+
+Either way the windows go back first, as with `layer close`.
+
+`layer status` reports the live layer. If the recorded process is gone, status removes the stale files and reports the layer as inactive.
+
+Task and monitor state live in `~/Library/Application Support/Action/agent-layer/`.
+Use `layer status` for the task and `layer display-status` for the monitor;
+an inactive task with a ready monitor is the normal state between tasks.
+
+## Requirements and limits
+
+- The feed needs Screen Recording for Action. Without it the layer still works (windows move, blink acts land), but there is no viewer, snapshot or recording; the layer's `layer.log` says `feed failed`. Recording needs macOS 15.
+- The display touches the bottom-right-most display only at its corner. A pointer pushed exactly through that corner can still cross onto it.
+- A pointer blink click on another app activates that app for a moment before focus goes back. The menu bar can flicker for that moment.
+- Blink acts refuse targets that aren't on an agent layer: a point off the layer, or an app with no window on it. `--any-display` lifts that for tests.
+- Killing a task with `SIGKILL` skips its window restoration; the persistent monitor remains. Killing the monitor owner disconnects the display, allowing macOS to relocate its windows. Neither is an ordinary task teardown or a preservation guarantee.
+
+## Native runtime
+
+> How Action.app and the Action agent split native responsibilities
 
 This page describes the runtime split that currently makes `action` behave like
 a real macOS app instead of a command wrapper pretending to be one.
 
-## The Split
+## The split
 
 There are two native roles:
 
@@ -235,9 +1424,13 @@ Owns:
 
 Main file:
 
-- [ActionHostMain.swift](native/engine/Sources/ActionHostMain.swift)
+- [ActionHostMain.swift](../native/engine/Sources/ActionHostMain.swift)
 
-## Local Agent Runtime
+## Local agent runtime
+
+`Action.app` starts the agent as a child helper,
+`Contents/Helpers/ActionAgent.app`, on `ws://127.0.0.1:4319`. The helper exits
+with its parent.
 
 Owns:
 
@@ -248,11 +1441,11 @@ Owns:
 
 Main files:
 
-- [ActionAgentRuntime.swift](native/engine/CoreSources/ActionAgentRuntime.swift)
-- [ActionAgentClient.swift](native/engine/CoreSources/ActionAgentClient.swift)
-- [ActionAgentCommandBridge.swift](native/engine/Sources/ActionAgentCommandBridge.swift)
+- [ActionAgentRuntime.swift](../native/engine/CoreSources/ActionAgentRuntime.swift)
+- [ActionAgentClient.swift](../native/engine/CoreSources/ActionAgentClient.swift)
+- [ActionAgentCommandBridge.swift](../native/engine/Sources/ActionAgentCommandBridge.swift)
 
-## Why This Exists
+## Why this exists
 
 Two important failures pushed the design here:
 
@@ -261,7 +1454,7 @@ Two important failures pushed the design here:
 WebKit behaved unreliably when UI modes were entered through the wrong runtime
 path. The fix was to let AppKit own the UI lifecycle cleanly.
 
-### 2. ScreenCaptureKit Recording
+### 2. ScreenCaptureKit recording
 
 Recording was not reliable when attempted inside the wrong lifecycle context.
 The stable path now launches a fresh `Action.app` instance in `recording-probe`
@@ -271,7 +1464,7 @@ The lesson is simple:
 
 **AppKit-dependent work should run inside a real app lifecycle.**
 
-## Current Execution Flow
+## Current execution flow
 
 For normal operator usage:
 
@@ -288,7 +1481,7 @@ For recording:
 4. probe performs the actual `ScreenCaptureKit` recording
 5. artifacts and finished markers are written
 
-## Important Boundaries
+## Important boundaries
 
 Keep these rules intact:
 
@@ -302,7 +1495,7 @@ Keep these rules intact:
 Use `action capabilities` and the active MCP `capabilities` / `tools/list`
 for build provenance and routing. Check host quarantine before opening a private
 display. Native support, runtime health, and version strings do not establish
-physical desktop preservation. See [Agent layer](agent-layer.md).
+physical desktop preservation. See [Agent layer](/action/docs/agent-layer).
 
 `native:doctor` builds and signs. Run it on an authorized development host.
 On an installation target, preserve the installed bundle and rollback; deploy
@@ -326,7 +1519,7 @@ The extracted archive contains sibling `bin/` and `products/` directories.
 Set `ACTION_ROOT=<extract>/products/action`, not the extraction root, and keep
 `bin/host-pairing.ts` in place; the runtime imports that canonical dependency.
 
-## Scripts And Helpers
+## Scripts and helpers
 
 Call native work through package.json scripts from `products/action`:
 
@@ -340,7 +1533,7 @@ bun run native:test:screenshot
 bun run native:test:record
 ```
 
-The scripts wrap helpers in [native/engine/scripts](native/engine/scripts). The most important wrappers are:
+The scripts wrap helpers in [native/engine/scripts](../native/engine/scripts). The most important wrappers are:
 
 - `build-app.sh`
 - `doctor.sh`
@@ -350,14 +1543,14 @@ The scripts wrap helpers in [native/engine/scripts](native/engine/scripts). The 
 
 ## Recording
 
-# Recording
+> How Action records a window or region and signals completion
 
 Recording is the most important runtime path in this project.
 
 This page documents how it currently works and what assumptions should remain
 true while the product is still being hardened.
 
-## What Is Stable Right Now
+## What is stable now
 
 The native recording path now succeeds for:
 
@@ -370,7 +1563,7 @@ The successful path produces:
 - a `.finished` marker file
 - an optional debug log if `--debug-log` is supplied
 
-## The Key Discovery
+## The key discovery
 
 The main recording bug was not just a bad capture configuration.
 
@@ -383,7 +1576,7 @@ The deeper issue was lifecycle ownership:
 That is why the current solution uses a dedicated `recording-probe` mode inside
 `Action.app`.
 
-## Current Recording Path
+## Current recording path
 
 For a region recording request:
 
@@ -396,11 +1589,11 @@ For a region recording request:
 
 Core files:
 
-- [ActionRecordingProbeLauncher.swift](native/engine/CoreSources/ActionRecordingProbeLauncher.swift)
-- [RecordingProbeAppRunner.swift](native/engine/Sources/RecordingProbeAppRunner.swift)
-- [ActionHostMain.swift](native/engine/Sources/ActionHostMain.swift)
+- [ActionRecordingProbeLauncher.swift](../native/engine/CoreSources/ActionRecordingProbeLauncher.swift)
+- [RecordingProbeAppRunner.swift](../native/engine/Sources/RecordingProbeAppRunner.swift)
+- [ActionHostMain.swift](../native/engine/Sources/ActionHostMain.swift)
 
-## Testing Recording
+## Testing recording
 
 The wrapper script is:
 
@@ -411,7 +1604,7 @@ bun run native:test:record
 For lower-level testing, `run-app-host.sh` can call recording commands
 directly.
 
-## Important Caveat
+## Important caveat
 
 The initial CLI reply usually means:
 
@@ -423,18 +1616,197 @@ It does **not** mean:
 
 Completion is represented by the finished marker file.
 
-## What To Preserve
+## What to preserve
 
 - real AppKit lifecycle for actual recording work
 - stop-file and finished-file based orchestration
 - debug-log passthrough for probe runs
 - clean app/agent separation even if the app is doing the final recording work
 
-## What To Avoid
+## What to avoid
 
 - pushing real recording back into a plain headless lifecycle
 - assuming a WebSocket ack is equivalent to a completed recording
 - removing the probe path before a better lifecycle-safe replacement exists
+
+## Stage
+
+> Present listed windows on a flat backdrop for a clean take
+
+Action owns the look of a take. The wallpaper is never written.
+
+`action.stage.set` is the primitive: declare the world, Action makes it so.
+
+```json
+{
+  "mode": "drape",
+  "color": "0e0d0a",
+  "subjects": [
+    { "bundleId": "to.talkie.agent.dev", "title": "Settings" },
+    { "bundleId": "com.googlecode.iterm2" }
+  ]
+}
+```
+
+## What it does
+
+- Puts up a flat color sheet at ordinary window level (`NSWindow.Level.normal`).
+- `AXRaise`s only the listed windows. Same level is what lets them sit on the sheet.
+- Reads on-screen window order in the staged bounds (or the sheet's frames). The scene is the listed subjects on the sheet. Anything else above the sheet, including the driver terminal, is an intruder unless it was listed.
+- Fails `stage.set` if a listed subject is still buried or a non-subject occupies the scene. It raises again a couple of times before refusing. The sheet stays up so `stage.status` can show who is actually on top.
+- Leaves every other app alone. No hiding. No desktop-picture writes.
+- Dies with the process that asked for it. `action.stage.clear` takes it down on purpose.
+
+## Lifetime
+
+`action.stage.clear` is the intended teardown. Two backstops cover the case where it never runs:
+
+- **Owner.** A drape set through MCP watches the MCP server and dismisses itself if that server dies. A drape set through the CLI cannot do this: the CLI process exits the moment the sheet is up, so a drape watching it would take itself down immediately. CLI drapes are detached.
+- **`seconds`.** An optional lifetime after which the drape dismisses itself. The CLI defaults to 1800; pass `--seconds` to change it. MCP omits it by default because the owner check already covers a dead server.
+
+`stage status` reports `owner`, `pid`, whether the drape is still up, and `scene`: the windows actually on top of the sheet.
+
+`mode: "space"` keeps the sheet on the current Space only. Instantiate subjects on that Space; windows on other Spaces will not compose into the frame.
+
+`level: "desktop"` is the other sheet in the repertoire. It sits under all app windows and is the wrong default for a take.
+
+## Surfaces
+
+- MCP: `action.stage.set`, `action.stage.clear`, `action.stage.status`
+- CLI: `bun packages/cli/src/main.ts stage set|clear|status`
+
+To work an app out of the user's sight instead of staging it for a take, see [Agent layer](/action/docs/agent-layer).
+
+## Skills
+
+> Review patterns an AI agent follows when changing Action
+
+These are project-specific skills or task patterns an AI agent should follow.
+
+## Native runtime review
+
+Use when:
+
+- changing AppKit lifecycle code
+- changing agent startup or bridge logic
+- changing WebKit entry paths
+
+Instructions:
+
+1. read [Native runtime](/action/docs/native-runtime)
+2. verify whether the change belongs in app code or agent code
+3. keep AppKit-owned behavior in `Action.app`
+4. verify the signed app still builds
+
+## Recording review
+
+Use when:
+
+- changing `ScreenCaptureKit` recording
+- changing stop-file or finished-file handling
+- changing probe launch behavior
+
+Instructions:
+
+1. read [Recording](/action/docs/recording)
+2. inspect the probe launcher and probe app runner
+3. preserve `.mov` + `.finished` behavior
+4. test a real recording path, not just a unit-level refactor
+
+## Agent API review
+
+Use when:
+
+- adding WebSocket methods
+- changing request or response shape
+- updating CLI-to-agent behavior
+
+Instructions:
+
+1. read [Api](/action/docs/api)
+2. update the protocol source of truth
+3. confirm method names remain documented
+4. verify callers still match the transport contract
+
+## Hermes Action
+
+Use when:
+
+- connecting Hermes to the native Action runtime
+- using Action MCP tools from a harness
+- recording or inspecting native macOS surfaces through Hermes
+
+Instructions:
+
+1. read [docs/harnesses/hermes-action.md](harnesses/hermes-action.md)
+2. use [skills/hermes-action/SKILL.md](../skills/hermes-action/SKILL.md) as the harness doctrine
+3. prefer observe and resolve before act
+4. treat recording start as asynchronous until `.finished` or `action.record.status` confirms completion
+
+## Overview
+
+> What Action is, what it installs, and how it relates to Lattices
+
+Action is a native macOS app that lets agents inspect and control Mac apps and
+browser surfaces, and record what they did. It is a separate product in the
+Lattices family. It has its own signed `Action.app`, its own local agent, its
+own release tags (`action-vX.Y.Z`), and its own lifecycle.
+
+## What Action does
+
+| Job | Surfaces |
+| --- | --- |
+| Inspect | Screenshots, accessibility trees, Apple Vision OCR, optional provider vision |
+| Control | Target resolution, clicks, typing, key chords, drags, scrolls, focus, app launch |
+| Record | ScreenCaptureKit video of a window or region, plus session traces and artifacts |
+| Stage | A flat backdrop behind listed windows for a clean take (see [Stage](/action/docs/stage)) |
+| Work out of sight | A private virtual display for an app or Action-owned browser (see [Agent layer](/action/docs/agent-layer)) |
+
+## What gets installed
+
+| Part | Where | Purpose |
+| --- | --- | --- |
+| `Action.app` | `/Applications/Action.app` (bundle id `dev.lattices.Action`) | AppKit lifecycle, menus, WebKit, permission UI, recording probes |
+| Action agent | `Action.app/Contents/Helpers/ActionAgent.app`, `ws://127.0.0.1:4319` | Local WebSocket RPC for native requests and drive leases |
+| Agent runtime | A runtime bundle or a `products/action` checkout | TypeScript runtime, product CLI, and the Action MCP server |
+
+`action install` installs the app only. The app alone does not include MCP
+orchestration. To connect an agent over MCP, install the matching runtime as
+described in [Agent setup](/action/docs/agent-setup).
+
+## How Action relates to Lattices
+
+Lattices 0.15.1 owns workspace organization on `lattices.sock`. Action 0.4.0
+owns native computer use on `action.sock`. Both sockets are in
+`~/.lattices/run`. Quitting one app does not stop the other. Remote access goes only through the opt-in Lattices gateway. See
+[API](/action/docs/api#private-connection).
+
+Action has its own CLI, `action`, from `@lattices/action`. It installs,
+launches, quits, and queries Action, drives apps through its computer-use
+backends, and forwards other verbs to the Action runtime CLI. `lats action`
+remains as the Lattices family entry point. Two
+nearby commands do not reach Action:
+
+- `lats cua` (alias `lats computer`) calls the core daemon's `cua.*` methods. See the
+  [Lattices API](/lattices/docs/api).
+- `lats mcp` serves the `browser_*` tools that drive Action-owned Chrome
+  profiles over CDP. That server is part of the Lattices CLI, not Action.app.
+  See [Browser](/action/docs/browser) and the [Lattices MCP](/lattices/docs/mcp).
+
+[Concepts](/action/docs/concepts) has the full command-to-process table.
+
+## Platforms
+
+Action.app runs on macOS. There is no Linux build of Action.app. The Action
+runtime can drive a Linux desktop that runs `lattices-host`. See
+[Remote engine](/action/docs/remote-engine).
+
+## Next steps
+
+- [Getting started](/action/docs/getting-started): install, launch, and check the app.
+- [Agent setup](/action/docs/agent-setup): connect an MCP agent to a matched runtime.
+- [Concepts](/action/docs/concepts): processes, ports, sessions, and leases.
+- [API](/action/docs/api): the agent WebSocket protocol.
 
 ## ARCHITECTURE
 
@@ -1767,7 +3139,7 @@ Should provide:
 
 Should not provide:
 
-- direct Minimax or OpenAI client logic
+- direct model client logic
 - prompt templating
 - provider-specific parsing
 
@@ -1793,7 +3165,7 @@ Should provide:
 
 Examples:
 
-- Minimax M2.7 adapter
+- local Moondream adapter
 - OpenAI vision adapter
 - local CLI adapter for custom workflows
 
@@ -2815,11 +4187,11 @@ When this roadmap lands, `action` should support this loop:
   - [ ] optional recommended actions
   - [ ] raw response reference
 
-### 4.2 Minimax Adapter
+### 4.2 Local Moondream Adapter
 
-- [ ] Add a concrete Minimax M2.7 adapter.
-- [ ] Read credentials from environment or config, not from the native app.
-- [ ] Save the exact request payload sent to Minimax as an artifact.
+- [ ] Add a local Moondream adapter.
+- [ ] Read the Moondream install path from environment or config, not from the native app.
+- [ ] Save the exact request payload sent to the model as an artifact.
 - [ ] Save the raw response as an artifact.
 - [ ] Normalize the response into the internal findings format.
 
@@ -3018,7 +4390,7 @@ This is the order that keeps the architecture practical.
 ### Phase C: Reflection
 
 - [ ] add provider adapter interface
-- [ ] add Minimax adapter
+- [ ] add local Moondream adapter
 - [ ] add prompt preset registry
 - [ ] add findings persistence
 
@@ -3941,428 +5313,165 @@ This allows the product to move quickly without surrendering architectural contr
 
 It may or may not be the final public name. The architectural direction matters more than the branding for now.
 
-## Api
+## Fast-browser-experiment
 
-# API
+# Fast browser experiment
 
-This page documents the current local agent protocol for `action`.
+Action's Chrome companion has an opt-in observation-bound execution path inspired by
+[Jev Ultrafast](https://github.com/browser-use/jev-ultrafast). It uses the existing
+Chrome companion bridge and an explicit tab ID. It does not change native Action
+execution or Lattices app behavior.
 
-The protocol is intentionally small right now. It is enough to support native
-health checks, permissions, window control, screenshots, and recording.
+## Run
 
-Primary source:
+Build the companion with `bun run chrome:companion:build` and reload the development
+extension in the dedicated Action browser profile. The bridge must be running and
+connected. This source change does not update an already loaded extension.
 
-- [ActionAgentProtocol.swift](native/engine/CoreSources/ActionAgentProtocol.swift)
+Create a trusted local policy module, for example:
 
-## Transport
-
-Working-tree contract (unreleased; installed releases may still use TCP):
-
-- Protocol: WebSocket over the private Unix socket `~/.lattices/run/action.sock`.
-- Credential: `~/.lattices/run/action.token`; every upgrade requires its value in `x-lattices-token`, including access to read-only methods.
-- The runtime directory is mode `0700`; socket and token are mode `0600`. `LATTICES_RUNTIME_DIR` overrides the directory; `ACTION_SOCKET_PATH` overrides the agent socket.
-- Local clients send `Host: localhost`. Browser `Origin` headers are rejected.
-- Loopback TCP on `127.0.0.1:4319` is compatibility-only and requires explicit `ACTION_ALLOW_TCP=1`; it still requires authentication and never serves as a silent fallback.
-- Remote clients connect through the separate paired gateway. Keep Action's AppKit and recording lifecycles independent from Lattices.
-
-## Request Shape
-
-```json
-{
-  "id": "uuid-string",
-  "method": "capture.recordRegion",
-  "params": {
-    "output": "/tmp/example.mov"
-  }
-}
+```ts
+import { createFastBrowserPolicy } from "@action/runtime";
+export default createFastBrowserPolicy({
+  baseURL: process.env.ACTION_FAST_MODEL_BASE_URL!, // API base, including /v1 if required
+  apiKey: process.env.ACTION_FAST_MODEL_API_KEY!,
+  model: process.env.ACTION_FAST_MODEL!,
+  textModel: process.env.ACTION_FAST_TEXT_MODEL,
+  // Define an independent, task-specific outcome assertion before starting.
+  // Example for a goal whose outcome is reaching one exact article:
+  verify: async (_goal, page) => page.url === process.env.ACTION_FAST_EXPECTED_URL,
+});
 ```
 
-Fields:
+From the Action product directory:
 
-- `id`: request id, defaults to a UUID in native clients
-- `method`: string name from `ActionAgentMethod`
-- `params`: flat string map
-
-## Response Shape
-
-```json
-{
-  "id": "uuid-string",
-  "ok": true,
-  "result": {
-    "status": "finished"
-  },
-  "error": null
-}
+```sh
+bun packages/cli/src/fast-browser.ts <tab-id> <policy-module-path> '<goal>'
 ```
 
-Fields:
+The policy module is executable operator-supplied code. Never load a module named
+by page content or model output. Model calls use an OpenAI-compatible JSON chat
+completion endpoint. The caller selects models; no vendor or model is pinned.
+This provider combines operation and target in one JSON response. It does not
+implement TypeSafe's speculative heads or imply equivalent inference latency.
 
-- `id`: mirrors request id
-- `ok`: success flag
-- `result`: optional flat string map
-- `error`: optional error string
+## Contract
 
-## Methods
+- `action.fast.observe`, params `{ surface: { tabId } }`, returns an observation ID,
+  URL, title, bounded visible text, and at most 80 controls with compatible operations.
+- `action.fast.act`, params `{ surface: { tabId }, observationId, target, operation,
+  text? }`, returns `executed`, `stale`, `invalid`, or `uncertain` and execution timing.
+- Only CLICK and TYPE_TEXT are offered. Text generation is separate and invoked
+  only for TYPE_TEXT. Password/file fields and unsupported input types are excluded.
+- Each observation can be consumed once. A new observation replaces the previous
+  one. Targets retain DOM node identity; execution never resolves a model selector.
+- Before input, check document URL/viewport/form values, target semantics and nearby
+  context, eligibility, current geometry, and occlusion. Unrelated changes outside
+  the target's context do not automatically invalidate a decision.
+- Confirmed stale rejections may retry from a fresh observation. Lost execution
+  replies and uncertain mutations stop the loop. Executed means input was issued;
+  it does not prove the application accepted it.
+- DONE requires a fresh observation and the caller's independent verifier. False
+  verification ends as `unverified`. The default budget is 20 decisions.
 
-| Method | Purpose | Key Params |
-|---|---|---|
-| `ping` | basic liveness check | none |
-| `status` | server metadata and supported methods | none |
-| `permissions.snapshot` | current permission state | none |
-| `permissions.request` | request or prompt for permissions | none |
-| `settings.openAccessibility` | open Accessibility settings pane | none |
-| `settings.openScreenRecording` | open Screen Recording settings pane | none |
-| `app.activate` | bring an app forward | `bundleId` |
-| `window.setFrame` | move/resize an app window | `bundleId`, `x`, `y`, `width`, `height` |
-| `window.getFrame` | inspect current app window frame | `bundleId` |
-| `capture.recordAppWindow` | record a target app window | `bundleId`, `output`, optional `stopFile`, `finishedFile`, `debugLog` |
-| `capture.recordRegion` | record a bounded region | `x`, `y`, `width`, `height`, `output`, optional `fps`, `scale`, `stopFile`, `finishedFile`, `debugLog` |
-| `capture.screenshotAppWindow` | screenshot a target app window | `bundleId`, `output` |
-| `capture.screenshotRegion` | screenshot a bounded region | `x`, `y`, `width`, `height`, `output` |
-| `capture.screenshotScreen` | screenshot the main display | `output` |
+Each step emits observe, choose, text, and execute durations. Execution receipts are
+emitted before another observation. Total elapsed time includes initial observation
+and final verification, but excludes browser setup and policy module loading.
+The snapshot also reports time inside the DOM reader. JSON traces can contain
+field-derived/page information; store them appropriately for the task.
 
-## Recording Contract
+## Verify and measure
 
-Recording methods have a special lifecycle:
-
-- startup success means the recording path was accepted
-- actual completion is represented by the finished marker file
-- for debugging, pass `debugLog`
-
-This matters because recording is currently performed by launching a real
-`Action.app` probe instance rather than keeping the full recording lifecycle
-inside the headless agent process.
-
-## Browser-profiles
-
-# Browser Identity: Regular Chrome, Action Browsers, Seeded Identities
-
-How Action gives an agent a **browser identity** without taking over your daily
-Chrome — and which kind of control you get in each case.
-
-## Three browsers, two kinds of control
-
-When an agent says "I'll open it in Chrome", it can mean one of three things.
-They are not interchangeable.
-
-| | What it is | What the agent can do |
-|---|---|---|
-| **1. Your regular Chrome** | The browser you use all day. Your real profiles (`Default`, `Profile 1` / "Work"), your tabs, history, extensions, and logins. | **Open a URL, and that's it.** `browser_open { mode: "regular" }` is a visible handoff with no DevTools attachment. To make the agent *act* there, use Action's native macOS control: screen capture + accessibility (`action.observe.snapshot`, `action.resolve.target`, `action.act.execute`). |
-| **2. An Action browser** | A real, non-headless Chrome that Action owns, on its own user-data-dir under `~/Library/Application Support/Action/ChromeProfiles/`. The default identity `agent-browser` is blank and signed into nothing. | **Full DOM control** over CDP: `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_tabs`. |
-| **3. An Action browser identity seeded from one of your Chrome profiles** | The same Action-owned Chrome under a name you choose (`work`, `mira`, …), carrying cookies copied from one of your real profiles for an explicit allowlist of domains. | **Full DOM control, on sites you're already signed in to.** |
-
-The tradeoff in one line: **your regular Chrome has your session but only
-screen-and-accessibility control; an Action browser has DOM control but starts
-as a stranger.** Seeding (option 3) is how you get both.
-
-This is a boundary Action does not try to cross. [Chrome 136 and later ignore
-remote-debugging switches for the default personal data
-directory](https://developer.chrome.com/blog/remote-debugging-port), and Action
-does not attempt to bypass it. Pointing automation at your everyday user-data-dir
-would also fight Chrome's directory lock and hand an agent your full history,
-extensions, and sessions by accident.
-
-### Picking one
-
-- The user wants to *look* at something in their own browser → **regular**.
-- The agent needs to click through a public site → **Action browser**.
-- The agent needs to click through a site you're logged into → **seeded identity**.
-- The agent needs to act inside your real signed-in session, and cookies aren't
-  enough (passkeys, SSO device trust, an extension's state) → **regular Chrome
-  plus Action's native observe/act**, not the browser tools.
-
-## The canonical example: seed "Profile 1" into `work`, then drive it
-
-Your Chrome profile *directory* names are `Default`, `Profile 1`, `Profile 2`, …
-and are not the display names you see in Chrome's avatar menu. A browser you
-call "Work" is usually the `Profile 1` directory. Map them first, then seed.
-
-From an agent, over MCP:
-
-```text
-browser_import_cookies { listSourceProfiles: true }
-# -> [{ dir: "Default", name: "Personal" }, { dir: "Profile 1", name: "Work" }, ...]
-
-browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"] }
-# dry run: lists exactly which cookies would be copied
-
-browser_import_cookies { into: "work", source: "Profile 1", domains: ["github.com"], confirm: true }
-# writes them into the Action identity `work`
-
-browser_open { url: "https://github.com/notifications", profile: "work" }
-browser_snapshot
-browser_screenshot
-```
-
-The same thing from the terminal:
-
-```bash
-# map display names to profile directories
-bun run chrome:companion:import:cookies -- --list-profiles
-
-# dry run
-bun run chrome:companion:import:cookies -- list --into work --source "Profile 1" --domains github.com
-
-# write
-bun run chrome:companion:import:cookies -- import --into work --source "Profile 1" --domains github.com --confirm
-```
-
-After that, `work` is an ordinary Action identity: `browser_use_profile
-{ profile: "work" }` or `browser_open { url, profile: "work" }`, and every DOM
-tool works against it.
-
-## Named identities
-
-Identities are created on first use — any unused name gives you a fresh blank
-one. Shipped conventions:
-
-- `agent-browser` — the default blank agent identity
-- `work` — seeded from your work Chrome profile, per the example above
-- `mira` — the creative/Midjourney identity used by the companion tooling
-
-Create and prepare one with the companion extension loaded:
-
-```bash
-# from the Action product root (`products/action`)
-bun run chrome:companion:profile -- setup work
-```
-
-This builds the companion extension, creates the profile directory, opens
-`chrome://extensions` in that profile, and reveals `packages/chrome-companion/dist`
-so you can **Load unpacked** once.
-
-Later:
-
-```bash
-bun run chrome:companion:profile -- launch work
-bun run chrome:companion:profile -- check work
-bun run chrome:companion:profile -- path work
-```
-
-Environment aliases (shared between companion tooling and Action Browser MCP):
-
-| Variable | Meaning |
-|----------|---------|
-| `ACTION_BROWSER_PROFILE` / `ACTION_CHROME_COMPANION_PROFILE` | Active identity name |
-| `ACTION_BROWSER_PROFILE_DIR` / `ACTION_CHROME_COMPANION_PROFILE_DIR` | Absolute user-data-dir override |
-| `ACTION_BROWSER_PROFILE_ROOT` / `ACTION_CHROME_COMPANION_PROFILE_ROOT` | Root for named identities |
-| `ACTION_BROWSER_DEBUG_PORT` | CDP port (MCP default `9334`) |
-| `ACTION_ROOT` | Action product root (`<lattices-checkout>/products/action`); cookie tools use it when the MCP process starts elsewhere |
-
-## Cookie seeding
-
-Copy **selected** cookies from a regular Chrome profile into an Action identity:
-
-```bash
-# list your Chrome profiles (directory + display name)
-bun run chrome:companion:import:cookies -- --list-profiles
-
-# list Action identities
-bun run chrome:companion:import:cookies -- --list-action-profiles
-
-# dry-run
-bun run chrome:companion:import:cookies -- list --into work --domains github.com
-
-# write
-bun run chrome:companion:import:cookies -- import --into work --domains github.com --confirm
-
-# narrow to specific cookies
-bun run chrome:companion:import:cookies -- import --into mira \
-  --domains midjourney.com \
-  --only cf_clearance \
-  --confirm
-```
-
-Or via the profile CLI:
-
-```bash
-bun run chrome:companion:profile -- import-cookies import --into work --domains github.com --confirm
-```
-
-Notes:
-
-- Requires a Keychain allow for Chrome Safe Storage only when decrypting values;
-  the import path copies encrypted blobs as-is for same-machine use.
-- Prefer domain allowlists over full-jar dumps.
-- Cookies are not a complete identity (localStorage / passkeys may still need a
-  one-time interactive login in the Action identity).
-
-## Chrome Companion (generic extension)
-
-Package: `packages/chrome-companion`
-
-- Manifest V3 extension with DOM observe / resolve / act helpers
-- In published releases, a localhost bridge on `http://127.0.0.1:4321` (WebSocket for the extension)
-- One-time **Load unpacked** per Action identity (`dist/` after build)
-
-The private IPC source build (unreleased) uses Chrome native messaging instead
-of the extension's TCP connection. The registered native host connects to
-`~/.lattices/run/action-chrome.sock` with `action-chrome.token`. Use the matching
-extension, native host, and Action runtime, including for a local installation.
-Register the host for the exact extension ID and Chrome user-data directory;
-registration for regular Chrome does not cover a separate Action identity.
-
-```bash
+```sh
+bun test packages/runtime/src/fast-browser.test.ts packages/runtime/src/providers/fast-browser-model.test.ts
+bun run typecheck
 bun run chrome:companion:build
-bun run chrome:companion:bridge
-bun run chrome:companion:health
-bun run chrome:companion:profile -- setup work
+# Supply a Playwright module path if it is not installed locally.
+ACTION_PLAYWRIGHT_MODULE=/path/to/playwright \
+ACTION_CHROME_EXECUTABLE=/path/to/chrome \
+bun packages/chrome-companion/scripts/check-fast-actions.mjs
 ```
 
-Chrome Stable often ignores `--load-extension`; the reliable path is manual
-unpacked install inside the Action-owned identity.
+The browser checks run the actual content-script message handlers in an isolated
+headless browser. They cover changed/replaced/covered/hidden/disabled/moved targets,
+form changes, unrelated updates, duplicate requests, invented targets, and typing.
+They do not exercise the installed extension's bridge or a live model. A
+recorded presentation run is reproducible via
+`packages/chrome-companion/scripts/demo-presentation.mjs` (dedicated fixture
+browser, video artifact under `artifacts/presentation-demo-*`).
 
-## Action Browser MCP
+Compare identical tasks and model settings with the existing path, retaining failed
+runs. Report independent completion, wrong actions, stale rejections, uncertain
+execution, timings, and model cost separately. No speedup has been established by
+these implementation/guard checks.
 
-Server: `bin/mcp/toolsets/browser/index.ts` in the lattices repo root — the
-browser tools are a toolset inside the lattices MCP, served by `lattices mcp`.
-See [the lattices MCP doc](../../../docs/mcp.md).
+Limitations: common light-DOM controls only; no frames, shadow DOM, canvas, native
+selects, scrolling, arbitrary keyboard widgets, or full page stabilization.
+Text and target context are bounded and do not implement the full accessible-name
+algorithm. The extension uses DOM click/value events, which may be rejected by sites
+requiring trusted physical input. After executed input, the loop waits up to two seconds for a visible snapshot
+change before choosing again. An unchanged snapshot blocks rather than repeating
+input. Unrelated visible changes can also release this wait; it is not a general
+page-ready signal. All decisions count toward the budget. One loop at a time per tab.
 
-### Tools
 
-| Tool | Purpose |
-|------|---------|
-| `browser_profiles` | List Action identities, the active one, and the three-surface policy |
-| `browser_use_profile` | Switch the active identity (`agent-browser`, `work`, `mira`, …) |
-| `browser_profile_info` | Active path, cookie readiness, companion hints |
-| `browser_import_cookies` | Dry-run or confirm a seed from a regular Chrome profile |
-| `browser_companion_status` | Extension dist + bridge health |
-| `browser_open` | Open in an Action browser, or `mode: "regular"` for an open-only handoff |
-| `browser_tabs` / `browser_snapshot` / `browser_click` / `browser_fill` / `browser_screenshot` / `browser_close` | DOM automation via CDP — Action browsers only |
-| `browser_resize` | Set a tab to an explicit viewport width and height for responsive checks; `target: "window"` resizes the real Chrome window instead |
+## Live Jev runner
 
-### Two MCP surfaces
+`createJevPolicy` calls TypeSafe System One with the `jev-latest` alias. Operation,
+click target, and typing target use parallel choice heads in one request. The
+runtime consumes only the target head matching the selected operation and records
+the concrete model version, confidence, probabilities, and usage. Typing content
+comes from a separately configured text provider.
 
-- **Native runtime MCP** (`action`): observe / resolve / act / record on macOS
-  through Action.app. This is what controls your *regular* Chrome window, and
-  every other native app, via screen capture and accessibility.
-- **Browser MCP** (the `browser` toolset of `lattices mcp`): Action-owned Chrome
-  identities plus DOM-level tools over CDP.
+From the Action directory, with the extension connected to its local bridge:
 
-Register it. The entry names the `lattices` binary and no path, so a repo move or
-a version bump cannot break it:
-
-```bash
-claude mcp add lattices -s user -- lattices mcp
+```sh
+# Inject credentials through your secret manager; do not put them in source.
+# TYPESAFE_API_KEY is required. Typing also needs TEXT_MODEL,
+# TEXT_MODEL_BASE_URL, and TEXT_MODEL_API_KEY.
+bun scripts/demo-jev.ts <tab-id> <exact-result-url> '<goal>'
 ```
 
-To pin a default identity, add the environment variable to that same entry:
+`TYPESAFE_MODEL` optionally overrides the alias. `ACTION_DEMO_OUTPUT` selects the
+artifact directory. Use a fresh directory per attempt. The runner saves decisions,
+execution receipts, timings, and an independently checked exact destination URL.
 
-```bash
-claude mcp add lattices -s user -e ACTION_BROWSER_PROFILE=work -- lattices mcp
-```
+Live evidence on 2026-09-19: Jev resolved to `jev-1.13.0` and drove the installed
+Action extension from Wikipedia's main page to Gödel's incompleteness theorems.
+The corrected run took 2774 ms: TYPE_TEXT, CLICK, DONE, with the destination URL
+verified. Google Gemini Flash Lite supplied the search text. The preceding run
+repeated Search while navigation was pending; this prompted the progress wait and
+its regression tests. This is a single task result, not a comparative benchmark.
+The replay captures Chrome's actual rendered frames; desktop capture was unavailable
+because the dedicated window remained on another macOS Space.
 
-`ACTION_ROOT` is only needed for the Chrome Companion paths below, and only when
-the tools run from a published `lattices` install rather than a checkout.
 
-### Agent workflow
+## Watchable mode
 
-```text
-browser_profiles                                   # what identities exist
-browser_use_profile { profile: "work" }            # pick one
-browser_open { url: "https://github.com" }         # drive it
-browser_snapshot
-browser_screenshot
-browser_companion_status                           # optional richer DOM path
-browser_close { scope: "browser" }                 # when the task is done
-```
+Set `ACTION_WATCH=1` for the single-search runner. The transport activates the
+explicit tab and focuses its Chrome window. The executor shows a soft coral
+disc pointer and target outline before input, revalidates after the movement,
+and shows an input receipt. This is a synthetic Action pointer, not the OS
+cursor. Confirmed clicks bloom ripple bubbles at the point of input; stale
+rejections never produce a bubble or pulse. TYPE_TEXT enters text in real
+progressive chunks, and each chunk plays a subtle WebAudio tick and outline
+flash — sound marks characters actually written, never simulated replay.
+`ACTION_SOUND=0` mutes ticks; `ACTION_VOLUME` (0–1, default 0.35) sets tick
+level. Reduced-motion settings skip spatial animation and bubbles. Feedback
+lives in an isolated, non-interactive closed shadow tree excluded from
+observations and target resolution. Presentation time is included in execution
+timing, so compare it separately from fast mode. Native recording captures it
+when the Chrome window is on screen.
 
-To open a URL in the user's own Chrome instead:
+`bun scripts/demo-jev-ten.ts <tab-id>` runs ten Wikipedia searches with this mode,
+independent exact-URL verification, per-search traces, and 2.2-second result holds.
+It stops on failure or uncertainty and writes `summary.json` after every result.
+Supply the same Jev and text-provider environment as the single-search runner.
 
-```text
-browser_open { url: "https://github.com", mode: "regular" }
-```
-
-Regular mode is deliberately not controllable, and the result says so:
-`controlAvailable: false`, plus the native control path. Snapshot, click, fill,
-and screenshot continue to target the Action browser.
-
-### Responsive breakpoints
-
-`browser_resize` gives an already-open tab an explicit viewport, so a narrow
-layout can be captured instead of assumed.
-
-```text
-browser_open   { url: "http://localhost:3000" }
-browser_resize { width: 1440, height: 900 }
-browser_screenshot
-browser_resize { width: 390, height: 844, mobile: true, matchMedia: ["(max-width: 767px)"] }
-browser_screenshot
-browser_resize { reset: true }
-```
-
-Two targets, deliberately not interchangeable:
-
-| | What moves | Cost |
-|---|---|---|
-| `target: "tab"` (default) | CSS emulation for that one tab | Exact to the pixel, other tabs unaffected, fully reversible |
-| `target: "window"` | The real Chrome window hosting the tab | Every tab in that window moves, the display is a hard ceiling, and the tab's emulated viewport is dropped first |
-
-A device-metrics override belongs to the CDP session that set it, and Action
-Browser opens a fresh session per tool call. Two consequences shape the design:
-
-- The server keeps the requested viewport in memory and re-applies it on every
-  session, so a resize survives the later `browser_screenshot` that is the whole
-  point of it. It is per-tab, in-memory only, and dropped when the tab or the
-  browser closes — nothing is written to the profile.
-- `reset` cannot simply call `clearDeviceMetricsOverride`: a foreign session's
-  clear is accepted and does nothing, leaving Chrome stuck at the stale size. The
-  reset re-sets the metrics to adopt ownership first, then clears them.
-
-`deviceScaleFactor` defaults to `1`, which makes screenshot pixels equal CSS
-pixels — a 390-wide viewport returns a 390px-wide PNG. Read `exact` in the reply
-before trusting a capture: a page with a hard `min-width` can refuse to lay out
-as narrow as it was asked to.
-
-## Plugin versioning
-
-Harnesses cache the Action Browser skill and interface metadata by plugin
-version. Bump all seven manifests together when that metadata changes:
-
-```bash
-bun run plugin:version              # check that every manifest agrees
-bun run plugin:version -- 0.4.1     # set them all
-```
-
-The check covers the root and Action product marketplace/Kimi manifests, plus
-the browser plugin's Claude, Codex, and Kimi manifests. Reinstall or refresh the
-plugin in each harness so its cached skill is replaced.
-
-The plugin no longer carries an MCP server or a `SERVER_VERSION`. Browser tools
-ship with the lattices CLI; updating that CLI and restarting its MCP process
-updates the server separately from refreshing this skill-only plugin.
-
-## What is intentionally not done
-
-- Automation attachment to the currently open regular Chrome window
-- Silent full cookie jar import
-- Claiming a page is authenticated without observing it after seed/login
-
-## Related
-
-- [packages/chrome-companion/README.md](../packages/chrome-companion/README.md)
-- [ACT-001 surface adapter architecture](decisions/ACT-001-surface-adapter-architecture.md)
-- [plugins/action-browser/skills/action-browser/SKILL.md](../plugins/action-browser/skills/action-browser/SKILL.md)
-
-## Browser request deadlines
-
-`browser_open.waitMs` is the total operation budget (15,000 ms by default),
-including profile selection, Chrome startup, HTTP/CDP connection, navigation,
-and readiness checks. Zero fails immediately without opening a tab. Expiry
-returns an MCP tool error and cancels pending transport work; increasing
-`waitMs` does not remove the 10-second limit on individual HTTP/CDP operations.
-
-Configure the MCP server as `command: "lattices", args: ["mcp"]` — no path, so it
-cannot be pinned to a stale checkout or plugin cache. On the next MCP process
-start, `initialize` reports the lattices version, and `tools/list` exposes
-`browser_open.mode`, `profile`, and `newTab`. Existing MCP processes retain their
-loaded implementation until reloaded.
-
-The `lattices` launcher resolves Bun from `LATTICES_BUN_BIN`, PATH, or the
-standard user and Homebrew locations, so it survives the bare system PATH a
-GUI-launched harness hands it. An explicit invalid override fails with an
-actionable error.
+Navigation receipts for same-tab links and form submission require a changed URL
+before the next decision; changing autocomplete suggestions alone are insufficient.
+Brief missing-content-script errors during navigation retry observations only.
+Input is never replayed on a lost execution reply.
 
 ## Native-runtime.agent
 
@@ -4497,71 +5606,257 @@ Primary files:
 - Probe mode must remain available from the signed app bundle.
 - App lifecycle correctness is a recording dependency, not an optional detail.
 
-## Skill
+## Remote-engine
 
-# Action Skills
+# Remote engine
 
-These are project-specific skills or task patterns an AI agent should follow.
+Action can drive another machine that runs a lattices host (LAT-013), such as
+a Linux desktop running `lattices-host`. Runs, traces and artifacts stay on
+this machine; the remote host does the observing and acting.
 
-## Native Runtime Review
+```sh
+ACTION_REMOTE_HOST=archie bun packages/mcp/src/index.ts     # MCP server against archie
+ACTION_REMOTE_HOST=archie:9400 ACTION_REMOTE_FPS=8 ...      # port and recording rate
+```
 
-Use when:
+`action.health` reports the host's platform and capabilities in
+`diagnostics`. From there the usual tools work: `action.observe.snapshot`
+(surface, screenshot, OCR on the host), `action.observe.ocr`,
+`action.resolve.target` (by point, or by text through the host's fuzzy OCR
+search), and `action.act.execute` (click, type, press-key, drag, scroll,
+focus-window, open-app).
 
-- changing AppKit lifecycle code
-- changing agent startup or bridge logic
-- changing WebKit entry paths
+What stays native-only, with a clear error: `action.observe.ax` (Linux has
+no accessibility tree here), `action.record.*` (guided sessions record
+through the engine instead), the stage and backdrop overlays, and the
+companion worker.
 
-Instructions:
+In code, `RemoteEngine` (`packages/runtime/src/remote.ts`) implements
+`CaptureEngine` and `SurfaceEngine`; `remoteEngineFromEnv()` builds one from
+the environment.
 
-1. read [docs/native-runtime.md](docs/native-runtime.md)
-2. verify whether the change belongs in app code or agent code
-3. keep AppKit-owned behavior in `Action.app`
-4. verify the signed app still builds
+## Theming.agent
 
-## Recording Review
+# Theming Action
 
-Use when:
+> How to write a theme for Action's native app, and what the app will refuse to
+> paint with. Written for an agent that has been asked to personalise the UI.
 
-- changing `ScreenCaptureKit` recording
-- changing stop-file or finished-file handling
-- changing probe launch behavior
+## The short version
 
-Instructions:
+Write a JSON file into `~/Library/Application Support/Action/Themes/`. The app
+picks it up within a fraction of a second — no restart, no protocol call. Select
+it in **Settings ▸ Appearance ▸ Palette**, or set it directly before launching the app (changing this default while Action is running requires a relaunch):
 
-1. read [docs/recording.md](docs/recording.md)
-2. inspect the probe launcher and probe app runner
-3. preserve `.mov` + `.finished` behavior
-4. test a real recording path, not just a unit-level refactor
+```bash
+defaults write dev.lattices.Action Action.ThemeID "reading-room"
+```
 
-## Agent API Review
+A theme is a **patch**, not a palette. Everything is optional, and what you do
+not mention keeps the tuning it already had. The smallest useful theme is six
+lines.
 
-Use when:
+## The model
 
-- adding WebSocket methods
-- changing request or response shape
-- updating CLI-to-agent behavior
+Action has four surfaces, and they are not variations of each other:
 
-Instructions:
+| Surface  | Where | Voice |
+|----------|-------|-------|
+| `chrome` | The launcher shell: rail, footer, cards, ledgers | Neutral. The frame around the work, not the work. |
+| `field`  | Home | The brand's own: paper in light, graphite in dark. |
+| `review` | The review screen | A cool neutral sheet, so the page never fights the thing being reviewed. |
+| `hud`    | The capture HUD | A fixed dark instrument face. Deliberately the same in both appearances. |
 
-1. read [docs/api.md](docs/api.md)
-2. update the protocol source of truth
-3. confirm method names remain documented
-4. verify callers still match the transport contract
+Each of `chrome`, `field` and `review` is an `ActionSurface`: a ground, the
+things that sit on it, the lines that divide it, the ink that goes on it, and
+the two colours it speaks with.
 
-## Hermes Action
+```
+canvas ─── the page
+  band ─── a chrome band across an edge of it (rail, title bar, footer)
+  panel ── a card laid on it          panelRaised ── the same card, hovered
+  recess ─ a well cut into it         deep ───────── the block that stays dark
+  edge · rule · grid · shadow ─────── the lines
+  ink · inkSecondary · inkRow · inkMuted · inkMeta ── the ramp, darkest first
+  onDeep · onDeepMeta ─────────────── what goes on `deep`
+  accent · accentInk · accentSoft ─── runtime truth
+  signal ──────────────────────────── the secondary voice, never competing
+```
 
-Use when:
+Two rules the palette encodes, and a theme should not break:
 
-- connecting Hermes to the native Action runtime
-- using Action MCP tools from a harness
-- recording or inspecting native macOS surfaces through Hermes
+- **Coral means this Mac is being driven right now.** It is the same value in
+  light and in dark on purpose. The colour that means "running" must not depend
+  on the operator's appearance setting.
+- **A recess sits *below* the canvas where a panel sits above it.** Panels are
+  content on the surface; a recess is a window cut into it showing the machine's
+  state. Inverting that inverts the hierarchy.
 
-Instructions:
+## Three levels of reach
 
-1. read [docs/harnesses/hermes-action.md](harnesses/hermes-action.md)
-2. use [skills/hermes-action/SKILL.md](../skills/hermes-action/SKILL.md) as the harness doctrine
-3. prefer observe and resolve before act
-4. treat recording start as asynchronous until `.finished` or `action.record.status` confirms completion
+Use the coarsest one that does the job. A file may use all three.
+
+### 1. `seed` — regrow a whole surface
+
+Give a surface a ground, an ink and an accent and the other eighteen slots are
+computed:
+
+```json
+{
+  "id": "dusk",
+  "name": "Dusk",
+  "extends": "action",
+  "surfaces": {
+    "field": {
+      "seed": {
+        "ground": { "light": "#EFEAE0", "dark": "#101415" },
+        "ink":    { "light": "#1C2427", "dark": "#EFEAE0" },
+        "accent": "#EF6A47",
+        "signal": "#1FB9C6",
+        "lift": 1.1
+      }
+    }
+  }
+}
+```
+
+Seed fields: `ground`, `ink`, `accent` (required); `signal`, `deep`, `lift`
+(optional; `lift` defaults to 1 and scales how far apart the grounds sit).
+
+The derivation works in **L\***, not in "mix N% toward white", because those are
+not the same move on paper and on graphite. Seeded with Action's own ground and
+ink it reproduces the shipped surface to within about three L\* on every ground and
+every ink step. What it deliberately does *not* reproduce:
+
+- `inkMuted` — Action's field tan is a decision, not a point on a ramp. Override
+  it if you care about it. It is the single slot most worth overriding.
+- `accentInk` — the derivation picks whichever of the ink and the ground the
+  accent can actually carry. Action's own cream-on-coral is 2.8:1 and the
+  derivation would pick the darker option instead.
+
+### 2. `tokens` — patch named slots on a surface
+
+```json
+"surfaces": {
+  "field": {
+    "tokens": { "inkMuted": { "light": "#9C7452", "dark": "#7B8785" } }
+  }
+}
+```
+
+Any of the 21 slot names listed above. A name that is not a slot is reported as
+an error rather than ignored.
+
+### 3. `overrides` — patch one painted token
+
+The last resort, for the one place a rule does not fit. Keys are the app-facing
+token names (`fieldCanvas`, `runSelectionHover`, `hudCoral`, …) — the full list
+is `ActionToken` in `native/engine/Sources/ActionTheme.swift`.
+
+```json
+"overrides": { "rowAlternate": { "light": "#00000008", "dark": "#FFFFFF0A" } }
+```
+
+## The rest of the file
+
+```jsonc
+{
+  "id": "dusk",                 // required, unique; the value Action.ThemeID takes
+  "name": "Dusk",               // shown in the picker
+  "author": "…",
+  "summary": "One sentence, shown under the picker.",
+  "extends": "action",          // built-in theme to start from; defaults to "action"
+
+  "status":  { "ok": "#2E8B57", "failed": "…", … },   // run outcomes + ledger washes
+  "control": { "primaryTop": "…", "primaryBottom": "…" },
+  "hud":     { "coral": "…", "coralHot": "…", "cyan": "…", "amber": "…", "polish": 1.0 },
+
+  "metrics": {
+    "cornerRadius": 8,          // cards and panels
+    "cornerRadiusSmall": 6,     // chips, buttons, selection washes
+    "hairline": 1,
+    "density": 1.0,             // row heights and padding, 0.85 … 1.35
+    "grain": 1.0,               // every texture alpha
+    "shadowStrength": 1.0
+  },
+
+  "type": {
+    "editorial": "Charter",     // "system" or a missing face falls back to New York
+    "mono": "JetBrains Mono",   // a missing face falls back to the platform monospace
+    "scale": 1.0                // 0.85 … 1.3, applied to the whole scale
+  }
+}
+```
+
+`extends` accepts built-in theme IDs only; file themes do not form inheritance chains.
+
+`status` slots: `ok`, `running`, `failed`, `stopped`, `recording`, `paused`,
+`rowAlternate`, `selection`, `selectionHover`, `actionChip`.
+
+The HUD only accepts tints and a `polish` level. It does not accept its
+machining, on purpose: a theme that could restyle the capture HUD could change
+what "recording" looks like on a Mac somebody else is driving.
+
+### Colour spelling
+
+Two forms, both accepted anywhere a colour is:
+
+```json
+"accent": "#EF6A47"
+"canvas": { "light": "#F3EBDD", "dark": "#14191A" }
+```
+
+`#RGB`, `#RRGGBB` and `#RRGGBBAA` all parse. A malformed value is an error that
+names the key — it is never silently replaced with a default.
+
+## What the app checks before it paints
+
+Every theme is validated **in both appearances** before installation. This is
+the half a human skips, because they are only looking at one mode.
+
+**Contrast.** Twenty foreground/background pairs the app actually renders, each
+against the ratio it needs — 4.5:1 for body text, 3.0:1 for status dots, chips
+and large text. Alpha is composited onto the background first, so a muted ink
+written as "ink at 55%" is scored as what is actually seen.
+
+**Separation.** Five pairs of grounds that have to stay at least 1.2 L\* apart,
+or the hierarchy they encode disappears — a card that is the same colour as the
+page is not a card.
+
+**Alarm distinction.** The accent and idle accent are compared with the failure
+colour. Below 28 ΔE they are close enough that a 6pt dot or a 2pt rule in one
+can be mistaken for the other, and you are told so. Only pairs your theme
+actually moved are checked — an accent you inherited unchanged is the base
+theme's decision, not yours. This check is advisory and never blocks
+installation.
+
+For contrast only, a result below three quarters of its target is an **error**;
+other contrast failures are warnings. Separation and alarm findings are always
+warnings.
+
+- **Warnings** are shown in Settings ▸ Appearance and the theme still installs.
+- **Errors** mean the theme is *not* installed. Action keeps painting with the
+  built-in one and shows you why in the same place.
+
+So the iteration loop is: write the file, look at Settings ▸ Appearance, fix what
+it tells you, save again. The app reloads on every write.
+
+## Worked examples
+
+`themes/linea-dusk.json` — a complete imported palette. `themes/reading-room.json`
+— metrics and type only, for a recording an audience watches from across a room.
+Copy either into the themes folder to try it.
+
+## Where things live
+
+| | |
+|---|---|
+| `native/engine/Sources/ActionTheme.swift` | Surfaces, seeds, the derivation, the token list |
+| `native/engine/Sources/ActionThemeBuiltin.swift` | The house theme, transcribed slot for slot |
+| `native/engine/Sources/ActionThemeSpec.swift` | The file format, the merge, the validator |
+| `native/engine/Sources/ActionThemeStore.swift` | Loading, watching, installing |
+| `native/engine/Sources/StageHUDTheme.swift` | The façade views paint through |
+| `themes/` | Worked examples |
 
 ---
-Generated by [Dewey 0.3.6](https://github.com/arach/dewey) | Last updated: 2026-08-15
+Generated by [Dewey 0.3.6](https://github.com/arach/dewey) | Last updated: 2026-11-06

@@ -203,7 +203,7 @@ export function gatewayHandlers(options: GatewayOptions) {
           ws.data.visit.socket.send(raw); return;
         }
         let id = "?", method = "?";
-        const reply = (result: unknown, error: string | null = null) => { if (ws.readyState === 1) ws.send(JSON.stringify({ id, result: error ? null : result, error })); };
+        const reply = (result: unknown, error: string | null = null, delivery?: unknown) => { if (ws.readyState === 1) ws.send(JSON.stringify({ id, result: error ? null : result, error, ...(delivery ? { delivery } : {}) })); };
         const conn = ws.data;
         let controller: AbortController | undefined;
         try {
@@ -321,7 +321,7 @@ export function gatewayHandlers(options: GatewayOptions) {
           audit(conn, targetMethod, "success", product); reply(remoteResult(product, targetMethod, targetParams, result));
         } catch (error) {
           const message = (error as Error).message;
-          audit(conn, method, message.split(":")[0]!.slice(0, 128)); reply(null, message);
+          audit(conn, method, message.split(":")[0]!.slice(0, 128)); reply(null, message, (error as { delivery?: unknown }).delivery);
         } finally { if (controller) conn.active.delete(controller); }
       },
     },

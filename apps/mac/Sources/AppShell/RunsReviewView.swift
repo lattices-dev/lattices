@@ -6,11 +6,24 @@ struct RunsReviewView: View {
     @State private var selectedRunId: String?
     @State private var selectedArtifactId: String?
     @State private var detailTab = "Artifacts"
+    @AppStorage("runs.filter") private var filterRaw = RunFilter.recordings.rawValue
+
+    /// The stored filter, or All when it has too few runs to earn a place.
+    private var filter: RunFilter {
+        let stored = RunFilter(rawValue: filterRaw) ?? .recordings
+        return filters.contains(stored) ? stored : .all
+    }
+    /// All, plus each narrower filter with at least three runs.
+    private var filters: [RunFilter] {
+        [.recordings, .captures].filter { count($0) >= 3 } + [.all]
+    }
+    private func count(_ filter: RunFilter) -> Int { store.runs.filter(filter.includes).count }
+    private var runs: [RunSession] { store.runs.filter(filter.includes) }
 
     private var selectedRun: RunSession? {
         guard let selectedRunId,
-              let match = store.runs.first(where: { $0.id == selectedRunId }) else {
-            return store.runs.first
+              let match = runs.first(where: { $0.id == selectedRunId }) else {
+            return runs.first
         }
         return match
     }
@@ -50,17 +63,31 @@ struct RunsReviewView: View {
         .onChange(of: store.runs.map(\.id)) { _, _ in
             ensureSelection()
         }
+        .onChange(of: filterRaw) { _, _ in
+            ensureSelection()
+        }
     }
 
     private var runList: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Recent runs")
-                    .font(Typo.heading(12))
-                    .foregroundColor(Palette.textDim)
+                Menu {
+                    ForEach(filters, id: \.self) { option in
+                        Button { filterRaw = option.rawValue } label: {
+                            if option == filter { Label("\(option.title) · \(count(option))", systemImage: "checkmark") }
+                            else { Text("\(option.title) · \(count(option))") }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(filter.title).font(Typo.heading(12)).foregroundColor(Palette.textDim)
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundColor(Palette.textMuted)
+                    }
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 Spacer()
-                Text(store.runs.count.formatted())
-                    .font(Typo.mono(10))
+                Text(runs.count.formatted())
+                    .font(Typo.caption(10))
                     .foregroundColor(Palette.textMuted)
             }
             .padding(.horizontal, 16)
@@ -69,7 +96,7 @@ struct RunsReviewView: View {
 
             ScrollView {
                 LazyVStack(spacing: 2) {
-                    ForEach(store.runs) { run in
+                    ForEach(runs) { run in
                         RunListRow(
                             run: run,
                             isSelected: run.id == selectedRun?.id
@@ -144,13 +171,6 @@ struct RunsReviewView: View {
                         .foregroundColor(Palette.text)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(run.id)
-                        .font(Typo.mono(10))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(run.id)
-                        .textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 StatePill(state: run.state)
@@ -178,6 +198,7 @@ struct RunsReviewView: View {
             Button(selectedArtifact == nil ? "Copy run folder path" : "Copy artifact path", systemImage: "doc.on.doc") {
                 copyPath(selectedArtifact?.path ?? run.artifactDirectoryPath)
             }
+            Button("Copy run ID", systemImage: "number") { copyPath(run.id) }
             Divider()
             Button("Delete run", systemImage: "trash", role: .destructive) { delete(run) }
         } label: {
@@ -427,14 +448,14 @@ struct RunsReviewView: View {
     }
 
     private func ensureSelection() {
-        guard !store.runs.isEmpty else {
+        guard !runs.isEmpty else {
             selectedRunId = nil
             selectedArtifactId = nil
             return
         }
 
         if let selectedRunId,
-           store.runs.contains(where: { $0.id == selectedRunId }) {
+           runs.contains(where: { $0.id == selectedRunId }) {
             let artifacts = selectedRun?.artifacts ?? []
             if let selectedArtifactId,
                artifacts.contains(where: { $0.id == selectedArtifactId }) {
@@ -444,9 +465,9 @@ struct RunsReviewView: View {
             return
         }
 
-        selectedRunId = store.runs.first?.id
-        selectedArtifactId = store.runs.first?.artifacts.first?.id
-        detailTab = store.runs.first?.artifacts.isEmpty == false ? "Artifacts" : "Trace"
+        selectedRunId = runs.first?.id
+        selectedArtifactId = runs.first?.artifacts.first?.id
+        detailTab = runs.first?.artifacts.isEmpty == false ? "Artifacts" : "Trace"
     }
 
     private func retry(_ run: RunSession) {
@@ -528,8 +549,8 @@ private struct RunListRow: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 0)
-                        Text(RunReviewDate.string(run.startedAt))
-                            .font(Typo.mono(10))
+                        Text(RunReviewDate.relative(run.startedAt))
+                            .font(Typo.caption(10))
                             .fixedSize()
                     }
                     .foregroundColor(Palette.textMuted)
@@ -694,9 +715,46 @@ private enum RunReviewDate {
         return formatter
     }()
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     static func string(_ timestamp: String, includeDate: Bool = false) -> String {
         guard let date = iso.date(from: timestamp) ?? fractionalISO.date(from: timestamp) else { return timestamp }
         return (includeDate ? dateTime : time).string(from: date)
+    }
+
+    /// "Just now", "5 min. ago", "2 days ago".
+    static func relative(_ timestamp: String) -> String {
+        guard let date = iso.date(from: timestamp) ?? fractionalISO.date(from: timestamp) else { return timestamp }
+        if Date().timeIntervalSince(date) < 60 { return "Just now" }
+        return relativeFormatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+/// Which runs the list shows. Most runs are one input or one screenshot an
+/// agent or the CLI took on the way to something else; recordings are the
+/// ones worth reviewing.
+private enum RunFilter: String, CaseIterable {
+    case recordings, captures, all
+
+    var title: String {
+        switch self {
+        case .recordings: return "Recordings"
+        case .captures:   return "Screenshots"
+        case .all:        return "All runs"
+        }
+    }
+
+    func includes(_ run: RunSession) -> Bool {
+        let recording = run.artifacts.contains { $0.kind == "recording" }
+        switch self {
+        case .recordings: return recording
+        case .captures:   return !recording && run.artifacts.contains { $0.kind.hasPrefix("screenshot") }
+        case .all:        return true
+        }
     }
 }
 

@@ -620,15 +620,17 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       { name: "height", type: "double", description: "Region height" },
       { name: "maxWidth", type: "int", description: "Longest width in pixels (default 1440)" },
       { name: "quality", type: "int", description: "JPEG quality (default 70)" },
+      { name: "cursor", type: "bool", description: "Include the pointer (default false)" },
     ],
     returns: "Object with data (base64 JPEG), width, height, and the captured frame in layout coordinates",
     handler: async (params) => {
       const maxWidth = num(params, "maxWidth") ?? 1440;
       const { region, output, frame, pixelWidth, display } = await captureTarget(params, await desktop.snapshot());
       const scale = Math.min(1, maxWidth / Math.max(1, pixelWidth));
-      const bytes = await capture.grab({ region, output, format: "jpeg", quality: num(params, "quality") ?? 70, scale });
+      const cursor = bool(params, "cursor") ?? false;
+      const bytes = await capture.grab({ region, output, format: "jpeg", quality: num(params, "quality") ?? 70, scale, cursor });
       const size = capture.imageSize(bytes);
-      return asJson({ ok: true, format: "jpeg", width: size?.width ?? null, height: size?.height ?? null, frame, display, data: bytes.toString("base64") });
+      return asJson({ ok: true, format: "jpeg", width: size?.width ?? null, height: size?.height ?? null, cursor, frame, display, data: bytes.toString("base64") });
     },
   });
 
@@ -674,8 +676,9 @@ export function registerEndpoints(router: Router, ctx: HostContext, cursorDeps?:
       { name: "maxWidth", type: "int", description: "Encoded width cap in pixels (default 1920, 320-3840)" },
       { name: "fps", type: "int", description: "Frame rate (default 30, 5-60)" },
       { name: "codec", type: "string", description: "h264 (the only one)" },
+      { name: "cursor", type: "bool", description: "Include the pointer (default true); false needs the Lattices recorder helper" },
     ],
-    returns: "Object with streamId, codec, width, height, frame and display",
+    returns: "Object with streamId, codec, width, height, frame, display and the applied cursor setting",
     handler: streamScoped,
   });
   router.register({

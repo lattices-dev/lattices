@@ -6,6 +6,7 @@
 //   lattices-host --describe           print capabilities and exit
 
 import { BUILD_IDENTITY } from "./build-info.ts";
+import * as cursorVeil from "./cursor-veil.ts";
 import { localRuntimeDirectory } from "../../desktop-client/local-ipc.ts";
 import { hostname, homedir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ import { VERSION, capabilities, refreshCapabilities, registerEndpoints } from ".
 import * as hypr from "./hyprland.ts";
 import { updateEventHealth } from "./host-capabilities.ts";
 import * as live from "./live.ts";
+import * as moves from "./moves.ts";
 import { Router } from "./router.ts";
 import { serve } from "./server.ts";
 import { BRIDGE_PORT, registerBridgeEndpoints, startBridge } from "./bridge/server.ts";
@@ -64,6 +66,7 @@ async function main() {
     return;
   }
   const opts = parseArgs(process.argv.slice(2));
+  moves.load();
   await refreshCapabilities();
   let emit = (_event: string, _data: unknown) => {};
   let onDesktopEvent = (_event: string) => {};
@@ -75,6 +78,7 @@ async function main() {
     log: (line) => { if (!opts.quiet) console.error("[lattices-host] " + line); },
   });
   await stopEvents.ready;
+  await cursorVeil.recover();
 
   const router = new Router(() => capabilities);
   let clientCount = () => 0;

@@ -63,6 +63,7 @@ enum WindowCapture {
 
     static func region(
         rect: CGRect,
+        showsCursor: Bool = false,
         imageOption: CGWindowImageOption = [.bestResolution]
     ) async -> CGImage? {
         guard !rect.isNull, !rect.isInfinite, !rect.isEmpty else {
@@ -89,7 +90,7 @@ enum WindowCapture {
             configuration.captureResolution = captureResolution(for: imageOption)
             configuration.scalesToFit = true
             configuration.preservesAspectRatio = true
-            configuration.showsCursor = false
+            configuration.showsCursor = showsCursor
             configuration.shouldBeOpaque = imageOption.contains(.shouldBeOpaque)
 
             return try await SCScreenshotManager.captureImage(

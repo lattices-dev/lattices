@@ -335,11 +335,17 @@ struct UnifiedCommandBarView: View {
 
     /// Scoped, then regrouped in the four-kind order.
     private var visibleRows: [Row] {
-        sections.flatMap(\.rows)
+        arrangementRows + sections.flatMap(\.rows)
+    }
+
+    /// Keep the captured app's action visible before the larger browse catalog.
+    private var arrangementRows: [Row] {
+        allRows.filter { $0.item.arrangementTarget != nil && (scope == nil || $0.group == scope) }
     }
 
     private var sections: [Section] {
-        let rows = scope.map { s in allRows.filter { $0.group == s } } ?? allRows
+        let ordinaryRows = allRows.filter { $0.item.arrangementTarget == nil }
+        let rows = scope.map { s in ordinaryRows.filter { $0.group == s } } ?? ordinaryRows
         return ResultGroup.allCases.compactMap { group in
             let inGroup = rows.filter { $0.group == group }
             return inGroup.isEmpty ? nil : Section(group: group, rows: inGroup)
@@ -355,8 +361,14 @@ struct UnifiedCommandBarView: View {
         return ScrollViewReader { proxy in
             scrolling {
                 VStack(alignment: .leading, spacing: 0) {
+                    if !arrangementRows.isEmpty {
+                        groupLabel("Current app", first: true)
+                        ForEach(arrangementRows) { row in
+                            resultRow(row, displays: displays).id(row.id)
+                        }
+                    }
                     ForEach(Array(sections.enumerated()), id: \.element.id) { i, section in
-                        groupLabel(section.group.rawValue, first: i == 0)
+                        groupLabel(section.group.rawValue, first: i == 0 && arrangementRows.isEmpty)
                         ForEach(section.rows) { row in
                             resultRow(row, displays: displays).id(row.id)
                         }
@@ -516,6 +528,16 @@ struct UnifiedCommandBarView: View {
         guard let row = selectedRow else { return Preview(scene: Self.scene(on: Self.frontScreen())) }
         let item = row.item
         var p = Preview()
+
+        if let target = item.arrangementTarget {
+            let screen = NSScreen.screens.first {
+                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == target.displayID
+            } ?? Self.frontScreen()
+            p.scene = Self.scene(on: screen)
+            p.facts = [("Selected", "\(target.windows.count) \(target.appName) windows"),
+                       ("Display", target.displayName), ("Next", "Choose a layout")]
+            return p
+        }
 
         if row.group == .commands, item.kind == .window {
             // "Tile <app> Left" — the browse menu's placement rows on the front window.
@@ -1025,6 +1047,7 @@ struct UnifiedCommandBarView: View {
 
     private func verb(for row: Row?) -> String {
         guard let row else { return "Open" }
+        if row.item.arrangementTarget != nil { return "Arrange" }
         switch row.group {
         case .windows:  return "Focus"
         case .pages:    return "Open"

@@ -49,7 +49,7 @@ function optionalBoolean(value: unknown): boolean | undefined {
 }
 
 function provider(value: unknown): VisionProviderId | undefined {
-  return value === "minimax" || value === "moondream" ? value : undefined;
+  return value === "moondream" ? value : undefined;
 }
 
 function sessionOutputDir(actionRoot: string, sessionId: string): string {
@@ -140,7 +140,7 @@ async function mockVision(actionRoot: string, job: CompanionJob): Promise<Record
   await writeJson(imagePath, { ok: true, mock: true, createdAt: now() });
   const result = {
     available: true,
-    provider: provider(payload.provider) ?? "minimax",
+    provider: provider(payload.provider) ?? "moondream",
     imagePath,
     model: "mock",
     summary: "Mock vision observation from action-companion.",

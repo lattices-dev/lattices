@@ -17,6 +17,19 @@ import VoxService
 /// Clients (Workspace Assistant mic, Hands-Off, voice commands) resolve through
 /// `HudsonVoiceRuntimeResolver` → that capability file — they do not depend on
 /// an external `voxd` being up.
+
+struct VoiceInputDevice: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let isSystemDefault: Bool
+}
+
+struct VoiceDictationStatus: Equatable, Sendable {
+    var title: String
+    var state: String
+    var detail: String
+}
+
 enum LatticesVoiceRuntime {
     static func start() {
         #if LATTICES_VOICE && canImport(HudsonVoice)
@@ -67,6 +80,82 @@ enum LatticesVoiceRuntime {
         #endif
     }
 
+    /// Microphones the capture stack can open. An empty preferred id means the system default.
+    static func inputDevices() -> [VoiceInputDevice] {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        AudioInputDevices.available().map {
+            VoiceInputDevice(id: $0.id, name: $0.name, isSystemDefault: $0.isSystemDefault)
+        }
+        #else
+        []
+        #endif
+    }
+
+    static func preferredInputDeviceID() -> String {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        let saved = ((try? VoxPreferences.load(from: voicePreferencesURL()))?.speech.preferredInputDeviceId ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.isEmpty, inputDevices().contains(where: { $0.id == saved }) else { return "" }
+        return saved
+        #else
+        ""
+        #endif
+    }
+
+    static func setPreferredInputDeviceID(_ id: String) throws {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        let url = voicePreferencesURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        setenv("VOX_HOME", url.deletingLastPathComponent().path, 1)
+        var preferences = (try? VoxPreferences.load(from: url)) ?? VoxPreferences()
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        preferences.speech.preferredInputDeviceId = trimmed.isEmpty ? nil : trimmed
+        try preferences.save(to: url)
+        #else
+        throw VoiceSettingsError.unavailable
+        #endif
+    }
+
+    static func dictationStatus() async -> VoiceDictationStatus {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        guard ensureRunning() else {
+            return VoiceDictationStatus(
+                title: "Parakeet",
+                state: "Stopped",
+                detail: "The voice runtime is not running. Restart it, then try dictation again."
+            )
+        }
+        return await Host.shared.dictationStatus()
+        #else
+        VoiceDictationStatus(
+            title: "Parakeet",
+            state: "Unavailable",
+            detail: "This build does not include the voice runtime."
+        )
+        #endif
+    }
+
+    /// Download if needed, then load the offline dictation model.
+    static func prepareDictationModel() async -> VoiceDictationStatus {
+        #if LATTICES_VOICE && canImport(HudsonVoice)
+        guard ensureRunning() else { return await dictationStatus() }
+        return await Host.shared.prepareDictationModel()
+        #else
+        await dictationStatus()
+        #endif
+    }
+
+    #if LATTICES_VOICE && canImport(HudsonVoice)
+    static func voicePreferencesURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base
+            .appendingPathComponent("Lattices", isDirectory: true)
+            .appendingPathComponent("Voice", isDirectory: true)
+            .appendingPathComponent("preferences.json")
+    }
+    #endif
+
     #if LATTICES_VOICE && canImport(HudsonVoice)
     /// True when this process is currently hosting the voice WebSocket.
     static var isRunning: Bool { Host.shared.isRunning }
@@ -84,6 +173,11 @@ enum LatticesVoiceRuntime {
     #else
     static var isRunning: Bool { false }
     #endif
+}
+
+enum VoiceSettingsError: LocalizedError {
+    case unavailable
+    var errorDescription: String? { "The voice runtime is not in this build." }
 }
 
 #if LATTICES_VOICE && canImport(HudsonVoice)
@@ -185,11 +279,86 @@ private final class Host: @unchecked Sendable {
     func isTranscriptionModelReady(_ requestedID: String?) async -> Bool? {
         let engine = lock.withLock { asrEngine }
         guard let engine else { return nil }
-        let preferences = try? VoxPreferences.load()
-        let modelID = [requestedID, preferences?.speech.preferredTranscriptionModelId]
+        let modelID = transcriptionModelID(requestedID)
+        return await engine.models().first { $0.id == modelID }?.preloaded
+    }
+
+    func dictationStatus() async -> VoiceDictationStatus {
+        let engine = lock.withLock { asrEngine }
+        guard isRunning, let engine else {
+            return VoiceDictationStatus(
+                title: "Parakeet",
+                state: "Stopped",
+                detail: "The voice runtime is not running. Restart it, then try dictation again."
+            )
+        }
+        return await status(for: engine, modelID: transcriptionModelID(nil))
+    }
+
+    func prepareDictationModel() async -> VoiceDictationStatus {
+        let engine = lock.withLock { asrEngine }
+        guard isRunning, let engine else { return await dictationStatus() }
+        let modelID = transcriptionModelID(nil)
+        do {
+            _ = try await engine.preload(modelId: modelID) { _ in }
+            return await status(for: engine, modelID: modelID)
+        } catch {
+            let title = Self.displayTitle(id: modelID, name: nil)
+            return VoiceDictationStatus(
+                title: title,
+                state: "Failed",
+                detail: "Could not load \(title). \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func transcriptionModelID(_ requestedID: String?) -> String {
+        let preferences = try? VoxPreferences.load(from: LatticesVoiceRuntime.voicePreferencesURL())
+        return [requestedID, preferences?.speech.preferredTranscriptionModelId]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? "parakeet:v3"
-        return await engine.models().first { $0.id == modelID }?.preloaded
+    }
+
+    private func status(for engine: EngineManager, modelID: String) async -> VoiceDictationStatus {
+        let models = await engine.models()
+        guard let model = models.first(where: { $0.id == modelID }) ?? models.first(where: { $0.id.hasPrefix("parakeet") }) else {
+            return VoiceDictationStatus(
+                title: Self.displayTitle(id: modelID, name: nil),
+                state: "Missing",
+                detail: "No offline dictation model is registered in this runtime."
+            )
+        }
+        let title = Self.displayTitle(id: model.id, name: model.name)
+        if !model.available {
+            return VoiceDictationStatus(title: title, state: "Unavailable", detail: "This Mac cannot run \(title).")
+        }
+        if !model.installed {
+            return VoiceDictationStatus(
+                title: title,
+                state: "Not installed",
+                detail: "\(title) is the offline dictation model. It is not on this Mac yet. Download it here, or the next dictation will fetch it."
+            )
+        }
+        if model.preloaded {
+            return VoiceDictationStatus(
+                title: title,
+                state: "Ready",
+                detail: "\(title) is loaded on this Mac. Dictation does not use an API key."
+            )
+        }
+        return VoiceDictationStatus(
+            title: title,
+            state: "Installed",
+            detail: "\(title) is on this Mac. It loads when dictation starts, or you can load it now."
+        )
+    }
+
+    private static func displayTitle(id: String, name: String?) -> String {
+        let cleaned = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cleaned.isEmpty, cleaned != id, !cleaned.contains("/") { return cleaned }
+        if id == "parakeet:v3" { return "Parakeet v3" }
+        if id.hasPrefix("parakeet:") { return "Parakeet \(id.dropFirst("parakeet:".count))" }
+        return cleaned.isEmpty ? "Parakeet" : cleaned
     }
 
     private func configureEnvironment(authToken: String) throws {

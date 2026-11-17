@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createActionCuaBackend } from "./action-cua.js";
+import { createAgentDesktopBackend } from "./agent-desktop.js";
 import { createCodexCuaBackend } from "./codex-cua.js";
 import { stdioMcp } from "./stdio-mcp.js";
 import { createTrycuaCuaBackend } from "./trycua-cua.js";
@@ -36,6 +37,10 @@ export const computerBackends: Record<string, { factory: BackendFactory; summary
   "trycua-cua": {
     factory: createTrycuaCuaBackend,
     summary: "trycua Cua Driver (cua-driver mcp, proxied to CuaDriver.app). Operator-installed.",
+  },
+  "agent-desktop": {
+    factory: createAgentDesktopBackend,
+    summary: "Vercel Labs agent-desktop CLI: window-scoped accessibility snapshots and actions. Operator-installed.",
   },
 };
 
@@ -209,11 +214,17 @@ export class BackendHost {
     return await this.get(id).availability(this.call(input));
   }
 
+  async setupAvailability(id: string, input?: BackendCallInput): Promise<BackendAvailability> {
+    const backend = this.get(id);
+    const call = this.call(input);
+    return await (backend.setupAvailability ? backend.setupAvailability(call) : backend.availability(call));
+  }
+
   async setup(id: string, input: BackendCallInput = {}, opts: BackendSetupOptions = { interactive: true }): Promise<BackendSetupResult> {
     const backend = this.get(id);
     const call = this.call({ ...input, timeoutMs: input.timeoutMs ?? SETUP_TIMEOUT_MS });
     if (backend.setup) return await backend.setup(call, opts);
-    const availability = await backend.availability(call);
+    const availability = await (backend.setupAvailability ? backend.setupAvailability(call) : backend.availability(call));
     const step: BackendSetupResult["steps"][number] = {
       step: "Check availability", status: availability.ready ? "done" : "skipped",
       detail: availability.reason ?? "This backend has no setup procedure.",

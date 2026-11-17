@@ -11,6 +11,24 @@ import { pairingHeaders } from "./host-pairing.ts";
 import { localEndpoint, readLocalToken, validateLocalSocket, type DaemonEndpoint } from "./local-ipc.ts";
 export type { DaemonEndpoint } from "./local-ipc.ts";
 
+/**
+ * How far a mutation got, from the host's reply or from the transport when the
+ * reply never came. See docs/api.md, "Delivery".
+ */
+export interface Delivery {
+  status: "not_delivered" | "delivery_uncertain" | "delivered_unverified";
+  retrySafe: boolean;
+  recovery: "retry" | "observe_then_retry" | "none";
+}
+
+/** A failed daemon call. `delivery` is set when the call was a mutation. */
+export class DaemonError extends Error {
+  constructor(message: string, readonly delivery?: Delivery) {
+    super(message);
+    this.name = "DaemonError";
+  }
+}
+
 const DEFAULT_DAEMON_HOST = "127.0.0.1";
 const DEFAULT_DAEMON_PORT = 9399;
 
@@ -160,6 +178,12 @@ export async function daemonCallTo(
   }
 }
 
+/** A mutation's result carries its delivery, unless the result is not an object or has its own. */
+function withDelivery(result: unknown, delivery: Delivery | undefined): unknown {
+  if (!delivery || !result || typeof result !== "object" || Array.isArray(result) || "delivery" in result) return result;
+  return { ...result, delivery };
+}
+
 async function sendRequest(
   endpoint: DaemonEndpoint,
   method: string,
@@ -177,7 +201,8 @@ async function sendRequest(
   const deadline = Date.now() + timeoutMs;
   const request = JSON.stringify({ id, method, params: params ?? null, deadline });
   const mutation = method.startsWith("computer.") && !/\.(observe|capture|status)$/.test(method);
-  const uncertain = () => new Error("Daemon connection lost or deadline exceeded; action outcome uncertain; do not retry blindly");
+  const uncertain = () => new DaemonError("Daemon connection lost or deadline exceeded; action outcome uncertain; do not retry blindly",
+    { status: "delivery_uncertain", retrySafe: false, recovery: "observe_then_retry" });
 
   return new Promise((resolve, reject) => {
     const { host, port } = endpoint;
@@ -321,9 +346,9 @@ async function sendRequest(
             settled = true;
             cleanup();
             if (parsed.error) {
-              reject(new Error(typeof parsed.error === "string" ? parsed.error : parsed.error.message ?? "Daemon request failed"));
+              reject(new DaemonError(typeof parsed.error === "string" ? parsed.error : parsed.error.message ?? "Daemon request failed", parsed.delivery));
             } else {
-              resolve(parsed.result);
+              resolve(withDelivery(parsed.result, parsed.delivery));
             }
           }
           return;

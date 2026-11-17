@@ -1,16 +1,9 @@
 import AppKit
 import QuartzCore
 
-/// Detail is distance-based: begin revealing one 1.2× zoom from full size.
-/// A small lead gives the asynchronous still capture time to arrive.
+/// Detail changes capture resolution, never photograph visibility.
 enum SpaceCanvasDetail {
     static let prepareRatio: CGFloat = 0.65
-    static func opacity(scale: CGFloat, fillScale: CGFloat) -> Float {
-        guard fillScale > 0 else { return 0 }
-        let start: CGFloat = 1 / 1.2
-        let t = min(1, max(0, (scale / fillScale - start) / (0.98 - start)))
-        return Float(t * t * (3 - 2 * t))
-    }
 }
 
 /// The camera over the canvas: which world point sits at the stage's
@@ -99,7 +92,8 @@ struct SpaceCanvasLayout {
                width: 1, height: 1 / aspect)
     }
 
-    var fitScale: CGFloat { min(stage.width / world.width, stage.height / world.height) }
+    /// Leave working room around the atlas instead of packing tiles against chrome.
+    var fitScale: CGFloat { min(stage.width / (world.width + 0.8), stage.height / (world.height + 0.8 / aspect)) }
     /// One desktop spans the whole display: the furthest zoom, still a preview.
     var fillScale: CGFloat { room.width }
     var maxScale: CGFloat { max(fitScale, fillScale) }
@@ -109,23 +103,21 @@ struct SpaceCanvasLayout {
     /// Within this of the fill scale, the camera locks to one desktop.
     func locks(_ scale: CGFloat) -> Bool { maxScale > fitScale && scale >= maxScale * 0.995 }
 
-    /// Always enter with every desktop visible, regardless of selection.
+    /// The complete atlas remains a named endpoint of the same camera.
     func opening(on index: Int) -> SpaceCanvasCamera {
         SpaceCanvasCamera(center: CGPoint(x: world.width / 2, y: world.height / 2), scale: fitScale)
     }
 
-    /// Scale within fit…max; an edge may come in by a short margin, never
-    /// half the view. An axis smaller than the stage stays centred.
+    /// A recognizable current display, with room for the fixed navigation chrome.
+    func here(on index: Int) -> SpaceCanvasCamera {
+        camera(placing: min(max(index, 0), count - 1), onto: stage.insetBy(dx: 16, dy: 16))
+    }
+
+    /// Distance is bounded; the board itself pans freely on both axes.
+    /// Fit and the minimap provide a way home without a hard drag boundary.
     func clamped(_ camera: SpaceCanvasCamera) -> SpaceCanvasCamera {
         let s = min(max(camera.scale, fitScale), maxScale)
-        let margin: CGFloat = 0.12
-        func axis(_ v: CGFloat, half: CGFloat, extent: CGFloat) -> CGFloat {
-            extent + 2 * margin > 2 * half ? min(max(v, half - margin), extent - half + margin) : extent / 2
-        }
-        return SpaceCanvasCamera(
-            center: CGPoint(x: axis(camera.center.x, half: stage.width / 2 / s, extent: world.width),
-                            y: axis(camera.center.y, half: stage.height / 2 / s, extent: world.height)),
-            scale: s)
+        return SpaceCanvasCamera(center: camera.center, scale: s)
     }
 
     func view(_ rect: CGRect, camera: SpaceCanvasCamera) -> CGRect {
@@ -219,17 +211,26 @@ final class SpaceCanvasPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+struct SpaceCanvasWindowDrop {
+    let window: SpaceFilmstripWindow
+    let sourceSpaceID: Int
+    let destinationSpaceID: Int
+    let normalizedOrigin: CGPoint
+}
+
 /// The aperture's second stop: every desktop on one connected plane. The
 /// map flies out of the aperture into this plane and the aperture's own
 /// copy docks bottom-left as the minimap. The plane is built once per opening;
 /// inventory updates replace only its window details. One transform moves
-/// the plane. Nothing here moves a real window; only `land` switches,
-/// through the navigator.
+/// the plane. Window drops commit through the verified movement service;
+/// desktop navigation stays with the navigator.
 final class SpaceCanvasView: NSView {
     struct Handlers {
         var choose: (Int) -> Void
         var land: () -> Void
         var cancel: () -> Void
+        var activateWindow: ((SpaceFilmstripWindow) -> Void)? = nil
+        var moveWindow: ((SpaceCanvasWindowDrop, @escaping (Result<CGRect, Error>) -> Void) -> Void)? = nil
     }
 
     override var isFlipped: Bool { true }
@@ -243,9 +244,17 @@ final class SpaceCanvasView: NSView {
     private let base: CGFloat
     private(set) var camera: SpaceCanvasCamera
     private(set) var selected: Int
+    private(set) var selectedWindowID: UInt32?
     private let current: Int
+    private let entrySelected: Int
+    private let displayName: String
+    private let focusedWindowID: UInt32?
+    private var inspectionIndex: Int
+    private var freelyExploring = false
+    private var navigation: SpaceCanvasNavigation
 
     private let shade = CALayer()
+    private let wallpaper = CALayer()
     private let plane = CALayer()
     private let backlight = CALayer()
     private let focusLight = CAGradientLayer()
@@ -254,6 +263,12 @@ final class SpaceCanvasView: NSView {
     private let here = CALayer()
     private let header = CALayer()
     private var headerTitle: CATextLayer?
+    private let windowRing = CALayer()
+    private let selectionLabel = CATextLayer()
+    private let hereButton = NSButton(title: "Here  H", target: nil, action: nil)
+    private let nearbyButton = NSButton(title: "Zoom out  −", target: nil, action: nil)
+    private let overviewButton = NSButton(title: "Overview  0", target: nil, action: nil)
+    private let openButton = NSButton(title: "Open window  ↵", target: nil, action: nil)
     private let minimap = CALayer()
     private let miniZones = CAShapeLayer()
     private let miniRing = CALayer()
@@ -267,23 +282,51 @@ final class SpaceCanvasView: NSView {
     private let previewLoader = SpaceCanvasPreviewLoader()
     private var previewLayers: [Int: [UInt32: CALayer]] = [:]
     private var previewImages: [UInt32: CGImage] = [:]
-    private var previewIndex: Int?
-    private var previewRequest: DispatchWorkItem?
-    private var previewRelease: DispatchWorkItem?
     private var previewPreparation: DispatchWorkItem?
-    private var previewSignature: [UInt64] = []
     private var previewsEnabled = true
-    private var cameraAnimationDeadline: CFTimeInterval = 0
+    private var opened = false
+    private var previewDemand: [Int] = []
+    private var detailDemand: Int?
+    private var visual = true
+    private let appearanceControl = NSSegmentedControl(labels: ["Visual", "Shapes"], trackingMode: .selectOne, target: nil, action: nil)
+    private var wallpaperTask: Task<Void, Never>?
+    private var departureStill: CALayer?
 
-    private enum Drag { case pan(start: CGPoint, camera: SpaceCanvasCamera, moved: Bool), minimap }
+    private final class WindowDrag {
+        let window: SpaceFilmstripWindow
+        let source: Int
+        let start: CGPoint
+        let camera: SpaceCanvasCamera
+        let offset: CGPoint
+        let size: CGSize
+        var ghost: CALayer?
+        var destination: Int?
+        var origin: CGPoint = .zero
+
+        init(window: SpaceFilmstripWindow, source: Int, start: CGPoint, camera: SpaceCanvasCamera,
+             offset: CGPoint, size: CGSize) {
+            self.window = window; self.source = source; self.start = start; self.camera = camera
+            self.offset = offset; self.size = size
+        }
+    }
+    private enum Drag { case pan(start: CGPoint, camera: SpaceCanvasCamera, moved: Bool), minimap, window(WindowDrag) }
     private var drag: Drag?
+    private var lastWindowClick: (id: UInt32, index: Int, point: CGPoint, time: CFTimeInterval)?
+    private var pendingWindowDrag: WindowDrag?
+    private var deferredCards: [SpaceFilmstripCard]?
+    private var windowZones: [Int: [UInt32: CALayer]] = [:]
+    private var statusMessage: String?
+    private var statusReset: DispatchWorkItem?
+    var isMovingWindow: Bool { pendingWindowDrag != nil }
+    private var isDraggingWindow: Bool { if case .window = drag { return true }; return false }
+    var hasWindowInteraction: Bool { isMovingWindow || isDraggingWindow }
     private var zoomDrive = SpaceCanvasZoomDrive()
     private var zoomLink: CADisplayLink?
     private var zoomFocusObserver: NSObjectProtocol?
     private var acceptsInput = true
 
     static let duration: CFTimeInterval = 0.18
-    static let entryDuration: CFTimeInterval = 0.3
+    static let entryDuration: CFTimeInterval = 0.48
     static let landDuration: CFTimeInterval = 0.26
     static let exitDuration: CFTimeInterval = 0.2
     static let snapDuration: CFTimeInterval = 0.14
@@ -314,15 +357,24 @@ final class SpaceCanvasView: NSView {
     private(set) var locked = false
     private var pointerTracking: NSTrackingArea?
 
-    init(cards: [SpaceFilmstripCard], selected: Int, current: Int, room: CGSize, scale: CGFloat, handlers: Handlers) {
+    init(cards: [SpaceFilmstripCard], selected: Int, current: Int, room: CGSize, scale: CGFloat,
+         displayName: String = "Display", focusedWindowID: UInt32? = nil, handlers: Handlers) {
         self.cards = cards
         self.layout = SpaceCanvasLayout(count: cards.count, room: room)
-        self.selected = min(max(selected, 0), max(0, cards.count - 1))
-        self.current = current
+        let home = min(max(cards.indices.contains(current) ? current : selected, 0), max(0, cards.count - 1))
+        self.selected = home
+        self.current = home
+        self.entrySelected = min(max(selected, 0), max(0, cards.count - 1))
+        self.inspectionIndex = home
+        self.displayName = displayName
+        self.focusedWindowID = focusedWindowID
+        self.selectedWindowID = cards.indices.contains(home)
+            ? cards[home].allWindows.first(where: { $0.wid != 0 && $0.wid == focusedWindowID })?.wid : nil
         self.handlers = handlers
         self.scale = scale
         self.base = layout.openingScale
-        self.camera = layout.opening(on: self.selected)
+        self.camera = layout.here(on: home)
+        self.navigation = SpaceCanvasNavigation(overview: layout.opening(on: self.selected), focused: layout.filling(self.selected))
         super.init(frame: CGRect(origin: .zero, size: room))
         wantsLayer = true
         build()
@@ -335,9 +387,8 @@ final class SpaceCanvasView: NSView {
 
     deinit {
         zoomLink?.invalidate()
-        previewRequest?.cancel()
-        previewRelease?.cancel()
         previewPreparation?.cancel()
+        wallpaperTask?.cancel()
         if let zoomFocusObserver { NotificationCenter.default.removeObserver(zoomFocusObserver) }
     }
 
@@ -345,10 +396,15 @@ final class SpaceCanvasView: NSView {
         super.viewDidMoveToWindow()
         stopKeyboardZoom()
         if window == nil {
+            wallpaperTask?.cancel()
+            wallpaperTask = nil
             previewPreparation?.cancel()
             clearPreviews()
             previewLoader.stop()
-        } else { preparePreviews(after: Self.entryDuration) }
+        } else {
+            preparePreviews(after: 0)
+            loadWallpaper()
+        }
         if let zoomFocusObserver { NotificationCenter.default.removeObserver(zoomFocusObserver) }
         zoomFocusObserver = window.map { window in
             NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification,
@@ -361,31 +417,35 @@ final class SpaceCanvasView: NSView {
     /// window details. A different desktop topology needs a new canvas.
     @discardableResult
     func refresh(cards fresh: [SpaceFilmstripCard]) -> Bool {
+        if isMovingWindow || isDraggingWindow {
+            deferredCards = fresh
+            return false
+        }
         guard fresh.count == cards.count,
               zip(fresh, cards).allSatisfy({ $0.id == $1.id && $0.number == $1.number }),
               fresh != cards else { return false }
-        let changed = fresh.indices.filter { fresh[$0].windows != cards[$0].windows }
+        let changed = fresh.indices.filter { fresh[$0].allWindows != cards[$0].allWindows }
         cards = fresh
+        if let id = selectedWindowID, !cards[selected].allWindows.contains(where: { $0.wid == id }) {
+            selectedWindowID = nil
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for index in changed {
             updateWindows(at: index)
             if sharpened.remove(index) != nil { sharpen(index) }
         }
-        headerTitle?.string = headerText
+        headerTitle?.string = statusMessage ?? headerText
         miniZones.path = minimapZonePath()
         CATransaction.commit()
         preparePreviews()
-        // A title/frame refresh reuses its photo layers, including their active
-        // fade. Only changed identities need a new subscription. New photos
-        // follow the remaining camera travel rather than jumping to its goal.
-        if previewIndex == selected, previewSignature != previewKey(cards[selected].windows) {
-            let remaining = plane.animation(forKey: "transform") == nil ? 0
-                : max(0, cameraAnimationDeadline - CACurrentMediaTime())
-            let path = remaining > 0
-                ? SpaceCanvasCamera.path(from: visibleCamera, to: camera, steps: Self.pathSteps) : nil
-            updateDetail(camera, duration: remaining, path: path)
+        if changed.contains(current) {
+            departureStill?.removeFromSuperlayer()
+            departureStill = nil
         }
+        updateDetail(camera, duration: 0)
+        updateSelectionChrome()
+        placeWindowRing(camera)
         return true
     }
 
@@ -395,6 +455,7 @@ final class SpaceCanvasView: NSView {
     /// Leave the presentation camera intact for the exit animation to sample.
     func endInteraction() {
         acceptsInput = false
+        cancelWindowDrag()
         drag = nil
         zoomDrive.reset()
         invalidateZoomLink()
@@ -402,19 +463,19 @@ final class SpaceCanvasView: NSView {
 
     /// Grows out of the strip: `card` is the strip's selected thumbnail in
     /// this view, and the plane starts with that desktop exactly over it.
-    /// Without a strip the plane settles from just past the current desktop.
-    /// Either way the camera ends on the whole map, in one move.
+    /// Without a strip the current desktop starts exactly at display size.
+    /// Either way the camera ends at the immutable Here framing.
     func open(from card: CGRect?, reduceMotion: Bool, revealed: (() -> Void)? = nil) {
         guard let root = layer else { return }
+        opened = true
+        preparePreviews(after: 0)
         let start: SpaceCanvasCamera
         if let card, card.width > 0, card.height > 0 {
-            start = layout.camera(placing: selected, onto: card)
+            start = layout.camera(placing: entrySelected, onto: card)
+            navigation.retarget(focused: layout.filling(selected))
         } else {
-            let anchor = layout.cell(cards.indices.contains(current) ? current : selected)
-            let k: CGFloat = 0.12
-            start = SpaceCanvasCamera(center: CGPoint(x: camera.center.x + (anchor.midX - camera.center.x) * k,
-                                                      y: camera.center.y + (anchor.midY - camera.center.y) * k),
-                                      scale: camera.scale * 1.08)
+            start = layout.filling(cards.indices.contains(current) ? current : selected)
+            navigation.retarget(focused: start)
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -431,6 +492,7 @@ final class SpaceCanvasView: NSView {
         animate(root, "opacity", to: Float(1), duration: reduceMotion ? 0 : 0.12, timing: Self.fadeIn, arrival: revealed)
         animate(header, "opacity", to: Float(1), duration: reduceMotion ? 0 : 0.2, timing: Self.fadeIn)
         animate(minimap, "opacity", to: Float(1), duration: reduceMotion ? 0 : 0.2, timing: Self.fadeIn)
+        retireDepartureStill(reduceMotion: reduceMotion)
     }
 
     /// Escape: back into the desktop that is showing, dissolving on the way,
@@ -456,8 +518,8 @@ final class SpaceCanvasView: NSView {
         let goal = layout.filling(selected)
         hideChrome(duration: reduceMotion ? 0 : 0.12)
         sharpen(selected)
-        // Both surfaces must finish: Reduce Transparency starts with an
-        // opaque shade, while an early Enter can still find the root fading in.
+        // Both surfaces must finish: the shade is opaque, but an early
+        // Enter can still find the root fading in.
         // Each arrival runs once, on main, and only when finished, so a
         // replaced animation never counts and cannot authorise a switch
         // under a cover that is no longer on screen.
@@ -490,12 +552,13 @@ final class SpaceCanvasView: NSView {
         let duration = reduceMotion ? 0 : Self.revealDuration
         let delay = reduceMotion ? 0 : Self.revealZoneDelay
         let clear = NSColor.clear.cgColor
-        var remaining = 1 + windowContainers.count
+        var remaining = 2 + windowContainers.count
         let arrived = {
             remaining -= 1
             if remaining == 0 { dismissed?() }
         }
         animate(shade, "backgroundColor", to: clear, duration: duration, timing: Self.revealTiming, arrival: arrived)
+        animate(wallpaper, "opacity", to: Float(0), duration: duration, timing: Self.revealTiming, arrival: arrived)
         for region in regions {
             animate(region, "backgroundColor", to: clear, duration: duration, timing: Self.revealTiming)
             animate(region, "borderColor", to: clear, duration: duration, timing: Self.revealTiming)
@@ -509,7 +572,9 @@ final class SpaceCanvasView: NSView {
     }
 
     private func hideChrome(duration: CFTimeInterval) {
-        for layer in [header, minimap, here, ring, backlight, focusLight] {
+        appearanceControl.isHidden = true
+        for button in [hereButton, nearbyButton, overviewButton, openButton] { button.isHidden = true }
+        for layer in [header, minimap, here, ring, backlight, focusLight, windowRing, selectionLabel] {
             animate(layer, "opacity", to: Float(0), duration: duration, timing: Self.fadeOut)
         }
         locked = true
@@ -518,11 +583,14 @@ final class SpaceCanvasView: NSView {
     // MARK: Selection and camera
 
     func select(_ index: Int, animated: Bool, followCamera: Bool = true) {
+        guard !isMovingWindow, !isDraggingWindow else { return }
         guard cards.indices.contains(index), index != selected else { return }
         selected = index
+        selectedWindowID = nil
+        if followCamera { inspectionIndex = index }
         preparePreviews()
         let cell = layout.view(layout.cell(index), camera: camera)
-        if locked || (followCamera && !layout.stage.insetBy(dx: -2, dy: -2).contains(cell)) {
+        if followCamera && (locked || !layout.stage.insetBy(dx: -2, dy: -2).contains(cell)) {
             // Follow the ring only when it leaves the view; a locked camera
             // moves to the next desktop's own full-display endpoint.
             let c = layout.cell(index)
@@ -533,13 +601,91 @@ final class SpaceCanvasView: NSView {
         }
         placeMinimapRing()
         updateAccessibility()
+        updateSelectionChrome()
+        placeWindowRing(camera)
+        if followCamera { retargetZoom(to: index) }
+    }
+
+    func returnHere(reduceMotion: Bool = false) {
+        guard acceptsInput, !hasWindowInteraction else { return }
+        stopKeyboardZoom()
+        lastWindowClick = nil
+        selected = current
+        inspectionIndex = current
+        freelyExploring = false
+        selectedWindowID = cards.indices.contains(current)
+            ? cards[current].allWindows.first(where: { $0.wid != 0 && $0.wid == focusedWindowID })?.wid : nil
+        navigation = SpaceCanvasNavigation(overview: layout.opening(on: current), focused: layout.filling(current))
+        // This callback is intentional even if the local selection is unchanged.
+        handlers.choose(current)
+        apply(layout.here(on: current), duration: reduceMotion ? 0 : 0.24, force: true)
+        placeMinimapRing()
+        updateSelectionChrome()
+    }
+
+    func showOverview(reduceMotion: Bool = false) {
+        guard acceptsInput, !hasWindowInteraction else { return }
+        stopKeyboardZoom()
+        lastWindowClick = nil
+        freelyExploring = true
+        navigation = SpaceCanvasNavigation(overview: layout.opening(on: current), focused: layout.filling(selected))
+        apply(navigation.overview, duration: reduceMotion ? 0 : 0.24, force: true)
+    }
+
+    func selectWindow(id: UInt32, at index: Int, approach: Bool = true, reduceMotion: Bool = false) {
+        guard acceptsInput, !hasWindowInteraction, id != 0, cards.indices.contains(index),
+              cards[index].allWindows.contains(where: { $0.wid == id }) else { return }
+        stopKeyboardZoom()
+        selected = index
+        selectedWindowID = id
+        inspectionIndex = index
+        handlers.choose(index)
+        retargetZoom(to: index)
+        if approach {
+            freelyExploring = false
+            apply(layout.here(on: index), duration: reduceMotion ? 0 : 0.24, force: true)
+        } else {
+            place(ring: camera)
+            placeWindowRing(camera)
+        }
+        placeMinimapRing()
+        updateSelectionChrome()
+        preparePreviews()
+    }
+
+    private var selectedWindow: SpaceFilmstripWindow? {
+        guard cards.indices.contains(selected), let id = selectedWindowID else { return nil }
+        return cards[selected].allWindows.first { $0.wid == id && id != 0 }
+    }
+
+    func activateSelectedWindow() {
+        guard acceptsInput, !hasWindowInteraction, let window = selectedWindow else { return }
+        handlers.activateWindow?(window)
+    }
+
+    private func cycleWindow() {
+        let visible = cards.indices.filter {
+            spaceIsVisible($0) && layout.view(layout.cell($0), camera: visibleCamera).intersects(layout.stage)
+        }.flatMap { index in cards[index].allWindows.filter { $0.wid != 0 }.map { (index, $0.wid) } }
+        guard !visible.isEmpty else { return }
+        let next = visible.firstIndex(where: { $0.0 == selected && $0.1 == selectedWindowID }).map { ($0 + 1) % visible.count } ?? 0
+        selectWindow(id: visible[next].1, at: visible[next].0, approach: false)
+    }
+
+    @objc private func goHere() { returnHere(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
+    @objc private func goNearby() { _ = zoom(out: true, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
+    @objc private func goOverview() { showOverview(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
+    @objc private func openSelected() { activateSelectedWindow() }
+
+    private func retargetZoom(to index: Int) {
+        navigation.retarget(focused: layout.filling(index))
     }
 
     /// Camera-only zoom: even at a limit the canvas keeps ownership of input,
     /// and even a full-display desktop is still a preview.
     @discardableResult
     func zoom(out: Bool, about point: CGPoint? = nil, reduceMotion: Bool = false) -> Bool {
-        guard acceptsInput else { return false }
+        guard acceptsInput, !isMovingWindow, !isDraggingWindow else { return false }
         stopKeyboardZoom()
         return stepZoom(out: out, about: point, reduceMotion: reduceMotion)
     }
@@ -550,11 +696,13 @@ final class SpaceCanvasView: NSView {
         if let point {
             zoom(to: scale, about: point, duration: duration)
         } else {
-            // Keyboard zoom follows the highlighted desktop. Zooming out
-            // preserves the current camera until the full grid fits again.
-            let cell = layout.cell(selected)
-            let center = out ? camera.center : CGPoint(x: cell.midX, y: cell.midY)
-            apply(SpaceCanvasCamera(center: center, scale: scale), duration: duration)
+            let focus = layout.nearest(to: navigation.focused.center)
+            if focus != selected {
+                select(focus, animated: false, followCamera: false)
+                handlers.choose(focus)
+            }
+            apply(navigation.camera(atScale: min(max(scale, layout.fitScale), layout.maxScale)),
+                  duration: duration, allowLock: navigation.focused == layout.filling(layout.nearest(to: navigation.focused.center)))
         }
         return true
     }
@@ -563,7 +711,8 @@ final class SpaceCanvasView: NSView {
     /// do not set the pace. A tap keeps its notch; a hold continues from it.
     func zoomKey(_ key: Int64, pressed: Bool, opening: Bool = false,
                  reduceMotion: Bool = false, time: TimeInterval = CACurrentMediaTime()) {
-        guard acceptsInput else { return }
+        guard acceptsInput, !isMovingWindow else { return }
+        guard !isDraggingWindow else { return }
         guard [125, 126, 27, 24].contains(key) else { return }
         if pressed {
             let wasDriving = zoomDrive.driving || zoomDrive.velocity != 0
@@ -595,9 +744,9 @@ final class SpaceCanvasView: NSView {
         let delta = zoomDrive.advance(to: time)
         if delta != 0 {
             let from = plane.animation(forKey: "transform") == nil ? camera : visibleCamera
-            let goal = delta > 0 ? layout.filling(selected) : layout.opening(on: selected)
-            let next = from.advanced(toward: goal, logarithmicDelta: delta)
-            apply(next, duration: 0)
+            let goal = delta > 0 ? navigation.focused : navigation.overview
+            let next = navigation.camera(atScale: min(max(from.scale * exp(delta), layout.fitScale), layout.maxScale))
+            apply(next, duration: 0, allowLock: navigation.focused == layout.filling(layout.nearest(to: navigation.focused.center)))
             let reached = next == goal || (delta > 0 && locked)
             // A reversal can coast briefly into the old limit. Never latch
             // the new direction there: it must be free to move away.
@@ -620,7 +769,7 @@ final class SpaceCanvasView: NSView {
         let shown = wasDriving ? visibleCamera : nil
         zoomDrive.reset()
         invalidateZoomLink()
-        if let shown { apply(shown, duration: 0, force: true) }
+        if let shown { apply(shown, duration: 0, allowLock: false, force: true) }
     }
 
     /// Continuous zoom anchors on what is visible, so a gesture that starts
@@ -632,6 +781,7 @@ final class SpaceCanvasView: NSView {
         let center = CGPoint(x: anchor.x - (point.x - layout.stage.midX) / s,
                              y: anchor.y - (point.y - layout.stage.midY) / s)
         apply(SpaceCanvasCamera(center: center, scale: s), duration: duration)
+        navigation.rebase(at: camera)
     }
 
     /// The single way the camera moves. A goal at the fill scale locks onto
@@ -640,16 +790,19 @@ final class SpaceCanvasView: NSView {
     /// Everything that follows the camera travels the same sampled path, from
     /// what is on screen (or `from`, before anything has been shown).
     private func apply(_ goal: SpaceCanvasCamera, duration: CFTimeInterval, clamp: Bool = true,
+                       allowLock: Bool = true,
                        force: Bool = false, timing: CAMediaTimingFunction = SpaceCanvasView.timing,
                        from: SpaceCanvasCamera? = nil, arrival: (() -> Void)? = nil) {
         var next = clamp ? layout.clamped(goal) : goal
         var duration = duration
-        let lock = clamp && layout.locks(next.scale)
+        let lock = clamp && allowLock && layout.locks(next.scale)
         if lock {
             let index = layout.nearest(to: next.center)
             next = layout.filling(index)
             if index != selected {
                 selected = index
+                selectedWindowID = nil
+                inspectionIndex = index
                 preparePreviews()
                 placeMinimapRing()
                 updateAccessibility()
@@ -665,13 +818,14 @@ final class SpaceCanvasView: NSView {
         camera = next
         let path = duration > 0 && start != next
             ? SpaceCanvasCamera.path(from: start, to: next, steps: Self.pathSteps) : nil
-        cameraAnimationDeadline = CACurrentMediaTime() + duration
         animate(plane, "transform", to: NSValue(caTransform3D: transform(for: camera)), duration: duration,
                 timing: timing, path: path?.map { NSValue(caTransform3D: transform(for: $0)) }, arrival: arrival)
         updateDetail(camera, duration: duration, timing: timing, path: path)
         place(ring: camera, duration: duration, timing: timing, path: path)
         placeHere(camera, duration: duration, timing: timing, path: path)
+        placeWindowRing(camera, duration: duration, timing: timing, path: path)
         let viewport = layout.viewport(camera: camera, map: miniMap)
+        miniViewport.isHidden = viewport.isNull
         if !viewport.isNull {
             let frames = path?.map { layout.viewport(camera: $0, map: miniMap) }
             let usable = frames.map { $0.allSatisfy { !$0.isNull } } ?? false
@@ -694,93 +848,76 @@ final class SpaceCanvasView: NSView {
     /// between them are below a pixel of error at the screen's edge.
     static let pathSteps = 24
 
-    private func preparePreviews(after delay: CFTimeInterval = 0.06) {
-        guard previewsEnabled, window != nil else { return }
-        previewPreparation?.cancel()
+    private func preparePreviews(after delay: CFTimeInterval = 0.04) {
+        guard previewsEnabled, visual, opened, window != nil else { return }
+        guard previewPreparation == nil else { return }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.previewsEnabled, self.window != nil else { return }
+            guard let self else { return }
             self.previewPreparation = nil
-            self.previewLoader.prepare(cards: self.cards, selected: self.selected, current: self.current)
+            guard self.previewsEnabled, self.visual, self.window != nil else { return }
+            self.requestPreviews()
         }
         previewPreparation = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    private func previewKey(_ windows: [SpaceFilmstripWindow]) -> [UInt64] {
-        windows.map { UInt64(UInt32(bitPattern: $0.pid)) << 32 | UInt64($0.wid) }
-    }
-
-    /// Frame work is limited to opacity on at most six retained layers.
-    /// Capture starts on a later run-loop turn, once per near selection.
+    /// Camera ticks only compare a small visible-tile set. Capture and image
+    /// delivery happen later, independently of the retained transform.
     private func updateDetail(_ camera: SpaceCanvasCamera, duration: CFTimeInterval,
                               timing: CAMediaTimingFunction = SpaceCanvasView.timing,
                               path: [SpaceCanvasCamera]? = nil) {
-        let near = camera.scale >= layout.fillScale * SpaceCanvasDetail.prepareRatio
-        if near, previewsEnabled, cards.indices.contains(selected) {
-            let returning = previewRelease != nil
-            previewRelease?.cancel()
-            previewRelease = nil
-            let windows = cards[selected].windows
-            let signature = previewKey(windows)
-            let changed = previewIndex != selected || previewSignature != signature
-            if changed || returning {
-                if changed {
-                    clearPreviews()
-                    previewIndex = selected
-                    previewSignature = signature
-                }
-                let index = selected
-                let request = DispatchWorkItem { [weak self] in
-                    guard let self, self.previewsEnabled, self.window != nil,
-                          self.previewIndex == index, self.previewSignature == signature else { return }
-                    self.previewRequest = nil
-                    self.previewLoader.load(windows: windows,
-                        displayPixelSize: CGSize(width: self.layout.room.width * self.scale,
-                                                 height: self.layout.room.height * self.scale)) { [weak self] images in
-                        guard let self, self.previewsEnabled, self.previewIndex == index,
-                              self.previewSignature == signature else { return }
-                        self.installPreviews(images, at: index)
-                    }
-                }
-                previewRequest = request
-                DispatchQueue.main.async(execute: request)
+        // Neighbours emerge with distance; their world coordinates never change.
+        let reveal = freelyExploring ? 1 : min(1, max(0, (1 - camera.scale / layout.here(on: current).scale) / 0.28))
+        for index in cards.indices {
+            let opacity = Float(index == inspectionIndex ? 1 : reveal)
+            for surface in [regions[index], windowContainers[index], captions[index]] {
+                animate(surface, "opacity", to: opacity, duration: duration, timing: timing)
             }
         }
-        if let index = previewIndex {
-            let opacity = SpaceCanvasDetail.opacity(scale: camera.scale, fillScale: layout.fillScale)
-            let values = path?.map { SpaceCanvasDetail.opacity(scale: $0.scale, fillScale: layout.fillScale) }
-            for photo in previewLayers[index]?.values ?? Dictionary<UInt32, CALayer>().values {
-                animate(photo, "opacity", to: opacity, duration: duration, timing: timing, path: values)
-            }
+        let visible = cards.indices.filter {
+            ($0 == inspectionIndex || reveal > 0.1) && layout.view(layout.cell($0), camera: camera).intersects(bounds)
         }
-        if !near, previewIndex != nil, previewRelease == nil {
-            previewRequest?.cancel()
-            previewRequest = nil
-            previewLoader.cancel()
-            // Let an outgoing camera animation fade the images before releasing
-            // their backing. A reversal cancels this cleanup.
-            if duration == 0 { clearPreviews() }
-            else {
-                let release = DispatchWorkItem { [weak self] in
-                    guard let self, self.camera.scale < self.layout.fillScale * SpaceCanvasDetail.prepareRatio else { return }
-                    self.clearPreviews()
-                }
-                previewRelease = release
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: release)
-            }
+        let detail = camera.scale >= layout.fillScale * SpaceCanvasDetail.prepareRatio ? selected : nil
+        if visible != previewDemand || detail != detailDemand {
+            previewDemand = visible
+            detailDemand = detail
+            preparePreviews()
         }
     }
 
-    /// Only photos change on async arrival; the camera and its animations stay intact.
+    private func requestPreviews() {
+        let visible = Array(Set(previewDemand + [current])).filter { cards.indices.contains($0) }.sorted()
+        previewLoader.loadAtlas(cards: cards, visible: visible, selected: detailDemand,
+            atlasPixelSize: CGSize(width: layout.fitScale * scale, height: layout.fitScale / layout.aspect * scale),
+            displayPixelSize: CGSize(width: layout.room.width * scale, height: layout.room.height * scale)) { [weak self] images in
+                guard let self, self.previewsEnabled else { return }
+                // A full delivery is also an eviction notice. The layer tree
+                // must not retain decoded images outside the loader's budget.
+                self.previewImages = images
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                for (index, photos) in self.previewLayers {
+                    for (id, photo) in photos where images[id] == nil {
+                        photo.sublayers?.first?.contents = nil
+                        photo.sublayers?.first?.opacity = 0
+                    }
+                    self.installPreviews(images, at: index)
+                }
+                CATransaction.commit()
+            }
+    }
+
+    /// Pixel arrivals never recreate layers or retarget a camera animation.
     func installPreviews(_ images: [UInt32: CGImage], at index: Int) {
-        guard previewsEnabled, previewIndex == index else { return }
+        guard previewsEnabled, cards.indices.contains(index) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for (id, image) in images {
-            guard let photo = previewLayers[index]?[id], let pixels = photo.sublayers?.first,
-                  previewImages[id] !== image else { continue }
+            guard let photo = previewLayers[index]?[id], let pixels = photo.sublayers?.first else { continue }
+            if pixels.contents as AnyObject? === image { continue }
             previewImages[id] = image
             pixels.contents = image
+            photo.opacity = visual ? 1 : 0
             animate(pixels, "opacity", to: Float(1),
                     duration: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.1)
         }
@@ -791,32 +928,120 @@ final class SpaceCanvasView: NSView {
         previewsEnabled = false
         previewPreparation?.cancel()
         previewPreparation = nil
-        previewRequest?.cancel()
-        previewRequest = nil
+        wallpaperTask?.cancel()
+        wallpaperTask = nil
         previewLoader.stop()
     }
 
     private func clearPreviews() {
-        previewRequest?.cancel()
-        previewRequest = nil
-        previewRelease?.cancel()
-        previewRelease = nil
+        previewPreparation?.cancel()
+        previewPreparation = nil
         previewLoader.cancel()
-        if let index = previewIndex {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            for photo in previewLayers[index]?.values ?? Dictionary<UInt32, CALayer>().values {
-                photo.removeAllAnimations()
-                photo.opacity = 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for photos in previewLayers.values {
+            for photo in photos.values {
                 photo.sublayers?.first?.removeAllAnimations()
                 photo.sublayers?.first?.contents = nil
                 photo.sublayers?.first?.opacity = 0
             }
-            CATransaction.commit()
         }
+        CATransaction.commit()
         previewImages.removeAll()
-        previewIndex = nil
-        previewSignature = []
+    }
+
+    private func loadWallpaper() {
+        guard let screen = window?.screen else { return }
+        wallpaperTask?.cancel()
+        wallpaperTask = SpaceCanvasWallpaper.shared.load(for: screen) { [weak self] image in
+            guard let image else { return }
+            self?.installWallpaper(image)
+        }
+    }
+
+    /// The wallpaper belongs to the display, outside the moving desktop plane.
+    /// Pixel delivery changes only appearance, never the camera or tile geometry.
+    func installWallpaper(_ image: SpaceCanvasWallpaper.Image) {
+        guard previewsEnabled else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        wallpaper.contents = image.cgImage
+        wallpaper.contentsRect = image.contentsRect
+        CATransaction.commit()
+        updateBackdrop(duration: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12)
+    }
+
+    private func regionColor(at index: Int) -> CGColor {
+        if visual, wallpaper.contents != nil {
+            return NSColor.black.withAlphaComponent(index == current ? 0.10 : 0.20).cgColor
+        }
+        return NSColor(calibratedWhite: index == current ? 0.13 : 0.09, alpha: 1).cgColor
+    }
+
+    private func updateBackdrop(duration: CFTimeInterval) {
+        animate(wallpaper, "opacity", to: Float(visual && wallpaper.contents != nil ? 0.8 : 0), duration: duration)
+        for (index, region) in regions.enumerated() {
+            animate(region, "backgroundColor", to: regionColor(at: index), duration: duration)
+        }
+    }
+
+    /// A departure still makes the first full-display frame match the desktop
+    /// beneath the overlay. It is only an entrance cover: keeping it in the
+    /// tile would shrink a second wallpaper over the stationary backdrop.
+    func installDepartureStill(_ image: CGImage) {
+        guard previewsEnabled, !opened, cards.indices.contains(current), departureStill == nil else { return }
+        let still = CALayer()
+        still.name = "SpaceCanvas.departureStill"
+        still.frame = windowContainers[current].frame
+        still.contents = image
+        still.contentsGravity = .resize
+        still.isHidden = !visual
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        plane.insertSublayer(still, above: windowContainers[current])
+        CATransaction.commit()
+        departureStill = still
+    }
+
+    private func retireDepartureStill(reduceMotion: Bool) {
+        guard let still = departureStill else { return }
+        let remove = { [weak self, weak still] in
+            guard let still else { return }
+            still.contents = nil
+            still.removeFromSuperlayer()
+            if self?.departureStill === still { self?.departureStill = nil }
+        }
+        if reduceMotion {
+            remove()
+        } else {
+            // Windows recede with the existing camera while the full desktop
+            // capture gives way to separate previews and the fixed wallpaper.
+            animate(still, "opacity", to: Float(0), duration: 0.18, timing: Self.fadeOut, arrival: remove)
+        }
+    }
+
+    @objc private func changeAppearance(_ sender: NSSegmentedControl) {
+        setVisual(sender.selectedSegment == 0)
+    }
+
+    func setVisual(_ enabled: Bool) {
+        visual = enabled
+        appearanceControl.selectedSegment = enabled ? 0 : 1
+        let opacity: Float = enabled ? 1 : 0
+        let duration: CFTimeInterval = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12
+        updateBackdrop(duration: duration)
+        for photos in previewLayers.values {
+            for photo in photos.values { animate(photo, "opacity", to: opacity, duration: duration) }
+        }
+        // Visibility must not replace the entrance cover's retirement animation.
+        departureStill?.isHidden = !enabled
+        for zones in windowZones.values {
+            for zone in zones.values {
+                (zone.sublayers?.first(where: { $0.name == "SpaceCanvas.previewStatus" }) as? CATextLayer)?.string
+                    = enabled ? "Preview unavailable" : "Window outline"
+            }
+        }
+        if enabled { preparePreviews(after: 0) }
     }
 
     /// The plane is laid out once at `base`; the camera is one transform.
@@ -953,7 +1178,42 @@ final class SpaceCanvasView: NSView {
 
     private func updateAccessibility() {
         let number = cards.indices.contains(selected) ? cards[selected].number : selected + 1
-        setAccessibilityLabel("Desktop canvas, desktop \(number) of \(cards.count)")
+        setAccessibilityLabel("\(displayName), Here Desktop \(cards.indices.contains(current) ? cards[current].number : current + 1), inspecting Desktop \(number). H returns Here, Tab selects a window, Enter opens it.")
+    }
+
+    private func spaceIsVisible(_ index: Int) -> Bool {
+        guard windowContainers.indices.contains(index) else { return false }
+        return (windowContainers[index].presentation()?.opacity ?? windowContainers[index].opacity) > 0.1
+    }
+
+    private func updateSelectionChrome() {
+        headerTitle?.string = statusMessage ?? headerText
+        if let window = selectedWindow {
+            selectionLabel.string = "Selected: \(window.app)" + (window.title.isEmpty ? "" : " · \(window.title)")
+                + (window.wid == focusedWindowID && selected == current ? "  ·  Focused at opening" : "")
+        } else {
+            selectionLabel.string = "Select a window to approach it · Double-click or press Return to open"
+        }
+        openButton.isEnabled = selectedWindow != nil && handlers.activateWindow != nil
+        updateAccessibility()
+    }
+
+    private func windowFrame(_ camera: SpaceCanvasCamera) -> CGRect? {
+        guard let window = selectedWindow else { return nil }
+        let cell = layout.cell(selected)
+        return layout.view(CGRect(x: cell.minX + window.rect.minX, y: cell.minY + window.rect.minY / layout.aspect,
+            width: window.rect.width, height: window.rect.height / layout.aspect), camera: camera)
+    }
+
+    private func placeWindowRing(_ camera: SpaceCanvasCamera, duration: CFTimeInterval = 0,
+                                 timing: CAMediaTimingFunction = SpaceCanvasView.timing,
+                                 path: [SpaceCanvasCamera]? = nil) {
+        guard acceptsInput, let frame = windowFrame(camera) else { windowRing.opacity = 0; return }
+        windowRing.opacity = 1
+        animate(windowRing, "position", to: NSValue(point: CGPoint(x: frame.midX, y: frame.midY)), duration: duration,
+                timing: timing, path: path?.compactMap { windowFrame($0).map { NSValue(point: CGPoint(x: $0.midX, y: $0.midY)) } })
+        animate(windowRing, "bounds", to: NSValue(rect: CGRect(origin: .zero, size: frame.size)), duration: duration,
+                timing: timing, path: path?.compactMap { windowFrame($0).map { NSValue(rect: CGRect(origin: .zero, size: $0.size)) } })
     }
 
     // MARK: Input
@@ -963,23 +1223,34 @@ final class SpaceCanvasView: NSView {
     }
 
     func handleKey(_ key: Int64, pressed: Bool, repeated: Bool) {
-        guard acceptsInput else { return }
+        guard acceptsInput, !isMovingWindow else { return }
+        if isDraggingWindow, key != 53 { return }
         if !pressed {
             if [125, 126, 27, 24].contains(key) { zoomKey(key, pressed: false) }
             return
         }
+        lastWindowClick = nil
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         switch key {
         case 123: move(dx: -1, dy: 0)
         case 124: move(dx: 1, dy: 0)
         case 125, 126, 27, 24:
             if !repeated { zoomKey(key, pressed: true, reduceMotion: reduceMotion) }
-        case 36, 76: if !repeated { handlers.land() }
-        case 53: if !repeated { handlers.cancel() }
+        case 36, 76:
+            if !repeated {
+                if selectedWindow != nil, handlers.activateWindow != nil { activateSelectedWindow() }
+                else { handlers.land() }
+            }
+        case 4: if !repeated { returnHere(reduceMotion: reduceMotion) }
+        case 48: if !repeated { cycleWindow() }
+        case 53:
+            if !repeated {
+                if case .window = drag { cancelWindowDrag() }
+                else { handlers.cancel() }
+            }
         case 29:
             if !repeated {
-                stopKeyboardZoom()
-                apply(SpaceCanvasCamera(center: camera.center, scale: layout.fitScale), duration: reduceMotion ? 0 : 0.16)
+                showOverview(reduceMotion: reduceMotion)
             }
         default: break
         }
@@ -992,7 +1263,7 @@ final class SpaceCanvasView: NSView {
     func moveSelection(offset: Int) { move(dx: offset, dy: 0) }
 
     private func move(dx: Int, dy: Int) {
-        guard acceptsInput else { return }
+        guard acceptsInput, !isMovingWindow, !isDraggingWindow else { return }
         let next = layout.neighbour(of: selected, dx: dx, dy: dy)
         if next != selected { handlers.choose(next) }
     }
@@ -1020,8 +1291,8 @@ final class SpaceCanvasView: NSView {
     }
 
     func highlight(at point: CGPoint) {
-        guard acceptsInput, drag == nil, layout.stage.contains(point), !minimap.frame.contains(point),
-              let index = layout.index(at: point, camera: visibleCamera), index != selected else { return }
+        guard acceptsInput, selectedWindowID == nil, !isMovingWindow, !zoomDrive.active, drag == nil, layout.stage.contains(point), !minimap.frame.contains(point),
+              let index = layout.index(at: point, camera: visibleCamera), spaceIsVisible(index), index != selected else { return }
         // Update locally first so the navigator's selection callback cannot
         // pan the canvas while the pointer is only exploring it.
         select(index, animated: false, followCamera: false)
@@ -1029,27 +1300,78 @@ final class SpaceCanvasView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard acceptsInput else { return }
+        beginPointer(at: convert(event.locationInWindow, from: nil), clickCount: event.clickCount)
+    }
+
+    func beginPointer(at point: CGPoint, clickCount: Int = 1) {
+        guard acceptsInput, !isMovingWindow else { return }
         stopKeyboardZoom()
-        let point = convert(event.locationInWindow, from: nil)
+        // The first click may already be approaching its window. A double-click
+        // belongs to that identity, not whatever has travelled under the pointer.
+        if clickCount >= 2, let click = lastWindowClick,
+           CACurrentMediaTime() - click.time <= NSEvent.doubleClickInterval,
+           hypot(point.x - click.point.x, point.y - click.point.y) <= 4 {
+            lastWindowClick = nil
+            drag = nil
+            selectWindow(id: click.id, at: click.index, approach: false)
+            if selectedWindowID == click.id && selected == click.index { activateSelectedWindow() }
+            return
+        }
+        lastWindowClick = nil
         if minimap.frame.contains(point) {
             drag = .minimap
             jump(minimapPoint: point)
             return
         }
-        if event.clickCount >= 2, let index = layout.index(at: point, camera: visibleCamera) {
-            drag = nil
-            if index != selected { handlers.choose(index) }
-            handlers.land()
-            return
+        let shown = visibleCamera
+        if layout.stage.contains(point),
+           let index = layout.index(at: point, camera: shown), spaceIsVisible(index) {
+            let world = layout.world(point, camera: shown)
+            let cell = layout.cell(index)
+            let local = CGPoint(x: world.x - cell.minX, y: (world.y - cell.minY) * layout.aspect)
+            // Match the retained layers' back-to-front ordering, including
+            // occlusion. A background drag never picks a hidden window.
+            if let window = cards[index].allWindows.reversed().first(where: { $0.rect.contains(local) }) {
+                // Unknown foreground identity still occludes everything behind it.
+                guard window.wid != 0 else {
+                    selectedWindowID = nil
+                    updateSelectionChrome()
+                    placeWindowRing(camera)
+                    drag = nil
+                    return
+                }
+                if clickCount >= 2 {
+                    drag = nil
+                    selectWindow(id: window.wid, at: index, approach: false)
+                    activateSelectedWindow()
+                    return
+                }
+                let crop = window.contentsRect
+                let size = CGSize(width: window.rect.width / max(crop.width, 0.001),
+                                  height: window.rect.height / max(crop.height, 0.001))
+                let origin = CGPoint(x: window.rect.minX - crop.minX * size.width,
+                                     y: window.rect.minY - crop.minY * size.height)
+                drag = .window(WindowDrag(window: window, source: index, start: point, camera: shown,
+                    offset: CGPoint(x: local.x - origin.x, y: local.y - origin.y), size: size))
+                return
+            }
+            if clickCount >= 2 {
+                drag = nil
+                if index != selected { handlers.choose(index) }
+                handlers.land()
+                return
+            }
         }
         // Grab what is visible, so a pan never jumps to an in-flight goal.
-        drag = .pan(start: point, camera: visibleCamera, moved: false)
+        drag = .pan(start: point, camera: shown, moved: false)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard acceptsInput else { return }
-        let point = convert(event.locationInWindow, from: nil)
+        dragPointer(to: convert(event.locationInWindow, from: nil))
+    }
+
+    func dragPointer(to point: CGPoint) {
+        guard acceptsInput, !isMovingWindow else { return }
         switch drag {
         case .minimap:
             jump(minimapPoint: point)
@@ -1057,27 +1379,187 @@ final class SpaceCanvasView: NSView {
             let dx = point.x - start.x, dy = point.y - start.y
             guard moved || hypot(dx, dy) > 3 else { return }
             drag = .pan(start: start, camera: origin, moved: true)
+            freelyExploring = true
             apply(SpaceCanvasCamera(center: CGPoint(x: origin.center.x - dx / origin.scale,
-                                                    y: origin.center.y - dy / origin.scale), scale: origin.scale), duration: 0)
+                                                    y: origin.center.y - dy / origin.scale), scale: origin.scale), duration: 0, allowLock: false)
+            navigation.rebase(at: camera)
+        case .window(let moving):
+            guard handlers.moveWindow != nil else { return }
+            guard moving.ghost != nil || hypot(point.x - moving.start.x, point.y - moving.start.y) > 3 else { return }
+            updateWindowDrag(moving, at: point)
         case nil: break
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer { drag = nil }
-        guard case .pan(_, _, false) = drag else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        if let index = layout.index(at: point, camera: visibleCamera), index != selected { handlers.choose(index) }
+        endPointer(at: convert(event.locationInWindow, from: nil))
+    }
+
+    func endPointer(at point: CGPoint) {
+        guard acceptsInput, !isMovingWindow else { return }
+        let finished = drag
+        drag = nil
+        switch finished {
+        case .window(let moving) where moving.ghost != nil:
+            updateWindowDrag(moving, at: point)
+            guard let destination = moving.destination, let move = handlers.moveWindow else {
+                releaseWindowDrag(moving)
+                return
+            }
+            pendingWindowDrag = moving
+            setStatus("Moving \(moving.window.app)…")
+            let drop = SpaceCanvasWindowDrop(window: moving.window, sourceSpaceID: cards[moving.source].id,
+                destinationSpaceID: cards[destination].id, normalizedOrigin: moving.origin)
+            DiagnosticLog.shared.info("SpaceCanvas: drop wid=\(drop.window.wid) from=\(drop.sourceSpaceID) to=\(drop.destinationSpaceID) origin=\(drop.normalizedOrigin)")
+            move(drop) { [weak self, weak moving] result in
+                guard let self, let moving, self.pendingWindowDrag === moving else { return }
+                self.pendingWindowDrag = nil
+                self.releaseWindowDrag(moving)
+                switch result {
+                case .success(let frame):
+                    self.reconcile(moving, destination: destination, frame: frame)
+                    self.setStatus(nil)
+                case .failure(let error):
+                    self.setStatus(error.localizedDescription, temporary: true)
+                }
+            }
+        case .window(let moving):
+            lastWindowClick = (moving.window.wid, moving.source, moving.start, CACurrentMediaTime())
+            selectWindow(id: moving.window.wid, at: moving.source,
+                         reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            drainDeferredCards()
+        case .pan(_, _, false):
+            if let index = layout.index(at: point, camera: visibleCamera), spaceIsVisible(index) {
+                selectedWindowID = nil
+                inspectionIndex = index
+                retargetZoom(to: index)
+                if index != selected { handlers.choose(index) }
+                updateSelectionChrome()
+                placeWindowRing(camera)
+            }
+            drainDeferredCards()
+        default: break
+        }
+    }
+
+    private func updateWindowDrag(_ moving: WindowDrag, at point: CGPoint) {
+        if moving.ghost == nil {
+            apply(moving.camera, duration: 0, allowLock: false, force: true)
+            let size = CGSize(width: moving.size.width * base, height: moving.size.height * base / layout.aspect)
+            let ghost = makeZone(moving.window, frame: CGRect(origin: .zero, size: size))
+            ghost.name = "SpaceCanvas.draggedWindow"
+            ghost.masksToBounds = false
+            ghost.shadowColor = NSColor.black.cgColor
+            ghost.shadowOpacity = 0.5
+            ghost.shadowRadius = 12
+            ghost.shadowOffset = CGSize(width: 0, height: 6)
+            if visual, let image = previewImages[moving.window.wid] {
+                let photo = CALayer()
+                photo.frame = ghost.bounds
+                photo.contents = image
+                photo.contentsGravity = .resize
+                photo.cornerRadius = ghost.cornerRadius
+                photo.masksToBounds = true
+                ghost.addSublayer(photo)
+            }
+            plane.addSublayer(ghost)
+            moving.ghost = ghost
+            windowZones[moving.source]?[moving.window.wid]?.isHidden = true
+            departureStill?.removeFromSuperlayer()
+            departureStill = nil
+        }
+        let world = layout.world(point, camera: moving.camera)
+        let index = layout.stage.contains(point) && !minimap.frame.contains(point)
+            ? layout.index(at: point, camera: moving.camera) : nil
+        moving.destination = index
+        let cell = layout.cell(index ?? moving.source)
+        let raw = CGPoint(x: world.x - cell.minX - moving.offset.x,
+                          y: (world.y - cell.minY) * layout.aspect - moving.offset.y)
+        // Keep the entire window on its destination where possible. The real
+        // movement service additionally respects the menu bar and Dock.
+        moving.origin = CGPoint(x: min(max(raw.x, 0), max(0, 1 - moving.size.width)),
+                                y: min(max(raw.y, 0), max(0, 1 - moving.size.height)))
+        let origin = index == nil
+            ? CGPoint(x: world.x - moving.offset.x, y: world.y - moving.offset.y / layout.aspect)
+            : CGPoint(x: cell.minX + moving.origin.x, y: cell.minY + moving.origin.y / layout.aspect)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        moving.ghost?.frame.origin = CGPoint(x: origin.x * base, y: origin.y * base)
+        moving.ghost?.opacity = index == nil ? 0.55 : 1
+        for (i, region) in regions.enumerated() {
+            region.borderColor = NSColor.white.withAlphaComponent(i == index ? 0.8 : 0.12).cgColor
+            region.borderWidth = i == index ? 2 : 0.5
+        }
+        CATransaction.commit()
+    }
+
+    private func releaseWindowDrag(_ moving: WindowDrag) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        moving.ghost?.removeFromSuperlayer()
+        windowZones[moving.source]?[moving.window.wid]?.isHidden = false
+        for region in regions {
+            region.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+            region.borderWidth = 0.5
+        }
+        CATransaction.commit()
+        drainDeferredCards()
+    }
+
+    private func cancelWindowDrag() {
+        guard case .window(let moving) = drag else { return }
+        drag = nil
+        releaseWindowDrag(moving)
+    }
+
+    private func drainDeferredCards() {
+        guard let fresh = deferredCards else { return }
+        deferredCards = nil
+        refresh(cards: fresh)
+    }
+
+    private func reconcile(_ moving: WindowDrag, destination: Int, frame: CGRect) {
+        let rect = frame.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard !rect.isNull, frame.width > 0, frame.height > 0 else { return }
+        var fresh = cards
+        var window = moving.window
+        window = SpaceFilmstripWindow(rect: rect, app: window.app, pid: window.pid, title: window.title,
+            wid: window.wid, contentsRect: CGRect(x: (rect.minX - frame.minX) / frame.width,
+                y: (rect.minY - frame.minY) / frame.height, width: rect.width / frame.width, height: rect.height / frame.height))
+        for i in fresh.indices {
+            var windows = fresh[i].allWindows.filter { $0.wid != moving.window.wid }
+            if i == destination { windows.append(window) }
+            fresh[i] = SpaceFilmstripCard(id: fresh[i].id, number: fresh[i].number,
+                windows: Array(windows.suffix(6)), canvasWindows: windows)
+        }
+        refresh(cards: fresh)
+    }
+
+    private func setStatus(_ message: String?, temporary: Bool = false) {
+        statusReset?.cancel()
+        statusReset = nil
+        statusMessage = message
+        headerTitle?.string = message ?? headerText
+        if temporary {
+            let work = DispatchWorkItem { [weak self] in
+                self?.setStatus(nil)
+            }
+            statusReset = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+        }
     }
 
     private func jump(minimapPoint point: CGPoint) {
+        freelyExploring = true
         let local = CGPoint(x: point.x - minimap.frame.minX, y: point.y - minimap.frame.minY)
-        apply(SpaceCanvasCamera(center: layout.mapPoint(local, map: miniMap), scale: camera.scale), duration: 0)
+        apply(SpaceCanvasCamera(center: layout.mapPoint(local, map: miniMap), scale: camera.scale), duration: 0, allowLock: false)
+        navigation.rebase(at: camera)
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard acceptsInput else { return }
+        guard acceptsInput, !isMovingWindow, !isDraggingWindow else { return }
         stopKeyboardZoom()
+        lastWindowClick = nil
         let point = convert(event.locationInWindow, from: nil)
         let flags = event.modifierFlags
         let dx = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaX * 12
@@ -1086,13 +1568,15 @@ final class SpaceCanvasView: NSView {
         if flags.contains(.command) || flags.contains(.control) || flags.contains(.option) {
             zoom(to: from.scale * exp(dy * 0.006), about: point, duration: 0)
         } else if dx != 0 || dy != 0 {
+            freelyExploring = true
             apply(SpaceCanvasCamera(center: CGPoint(x: from.center.x - dx / from.scale,
-                                                    y: from.center.y - dy / from.scale), scale: from.scale), duration: 0)
+                                                    y: from.center.y - dy / from.scale), scale: from.scale), duration: 0, allowLock: false)
+            navigation.rebase(at: camera)
         }
     }
 
     override func magnify(with event: NSEvent) {
-        guard acceptsInput else { return }
+        guard acceptsInput, !isMovingWindow, !isDraggingWindow else { return }
         stopKeyboardZoom()
         zoom(to: visibleCamera.scale * (1 + event.magnification), about: convert(event.locationInWindow, from: nil), duration: 0)
     }
@@ -1106,9 +1590,16 @@ final class SpaceCanvasView: NSView {
         root.name = "SpaceCanvas.root"
         shade.name = "SpaceCanvas.shade"
         shade.frame = bounds
-        shade.backgroundColor = NSColor(calibratedWhite: 0.04,
-            alpha: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 0.78).cgColor
+        // An opaque base hides the live desktop, including while wallpaper
+        // pixels load. Entrance and exit fades still make the handoff gradual.
+        shade.backgroundColor = NSColor(calibratedWhite: 0.04, alpha: 1).cgColor
         root.addSublayer(shade)
+
+        wallpaper.name = "SpaceCanvas.wallpaper"
+        wallpaper.frame = bounds
+        wallpaper.contentsGravity = .resize
+        wallpaper.opacity = 0
+        root.addSublayer(wallpaper)
 
         plane.name = "SpaceCanvas.plane"
         plane.anchorPoint = .zero
@@ -1147,6 +1638,12 @@ final class SpaceCanvasView: NSView {
         here.cornerRadius = 3.5
         here.backgroundColor = SpaceFilmstripView.accent.cgColor
         root.addSublayer(here)
+        windowRing.name = "SpaceCanvas.selectedWindow"
+        windowRing.borderWidth = 2
+        windowRing.borderColor = NSColor.white.withAlphaComponent(0.95).cgColor
+        windowRing.cornerRadius = 5
+        windowRing.opacity = 0
+        root.addSublayer(windowRing)
 
         buildHeader()
         root.addSublayer(header)
@@ -1154,6 +1651,7 @@ final class SpaceCanvasView: NSView {
         root.addSublayer(minimap)
         apply(camera, duration: 0, force: true)
         placeMinimapRing()
+        updateSelectionChrome()
         CATransaction.commit()
     }
 
@@ -1162,8 +1660,9 @@ final class SpaceCanvasView: NSView {
             let cell = layout.cell(index)
             let frame = CGRect(x: cell.minX * base, y: cell.minY * base, width: cell.width * base, height: cell.height * base)
             let region = CALayer()
+            region.name = "SpaceCanvas.region.\(card.id)"
             region.frame = frame
-            region.backgroundColor = NSColor(calibratedWhite: index == current ? 0.13 : 0.09, alpha: 1).cgColor
+            region.backgroundColor = regionColor(at: index)
             // Vector seams: two adjoining half-point borders, drawn at the
             // zoomed size rather than scaled up from a 1x shape raster.
             region.borderWidth = 0.5
@@ -1173,6 +1672,7 @@ final class SpaceCanvasView: NSView {
             let windows = CALayer()
             windows.name = "SpaceCanvas.windows.\(card.id)"
             windows.frame = frame
+            windows.masksToBounds = true
             plane.addSublayer(windows)
             windowContainers.append(windows)
             updateWindows(at: index)
@@ -1188,23 +1688,25 @@ final class SpaceCanvasView: NSView {
         let container = windowContainers[index]
         let previousPhotos = previewLayers[index] ?? [:]
         previewLayers[index] = [:]
+        windowZones[index] = [:]
         container.sublayers?.forEach { $0.removeFromSuperlayer() }
         let frame = container.bounds
         // Windows sit where they are on the display, so a filled desktop
         // hands off to the real one without anything shifting.
         let inner = frame
         let card = cards[index]
-        if card.windows.isEmpty {
+        if card.allWindows.isEmpty {
             let empty = text("Empty", size: 12, color: NSColor.white.withAlphaComponent(0.28), mono: true)
             empty.name = "SpaceCanvas.empty"
             empty.alignmentMode = .center
             empty.frame = CGRect(x: frame.minX, y: frame.midY - 8, width: frame.width, height: 16)
             container.addSublayer(empty)
         }
-        for window in card.windows {
+        for window in card.allWindows {
             let zone = CGRect(x: inner.minX + window.rect.minX * inner.width, y: inner.minY + window.rect.minY * inner.height,
                               width: window.rect.width * inner.width, height: window.rect.height * inner.height)
             let layer = makeZone(window, frame: zone)
+            windowZones[index]?[window.wid] = layer
             if window.wid != 0 {
                 // Keep the same layer clock and image fade through inventory
                 // refreshes. Reparenting within this plane preserves animation.
@@ -1219,19 +1721,27 @@ final class SpaceCanvasView: NSView {
                 pixels.contentsGravity = .resize
                 pixels.contentsRect = window.contentsRect
                 if retained == nil {
-                    photo.opacity = 0
+                    photo.opacity = visual ? 1 : 0
                     pixels.opacity = 0
                     photo.addSublayer(pixels)
                 }
                 layer.addSublayer(photo)
                 previewLayers[index]?[window.wid] = photo
-                if retained == nil, previewIndex == index, let image = previewImages[window.wid] {
+                if retained == nil, let image = previewImages[window.wid] {
                     pixels.contents = image
                     pixels.opacity = 1
-                    photo.opacity = SpaceCanvasDetail.opacity(scale: visibleCamera.scale, fillScale: layout.fillScale)
+                    photo.opacity = visual ? 1 : 0
                 }
             }
             container.addSublayer(layer)
+            if index == current, window.wid != 0, window.wid == focusedWindowID {
+                let focused = CALayer()
+                focused.name = "SpaceCanvas.focusedAtOpening"
+                focused.frame = CGRect(x: 5, y: 5, width: 6, height: 6)
+                focused.cornerRadius = 3
+                focused.backgroundColor = SpaceFilmstripView.accent.cgColor
+                layer.addSublayer(focused)
+            }
         }
     }
 
@@ -1273,6 +1783,13 @@ final class SpaceCanvasView: NSView {
             title.frame = CGRect(x: 8, y: 26 * labelScale, width: max(0, frame.width - 16), height: 16 * labelScale)
             zone.addSublayer(title)
         }
+        if frame.height >= 80 * labelScale {
+            let unavailable = text(visual ? "Preview unavailable" : "Window outline", size: 9 * labelScale,
+                                   color: NSColor.white.withAlphaComponent(0.42), mono: false)
+            unavailable.name = "SpaceCanvas.previewStatus"
+            unavailable.frame = CGRect(x: 8, y: 48 * labelScale, width: max(0, frame.width - 16), height: 14 * labelScale)
+            zone.addSublayer(unavailable)
+        }
         return zone
     }
 
@@ -1282,18 +1799,52 @@ final class SpaceCanvasView: NSView {
         let title = text(headerText, size: 13,
                          color: NSColor.white.withAlphaComponent(0.82), mono: false)
         title.name = "SpaceCanvas.title"
-        title.frame = CGRect(x: 0, y: 0, width: 260, height: 18)
+        title.frame = CGRect(x: 0, y: 0, width: max(140, bounds.width - 610), height: 18)
         header.addSublayer(title)
         headerTitle = title
-        let keys = text("← → choose   ↑ ↓ zoom   ↵ go   esc stay   ⌃⌥ scroll zoom", size: 10.5,
-                        color: NSColor.white.withAlphaComponent(0.4), mono: true)
-        keys.frame = CGRect(x: 0, y: 19, width: min(560, bounds.width - 48), height: 14)
+        appearanceControl.frame = CGRect(x: bounds.width - 196, y: 22, width: 156, height: 28)
+        appearanceControl.selectedSegment = 0
+        appearanceControl.target = self
+        appearanceControl.action = #selector(changeAppearance(_:))
+        appearanceControl.setAccessibilityLabel("Desktop appearance")
+        addSubview(appearanceControl)
+        let keys = text("H Here   Tab windows   ↑ ↓ zoom   ← → desktops   esc stay", size: 11,
+                        color: NSColor.white.withAlphaComponent(0.65), mono: true)
+        keys.frame = CGRect(x: 0, y: 21, width: max(100, min(570, bounds.width - 592)), height: 16)
         header.addSublayer(keys)
+        let buttons: [(NSButton, Selector, CGFloat)] = [
+            (hereButton, #selector(goHere), 86), (nearbyButton, #selector(goNearby), 116),
+            (overviewButton, #selector(goOverview), 112)]
+        var x = bounds.width - 532
+        for (button, action, width) in buttons {
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.target = self
+            button.action = action
+            button.frame = CGRect(x: x, y: 22, width: width, height: 28)
+            addSubview(button)
+            x += width + 6
+        }
+        hereButton.toolTip = "Return to \(displayName), Desktop \(cards.indices.contains(current) ? cards[current].number : current + 1), as this view opened"
+        selectionLabel.name = "SpaceCanvas.selection"
+        selectionLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        selectionLabel.fontSize = 12
+        selectionLabel.foregroundColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        selectionLabel.contentsScale = scale
+        selectionLabel.truncationMode = .end
+        selectionLabel.frame = CGRect(x: 310, y: bounds.height - 43, width: max(1, bounds.width - 520), height: 18)
+        layer?.addSublayer(selectionLabel)
+        openButton.bezelStyle = .rounded
+        openButton.target = self
+        openButton.action = #selector(openSelected)
+        openButton.frame = CGRect(x: bounds.width - 190, y: bounds.height - 50, width: 150, height: 30)
+        addSubview(openButton)
     }
 
     private var headerText: String {
-        let empty = cards.filter(\.windows.isEmpty).count
-        return "\(cards.count) desktops" + (empty > 0 ? " · \(empty) empty" : "")
+        let origin = cards.indices.contains(current) ? cards[current].number : current + 1
+        let viewing = cards.indices.contains(selected) ? cards[selected].number : selected + 1
+        return "\(displayName)  ·  Here: Desktop \(origin)" + (selected == current ? "" : "  ·  Inspecting Desktop \(viewing)")
     }
 
     /// The aperture's map, kept: same grid, same ink, now with a viewport.
@@ -1346,7 +1897,7 @@ final class SpaceCanvasView: NSView {
         let zones = CGMutablePath()
         for (cell, card) in zip(miniCells, cards) {
             let inner = cell.insetBy(dx: min(2, cell.width * 0.06), dy: min(2, cell.height * 0.08))
-            for window in card.windows {
+            for window in card.allWindows {
                 zones.addRect(CGRect(x: inner.minX + window.rect.minX * inner.width, y: inner.minY + window.rect.minY * inner.height,
                                      width: window.rect.width * inner.width, height: window.rect.height * inner.height))
             }

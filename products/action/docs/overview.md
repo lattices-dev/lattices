@@ -44,7 +44,7 @@ backends, and forwards other verbs to the Action runtime CLI. `lats action`
 remains as the Lattices family entry point. Two
 nearby commands do not reach Action:
 
-- `lats computer` calls the core daemon's `computer.*` methods. See the
+- `lats cua` (alias `lats computer`) calls the core daemon's `cua.*` methods. See the
   [Lattices API](/lattices/docs/api).
 - `lats mcp` serves the `browser_*` tools that drive Action-owned Chrome
   profiles over CDP. That server is part of the Lattices CLI, not Action.app.

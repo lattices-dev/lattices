@@ -692,10 +692,10 @@ final class LayerPreview {
 final class LayerPreviewView: NSView {
     var onExit: (() -> Void)?
     private lazy var exitButton: NSButton = {
-        let button = NSButton(title: "Exit Layers", target: self, action: #selector(exitLayers))
+        let button = NSButton(title: "Show all windows", target: self, action: #selector(exitLayers))
         button.bezelStyle = .rounded
         button.toolTip = "Restore windows and leave layer focus (Shift–Escape)."
-        button.setAccessibilityLabel("Exit Layers")
+        button.setAccessibilityLabel("Show all windows")
         addSubview(button)
         return button
     }()
@@ -1014,7 +1014,7 @@ final class LayerPreviewView: NSView {
             line.draw(at: CGPoint(x: (bounds.width - line.size().width) / 2, y: bounds.height - 64))
         }
         let space = picked.map(isAway) == true ? "␣ Show" : "␣ Put away"
-        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌃⌥⇧ ← → ↑ ↓ Layers", "esc Cancel", "⇧esc Exit Layers"]
+        let hints = ["↵ Move in", space, "L Layout", "1–9 Send", "⌫ Remove", "⌃⌥⇧ ← → ↑ ↓ Layers", "esc Cancel", "⇧esc Show all"]
         let keys = text(hints.joined(separator: "     "), font: .systemFont(ofSize: 11, weight: .medium), color: Self.dim)
         keys.draw(at: CGPoint(x: (bounds.width - keys.size().width) / 2, y: bounds.height - 34))
     }

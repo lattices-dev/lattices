@@ -20,6 +20,8 @@ final class ActionAgentLayerController: NSObject {
         let height: Double
         let serialNumber: UInt32
         let workspace: String?
+        let returnToMac: Bool?
+        let returnShortcut: String?
     }
 
     private struct MovedWindow {
@@ -42,8 +44,10 @@ final class ActionAgentLayerController: NSObject {
     private var showsPiP: Bool
     private var previewDisplayID: CGDirectDisplayID?
     private var previewFull: Bool
+    private var previewViewport: Bool
     private var previewLease: ActionWorkspaceLock?
     private var subjectLease: ActionWorkspaceLock?
+    private var borrowedSubjectLeases: [pid_t: ActionWorkspaceLock] = [:]
     private let startedAt = Date()
     /// The subject app. Nil until launched when the layer was asked for a bundle id
     /// that isn't running.
@@ -82,7 +86,7 @@ final class ActionAgentLayerController: NSObject {
     private var moved: [MovedWindow] = []
     private var attachmentLeases: [pid_t: ActionWorkspaceLock] = [:]
     private var feed: ActionAgentLayerFeed?
-    private var pip: ActionAgentLayerPiP?
+    private var pip: (any ActionLayerPreview)?
     private var pollTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
     private var shuttingDown = false
@@ -102,6 +106,14 @@ final class ActionAgentLayerController: NSObject {
             self.previewFull = ["on", "true", "1", "yes"].contains(value)
         } else {
             self.previewFull = false
+        }
+        if let value = options.options["preview-viewport"]?.lowercased() {
+            guard ["true", "false"].contains(value) else {
+                throw ActionHostError.unsupportedOS("preview-viewport must be a boolean")
+            }
+            previewViewport = value == "true"
+        } else {
+            previewViewport = false
         }
         if let destination = options.options["preview-display-id"] {
             guard let identifier = CGDirectDisplayID(destination), identifier != 0 else {
@@ -127,6 +139,10 @@ final class ActionAgentLayerController: NSObject {
         guard flock(lockDescriptor, LOCK_EX | LOCK_NB) == 0 else {
             throw ActionHostError.unsupportedOS("the persistent display already has a session or is being released")
         }
+        guard !FileManager.default.fileExists(atPath: displayStateFile.deletingLastPathComponent()
+            .appendingPathComponent("return-to-mac.request").path) else {
+            throw ActionHostError.unsupportedOS("Return to Mac is pending; preserve its recovery journal before opening another session")
+        }
         let manifest = try JSONDecoder().decode(DisplayManifest.self, from: Data(contentsOf: displayStateFile))
         let fractionalDateFormatter = ISO8601DateFormatter()
         fractionalDateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -143,6 +159,12 @@ final class ActionAgentLayerController: NSObject {
         }
         self.displayManifest = manifest
         self.displayStateFile = displayStateFile
+        if previewViewport {
+            guard manifest.returnToMac == true,
+                  manifest.returnShortcut == "Control-Option-Command-Escape" else {
+                throw ActionHostError.unsupportedOS("The monitor viewer requires an owner with Return to Mac enabled. Prepare it with --return-to-mac first.")
+            }
+        }
         self.displaySessionLock = lockDescriptor
         self.requestedWidth = options.options["width"]
         self.requestedHeight = options.options["height"]
@@ -231,7 +253,12 @@ final class ActionAgentLayerController: NSObject {
 
     private func start() async throws {
         bounds = try validateDisplayAttachment()
-        if showsPiP { _ = try previewDestination() }
+        if showsPiP {
+            let destination = try previewDestination()
+            guard !previewViewport || !ActionAgentLayerDisplay.isAgentLayer(destination) else {
+                throw ActionHostError.unsupportedOS("The monitor viewer must be on a physical display")
+            }
+        }
         logDisplayDiagnostic("attached-to-persistent-display")
         logger.log("agent-layer: attached to display \(displayID), owner \(displayManifest.pid), at \(bounds)")
 
@@ -341,13 +368,20 @@ final class ActionAgentLayerController: NSObject {
     }
 
     private func showPiP() async throws {
-        guard !shuttingDown, let feed else {
+        guard !shuttingDown, !returnRequested, let feed else {
             throw ActionHostError.unsupportedOS("The layer has no preview feed")
         }
         let routingLock = try ActionWorkspaceLock(url: registryURL.appendingPathComponent("preview-routing.lock"))
         defer { withExtendedLifetime(routingLock) {} }
         let destination = try previewDestination()
-        if pip?.destinationDisplayID == destination, pip?.previewFull == previewFull { return }
+        if previewViewport {
+            guard displayManifest.returnToMac == true,
+                  displayManifest.returnShortcut == "Control-Option-Command-Escape",
+                  !ActionAgentLayerDisplay.isAgentLayer(destination) else {
+                throw ActionHostError.unsupportedOS("The monitor viewer requires Return to Mac and a physical display destination.")
+            }
+        }
+        if pip?.destinationDisplayID == destination, pip?.previewFull == previewFull, pip?.previewViewport == previewViewport { return }
         let lease = try acquirePreviewLease(destination: destination)
         _ = try previewDestination()
         pip?.stop(animated: false)
@@ -355,11 +389,27 @@ final class ActionAgentLayerController: NSObject {
         previewDisplayID = destination
         lastActivity = Date()
         let noteURL = stateFile.map { URL(fileURLWithPath: $0).deletingLastPathComponent().appendingPathComponent("notes.jsonl") }
-        let pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger, destinationDisplayID: destination,
-                                      noteURL: noteURL, workspace: workspace.name, previewFull: previewFull)
+        let pip: any ActionLayerPreview
+        if previewViewport {
+            pip = ActionMonitorPreview(feed: feed, startedAt: startedAt, logger: logger, destinationDisplayID: destination,
+                                       noteURL: noteURL, workspace: workspace.name, previewFull: previewFull,
+                                       returnRequestURL: returnRequestURL)
+        } else {
+            pip = ActionAgentLayerPiP(feed: feed, startedAt: startedAt, logger: logger, destinationDisplayID: destination,
+                                     noteURL: noteURL, workspace: workspace.name, previewFull: previewFull)
+        }
+        pip.onOperatorActivity = { [weak self] in self?.lastActivity = Date() }
+        pip.onBorrowWindow = { [weak self] id in
+            guard let self else { return "The monitor session has ended." }
+            return self.borrowWindow(id)
+        }
         pip.hasOwner = !ownerPIDs.isEmpty
         pip.onTogglePause = { [weak self] in self?.togglePause() }
-        pip.onStop = { [weak self] in self?.stopByOperator() }
+        pip.onStop = { [weak self] in
+            guard let self else { return }
+            if self.previewViewport { self.requestReturnToMac() }
+            else { self.stopByOperator() }
+        }
         pip.onTakeOver = { [weak self] in self?.takeOver() }
         pip.onGoToOwner = { [weak self] in self?.goToOwner() }
         pip.onDismiss = { [weak self] in
@@ -373,8 +423,8 @@ final class ActionAgentLayerController: NSObject {
         }
         self.pip = pip
         showsPiP = true
-        try writeState()
         do {
+            try writeState()
             try await pip.start(expectsWindows: !moved.isEmpty, state: liveState)
         } catch {
             pip.stop(animated: false)
@@ -387,6 +437,37 @@ final class ActionAgentLayerController: NSObject {
     }
 
     // MARK: Operator controls
+
+    private var returnRequestURL: URL {
+        displayStateFile.deletingLastPathComponent().appendingPathComponent("return-to-mac.request")
+    }
+
+    private var returnRequested: Bool {
+        displayManifest.returnToMac == true && FileManager.default.fileExists(atPath: returnRequestURL.path)
+    }
+
+    private func requestReturnToMac() {
+        guard !shuttingDown else { return }
+        do {
+            // Keep the loan journal intact for the persistent owner, including windows
+            // opened inside the monitor. Recovery never closes those windows.
+            try writeState()
+            let request: [String: Any] = [
+                "requestId": UUID().uuidString,
+                "workspace": workspace.name,
+                "displayId": Int(displayID),
+                "displayOwnerPid": Int(displayManifest.pid),
+                "displayStartedAt": displayManifest.startedAt,
+                "reason": "viewer",
+            ]
+            try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys])
+                .write(to: returnRequestURL, options: .atomic)
+            shutdown()
+        } catch {
+            logger.log("monitor: Return to Mac request failed: \(error.localizedDescription)")
+            (pip as? ActionMonitorPreview)?.showReturnError(error.localizedDescription)
+        }
+    }
 
     private func togglePause() {
         lastActivity = Date()
@@ -463,7 +544,7 @@ final class ActionAgentLayerController: NSObject {
     }
 
     private func validateDisplayAttachment() throws -> CGRect {
-        guard !shuttingDown else {
+        guard !shuttingDown, !returnRequested else {
             throw ActionHostError.unsupportedOS("the agent layer session is closing")
         }
         let current = try JSONDecoder().decode(DisplayManifest.self, from: Data(contentsOf: displayStateFile))
@@ -573,6 +654,67 @@ final class ActionAgentLayerController: NSObject {
             logger.log("agent-layer: moved \(count) window(s) of \(targetLabel(for: app)), \(moved.count) on the layer")
         }
         return count
+    }
+
+    /// Explicit human selection lends only this window; its original frame survives
+    /// panning, moving, and a viewer close. The task teardown returns every loan.
+    private func borrowWindow(_ id: CGWindowID) -> String? {
+        do {
+            guard previewViewport, !shuttingDown else { return "The monitor session has ended." }
+            _ = try validateDisplayAttachment()
+            guard let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, id) as? [[String: Any]],
+                  let record = info.first(where: { ($0[kCGWindowNumber as String] as? UInt32) == id }),
+                  let pid = record[kCGWindowOwnerPID as String] as? pid_t,
+                  pid != getpid(), (record[kCGWindowLayer as String] as? Int) == 0 else {
+                return "That window is no longer available."
+            }
+            let application = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(application, 0.25)
+            guard let windows = copyAttribute(application, kAXWindowsAttribute) as? [AXUIElement],
+                  let window = windows.first(where: { axWindowID($0) == id }),
+                  let origin = axPoint(copyAttribute(window, kAXPositionAttribute)),
+                  let extent = axSize(copyAttribute(window, kAXSizeAttribute)) else {
+                return "This app does not expose a movable window."
+            }
+            if moved.contains(where: { CFEqual($0.element, window) }) { return nil }
+            if pid != target?.processIdentifier, borrowedSubjectLeases[pid] == nil {
+                borrowedSubjectLeases[pid] = try ActionWorkspaceLock(url: registryURL.appendingPathComponent("subject-\(pid).lock"))
+            }
+            let original = CGRect(origin: origin, size: extent)
+            guard let destination = ActionMonitorViewport.borrowedWindowFrame(size: extent, index: moved.count, displayBounds: bounds) else {
+                if !moved.contains(where: { $0.pid == pid }) { borrowedSubjectLeases.removeValue(forKey: pid) }
+                return "This window has an invalid frame."
+            }
+            guard !ActionAgentLayerDisplay.displays().contains(where: { CGDisplayBounds($0).intersects(original) }) else {
+                if !moved.contains(where: { $0.pid == pid }) { borrowedSubjectLeases.removeValue(forKey: pid) }
+                return "This window already belongs to a virtual workspace."
+            }
+            // Track the loan before any AX mutation. A timeout can mean the app did
+            // move, so failed verification must not discard its recovery record.
+            moved.append(MovedWindow(element: window, pid: pid,
+                                     bundleId: NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+                                     title: copyAttribute(window, kAXTitleAttribute) as? String,
+                                     original: original, born: false))
+            try writeState()
+            setFrame(window, destination)
+            guard let actual = axPoint(copyAttribute(window, kAXPositionAttribute)),
+                  let actualSize = axSize(copyAttribute(window, kAXSizeAttribute)),
+                  bounds.contains(CGRect(origin: actual, size: actualSize)) else {
+                setFrame(window, original)
+                if let restoredOrigin = axPoint(copyAttribute(window, kAXPositionAttribute)),
+                   let restoredSize = axSize(copyAttribute(window, kAXSizeAttribute)),
+                   restoredOrigin == original.origin, restoredSize == original.size {
+                    moved.removeAll { CFEqual($0.element, window) }
+                    if !moved.contains(where: { $0.pid == pid }) { borrowedSubjectLeases.removeValue(forKey: pid) }
+                }
+                try? writeState()
+                return "The move could not be confirmed. Return windows will retry any pending restoration."
+            }
+            lastActivity = Date()
+            try writeState()
+            logger.log("monitor: borrowed window \(id) pid=\(pid), original=\(original)")
+            return nil
+        } catch { return error.localizedDescription }
     }
 
     /// Explicit stage borrowing only. Never launches an app or adopts later windows.
@@ -829,6 +971,7 @@ final class ActionAgentLayerController: NSObject {
             "workspace": workspace.name,
             "previewDisplayId": previewDisplayID.map { Int($0) } ?? NSNull(),
             "previewFull": previewFull,
+            "previewViewport": previewViewport,
             "displayOwnerPid": Int(displayManifest.pid),
             "displayStartedAt": displayManifest.startedAt,
             "bounds": rectJSON(bounds),
@@ -837,8 +980,8 @@ final class ActionAgentLayerController: NSObject {
             "recording": feed?.recordingPath ?? NSNull(),
             "windows": moved.map { window in
                 [
-                    "windowId": axWindowID(window.element).map { Int($0) } ?? NSNull(),
                     "pid": Int(window.pid),
+                    "windowId": axWindowID(window.element).map { Int($0) } ?? NSNull(),
                     "bundleId": window.bundleId ?? NSNull(),
                     "title": window.title ?? NSNull(),
                     "original": rectJSON(window.original),
@@ -871,7 +1014,9 @@ final class ActionAgentLayerController: NSObject {
         }
         lastActivity = Date()
         var reply: [String: Any]
-        if json["op"] as? String == "mark" {
+        if shuttingDown || returnRequested {
+            reply = ["ok": false, "detail": "The monitor is returning to your Mac; new actions are disabled"]
+        } else if json["op"] as? String == "mark" {
             // An act the director ran itself (DevTools input into a browser on the
             // layer): show it on the viewer the way a blink's notification would.
             pip?.mark(ActionAgentLayerAct(info: json))
@@ -884,6 +1029,7 @@ final class ActionAgentLayerController: NSObject {
             case "show":
                 let previous = previewDisplayID
                 let previousFull = previewFull
+                let previousViewport = previewViewport
                 do {
                     if let raw = json["previewDisplayId"] {
                         guard let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
@@ -899,11 +1045,18 @@ final class ActionAgentLayerController: NSObject {
                         }
                         previewFull = number.boolValue
                     }
+                    if let raw = json["previewViewport"] {
+                        guard let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                            throw ActionHostError.unsupportedOS("previewViewport must be a boolean")
+                        }
+                        previewViewport = number.boolValue
+                    }
                     try await showPiP()
-                    reply = ["ok": true, "previewDisplayId": previewDisplayID.map { Int($0) } ?? NSNull(), "previewFull": previewFull]
+                    reply = ["ok": true, "previewDisplayId": previewDisplayID.map { Int($0) } ?? NSNull(), "previewFull": previewFull, "previewViewport": previewViewport]
                 } catch {
                     previewDisplayID = previous
                     previewFull = previousFull
+                    previewViewport = previousViewport
                     try? writeState()
                     reply = ["ok": false, "detail": error.localizedDescription]
                 }
@@ -957,6 +1110,11 @@ final class ActionAgentLayerController: NSObject {
 
     private func tick() {
         guard !shuttingDown else { return }
+        if returnRequested {
+            logger.log("agent-layer: handing all windows to Return to Mac")
+            shutdown()
+            return
+        }
         do {
             _ = try validateDisplayAttachment()
         } catch {
@@ -1008,9 +1166,14 @@ final class ActionAgentLayerController: NSObject {
     }
 
     private func finishShutdown(exitCode: Int32) {
-        restoreWindows()
+        if returnRequested {
+            try? writeState()
+            logger.log("agent-layer: preserving all windows and the recovery journal for the display owner")
+        } else {
+            restoreWindows()
+            if let stateFile { try? FileManager.default.removeItem(atPath: stateFile) }
+        }
         logDisplayDiagnostic("detached-from-persistent-display")
-        if let stateFile { try? FileManager.default.removeItem(atPath: stateFile) }
         if let stopFile { try? FileManager.default.removeItem(atPath: stopFile) }
 
         // Same reason as the drape: an accessory app with no key window never dequeues
@@ -1072,7 +1235,7 @@ enum ActionAgentLayerOwner {
 
 // MARK: - AX helpers
 
-private func copyAttribute(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
+func copyAttribute(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
     return value
@@ -1085,13 +1248,13 @@ private func axElementGone(_ element: AXUIElement) -> Bool {
     return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .invalidUIElement
 }
 
-private func axPoint(_ value: AnyObject?) -> CGPoint? {
+func axPoint(_ value: AnyObject?) -> CGPoint? {
     guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
     var point = CGPoint.zero
     return AXValueGetValue(value as! AXValue, .cgPoint, &point) ? point : nil
 }
 
-private func axSize(_ value: AnyObject?) -> CGSize? {
+func axSize(_ value: AnyObject?) -> CGSize? {
     guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
     var size = CGSize.zero
     return AXValueGetValue(value as! AXValue, .cgSize, &size) ? size : nil
@@ -1395,7 +1558,29 @@ enum ActionAgentLayerLiveState {
 }
 
 @MainActor
-final class ActionAgentLayerPiP {
+protocol ActionLayerPreview: AnyObject {
+    var destinationDisplayID: CGDirectDisplayID { get }
+    var previewFull: Bool { get }
+    var previewViewport: Bool { get }
+    var hasOwner: Bool { get set }
+    var onDismiss: (() -> Void)? { get set }
+    var onTogglePause: (() -> Void)? { get set }
+    var onStop: (() -> Void)? { get set }
+    var onTakeOver: (() -> Void)? { get set }
+    var onGoToOwner: (() -> Void)? { get set }
+    var onOperatorActivity: (() -> Void)? { get set }
+    var onBorrowWindow: ((CGWindowID) -> String?)? { get set }
+    var state: ActionAgentLayerLiveState { get set }
+    func start(expectsWindows: Bool, state: ActionAgentLayerLiveState) async throws
+    func stop(animated: Bool)
+    func mark(_ act: ActionAgentLayerAct)
+}
+
+@MainActor
+final class ActionAgentLayerPiP: ActionLayerPreview {
+    let previewViewport = false
+    var onOperatorActivity: (() -> Void)?
+    var onBorrowWindow: ((CGWindowID) -> String?)?
     private static let width: CGFloat = 380
     private static let margin: CGFloat = 16
     private static let cropPadding: CGFloat = 12
@@ -2508,14 +2693,18 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
             )
         }
+        // The frame is handed off here and not touched again, so the box
+        // only tells the region checker what the capture queue already
+        // guarantees.
+        let frame = HandedOffFrame(buffer: sampleBuffer)
         if #available(macOS 15.0, *) {
             let renderer = layer.sampleBufferRenderer
             if renderer.status == .failed { renderer.flush() }
-            renderer.enqueue(sampleBuffer)
+            renderer.enqueue(frame.buffer)
         } else {
             // The macOS 27 SDK marks this pre-15 enqueue main-actor isolated;
             // the layer has always taken buffers from the capture queue.
-            nonisolated(unsafe) let buffer = sampleBuffer
+            nonisolated(unsafe) let buffer = frame.buffer
             if layer.status == .failed { layer.flush() }
             layer.enqueue(buffer)
         }
@@ -2541,7 +2730,7 @@ private final class ActionAgentLayerStreamOutput: NSObject, SCStreamOutput, @unc
 private func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
 /// The WindowServer id behind an accessibility window, matching `kCGWindowNumber`.
-private func axWindowID(_ window: AXUIElement) -> CGWindowID? {
+func axWindowID(_ window: AXUIElement) -> CGWindowID? {
     var id: CGWindowID = 0
     return _AXUIElementGetWindow(window, &id) == .success && id != 0 ? id : nil
 }
@@ -2635,4 +2824,8 @@ extension ActionAgentLayerAct {
             pressedAt: ("pressedAt" as? Key).flatMap { (info[$0] as? NSNumber)?.doubleValue }
         )
     }
+}
+
+private struct HandedOffFrame: @unchecked Sendable {
+    let buffer: CMSampleBuffer
 }

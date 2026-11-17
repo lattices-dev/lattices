@@ -743,17 +743,20 @@ export class MacOSCommandEngine implements SurfaceEngine {
    * Pass `agentLayer` when an agent layer is up: coordinate clicks on it and keyboard acts
    * then run as blink acts (see `blinkRouteFor`). Resolves to the host's detail for the
    * last command it ran, which says how the act landed (`via=ax`, `via=keys`, ...).
+   * `onDispatch` runs before each host command, so a caller can tell a throw that
+   * left the app untouched from one that followed a command.
    */
   async performAction(
     action: RuntimeAction,
     target?: ResolvedTarget,
-    options: { agentLayer?: AgentLayerRouting } = {},
+    options: { agentLayer?: AgentLayerRouting; onDispatch?: () => void } = {},
   ): Promise<string | undefined> {
     const context = this.interactionContext(options.agentLayer);
     let detail: string | undefined;
     await executeInteractionAction(action, target, {
       ...context,
       runHost: async (command, ...args) => {
+        options.onDispatch?.();
         const reply = await context.runHost(command, ...args);
         detail = hostDetail(reply.stdout) ?? detail;
         return reply;

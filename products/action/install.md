@@ -1,6 +1,6 @@
 # action
 
-> Native-first macOS demo automation with an AppKit UI and a local agent runtime
+> Computer use for agents on macOS, part of Lattices
 
 You are an expert at installing action. Execute these steps autonomously
 and inform the user of any decisions made. Request approval before running
@@ -8,59 +8,47 @@ installation commands.
 
 ## OBJECTIVE
 
-On an authorized development host, build the signed Action.app bundle and verify
-native health. Installation targets receive a matched app/runtime with rollback;
-this source-build flow does not prove desktop isolation. Before private-layer
-use, follow [Agent layer](docs/agent-layer.md) for fresh capability discovery,
-host quarantine, and acceptance checks. `native:doctor` rebuilds and signs.
+Install Action.app in /Applications, grant its permissions, and confirm the agent answers. Use the Lattices CLI when it is present; otherwise use the Action CLI. Both install the same signed app from the latest action-v* release. Build from source only when asked; see docs/getting-started.md.
 
 ## DONE WHEN
 
-`bun run native:doctor` completes successfully
+`action status` completes successfully
 
 ## TODO
 
-- [ ] Clone the repository
-- [ ] Install JavaScript dependencies
-- [ ] Build and sign the native app
-- [ ] Rebuild, sign, and verify native health on the development host
-- [ ] Run a screenshot smoke test
+- [ ] Install the Action CLI (skip if `lats` is installed; use `lats action` in place of `action` below)
+- [ ] Install and launch Action.app
+- [ ] Grant Accessibility and Screen Recording
+- [ ] Confirm the app and agent are ready
 
 ## Prerequisites
 
 - macOS on Apple Silicon
 - Bun 1.3+
-- Xcode command line tools and native build prerequisites for Swift/AppKit development
-- Accessibility and Screen Recording permissions may be required for capture and automation smoke tests
+- The user can approve Accessibility and Screen Recording prompts
 
-## Step 1: Clone the repository
+## Step 1: Install the Action CLI (skip if `lats` is installed; use `lats action` in place of `action` below)
 
 ```bash
-git clone https://github.com/arach/lattices.git && cd lattices/products/action
+bun add -g @lattices/action
 ```
 
-## Step 2: Install JavaScript dependencies
+## Step 2: Install and launch Action.app
 
 ```bash
-bun install
+action install --launch
 ```
 
-## Step 3: Build and sign the native app
+## Step 3: Grant Accessibility and Screen Recording
 
 ```bash
-bun run native:app:build
+action setup action-cua
 ```
 
-## Step 4: Rebuild, sign, and verify native health on the development host
+## Step 4: Confirm the app and agent are ready
 
 ```bash
-bun run native:doctor
-```
-
-## Step 5: Run a screenshot smoke test
-
-```bash
-bun run native:test:screenshot
+action status
 ```
 
 ## EXECUTE NOW

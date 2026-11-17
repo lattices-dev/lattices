@@ -19,6 +19,7 @@ final class WindowRelocationTests: XCTestCase {
         var transferredSpaceIds: [Int]?
         var transientStagingFrame = false
         var stagingSettled = false
+        var clampToSourceHeight = false
 
         init(sourceSpace: Int = 1956) {
             state = .init(frame: CGRect(x: 3440, y: 0, width: 720, height: 900), displayId: "virtual", spaceIds: [sourceSpace])
@@ -50,6 +51,10 @@ final class WindowRelocationTests: XCTestCase {
                           let source = self.displays.first(where: { $0.id == self.state.displayId }),
                           self.state.spaceIds == [source.currentSpaceId] else { return }
                     let target = self.displays.first(where: { $0.id == (frame.minX >= 3440 ? "virtual" : "physical") })!
+                    var frame = frame
+                    if self.clampToSourceHeight, source.id != target.id, let sourceFrame = self.state.frame {
+                        frame.size.height = min(frame.height, sourceFrame.height)
+                    }
                     self.state = .init(frame: frame, displayId: target.id,
                                        spaceIds: self.preserveWrongMembership ? self.state.spaceIds :
                                         (target.id == "physical" ? self.transferredSpaceIds : nil) ?? [target.currentSpaceId])
@@ -173,6 +178,16 @@ final class WindowRelocationTests: XCTestCase {
         XCTAssertFalse(result.verified)
         XCTAssertEqual(desktop.operations, ["space:2377"])
         XCTAssertEqual(result.after.spaceIds, [1956])
+    }
+
+    func testHeightClampedByShorterSourceDisplayIsReappliedOnTarget() {
+        let desktop = Desktop(sourceSpace: 2377)
+        desktop.clampToSourceHeight = true
+        let result = desktop.move()
+        XCTAssertTrue(result.verified)
+        XCTAssertFalse(result.rollbackAttempted)
+        XCTAssertEqual(desktop.operations, ["frame:0", "frame:0"])
+        XCTAssertEqual(result.after.frame, desktop.physicalFrame)
     }
 
     func testRefusedGeometryRollsBackStagingToOriginalDesktop() {

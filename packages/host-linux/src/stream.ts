@@ -18,11 +18,14 @@
 // stdout going quiet ends the unit.
 
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import * as desktop from "./desktop.ts";
+import * as cursorVeil from "./cursor-veil.ts";
 import { captureTarget } from "./endpoints.ts";
 import * as hypr from "./hyprland.ts";
 import type { Rect } from "./placement.ts";
-import { RouterError, num, str, type Json, type Params } from "./router.ts";
+import { RouterError, bool, num, str, type Json, type Params } from "./router.ts";
 
 export const STREAM_METHODS = ["capture.stream.start", "capture.stream.ack", "capture.stream.keyframe", "capture.stream.stop"];
 export const ENDED_EVENT = "capture.stream.ended";
@@ -376,6 +379,15 @@ export interface EncoderOptions {
   fps: number;
   encoder: EncoderKind;
   device?: string;
+  /** Resolved recorder and applied cursor policy, fixed for this stream. */
+  recorder?: { command: string; cursor: boolean };
+}
+
+export const CURSOR_FREE_RECORDER = join(homedir(), ".lattices", "bin", "lattices-wf-recorder");
+
+/** Stock wf-recorder always composites the pointer. Only our patched helper can omit it. */
+export function selectRecorder(cursor: boolean, helper: string | null): { command: string; cursor: boolean } {
+  return !cursor && helper ? { command: helper, cursor: false } : { command: "wf-recorder", cursor: true };
 }
 
 const even = (v: number) => Math.max(2, Math.floor(v / 2) * 2);
@@ -385,7 +397,9 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 export function streamSize(pixelWidth: number, frame: Rect, maxWidth: number) {
   const natural = Math.max(2, pixelWidth);
   const width = even(Math.min(maxWidth, natural));
-  const height = even((natural * (frame.h / Math.max(1, frame.w))) * (width / natural));
+  // Nearest, not floor: 1180 × (760 / 1180) is 759.99…, and a 758 squeeze
+  // is resampled on both ends of the stream.
+  const height = Math.max(2, Math.round((natural * (frame.h / Math.max(1, frame.w))) * (width / natural) / 2) * 2);
   return { width, height };
 }
 
@@ -401,6 +415,7 @@ export function bitrateFor(width: number, height: number, fps: number) {
  */
 export function encoderCommand(o: EncoderOptions): { command: string; args: string[] } {
   const args: string[] = [];
+  if (o.recorder?.cursor === false) args.push("--no-cursor");
   if (o.region) {
     const r = o.region;
     // Logical layout coordinates, as slurp prints them. A region must sit on one output.
@@ -420,8 +435,10 @@ export function encoderCommand(o: EncoderOptions): { command: string; args: stri
     // converts RGB to limited-range YUV (black 16, white 235). Keep conversion
     // and H.264 color metadata consistent so desktop contrast survives decoding.
     // Scaling changes the YUV matrix, not the SDR desktop's sRGB transfer curve.
+    // setsar=1: a rounded height would otherwise be tagged with a pixel
+    // aspect ratio, and the viewer would stretch every frame to undo it.
     args.push(
-      "-c", "libx264", "-x", "yuv420p", "-F", `scale=${o.width}:${o.height}:in_range=full:out_range=full:out_color_matrix=bt709`,
+      "-c", "libx264", "-x", "yuv420p", "-F", `scale=${o.width}:${o.height}:in_range=full:out_range=full:out_color_matrix=bt709,setsar=1`,
       "-p", "color_range=pc", "-p", "colorspace=bt709", "-p", "color_primaries=bt709", "-p", "color_trc=iec61966-2-1",
       "-p", "preset=ultrafast", "-p", "tune=zerolatency",
       "-p", `maxrate=${bitrate}`, "-p", `bufsize=${Math.round(bitrate / 2)}`,
@@ -433,7 +450,7 @@ export function encoderCommand(o: EncoderOptions): { command: string; args: stri
     // asks before overwriting an existing file, and a protocol URL isn't one.
     "-m", "h264", "-f", "pipe:1",
   );
-  return { command: "wf-recorder", args };
+  return { command: o.recorder?.command ?? "wf-recorder", args };
 }
 
 export interface EncoderProcess {
@@ -467,6 +484,10 @@ export interface StreamDeps {
   windowAlive: (wid: number) => Promise<boolean>;
   /** VAAPI render node, or null to encode in software. */
   vaapiDevice: () => string | null;
+  /** Executable installed by scripts/install-stream-recorder.sh, or null. */
+  cursorFreeRecorder: () => string | null;
+  /** Hides the compositor's pointer until the returned release runs. */
+  hideCursor: () => () => void;
   tickMs: number;
   /** Stdout silence that ends the trailing access unit. */
   quietMs: number;
@@ -481,6 +502,8 @@ export const defaultStreamDeps: StreamDeps = {
   windowAlive: async (wid) => (await hypr.clients()).some((c) => c.mapped && desktop.widFor(c) === wid),
   // Opt-in: on Archie (AMD, wf-recorder 0.6) h264_vaapi writes nothing and never exits.
   vaapiDevice: () => process.env.LATTICES_STREAM_ENCODER === "vaapi" && existsSync(VAAPI_DEVICE) ? VAAPI_DEVICE : null,
+  cursorFreeRecorder: () => Bun.which(CURSOR_FREE_RECORDER),
+  hideCursor: cursorVeil.hold,
   // Drain recovered sockets before the short pending-frame deadline expires.
   tickMs: 50,
   quietMs: QUIET_MS,
@@ -506,6 +529,8 @@ export class StreamSession {
   private pending: { bytes: Uint8Array; keyframe: boolean; at: number }[] = [];
   private pendingBytes = 0;
   stopped = false;
+  /** Runs once when the stream stops, however it stops. */
+  onStop?: () => void;
 
   constructor(
     readonly id: number,
@@ -513,6 +538,7 @@ export class StreamSession {
     readonly width: number,
     readonly height: number,
     readonly fps: number,
+    readonly recorder: { command: string; cursor: boolean },
     private sink: StreamSink,
     private deps: StreamDeps,
     private onEnd: (session: StreamSession) => void,
@@ -535,6 +561,7 @@ export class StreamSession {
     return encoderCommand({
       output: this.target.output, region: this.target.region, width: this.width, height: this.height,
       fps: this.fps, encoder: this.encoder, device: this.deps.vaapiDevice() ?? undefined,
+      recorder: this.recorder,
     });
   }
 
@@ -694,6 +721,7 @@ export class StreamSession {
     if (this.timer) clearInterval(this.timer);
     if (this.proc) kill(this.proc);
     this.proc = null;
+    this.onStop?.();
   }
 
   end(reason: string) {
@@ -709,6 +737,14 @@ function kill(proc: EncoderProcess) {
   try { proc.kill("SIGINT"); } catch {}
   const timer = setTimeout(() => { try { proc.kill("SIGKILL"); } catch {} }, 1000);
   void proc.exited.finally(() => clearTimeout(timer));
+}
+
+function onHeadless(target: { output?: string; frame: Rect }, displays: { displayId: string; frame: Rect; virtual?: boolean }[]) {
+  const cx = target.frame.x + target.frame.w / 2, cy = target.frame.y + target.frame.h / 2;
+  const display = target.output
+    ? displays.find((d) => d.displayId === target.output)
+    : displays.find((d) => cx >= d.frame.x && cx < d.frame.x + d.frame.w && cy >= d.frame.y && cy < d.frame.y + d.frame.h);
+  return display?.virtual === true;
 }
 
 /** One connection's streams. Closing the connection stops them all. */
@@ -747,12 +783,16 @@ export class StreamRegistry {
     if (this.streams.size >= MAX_STREAMS_PER_CONNECTION) throw new RouterError(`capture.stream: at most ${MAX_STREAMS_PER_CONNECTION} streams per connection`);
     const maxWidth = clamp(Math.round(num(params, "maxWidth") ?? 1920), 320, 3840);
     const fps = clamp(Math.round(num(params, "fps") ?? 30), 5, 60);
-    const target = await captureTarget(params, await this.deps.snapshot(), this.deps.resolveTarget);
+    const recorder = selectRecorder(bool(params, "cursor") ?? true, this.deps.cursorFreeRecorder());
+    const snap = await this.deps.snapshot();
+    const target = await captureTarget(params, snap, this.deps.resolveTarget);
     // The connection may have closed while the target resolved.
     if (this.closed) throw new RouterError("capture.stream: connection closed");
     const { width, height } = streamSize(target.pixelWidth, target.frame, maxWidth);
     const id = nextStreamId++ >>> 0;
-    const session = new StreamSession(id, target, width, height, fps, this.sink, this.deps, (s) => this.streams.delete(s.id));
+    const session = new StreamSession(id, target, width, height, fps, recorder, this.sink, this.deps, (s) => this.streams.delete(s.id));
+    // The cursor flag can't reach a headless output's software cursor.
+    if (!recorder.cursor && onHeadless(target, snap.displays)) session.onStop = this.deps.hideCursor();
     this.streams.set(id, session);
     try {
       session.start();
@@ -761,7 +801,7 @@ export class StreamRegistry {
       this.streams.delete(id);
       throw new RouterError(`capture.stream: encoder failed to start: ${(err as Error).message}`);
     }
-    return { streamId: id, codec: "h264", width, height, frame: target.frame as unknown as Json, display: target.display };
+    return { streamId: id, codec: "h264", width, height, cursor: recorder.cursor, frame: target.frame as unknown as Json, display: target.display };
   }
 
   stopAll() {

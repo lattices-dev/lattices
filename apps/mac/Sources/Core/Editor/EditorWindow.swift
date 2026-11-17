@@ -216,7 +216,7 @@ final class LayersPageModel: ObservableObject {
     var actions: [PageAction] {
         let viewSelector = PageAction(id: "layers.view", title: "Layers view", isEnabled: state != nil,
                                      segments: EditorUIState.views.map { view in
-            PageActionItem(id: view, title: view.capitalized, isOn: (state?.view ?? "overview") == view) {
+            PageActionItem(id: view, title: view == "workspace" ? "Edit" : "Layers", isOn: (state?.view ?? "overview") == view) {
                 self.command("view", value: view)
             }
         })
@@ -260,7 +260,7 @@ struct LayersPage: View {
         }
             .background(Palette.bg)
             .pageActions(model.actions + [PageAction(
-                id: "layers.exit", title: "Exit Layers", icon: "rectangle.portrait.and.arrow.right"
+                id: "layers.exit", title: "Show all windows", icon: "rectangle.portrait.and.arrow.right"
             ) { workspace.exitLayers() }])
     }
 }

@@ -25,6 +25,19 @@ const studioPages: readonly LatticesPage[] = [
       "Design surface for the Lattices macOS workspace manager — studies land here before SwiftUI gets touched.",
   },
   {
+    href: "/studio/studies/hyperspace-hud",
+    label: "Hyperspace HUD — review fixes",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb:
+      "The Lens HUD as built today next to the self-review fixes, at true point size: chip selection, map tile, title width, the Overview line and the hover preview, each switchable on its own.",
+    source: [
+      "design/studio/src/studio/studies/HyperspaceHUD.tsx",
+      "apps/mac/Sources/Core/Overlays/Motion/HyperspaceDesktopHUD.swift",
+    ],
+  },
+  {
     href: "/studio/studies/lattice",
     label: "A more considered lattice.",
     bucket: "studies",
@@ -35,6 +48,30 @@ const studioPages: readonly LatticesPage[] = [
       "design/studio/src/studio/studies/Lattice.tsx",
       "design/studio/src/studio/studies/lattice/lattice.css",
       "design/studio/src/studio/studies/lattice/model.ts",
+    ],
+  },
+  {
+    href: "/studio/studies/layers-page",
+    label: "Layers page — the mapping",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb: "The Layers page as a mapping, not a map: which apps and windows go to which layer, by a rule that matches app and title or by a window pinned by hand.",
+    source: [
+      "design/studio/src/studio/studies/LayersPage.tsx",
+      "apps/mac/Sources/Core/Workspace/LayerMembership.swift",
+    ],
+  },
+  {
+    href: "/studio/studies/windows-page",
+    label: "Windows page — the desk",
+    bucket: "studies",
+    surface: "macos",
+    status: "shipped",
+    blurb: "Every display on one desk as they sit, one table grouped by display, and the selected window's actions in one inspector. Shipped as WindowsDeskView.",
+    source: [
+      "design/studio/src/studio/studies/WindowsPage.tsx",
+      "apps/mac/Sources/Core/Overlays/Overview/WindowsDeskView.swift",
     ],
   },
   {

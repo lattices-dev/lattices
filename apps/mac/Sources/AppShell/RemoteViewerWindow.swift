@@ -150,12 +150,24 @@ final class RemoteViewerWindows: NSObject, NSWindowDelegate {
 struct RemoteViewerView: View {
     @ObservedObject var session: RemoteViewSession
     @ObservedObject var presentation: RemoteViewerPresentation
-    @AppStorage("remoteView.agentHands.behavior") private var cursorBehavior = RemoteAgentCursorBehavior.followPointer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focusedControl: Control?
-    private enum Control: Hashable { case monitor, app, region, resolution, control, hands, keyboard, screenSharing, fullScreen, close }
+    private enum Control: Hashable { case monitor, app, region, resolution, control, keyboard, screenSharing, fullScreen, close }
+    /// A remote app in an ordinary window: the picture alone, edge to edge.
+    var plain = false
 
     var body: some View {
+        if plain {
+            ZStack { Color.black; picture; overlay }
+                .background(Color.black)
+                .foregroundStyle(Palette.text)
+                .font(Typo.body(11))
+        } else {
+            chromed
+        }
+    }
+
+    private var chromed: some View {
         ZStack(alignment: .top) {
             framedPicture
                 .padding([.horizontal, .bottom], presentation.isFullScreen ? 0 : 12)
@@ -249,7 +261,7 @@ struct RemoteViewerView: View {
                     Button("Retry live video") { session.retryVideo() }
                 }
                 Divider()
-                Button("VNC in Screen Sharing…") { session.openScreenSharing() }
+                Button("Open in Screen Sharing") { session.openScreenSharing() }
             } label: {
                 Label(session.isRecoveringVideo ? "Reconnecting" : (session.videoFallbackReason != nil ? "Stills" : "Lattices"),
                       systemImage: "rectangle.on.rectangle")
@@ -370,40 +382,21 @@ struct RemoteViewerView: View {
     }
 
     private var controlToggle: some View {
-        HStack(spacing: 0) {
-            Button {
-                session.controlling.toggle()
-                if session.controlling { presentation.requestRemoteInput() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: session.controlling ? "cursorarrow.motionlines" : "cursorarrow")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(session.controlling ? "Controlling" : "Control").font(Typo.body(11))
-                }
-                .padding(.horizontal, 9).frame(width: 104, height: 24)
-                .contentShape(Rectangle())
+        Button {
+            session.controlling.toggle()
+            if session.controlling { presentation.requestRemoteInput() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: session.controlling ? "cursorarrow.motionlines" : "cursorarrow")
+                    .font(.system(size: 10, weight: .medium))
+                Text(session.controlling ? "Controlling" : "Control").font(Typo.body(11))
             }
-            .buttonStyle(.plain)
-            .focused($focusedControl, equals: .control)
-            .help(session.canControl ? "Send clicks, scrolls and keys to \(session.host)" : "\(session.host) doesn't take input from this Mac")
-
-            Rectangle().fill(Palette.border).frame(width: Chrome.hairline, height: 12)
-            Menu {
-                Picker("Agent hands", selection: $cursorBehavior) {
-                    ForEach(RemoteAgentCursorBehavior.allCases, id: \.self) { behavior in
-                        Text(behavior.title).tag(behavior)
-                    }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
-                    .frame(width: 22, height: 24).contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .focused($focusedControl, equals: .hands)
-            .accessibilityLabel("Agent hands behavior")
-            .help("Agent hands: \(cursorBehavior.title)")
+            .padding(.horizontal, 9).frame(width: 104, height: 24)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .focused($focusedControl, equals: .control)
+        .help(session.canControl ? "Send clicks, scrolls and keys to \(session.host). ⌘-click the picture to toggle control." : "\(session.host) doesn't take input from this Mac")
         .foregroundStyle(session.controlling ? Long.coral : (session.canControl ? Palette.textDim : Palette.textMuted.opacity(0.6)))
         .background(RoundedRectangle(cornerRadius: 6).fill(session.controlling ? Long.coral.opacity(0.14) : Color.white.opacity(0.05)))
         .disabled(!session.canControl)
@@ -528,7 +521,7 @@ struct RemoteViewerView: View {
     private var picture: some View {
         GeometryReader { proxy in
             ZStack {
-                RemoteVideoSurface(layer: session.video.layer, cornerRadius: presentation.isFullScreen ? 0 : 5,
+                RemoteVideoSurface(layer: session.video.layer, cornerRadius: presentation.isFullScreen || plain ? 0 : 5,
                                    viewportChanged: session.updateViewport)
                     .opacity(session.showingVideo ? 1 : 0)
                 if !session.showingVideo, let image = session.image {
@@ -538,7 +531,7 @@ struct RemoteViewerView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                RemoteInputSurface(session: session, presentation: presentation, cursorBehavior: cursorBehavior)
+                RemoteInputSurface(session: session, presentation: presentation)
             }
         }
     }
@@ -563,8 +556,8 @@ struct RemoteViewerView: View {
         VStack {
             if session.selectingRegion {
                 hint("Drag to choose a region · Esc cancels")
-            } else if session.keyboardCaptured && (!presentation.isFullScreen || presentation.controlsVisible) {
-                hint("Keyboard captured · ⌘ → Super · ⌃⌥Esc to release")
+            } else if session.keyboardCaptured && !plain && (!presentation.isFullScreen || presentation.controlsVisible) {
+                hint("Keyboard captured · ⌘ → Super · ⌘-click to stop control · ⌃⌥Esc to release keys")
             }
             Spacer()
             if let notice = session.notice {
@@ -594,11 +587,10 @@ struct RemoteViewerView: View {
 // MARK: - Input
 
 /// Takes the pointer and keyboard over the picture: region selection while
-/// choosing one, forwarded input while controlling, nothing otherwise.
+/// choosing one, Command-click to toggle control, forwarded input while controlling.
 private struct RemoteInputSurface: NSViewRepresentable {
     @ObservedObject var session: RemoteViewSession
     @ObservedObject var presentation: RemoteViewerPresentation
-    var cursorBehavior: RemoteAgentCursorBehavior
 
     func makeNSView(context: Context) -> RemoteInputView {
         let view = RemoteInputView()
@@ -618,7 +610,6 @@ private struct RemoteInputSurface: NSViewRepresentable {
         view.session = session
         view.imageSize = session.showingVideo ? session.videoSize : session.image?.size ?? .zero
         view.remoteFrame = session.frame
-        view.cursorBehavior = cursorBehavior
         view.updateInteraction()
         view.needsDisplay = true
         view.requestRemoteFocusIfNeeded()
@@ -713,12 +704,11 @@ final class RemoteInputView: NSView {
     weak var presentation: RemoteViewerPresentation?
     var imageSize: CGSize = .zero
     var remoteFrame: CGRect = .zero
-    var cursorBehavior: RemoteAgentCursorBehavior = .followPointer {
-        didSet { agentCursor.behavior = cursorBehavior }
-    }
 
     private var downAt: CGPoint?
     private var dragAt: CGPoint?
+    private var consumingControlClick = false
+    private var previousClickToggledControl = false
     private var scrollCarry = CGVector.zero
     private let agentCursor = RemoteAgentCursorView()
     private var pointerTracking: NSTrackingArea?
@@ -782,7 +772,8 @@ final class RemoteInputView: NSView {
     override func resetCursorRects() {
         super.resetCursorRects()
         guard let session, session.controlling || session.selectingRegion else { return }
-        addCursorRect(RemoteView.fit(imageSize, in: bounds.size), cursor: session.selectingRegion ? .crosshair : .arrow)
+        addCursorRect(RemoteView.fit(imageSize, in: bounds.size),
+                      cursor: session.selectingRegion ? .crosshair : RemoteAgentCursorView.controlCursor)
     }
 
     override func updateTrackingAreas() {
@@ -805,9 +796,13 @@ final class RemoteInputView: NSView {
         updateInteraction()
     }
 
-    private var showsAgentCursor: Bool {
+    private var acceptsRemotePointer: Bool {
         session?.controlling == true && session?.selectingRegion == false && session?.status == .live
             && window?.isKeyWindow == true && NSApp.isActive
+    }
+
+    private var showsAgentCursor: Bool {
+        acceptsRemotePointer && session?.pictureExcludesCursor == true
     }
 
     private var remoteKeyboardEnabled: Bool {
@@ -815,7 +810,7 @@ final class RemoteInputView: NSView {
     }
 
     private var ownsRemoteKeyboard: Bool {
-        remoteKeyboardEnabled && showsAgentCursor && window?.firstResponder === self
+        remoteKeyboardEnabled && acceptsRemotePointer && window?.firstResponder === self
             && presentation?.localControlsActive != true
     }
 
@@ -857,6 +852,8 @@ final class RemoteInputView: NSView {
                 self.keyboardCapture.suspend()
                 return
             }
+            // Keys come from the window's events; held ones stay held.
+            if session.localShortcuts { return }
             if !self.keyboardCapture.start() {
                 session.keyboardEnabled = false
                 session.notice = "Keyboard capture needs Accessibility access for Lattices."
@@ -917,6 +914,9 @@ final class RemoteInputView: NSView {
         session?.releaseInput()
         pressedButtons.removeAll()
         downAt = nil; dragAt = nil
+        scrollCarry = .zero
+        consumingControlClick = false
+        previousClickToggledControl = false
         agentCursor.reset()
     }
 
@@ -945,9 +945,9 @@ final class RemoteInputView: NSView {
         agentCursor.follow(convert(point, to: agentCursor), reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
-    private func landAgentCursor(at point: CGPoint) {
-        guard showsAgentCursor else { return }
-        agentCursor.land(at: convert(point, to: agentCursor), reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    private func indicateAgentClick(at point: CGPoint) {
+        guard showsAgentCursor, agentCursor.frame.contains(point), remote(point) != nil else { return }
+        agentCursor.indicateClick(at: convert(point, to: agentCursor), reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     override func mouseEntered(with event: NSEvent) { movePointer(event) }
@@ -955,9 +955,10 @@ final class RemoteInputView: NSView {
     override func mouseExited(with event: NSEvent) { agentCursor.reset() }
 
     private func movePointer(_ event: NSEvent) {
+        guard !consumingControlClick else { return }
         let p = point(event)
         followAgentCursor(at: p)
-        guard showsAgentCursor, let mapped = remote(p) ?? (pressedButtons.isEmpty ? nil : clampedRemote(p)) else { return }
+        guard acceptsRemotePointer, let mapped = remote(p) ?? (pressedButtons.isEmpty ? nil : clampedRemote(p)) else { return }
         session?.hover(mapped)
     }
 
@@ -974,22 +975,58 @@ final class RemoteInputView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // A double-click is one local gesture, even if the first click cleared
+        // the picture while the stream changes its cursor policy.
+        if event.clickCount > 1, previousClickToggledControl {
+            consumingControlClick = true
+            return
+        }
+        previousClickToggledControl = false
+        if let session, RemoteView.shouldToggleControl(
+            modifiers: event.modifierFlags, controlling: session.controlling,
+            canControl: session.canControl, isLive: session.status == .live,
+            selectingRegion: session.selectingRegion, insidePicture: remote(point(event)) != nil
+        ) {
+            toggleControlFromClick()
+            return
+        }
         presentation?.requestRemoteInput()
         window?.makeFirstResponder(self)
         downAt = point(event)
         dragAt = downAt
-        followAgentCursor(at: point(event))
         beginButton("left", event)
     }
 
+    func toggleControlFromClick() {
+        guard let session else { return }
+        // Release any remote modifiers before changing ownership. Capture
+        // startup ignores the Command key still held for this local click.
+        keyboardCapture.suspend()
+        endInteraction()
+        consumingControlClick = true
+        previousClickToggledControl = true
+        session.controlling.toggle()
+        if session.controlling {
+            if let window {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            presentation?.requestRemoteInput()
+            window?.makeFirstResponder(self)
+        }
+        updateInteraction()
+    }
+
     override func mouseDragged(with event: NSEvent) {
+        guard !consumingControlClick else { return }
         dragAt = point(event)
         movePointer(event)
         if session?.selectingRegion == true { needsDisplay = true }
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer { downAt = nil; dragAt = nil; needsDisplay = true }
+        defer { downAt = nil; dragAt = nil; consumingControlClick = false; needsDisplay = true }
+        guard !consumingControlClick else { return }
         guard let session, let start = downAt else { return }
         let end = point(event)
         if session.selectingRegion {
@@ -1009,12 +1046,12 @@ final class RemoteInputView: NSView {
             session.drag(from: a, to: b)
         } else if let p = remote(end) {
             session.click(p, count: event.clickCount >= 2 ? 2 : 1)
-            landAgentCursor(at: end)
+            indicateAgentClick(at: end)
         }
     }
 
     private func beginButton(_ button: String, _ event: NSEvent) {
-        guard showsAgentCursor, session?.livePointer == true, let p = remote(point(event)) else { return }
+        guard !consumingControlClick, acceptsRemotePointer, session?.livePointer == true, let p = remote(point(event)) else { return }
         pressedButtons.insert(button)
         session?.pointerButton(button, down: true, at: p)
     }
@@ -1022,7 +1059,7 @@ final class RemoteInputView: NSView {
     private func endButton(_ button: String, _ event: NSEvent) {
         guard pressedButtons.remove(button) != nil, let p = clampedRemote(point(event)) else { return }
         session?.pointerButton(button, down: false, at: p)
-        landAgentCursor(at: point(event))
+        indicateAgentClick(at: point(event))
     }
 
     override func rightMouseDown(with event: NSEvent) { beginButton("right", event) }
@@ -1032,13 +1069,15 @@ final class RemoteInputView: NSView {
     override func otherMouseUp(with event: NSEvent) { if event.buttonNumber == 2 { endButton("middle", event) } }
 
     override func rightMouseUp(with event: NSEvent) {
+        guard !consumingControlClick else { return }
         if session?.livePointer == true { endButton("right", event); return }
         guard let session, session.controlling, let p = remote(point(event)) else { return }
         session.click(p, button: "right")
-        landAgentCursor(at: point(event))
+        indicateAgentClick(at: point(event))
     }
 
     override func scrollWheel(with event: NSEvent) {
+        guard !consumingControlClick else { return }
         guard let session, session.controlling, let p = remote(point(event)) else { return super.scrollWheel(with: event) }
         // Trackpads report many small pixel deltas; send whole wheel notches.
         let unit: CGFloat = event.hasPreciseScrollingDeltas ? 12 : 1
@@ -1064,12 +1103,25 @@ final class RemoteInputView: NSView {
             releaseKeyboard()
             return
         }
-        if session.keyboardCaptured { return }
+        if session.keyboardCaptured {
+            if session.localShortcuts { keyboardCapture.deliver(event, chord: event.modifierFlags.contains(.command)) }
+            return
+        }
         guard let key = RemoteView.key(keyCode: event.keyCode, characters: event.characters,
                                        ignoringModifiers: event.charactersIgnoringModifiers, modifiers: event.modifierFlags) else {
             return super.keyDown(with: event)
         }
         session.key(key)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        guard ownsRemoteKeyboard, let session, session.localShortcuts, session.keyboardCaptured else { return super.keyUp(with: event) }
+        keyboardCapture.deliver(event)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard ownsRemoteKeyboard, let session, session.localShortcuts, session.keyboardCaptured else { return super.flagsChanged(with: event) }
+        keyboardCapture.deliver(event)
     }
 
     /// While controlling, ⌘-shortcuts belong to the other machine — except
@@ -1087,6 +1139,8 @@ final class RemoteInputView: NSView {
         guard ownsRemoteKeyboard else { return super.performKeyEquivalent(with: event) }
         let base = event.charactersIgnoringModifiers?.lowercased()
         if event.modifierFlags.contains(.command), base == "`" { return super.performKeyEquivalent(with: event) }
+        if session?.localShortcuts == true, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           ["q", "h", "m"].contains(base) { return super.performKeyEquivalent(with: event) }
         keyDown(with: event)
         return true
     }

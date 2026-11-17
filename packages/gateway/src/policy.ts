@@ -1,4 +1,4 @@
-import { METHOD_ALIASES } from "../../host-linux/src/router.ts";
+import { canonicalName } from "../../host-linux/src/router.ts";
 
 export const PRODUCTS = ["lattices", "action", "blink", "speech"] as const;
 export type Product = typeof PRODUCTS[number];
@@ -68,7 +68,7 @@ export function isProduct(value: unknown): value is Product { return typeof valu
 export function canonicalProduct(value: unknown): Product | null {
   return value === "canvas" ? "blink" : isProduct(value) ? value : null;
 }
-export function canonicalMethod(product: Product, method: string): string { return product === "lattices" ? METHOD_ALIASES[method] ?? method : method; }
+export function canonicalMethod(product: Product, method: string): string { return product === "lattices" ? canonicalName(method) : method; }
 export function methodScope(product: Product, method: string): Scope | null {
   const name = canonicalMethod(product, method);
   for (const scope of SCOPES) if (operations[product][scope].includes(name)) return scope;

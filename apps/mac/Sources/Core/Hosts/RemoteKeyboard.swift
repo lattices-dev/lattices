@@ -119,7 +119,47 @@ final class RemoteKeyboardCapture {
             if type == .keyUp || type == .flagsChanged { ignoredUntilRelease.remove(code) }
             return nil
         }
-        guard let remote = RemoteKeyboard.evdev[code] else { return Unmanaged.passUnretained(event) }
+        guard RemoteKeyboard.evdev[code] != nil else { return Unmanaged.passUnretained(event) }
+        deliver(code, type)
+        return nil
+    }
+
+    /// The same physical keys from the window's own events, without a tap:
+    /// a remote app window leaves Cmd-Tab and the system shortcuts to macOS.
+    /// A Cmd chord comes as a key equivalent with no keyUp, so it is pressed
+    /// and released at once.
+    func deliver(_ event: NSEvent, chord: Bool = false) {
+        switch event.type {
+        case .keyDown:
+            match(event.modifierFlags)
+            deliver(event.keyCode, .keyDown)
+            if chord { deliver(event.keyCode, .keyUp) }
+        case .keyUp:
+            deliver(event.keyCode, .keyUp)
+            match(event.modifierFlags)
+        case .flagsChanged: deliver(event.keyCode, .flagsChanged)
+        default: break
+        }
+    }
+
+    /// A posted chord can carry its modifiers only in its flags, with no
+    /// flagsChanged before it. Hold or release the left-hand keys to match.
+    private func match(_ flags: NSEvent.ModifierFlags) {
+        let pairs: [(NSEvent.ModifierFlags, UInt16, UInt16)] = [
+            (.shift, 56, 60), (.control, 59, 62), (.option, 58, 61), (.command, 55, 54),
+        ]
+        for (flag, left, right) in pairs {
+            let holding = held.contains(left) || held.contains(right)
+            if flags.contains(flag), !holding { deliver(left, .flagsChanged) }
+            if !flags.contains(flag) {
+                if held.contains(left) { deliver(left, .flagsChanged) }
+                if held.contains(right) { deliver(right, .flagsChanged) }
+            }
+        }
+    }
+
+    private func deliver(_ code: UInt16, _ type: CGEventType) {
+        guard let remote = RemoteKeyboard.evdev[code] else { return }
         if type == .flagsChanged, code == 57 {
             key(remote, true); key(remote, false)
         } else {
@@ -130,6 +170,5 @@ final class RemoteKeyboardCapture {
                 key(remote, down)
             }
         }
-        return nil
     }
 }

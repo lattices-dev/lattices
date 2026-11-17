@@ -1,5 +1,5 @@
 // The `windows` toolset: this Mac's window controls as first-class tools --
-// search, place, focus, layers and undo -- so an agent uses the same verbs as
+// search, place, focus, layers, undo and saved remote apps -- so an agent uses the same verbs as
 // `lats search`, `lats place` and `lats layer` instead of host_call on "local".
 // Every tool wraps an existing daemon method; the CLI's search and place logic
 // is reused, not copied.
@@ -8,7 +8,7 @@ import { callHost, resolveHost } from "../../../hosts.ts";
 import { layerTarget } from "../../../cli/layer.ts";
 import { placeWithClient, searchWithClient, type DaemonCaller } from "../../../cli/search.ts";
 import { normalizePlacement } from "../../../cli/window.ts";
-import type { JsonObject, ToolDefinition, ToolResult, Toolset } from "../../types.ts";
+import { toolError, type JsonObject, type ToolDefinition, type ToolResult, type Toolset } from "../../types.ts";
 
 const object = (properties: JsonObject, required: string[] = []): JsonObject => ({
   type: "object",
@@ -102,6 +102,42 @@ export const WINDOW_TOOLS: readonly ToolDefinition[] = [
     }),
     annotations: mutating,
   },
+  {
+    name: "views_list",
+    title: "List saved remote apps",
+    description: "Remote apps saved to open as their own window here (views.list): id, host, app, name, and the Mac window id of any that are open.",
+    inputSchema: object({}),
+    annotations: readOnly,
+  },
+  {
+    name: "views_save",
+    title: "Save a remote app",
+    description:
+      "Save an app on a host so views_open can open it as its own window here (views.save). Also makes it a Mac app for the Dock, ⌘Tab and Spotlight; app_path is where. id defaults to app-host, e.g. spotify-archie; name is the window's name here.",
+    inputSchema: object({
+      host: { type: "string", description: "Configured host name, e.g. archie" },
+      app: { type: "string", description: "App name on the host, e.g. Spotify" },
+      name: { type: "string", description: "Window name here; defaults to the app" },
+      id: { type: "string", description: "Letters, digits, - and _" },
+      width: { type: "number", description: "First window width in points (with height)" },
+      height: { type: "number", description: "First window height in points (with width)" },
+    }, ["host", "app"]),
+    annotations: mutating,
+  },
+  {
+    name: "views_open",
+    title: "Open a saved remote app",
+    description: "Open a saved remote app as its own window here, or bring it forward (views.open). Returns window, its id for windows_focus and windows_place.",
+    inputSchema: object({ id: { type: "string", description: "Id from views_list" } }, ["id"]),
+    annotations: mutating,
+  },
+  {
+    name: "views_remove",
+    title: "Forget a saved remote app",
+    description: "Delete a saved remote app and its Mac app (views.remove). An open one is closed and its app returned to its host.",
+    inputSchema: object({ id: { type: "string", description: "Id from views_list" } }, ["id"]),
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  },
 ];
 
 const text = (value: unknown): ToolResult => {
@@ -191,6 +227,21 @@ export async function callWindowTool(name: string, args: JsonObject): Promise<To
 
     case "history_undo":
       return text(withReceipt(await call("history.undo", { ...pick(args, ["receiptId", "requestId", "wid", "steps", "dryRun"]), source: "mcp" }, 15_000)));
+
+    case "views_list":
+      return text({ views: await call("views.list") });
+
+    case "views_save":
+      if (typeof args.host !== "string" || typeof args.app !== "string") throw new Error("views_save needs a host and an app");
+      return text(await call("views.save", pick(args, ["host", "app", "name", "id", "width", "height"])));
+
+    case "views_open":
+      if (typeof args.id !== "string" || !args.id) throw new Error("views_open needs an id");
+      return text(await call("views.open", { id: args.id }, 45_000));
+
+    case "views_remove":
+      if (typeof args.id !== "string" || !args.id) throw new Error("views_remove needs an id");
+      return text(await call("views.remove", { id: args.id }));
   }
   throw new Error(`Unknown tool: ${name}`);
 }
@@ -202,12 +253,13 @@ export const windowsToolset: Toolset = {
   instructions: [
     "windows: this Mac's window controls. windows_search first (deep: true only when it misses), then windows_place / windows_focus by wid.",
     "windows: windows_place returns a receiptId; history_undo with it puts the window back. layers_list and layers_switch move between workspace layers.",
+    "windows: views_save keeps an app on another host (e.g. Spotify on archie) by id; views_open shows it as its own window here and returns that window's id.",
   ],
   async callTool(name, args) {
     try {
       return await callWindowTool(name, args);
     } catch (err) {
-      return { content: [{ type: "text", text: (err as Error).message }], isError: true };
+      return toolError(err);
     }
   },
 };

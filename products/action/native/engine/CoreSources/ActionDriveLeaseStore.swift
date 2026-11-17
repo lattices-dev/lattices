@@ -72,6 +72,8 @@ struct ActionDriveLease: Codable, Equatable, Sendable {
     var client: String? = nil
     /// What the agent saw on the other end of the socket, e.g. `bun 41250 ← claude 41012`.
     var clientProcess: String? = nil
+    /// The folder the driving harness works in, e.g. `talkie`. Self-reported.
+    var project: String? = nil
     /// Acts recorded against this lease.
     var actCount: Int? = nil
 }
@@ -166,7 +168,8 @@ actor ActionDriveLeaseStore {
         workflowRunID rawWorkflowRunID: String? = nil,
         workspaceID rawWorkspaceID: String? = nil,
         client rawClient: String? = nil,
-        clientProcess: String? = nil
+        clientProcess: String? = nil,
+        project rawProject: String? = nil
     ) throws -> ActionDriveBeginResult {
         let at = now()
         try sweep(at: at)
@@ -241,6 +244,7 @@ actor ActionDriveLeaseStore {
             operationStopFile: nil,
             client: rawClient?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
             clientProcess: clientProcess,
+            project: rawProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
             actCount: 0
         )
         let record = ActionStoredDriveLease(ownerID: ownerID, lease: lease)
@@ -410,6 +414,10 @@ actor ActionDriveLeaseStore {
         Self.signalOperationStop(for: record.lease)
         try publishPresence(for: record.lease, at: at)
         return record.lease
+    }
+
+    func isDriving(ownerID: String) -> Bool {
+        records.values.contains { $0.ownerID == ownerID && $0.lease.status == "driving" }
     }
 
     func disconnectOwner(by ownerID: String, summary: String) {

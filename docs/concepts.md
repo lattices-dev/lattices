@@ -244,7 +244,7 @@ have the same product ownership but use the
 |---------|--------------------------|---------------|----------------------------|
 | `lats tile`, `lats place`, `lats search`, `lats layer`, `lats call ...` | Lattices daemon via `lattices.sock` | `windows.*`, `spaces.*`, `layers.*`, ... | Lattices |
 | `lats start`, `lats sync` | tmux, directly | n/a | tmux, configured by Lattices |
-| `lats computer ...` | Lattices daemon via `lattices.sock` | `computer.*` | Lattices |
+| `lats cua ...` (alias `lats computer`) | Lattices daemon via `lattices.sock` | `cua.*` (alias `computer.*`) | Lattices |
 | `lats voice listen`, `stopListening`, `simulate`, `intents` | Lattices daemon via `lattices.sock` | `voice.*` | Lattices; transcription uses the embedded runtime via `voice.sock` |
 | `lats voice say`, `stop`, `pause`, `resume`, `skip`, `seek`, `list`, `select` | Lattices daemon via `lattices.sock` | `voice.*` | Voice.app via `speech.sock`, as `speech.*` |
 | `lats action call <method>` | Action agent via `action.sock` | Action methods | Action |
@@ -259,7 +259,7 @@ have the same product ownership but use the
 Some interfaces cross or overlap the product boundaries.
 Read these before choosing an interface.
 
-1. **`lats computer` is Lattices, not Action.** The `computer.*` methods run in
+1. **`lats cua` is Lattices, not Action.** The `cua.*` methods run in
    the Lattices daemon (see the `computer.*` entries in the
    [API reference](/lattices/docs/api)). Action is the separate computer-use
    product with its own agent on `action.sock`.

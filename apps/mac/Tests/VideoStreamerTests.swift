@@ -9,6 +9,7 @@ final class VideoStreamerTests: XCTestCase {
         XCTAssertEqual(plain, try VideoStreamRequest(params: .object(["displayIndex": .int(1)])).with(target: .display))
         XCTAssertEqual(plain.maxWidth, 1920)
         XCTAssertEqual(plain.fps, 30)
+        XCTAssertTrue(plain.showsCursor)
 
         let low = try VideoStreamRequest(params: .object(["maxWidth": .int(10), "fps": .int(1)]))
         XCTAssertEqual(low.maxWidth, 320)
@@ -16,6 +17,18 @@ final class VideoStreamerTests: XCTestCase {
         let high = try VideoStreamRequest(params: .object(["maxWidth": .int(9000), "fps": .int(240)]))
         XCTAssertEqual(high.maxWidth, 3840)
         XCTAssertEqual(high.fps, 60)
+    }
+
+    func testRequestCursorPolicyIsExplicitForEveryTarget() throws {
+        let targets: [[String: JSON]] = [[:], ["wid": .int(42)], ["width": .int(100), "height": .int(100)]]
+        for target in targets {
+            XCTAssertTrue(try VideoStreamRequest(params: .object(target)).showsCursor)
+            for cursor in [false, true] {
+                var params = target
+                params["cursor"] = .bool(cursor)
+                XCTAssertEqual(try VideoStreamRequest(params: .object(params)).showsCursor, cursor)
+            }
+        }
     }
 
     func testRequestTargetsFollowCaptureStill() throws {

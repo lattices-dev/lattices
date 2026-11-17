@@ -16,7 +16,10 @@ describe("Action quick start", () => {
     expect(html).toContain("&quot;output&quot;");
     expect(html.match(/<li /g)).toHaveLength(3);
     expect(html.match(/<strong>Expect:<\/strong>/g)).toHaveLength(3);
-    expect(html.match(/<button /g)).toHaveLength(3);
+    // Two install-path toggles plus one copy button per step.
+    expect(html.match(/<button /g)).toHaveLength(5);
+    expect(html).toContain("With Lattices");
+    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('role="status"');
     expect(html).toContain("not a private workspace");
     expect(html).toContain("matching MCP runtime");

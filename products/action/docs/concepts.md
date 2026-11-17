@@ -67,7 +67,7 @@ Several Lattices family commands look related to Action. Only some reach it.
 | `action mcp` | `@lattices/action` MCP server (stdio) | The computer-use tools (`cua_*`). The full Action MCP server, with drive and layer tools, is `lats action mcp`. |
 | `action capabilities`, `layer …`, other verbs | Action runtime CLI | Forwarded to `<action-root>/packages/cli`. Fails without a runtime or checkout. |
 | `lats action …` | Lattices CLI | The same app commands from the Lattices CLI, plus `lats action mcp` |
-| `lats computer …` | Lattices core daemon, port 9399 | `computer.*` methods are implemented in Lattices core, not in Action |
+| `lats cua …` (alias `lats computer`) | Lattices core daemon, port 9399 | `cua.*` methods (alias `computer.*`) are implemented in Lattices core, not in Action |
 | `lats mcp` (`browser_*` tools) | Lattices MCP server | Drives Action-owned Chrome profiles over CDP. It does not call Action.app. |
 | Action MCP with `ACTION_REMOTE_HOST` | `lattices-host` on the remote machine, port 9399 | The Linux path uses the Lattices host protocol, not the Action agent |
 
@@ -81,7 +81,7 @@ The Lattices CLI finds an Action root in this order: `ACTION_ROOT`, the
 These product boundaries apply to both runtime versions. They are documented here so that a reader
 does not infer a different owner from the command name.
 
-- `lats computer` sounds like computer use, but it calls the Lattices core
+- `lats cua` sounds like Action, but it calls the Lattices core
   daemon. Action's native observe and act tools are in the Action MCP server.
 - The `browser_*` tools are documented with Action because they drive
   Action-owned Chrome identities, but the Lattices CLI serves them.
@@ -109,6 +109,18 @@ The MCP tools follow one loop:
 
 Accessibility comes first. A target with a bundle id and label is pressed or
 set through accessibility. The pointer is a fallback.
+
+Every `act_execute` reply, success or error, carries `delivery`. It says how
+far the act got, so an agent knows whether to send it again:
+
+| `status` | Meaning | `retrySafe` |
+| --- | --- | --- |
+| `not_delivered` | Refused or failed before any host command ran. Nothing happened. | true |
+| `delivery_uncertain` | A host command ran and failed. The act may have landed. | false, except focus-window and open-app |
+| `delivered_unverified` | The host ran the act. Nothing read the result back. | false, except focus-window and open-app |
+
+`recovery` is `retry`, `observe_then_retry` (observe first, then act only if
+the change is missing) or `none`.
 
 ## Drive leases
 

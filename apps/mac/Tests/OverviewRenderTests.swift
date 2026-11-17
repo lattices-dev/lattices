@@ -82,18 +82,35 @@ final class OverviewRenderTests: XCTestCase {
     /// Overview from fixtures in an offscreen window, never ordered in.
     /// `top` drops the page that far down its window, as the shell's title
     /// bar and rounded stage do, which can land it between pixels.
-    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0, canvas: Bool = false,
+    private func host(width: CGFloat, height: CGFloat, sidebar: Bool, top: CGFloat = 0, canvas: Bool = false, desk: Bool = false,
+                      headerOnly: Bool = false,
+                      grouping: WindowsDeskGrouping = .application, subgrouping: WindowsDeskGrouping = .none,
                       configure: (OverviewModel) -> Void = { _ in }) -> (NSHostingView<AnyView>, NSWindow, () -> Void) {
         let suite = "overview.render.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
+        defaults.set(grouping.rawValue, forKey: "windows.groupBy")
+        defaults.set(subgrouping.rawValue, forKey: "windows.thenGroupBy")
         let model = OverviewModel(defaults: defaults, actions: RenderActions(), inputs: inputs())
         model.chooseMembershipLayer("lattices")
         model.membershipShown = sidebar
         configure(model)
 
-        let view = OverviewView(model: model, controller: ScreenMapController(), live: false, canvasFixture: canvas)
+        let content: AnyView
+        if desk || headerOnly {
+            content = AnyView(VStack(spacing: 0) {
+                WindowsDeskHeader(model: model) { compact in
+                    PageActionButton(action: PageAction(id: "render.here", title: "Here", icon: "viewfinder"), compact: compact)
+                    PageActionButton(action: PageAction(id: "render.search", title: "Search", icon: "magnifyingglass", shortcut: "⌘K"), compact: compact)
+                }
+                if !headerOnly { WindowsDeskView(model: model, live: false) }
+            })
+        } else {
+            content = AnyView(OverviewView(model: model, controller: ScreenMapController(), live: false, canvasFixture: canvas))
+        }
+        let view = content
             .frame(width: width, height: height - top)
             .padding(.top, top)
+            .defaultAppStorage(defaults)
             .environment(\.colorScheme, .dark)
         let host = NSHostingView(rootView: AnyView(view))
         host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -139,6 +156,39 @@ final class OverviewRenderTests: XCTestCase {
         defer { cleanup(); _ = window }
         let png = try XCTUnwrap(snapshot(host).representation(using: .png, properties: [:]))
         try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("overview-connected-canvas.png"))
+    }
+
+    /// Review both widths, selection, nested grouping and a filtered table.
+    /// These are the real native views with inert fixture actions.
+    func testWindowsDeskLightingRenders() throws {
+        guard let dir = ProcessInfo.processInfo.environment["OVERVIEW_RENDER_DIR"] else {
+            throw XCTSkip("Set OVERVIEW_RENDER_DIR to render")
+        }
+        let destination = URL(fileURLWithPath: dir, isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let cases: [(String, CGFloat, CGFloat, Bool, WindowsDeskGrouping, WindowsDeskGrouping, String)] = [
+            ("windows-desk-empty-compact", 980, 620, false, .application, .none, ""),
+            ("windows-desk-empty-wide", 1760, 840, false, .application, .none, ""),
+            ("windows-desk-selected", 1120, 740, true, .application, .none, ""),
+            ("windows-desk-nested", 1120, 740, false, .monitor, .application, ""),
+            ("windows-desk-filtered", 980, 620, false, .none, .none, "ghostty"),
+        ]
+        for (name, width, height, selected, grouping, subgrouping, search) in cases {
+            let (host, window, cleanup) = self.host(width: width, height: height, sidebar: false, desk: true,
+                                                  grouping: grouping, subgrouping: subgrouping) { model in
+                model.scope.search = search
+                if selected { model.select(2) }
+            }
+            defer { cleanup(); _ = window }
+            let png = try XCTUnwrap(snapshot(host, scale: 2).representation(using: .png, properties: [:]))
+            try png.write(to: destination.appendingPathComponent("\(name).png"))
+        }
+        // The header also fits the content width of a 600pt app window
+        // with its navigation sidebar expanded.
+        let (host, window, cleanup) = self.host(width: 440, height: Chrome.titleBarHeight, sidebar: false, headerOnly: true)
+        defer { cleanup(); _ = window }
+        let png = try XCTUnwrap(snapshot(host, scale: 2).representation(using: .png, properties: [:]))
+        try png.write(to: destination.appendingPathComponent("windows-desk-narrow-header.png"))
     }
 
     private func scrollViews(in view: NSView) -> [NSScrollView] {

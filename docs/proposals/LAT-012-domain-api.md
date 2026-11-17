@@ -4,6 +4,12 @@ Status: Proposed, 2026-09-23. Partially supersedes [LAT-011](LAT-011-companion-a
 (distribution and discovery). LAT-011's runtime boundaries still stand: ports,
 tokens, leases and credentials.
 
+Amended 2026-11-12: the computer-use domain is `cua`, not `computer`. "Computer"
+reads like a VM or sandbox, and CUA is the common term. Action stays the app
+that does the work; `lats action` manages the app. Hosts accept `cua.*` and
+`computer.*` for the same methods, and `computer` stays an alias after the
+fleet moves to `cua`.
+
 ## Summary
 
 Lattices is a framework for operating a workspace, with parity between the user
@@ -12,7 +18,7 @@ and agents. Every capability is addressed as `lattices.<domain>.<verb>`:
 ```
 lattices.windows.place(wid, "left")
 lattices.canvas.pin(note, at: "top-right")
-lattices.computer.click(target)
+lattices.cua.click(target)
 lattices.voice.say("Build finished")
 ```
 
@@ -46,7 +52,7 @@ helpers, only domains.
    call, and never a compound verb such as `act_execute`.
 2. **Domains are plural where they name a collection**: `windows`, `spaces`,
    `layers`, `sessions`, `tabs`, `apps`, `artifacts`. Mass nouns stay singular:
-   `canvas`, `computer`, `voice`, `capture`.
+   `canvas`, `cua`, `voice`, `capture`.
 3. **Read verbs** are `status`, `list`, `get` and `search`. Every domain that has
    state answers `status`; there is no separate `health`, `recording` or `staged`.
 4. **Sub-nouns only name a collection the domain owns**: `mouse.shortcuts.set`,
@@ -54,16 +60,16 @@ helpers, only domains.
 5. **Exclusive access is always `lease` and `release`**, in every domain.
 6. **One operation, one verb, in the domain it acts on.** How the verb gets done
    is the backend's business, and `via` selects it. The default is native: the
-   daemon calls macOS directly, which is fast and exact. `via: "computer"` does the
+   daemon calls macOS directly, which is fast and exact. `via: "cua"` does the
    same thing through computer use, visibly, the way a person would. That is
    useful for recorded demos, or when the native route cannot reach the target.
 
    ```
    lattices.windows.focus(wid)                      // native
-   lattices.windows.focus(wid, { via: "computer" }) // cursor and clicks, on screen
+   lattices.windows.focus(wid, { via: "cua" }) // cursor and clicks, on screen
    ```
 
-   `computer.*` keeps only what has no structural equivalent: observe, click,
+   `cua.*` keeps only what has no structural equivalent: observe, click,
    type, press, drag, scroll, aim.
 7. **Rename only on a real collision.** A name stays unless two verbs could be
    mistaken for each other, or a name reads as something it is not. Otherwise
@@ -83,19 +89,19 @@ helpers, only domains.
 
 | I want to… | Call |
 | --- | --- |
-| See what is on screen right now | `computer.observe({ mode })`, where mode is `snapshot`, `ax`, `ocr` or `vision` |
+| See what is on screen right now | `cua.observe({ mode })`, where mode is `snapshot`, `ax`, `ocr` or `vision` |
 | Search what has been on screen before | `ocr.search` |
 | Find a window by name or project | `windows.search` |
-| Bring a window forward | `windows.focus`, adding `{ via: "computer" }` to do it visibly |
+| Bring a window forward | `windows.focus`, adding `{ via: "cua" }` to do it visibly |
 | Open an app | `apps.open` |
-| Click or type somewhere | `computer.click`, `computer.type` |
+| Click or type somewhere | `cua.click`, `cua.type` |
 | Save a screenshot or recording | `capture.screenshot`, `capture.record` |
 | Put something on the screen for the user | `canvas.pin` for something that stays, `canvas.draw` for something transient |
 | Say something out loud | `voice.say` |
 | Work in a browser page | `browser.*`. `target: "agent"` (the default) is the agent's own Chrome; `"user"` is the user's browser. |
 
 `mouse.*` is the user's physical pointer (find it, summon it, its shortcuts).
-The agent's synthetic cursor is `computer.aim`.
+The agent's synthetic cursor is `cua.aim`.
 
 ## Use when
 
@@ -122,11 +128,11 @@ the name only has to not mislead.
 | Verb | Use when |
 | --- | --- |
 | `desktop.snapshot` | Workspace state in one call: front window, layer, displays, sessions, permissions. No pixels. |
-| `computer.observe` | What an app shows right now: screenshot, AX tree, OCR text or a vision read, for the agent to act on. |
+| `cua.observe` | What an app shows right now: screenshot, AX tree, OCR text or a vision read, for the agent to act on. |
 | `ocr.search` | Text that has been on screen before, across all windows. |
 | `ocr.history` | The text timeline of one window (`wid`), or of all windows when `wid` is omitted. |
 | `ocr.scan` | Force a fresh OCR pass now instead of waiting for the next scheduled one. |
-| `capture.screenshot`, `capture.record` | Save a file for a person to look at. The agent reads the screen with `computer.observe`. |
+| `capture.screenshot`, `capture.record` | Save a file for a person to look at. The agent reads the screen with `cua.observe`. |
 
 **Terminals**
 
@@ -142,7 +148,7 @@ the name only has to not mislead.
 
 | Verb | Use when |
 | --- | --- |
-| `computer.lease` / `release` | Take and give back the screen for computer use. Other agents wait. |
+| `cua.lease` / `release` | Take and give back the screen for computer use. Other agents wait. |
 | `voice.lease` / `release` | Hold the speaker so other agents do not talk over you. |
 | `solo.enter` / `exit` | The user's Focus Mode: resizes the front window and blacks out everything around it; the frame is restored on exit. Not a lock. |
 
@@ -162,7 +168,7 @@ the name only has to not mislead.
 | --- | --- |
 | `canvas.notes.*` | Markdown notes that live in the workspace and can be pinned. |
 | `canvas.pin` | Show something to the user on screen until it is unpinned. |
-| `computer.caption` | One line in the computer-use HUD saying what the agent is about to do. |
+| `cua.caption` | One line in the computer-use HUD saying what the agent is about to do. |
 
 ## Domains and backends
 
@@ -183,12 +189,12 @@ gives the fix: "Lattices › Apps › Install Voice". There are no fallbacks.
 | `apps` | open | daemon |
 | `projects`, `processes`, `terminals`, `tmux` | list, scan, tree, search, capture (unchanged, except `tmux.list`) | daemon |
 | `mouse` | find, summon, `shortcuts.*` | daemon |
-| `ocr` | search, history, scan. This is the index of past screen text. Live reading is `computer.observe`. | daemon |
+| `ocr` | search, history, scan. This is the index of past screen text. Live reading is `cua.observe`. | daemon |
 | `solo` | enter, exit, toggle, status (Focus Mode) | daemon |
 | `capture` | screenshot, record, stop, status, stage, unstage | daemon now; Action's recording is folded in during phase 3 |
 | `artifacts` | list, analyze, zoom | daemon |
 | `runs` | create, list, get. A run is a receipt plus an artifact directory for one piece of agent work. | daemon |
-| `computer` | observe, resolve, click, type, press, drag, scroll, aim, caption, play, verify, lease, release, status | daemon now; the Action helper from phase 3 |
+| `cua` | observe, resolve, click, type, press, drag, scroll, aim, caption, play, verify, lease, release, status | daemon now; the Action helper from phase 3 |
 | `canvas` | draw, clear, `actors.*` | daemon (the LAT-002 overlay canvas) |
 | `canvas` | pin, unpin, move, focus, list, `notes.*`, `workspaces.*` | Blink helper |
 | `voice` | say, stop, pause, resume, skip, seek, list, select, lease, release | Voice helper |
@@ -244,23 +250,23 @@ advertise only new names. There is one exception, listed under breaking changes.
 The daemon forwards output verbs to the Voice helper. The helper's own RPC keeps
 accepting `speech.*`, so the daemon and helper protocols can change independently.
 
-### computer, capture and apps (daemon `computer.*` and Action merged)
+### cua, capture and apps (daemon `computer.*` and Action merged)
 
 | Old | New |
 | --- | --- |
-| Action `act_execute` with kind click / type / press-key / drag / scroll | `computer.click` / `type` / `press` / `drag` / `scroll` |
-| Action `act_execute` with kind focus-window, and `computer.focusWindow` | `windows.focus({ via: "computer" })` |
-| Action `act_execute` with kind open-app, and `computer.launchApp` | `apps.open({ via: "computer" })` |
-| `computer.doubleClick`, `computer.rightClick` | `computer.click({ count: 2 })`, `computer.click({ button: "right" })` |
-| `computer.typeText`, `computer.typeWindowText`, `computer.typeElement`, `computer.setValue` | `computer.type`, with the target given as a point, window or element |
-| `computer.pressKey`, `computer.hotkey` | `computer.press` |
-| `computer.elementAction` | `computer.click` on an element target; other AX actions use `computer.click({ action })` |
-| Action `observe_snapshot/ocr/vision/ax`, `computer.windowState`, `ocr.snapshot`, `vision.analyzeWindow` | `computer.observe({ mode })` |
-| Action `resolve_target`, `computer.prepare` | `computer.resolve` |
-| Action `drive_begin/release/status`, `session_create`, `driver_identify` | `computer.lease` (identity and task go in its arguments) / `computer.release` / `computer.status` |
-| Action `drive_aim`, `computer.magicCursor`, `computer.showCursor` | `computer.aim` |
-| Action `drive_note`, `drive_play` | `computer.caption`, `computer.play`. Not `note`, which collides with `canvas.notes`. |
-| Action `health` | `computer.status` |
+| Action `act_execute` with kind click / type / press-key / drag / scroll | `cua.click` / `type` / `press` / `drag` / `scroll` |
+| Action `act_execute` with kind focus-window, and `computer.focusWindow` | `windows.focus({ via: "cua" })` |
+| Action `act_execute` with kind open-app, and `computer.launchApp` | `apps.open({ via: "cua" })` |
+| `computer.doubleClick`, `computer.rightClick` | `cua.click({ count: 2 })`, `cua.click({ button: "right" })` |
+| `computer.typeText`, `computer.typeWindowText`, `computer.typeElement`, `computer.setValue` | `cua.type`, with the target given as a point, window or element |
+| `computer.pressKey`, `computer.hotkey` | `cua.press` |
+| `computer.elementAction` | `cua.click` on an element target; other AX actions use `cua.click({ action })` |
+| Action `observe_snapshot/ocr/vision/ax`, `computer.windowState`, `ocr.snapshot`, `vision.analyzeWindow` | `cua.observe({ mode })` |
+| Action `resolve_target`, `computer.prepare` | `cua.resolve` |
+| Action `drive_begin/release/status`, `session_create`, `driver_identify` | `cua.lease` (identity and task go in its arguments) / `cua.release` / `cua.status` |
+| Action `drive_aim`, `computer.magicCursor`, `computer.showCursor` | `cua.aim` |
+| Action `drive_note`, `drive_play` | `cua.caption`, `cua.play`. Not `note`, which collides with `canvas.notes`. |
+| Action `health` | `cua.status` |
 | Action `record_start/stop/status`, `capture.recordWindow/Region`, `capture.stopRecording` | `capture.record` / `capture.stop` / `capture.status` |
 | `capture.screenshotWindow/Region/Display` | `capture.screenshot({ target })` |
 | Action `stage_set/clear/status` | `capture.stage` / `capture.unstage` / `capture.status` |
@@ -309,7 +315,7 @@ Lattices.app/Contents/Helpers/
   `~/Library/Application Support/Speech/Phonon` on the first Phonon request.
 - **Action stops shipping on its own.** Its DMG, MCP server, plugins and
   `lattices.dev/action` are retired after phase 3, once `lattices mcp` serves
-  `computer_*`, `capture_*` and `browser_*`. The per-helper DMG workflows and the
+  `cua_*`, `capture_*` and `browser_*`. The per-helper DMG workflows and the
   installer are removed once the embedded build ships.
 
 ## Phases
@@ -325,9 +331,9 @@ Lattices.app/Contents/Helpers/
    retry old names against older daemons. Still to do: `actions.execute` into
    `intents.run`, and `handsoff.run` into `assistant.preview`. Both change
    behavior, not just names.
-3. **Computer.** Audit the daemon's `computer.*` against Action one verb at a time,
+3. **CUA.** Audit the daemon's `computer.*` against Action one verb at a time,
    port daemon-only verbs into Action, make Action the backend, serve
-   `computer_*` / `capture_*` / `browser_*` from `lattices mcp`, embed Action, and
+   `cua_*` / `capture_*` / `browser_*` from `lattices mcp`, embed Action, and
    retire the standalone product.
 4. **Canvas.** Add a Blink RPC, forward the Blink verbs, move `overlay.*`, and embed Blink.
 5. **Docs and skills.** One skill with a section per domain; update docs,
@@ -339,15 +345,15 @@ Lattices.app/Contents/Helpers/
 - Observe is one verb with a mode.
 - `canvas` is one domain: Blink's persistent pins and notes, plus the overlay canvas.
 - Action stops shipping as its own product. Its native code becomes the only backend
-  for `computer.*`, and the daemon's duplicates are removed as they are ported.
+  for `cua.*`, and the daemon's duplicates are removed as they are ported.
 - Helper bundle IDs are frozen.
 - An operation has one verb in the domain it acts on, and `via` chooses native (the default) or computer use. Computer use does not duplicate window, app or space verbs.
 - Rename only on a real collision (rule 7). Kept despite the cold test, with a
   "use when" line instead: `windows.present`, `windows.move`, `mouse.find`,
-  `desktop.snapshot`, `deck.*`, and the separate `capture` and `computer.observe`.
+  `desktop.snapshot`, `deck.*`, and the separate `capture` and `cua.observe`.
 - `windows.tile` merges into `windows.place`; `ocr.recent` into `ocr.history`;
   `handsoff.run` into `assistant.preview`; `actions.execute` into `intents.run`.
-- Focus Mode becomes `solo.*`. `computer.note` becomes `computer.caption`.
+- Focus Mode becomes `solo.*`. `computer.note` becomes `cua.caption`.
   `voice.use` becomes `voice.select`.
 - `browser` is one domain with `target: "agent"` (default) or `"user"`.
 

@@ -7,11 +7,9 @@ import { promisify } from "node:util";
 
 import type { RuntimeArtifact } from "@action/protocol";
 
-import { callMinimaxUnderstandImage } from "./providers/minimax-mcp.js";
-
 const execFileAsync = promisify(execFile);
 
-export type VisionProviderId = "minimax" | "moondream";
+export type VisionProviderId = "moondream";
 
 export interface OCRTextBlock {
   text: string;
@@ -62,15 +60,9 @@ function defaultVisionPrompt(): string {
 
 export function resolveVisionProvider(
   requested?: VisionProviderId,
-  env: NodeJS.ProcessEnv = process.env,
 ): VisionProviderId {
-  const configured = requested ?? (env.ACTION_VISION_PROVIDER as VisionProviderId | undefined);
-  if (configured === "minimax" || configured === "moondream") {
-    return configured;
-  }
-
-  // Default to MiniMax; inject the key once via `secret run MINIMAX_API_KEY -- <command>`.
-  return "minimax";
+  // Moondream, running locally, is the only provider.
+  return requested ?? "moondream";
 }
 
 export function searchOCRText(result: OCRResult, query: string): OCRTextBlock[] {
@@ -143,30 +135,6 @@ async function resolveMoondreamPython(): Promise<string | undefined> {
   return undefined;
 }
 
-async function analyzeWithMinimax(
-  imagePath: string,
-  prompt: string,
-): Promise<VisionAnalysisResult> {
-  const analysis = await callMinimaxUnderstandImage({
-    prompt,
-    imageSource: imagePath,
-  });
-
-  const summary = typeof analysis.parsed?.summary === "string"
-    ? analysis.parsed.summary
-    : analysis.text.slice(0, 500);
-
-  return {
-    available: true,
-    provider: "minimax",
-    imagePath,
-    model: analysis.model,
-    answer: analysis.text,
-    parsed: analysis.parsed,
-    summary,
-  };
-}
-
 async function analyzeWithMoondream(
   imagePath: string,
   prompt: string,
@@ -226,11 +194,7 @@ export async function analyzeScreenshotVision(
 
   let result: VisionAnalysisResult;
   try {
-    if (provider === "minimax") {
-      result = await analyzeWithMinimax(imagePath, prompt);
-    } else {
-      result = await analyzeWithMoondream(imagePath, prompt, outputPath, scriptPath);
-    }
+    result = await analyzeWithMoondream(imagePath, prompt, outputPath, scriptPath);
   } catch (error) {
     result = {
       available: false,

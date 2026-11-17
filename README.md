@@ -142,12 +142,12 @@ Use the returned snapshot and element IDs for subsequent actions. The [computer-
 For private browser layers and dedicated computer-use sessions, add [Action](https://lattices.dev/action):
 
 ```sh
-lats action install
-lats action launch
+lats action install --launch
+lats action setup action-cua
 lats action status
 ```
 
-Action is a separate native app. The [Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md) and [agent guide](https://lattices.dev/docs/agents) cover its observation, interaction, and recording workflow.
+Action also installs without Lattices; see [Action](https://github.com/lattices-dev/lattices/blob/main/products/action/README.md#install-and-run). The [Action skill](https://github.com/lattices-dev/lattices/blob/main/skills/action/SKILL.md) and [agent guide](https://lattices.dev/docs/agents) cover its observation, interaction, and recording workflow.
 
 ## Keep a terminal session alive
 

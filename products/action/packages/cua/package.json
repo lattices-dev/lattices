@@ -1,7 +1,7 @@
 {
   "name": "@lattices/action",
   "version": "0.1.1",
-  "description": "Computer use on macOS through one contract: codex-cua, trycua-cua and action-cua backends, with a tier gate, as a library, an MCP server and a CLI.",
+  "description": "Computer use on macOS through one contract: action-cua, codex-cua, trycua-cua and agent-desktop backends, with a tier gate, as a library, an MCP server and a CLI.",
   "license": "MIT",
   "homepage": "https://lattices.dev/action",
   "repository": {
@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/arach/lattices/issues"
   },
-  "keywords": ["computer-use", "cua", "macos", "accessibility", "mcp", "codex", "trycua", "agent"],
+  "keywords": ["computer-use", "cua", "macos", "accessibility", "mcp", "codex", "trycua", "agent-desktop", "agent"],
   "type": "module",
   "os": ["darwin"],
   "engines": {

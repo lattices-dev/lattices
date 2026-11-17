@@ -114,16 +114,16 @@ Usage:
                          Record a target while running an action command
   lats capture stop <run-id> Stop a running capture recording
   lats runs [id] [--json] List recent runs or inspect one run
-  lats computer prepare      Resolve/stage a safe terminal action
-  lats computer focus-window Focus and verify a target window
-  lats computer launch-app  Launch/focus a normal macOS app
-  lats computer type-window Type into a normal app window
-  lats computer click       Stage or post a window-relative click
-  lats cua click            CLI alias for the CUA SDK click action
-  lats computer scout       Scout warm-up run for memo/demo recording
-  lats computer cursor       Show a recorded cursor appearance
-  lats computer type-text    Type text into a safe terminal target
-  lats computer demo-terminal  Record/focus/type a safe terminal demo
+  lats cua prepare           Resolve/stage a safe terminal action
+  lats cua focus-window      Focus and verify a target window
+  lats cua launch-app        Launch/focus a normal macOS app
+  lats cua type-window       Type into a normal app window
+  lats cua click             Stage or post a window-relative click
+  lats cua scout             Scout warm-up run for memo/demo recording
+  lats cua cursor            Show a recorded cursor appearance
+  lats cua type-text         Type text into a safe terminal target
+  lats cua demo-terminal     Record/focus/type a safe terminal demo
+                         (lats computer … is an alias for lats cua …)
   lats tile <position>    Tile the frontmost window (left, right, top, etc.)
   lats tile family [app] [region]  Smart-grid the frontmost app family, or a named app
   lats window move <wid> --display <n> [--placement <slot>]
@@ -183,7 +183,7 @@ Usage:
   lats update             Update lattices (CLI + app), keep startup, relaunch
   lats hints [--json|--open]  Linux and Omarchy hints (offline text, data, or app page)
   lats app                Launch the ${process.platform === "linux" ? "Linux desktop window" : "menu bar companion app"}
-${process.platform === "linux" ? "  lats app overview|mission|console  Open Flight Deck, Mission Control or Operator Console\n  lats app status [--json]  Read app state\n  lats app quit|restart     Close/reopen the window; host and tray stay running" : "  lats app update         Swap in the latest app release only (not the CLI)\n  lats app build          Rebuild the menu bar app\n  lats app restart        Rebuild and relaunch the menu bar app\n  lats app quit           Stop the menu bar app"}
+${process.platform === "linux" ? "  lats app overview|mission|console  Open Flight Deck, Mission Control or Operator Console\n  lats app status [--json]  Read app state\n  lats app quit|restart     Close/reopen the window; host and tray stay running" : "  lats app show [page] [section]  Open a page (home, overview, layers, machines, assistant, runs, activity, settings, docs)\n  lats app update         Swap in the latest app release only (not the CLI)\n  lats app build          Rebuild the menu bar app\n  lats app restart        Rebuild and relaunch the menu bar app\n  lats app quit           Stop the menu bar app"}
   lats canvas <cmd>       Forward to the installed Canvas CLI (alias: lats blink)
   lats action             Action product status (install, agent, checkout)
   lats action install     Download the latest Action.app release to /Applications

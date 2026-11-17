@@ -81,7 +81,13 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
     private var sessionPruneTimer: DispatchSourceTimer?
     private let peers = ActionAgentPeerRegistry()
     private var idleExitTimer: DispatchSourceTimer?
+    private var heartbeatTimer: DispatchSourceTimer?
+    private var silentConnectionTimer: DispatchSourceTimer?
+    private let watchdog = ActionAgentQueueWatchdog()
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
+    private var connectionOwners: [ObjectIdentifier: String] = [:]
+    /// Last message in or out per connection, in `systemUptime` seconds.
+    private var connectionActivityAt: [ObjectIdentifier: TimeInterval] = [:]
     private var lastConnectionActivityAt = Date()
 
     init(port: UInt16, parentProcessID: pid_t?, idleExitSeconds: TimeInterval?) throws {
@@ -150,6 +156,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         startDriveSweep()
         startSessionPrune()
         startIdleExitIfNeeded()
+        startSilentConnectionReap()
+        startWatchdog()
         NSApplication.shared.run()
         exit(0)
     }
@@ -159,7 +167,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         let identifier = ObjectIdentifier(connection)
         let ownerID = UUID().uuidString
         activeConnections[identifier] = connection
-        lastConnectionActivityAt = Date()
+        connectionOwners[identifier] = ownerID
+        noteActivity(on: identifier)
         if case .hostPort(_, let port) = connection.endpoint {
             Task { [peers] in await peers.register(ownerID: ownerID, port: port.rawValue) }
         }
@@ -204,6 +213,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 return
             }
 
+            self.noteActivity(on: ObjectIdentifier(connection))
             self.requestScheduler.dispatch(
                 receiveNext: { [weak self] in
                     self?.receiveNextMessage(on: connection, ownerID: ownerID)
@@ -438,7 +448,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 workflowRunID: request.params["workflowRunId"],
                 workspaceID: request.params["workspaceId"],
                 client: request.params["client"],
-                clientProcess: await peers.describe(ownerID: ownerID)
+                clientProcess: await peers.describe(ownerID: ownerID),
+                project: request.params["project"]
             )
             var response = [
                 "status": result.status,
@@ -534,7 +545,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 outputPath: outputPath,
                 stopSignalPath: request.params["stopFile"],
                 finishedSignalPath: request.params["finishedFile"],
-                debugLogPath: request.params["debugLog"]
+                debugLogPath: request.params["debugLog"],
+                frameTimingPath: request.params["frameTimingFile"]
             )
         case .recordRegion:
             guard #available(macOS 15.0, *) else {
@@ -560,7 +572,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
                 debugLogPath: request.params["debugLog"],
                 fps: request.params["fps"].flatMap(Double.init) ?? 15,
                 scale: request.params["scale"].flatMap(Double.init) ?? 1,
-                includeSupervisionOverlay: request.params["includeSupervisionOverlay"] != "false"
+                includeSupervisionOverlay: request.params["includeSupervisionOverlay"] != "false",
+                frameTimingPath: request.params["frameTimingFile"]
             )
         case .screenshotAppWindow:
             guard let outputPath = request.params["output"], !outputPath.isEmpty else {
@@ -615,6 +628,7 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
 
         do {
             let data = try encoder.encode(response)
+            queue.async { self.noteActivity(on: ObjectIdentifier(connection)) }
             let context = NWConnection.ContentContext(identifier: "ActionAgentResponse", metadata: [NWProtocolWebSocket.Metadata(opcode: .text)])
             connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { error in
                 _ = error
@@ -628,6 +642,8 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         guard activeConnections.removeValue(forKey: identifier) != nil else {
             return
         }
+        connectionOwners.removeValue(forKey: identifier)
+        connectionActivityAt.removeValue(forKey: identifier)
         lastConnectionActivityAt = Date()
         Task { [peers] in await peers.forget(ownerID: ownerID) }
         Task {
@@ -694,6 +710,128 @@ final class ActionAgentRuntimeServer: @unchecked Sendable {
         }
         timer.resume()
         idleExitTimer = timer
+    }
+
+    /// Call on `queue`.
+    private func noteActivity(on identifier: ObjectIdentifier) {
+        guard activeConnections[identifier] != nil else { return }
+        connectionActivityAt[identifier] = ProcessInfo.processInfo.systemUptime
+        lastConnectionActivityAt = Date()
+    }
+
+    /// A client that stays connected but silent would otherwise hold the agent up forever
+    /// (an MCP left open for days). Drop it once it has sent nothing for
+    /// `silentConnectionSeconds` and has no driving lease; its next request reconnects.
+    private func startSilentConnectionReap() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .seconds(60), repeating: .seconds(60))
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            let silent = self.connectionActivityAt
+                .filter { now - $0.value >= ActionAgentDefaults.silentConnectionSeconds }
+                .compactMap { entry in self.connectionOwners[entry.key].map { (entry.key, $0) } }
+            for (identifier, ownerID) in silent {
+                Task { [driveStore, queue] in
+                    guard await !driveStore.isDriving(ownerID: ownerID) else { return }
+                    queue.async { self.activeConnections[identifier]?.cancel() }
+                }
+            }
+        }
+        timer.resume()
+        silentConnectionTimer = timer
+    }
+
+    private func startWatchdog() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: .seconds(1))
+        timer.setEventHandler { [watchdog] in watchdog.beat() }
+        timer.resume()
+        heartbeatTimer = timer
+        watchdog.start { stalledSeconds in
+            FileHandle.standardError.write(Data("ActionAgent listener queue stalled for \(Int(stalledSeconds))s; exiting so a new agent can take the socket\n".utf8))
+            exit(70)
+        }
+    }
+}
+
+/// Exits the agent when its listener queue stops running. Accepts, reads and every agent
+/// timer ride that one queue, so a stalled queue leaves a process that holds the socket
+/// lock and answers nobody (pid 29323, 2026-11-01). The check runs on its own thread,
+/// not on GCD, so it doesn't depend on the thing it watches.
+final class ActionAgentQueueWatchdog: @unchecked Sendable {
+    enum Verdict: Equatable {
+        case healthy
+        /// The watchdog itself ran late: the whole process was paused. Give the queue a turn.
+        case processPaused
+        case stalled(TimeInterval)
+    }
+
+    private let lock = NSLock()
+    private var lastBeat = ProcessInfo.processInfo.systemUptime
+    private let stallSeconds: TimeInterval
+    private let checkInterval: TimeInterval
+
+    init(stallSeconds: TimeInterval = 30, checkInterval: TimeInterval = 5) {
+        self.stallSeconds = stallSeconds
+        self.checkInterval = checkInterval
+    }
+
+    private var stopped = false
+
+    func beat() {
+        lock.lock()
+        lastBeat = ProcessInfo.processInfo.systemUptime
+        lock.unlock()
+    }
+
+    func stop() {
+        lock.lock()
+        stopped = true
+        lock.unlock()
+    }
+
+    static func verdict(
+        now: TimeInterval,
+        lastBeat: TimeInterval,
+        lastCheck: TimeInterval,
+        stallSeconds: TimeInterval,
+        checkInterval: TimeInterval
+    ) -> Verdict {
+        if now - lastCheck > checkInterval * 3 {
+            return .processPaused
+        }
+        let stalled = now - lastBeat
+        return stalled >= stallSeconds ? .stalled(stalled) : .healthy
+    }
+
+    func start(onStall: @escaping @Sendable (TimeInterval) -> Void) {
+        let thread = Thread { [self] in
+            var lastCheck = ProcessInfo.processInfo.systemUptime
+            while true {
+                Thread.sleep(forTimeInterval: checkInterval)
+                let now = ProcessInfo.processInfo.systemUptime
+                lock.lock()
+                let beat = lastBeat
+                let stopped = self.stopped
+                lock.unlock()
+                if stopped { return }
+                let verdict = Self.verdict(
+                    now: now,
+                    lastBeat: beat,
+                    lastCheck: lastCheck,
+                    stallSeconds: stallSeconds,
+                    checkInterval: checkInterval
+                )
+                lastCheck = now
+                if case .stalled(let seconds) = verdict {
+                    onStall(seconds)
+                }
+            }
+        }
+        thread.name = "dev.action.agent.watchdog"
+        thread.qualityOfService = .utility
+        thread.start()
     }
 }
 
@@ -784,7 +922,13 @@ public enum ActionAgentRuntime {
                 parentProcessID: parentProcessID,
                 idleExitSeconds: idleExitSeconds
             )
-            return server.run()
+            // A windowless accessory app is App Nap-eligible, and a napped agent stops
+            // serving its socket. Hold the assertion for the agent's lifetime.
+            let activity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "Action agent serves drive and recording requests"
+            )
+            return withExtendedLifetime(activity) { server.run() }
         } catch {
             FileHandle.standardError.write(Data("ActionAgent failed: \(error.localizedDescription)\n".utf8))
             exit(1)

@@ -17,6 +17,10 @@ import ApplicationServices
 /// Mission Control shows while it runs, and the view returns to the Space
 /// the display was on unless the caller requests following the window.
 enum WindowSpaceCarry {
+    /// Identifies the carry's pointer stream to an overlay's input lease.
+    /// Hardware input remains blocked while an opaque canvas covers the move.
+    static let pointerEventMarker: Int64 = 0x4C41544341525259
+
     enum Outcome {
         case moved
         case failed(String)
@@ -107,6 +111,7 @@ enum WindowSpaceCarry {
             // A gesture's held Shift belongs to Lattices, not the thumbnail
             // drag. Do not let hardware modifiers alter Mission Control input.
             event?.flags = []
+            event?.setIntegerValueField(.eventSourceUserData, value: pointerEventMarker)
             event?.post(tap: .cghidEventTap)
         }
         func drag(to point: CGPoint, steps: Int) {

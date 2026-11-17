@@ -46,11 +46,47 @@ run_via_open() {
   local open_flags=(-n)
   # Pointer input must reach the current foreground target. Activating this
   # short-lived helper first makes the target consume the click for activation.
-  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" || "$COMMAND" == "agent-layer" || "$COMMAND" == "agent-display" || "$COMMAND" == "agent-cursor-overlay" || "$COMMAND" == blink-* ]]; then
+  if [[ "$COMMAND" == "drape" || "$COMMAND" == "window-order" || "$COMMAND" == "click-point" || "$COMMAND" == "agent-layer" || "$COMMAND" == "agent-display" || "$COMMAND" == "agent-cursor-overlay" || "$COMMAND" == "ask-user" || "$COMMAND" == blink-* ]]; then
     open_flags+=(-g)
   elif [[ "$COMMAND" == "launch-app" && " $* " == *" --background "* ]]; then
     # Opens the app without activating it; the helper mustn't take focus either.
     open_flags+=(-g)
+  elif [[ "$COMMAND" == "list-app-windows" && " $* " != *" --pid "* && " $* " != *" --bundle-id "* && " $* " != *" --bundle-path "* ]]; then
+    # The all-app CG inventory must not change the desktop it is inspecting.
+    open_flags+=(-g)
+  elif [[ " $* " == *" --window-number "* ]]; then
+    case "$COMMAND" in
+      inspect-app-ui|press-accessibility-path|set-accessibility-value-path|perform-accessibility-action-path|screenshot-app-window)
+        # Exact-window AX/capture never needs helper or target activation.
+        open_flags+=(-g)
+        ;;
+    esac
+  fi
+  if [[ "$COMMAND" == "ask-user" ]]; then
+    # Operator requests have no startup reply or ten-second deadline. Keep the
+    # caller's reply path and wait for this app instance to finish answering.
+    rm -f "$reply_file"
+    local ask_reply_file=""
+    local previous_arg=""
+    local argument
+    for argument in "$@"; do
+      if [[ "$previous_arg" == "--reply-file" ]]; then
+        ask_reply_file="$argument"
+      fi
+      previous_arg="$argument"
+    done
+    if [[ -z "$ask_reply_file" ]]; then
+      echo "ask-user requires --reply-file" >&2
+      return 1
+    fi
+    open -W "${open_flags[@]}" "$APP_DIR" --args "$@" >/dev/null
+    if [[ ! -s "$ask_reply_file" ]]; then
+      echo "ActionHost did not write a reply file for ask-user" >&2
+      return 1
+    fi
+    cat "$ask_reply_file"
+    ! grep -q '"status"[[:space:]]*:[[:space:]]*"error"' "$ask_reply_file"
+    return $?
   fi
   open "${open_flags[@]}" "$APP_DIR" --args "$@" --reply-file "$reply_file" >/dev/null
 

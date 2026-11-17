@@ -23,12 +23,14 @@ final class SpaceCanvasTests: XCTestCase {
         }
     }
 
-    func testLandingRevealWaitsForDelayedZonesAndShade() throws {
+    func testLandingRevealWaitsForDelayedZonesShadeAndWallpaper() throws {
         _ = NSApplication.shared
         let view = SpaceCanvasView(cards: [.init(id: 1, number: 1, windows: [])], selected: 0, current: 0,
             room: CGSize(width: 1440, height: 900), scale: 2,
             handlers: .init(choose: { _ in }, land: {}, cancel: {}))
         let root = try XCTUnwrap(view.layer)
+        let wallpaper = try namedLayer("SpaceCanvas.wallpaper", in: root)
+        wallpaper.opacity = 0.8
         var removals = 0
         view.reveal(reduceMotion: false) { removals += 1 }
         let shade = try XCTUnwrap(namedLayer("SpaceCanvas.shade", in: root).animation(forKey: "backgroundColor"))
@@ -39,6 +41,9 @@ final class SpaceCanvasTests: XCTestCase {
         shade.delegate?.animationDidStop?(shade, finished: true)
         XCTAssertEqual(removals, 0, "The zones still cover the real desktop")
         zones.delegate?.animationDidStop?(zones, finished: true)
+        XCTAssertEqual(removals, 0, "The backdrop must finish revealing the real wallpaper too")
+        let backdrop = try XCTUnwrap(wallpaper.animation(forKey: "opacity"))
+        backdrop.delegate?.animationDidStop?(backdrop, finished: true)
         XCTAssertEqual(removals, 1)
     }
 
@@ -99,6 +104,7 @@ final class SpaceCanvasTests: XCTestCase {
             let unchanged = try namedLayer("SpaceCanvas.windows.2", in: root)
             let unchangedEmpty = try XCTUnwrap(unchanged.sublayers?.first)
             let title = try XCTUnwrap(namedLayer("SpaceCanvas.title", in: root) as? CATextLayer)
+            let originalTitle = title.string as? String
             let zones = try XCTUnwrap(namedLayer("SpaceCanvas.minimapZones", in: root) as? CAShapeLayer)
             let camera = view.camera
             let rootLayers = root.sublayers ?? []
@@ -125,7 +131,7 @@ final class SpaceCanvasTests: XCTestCase {
                 XCTAssertTrue(view.refresh(cards: fresh))
                 XCTAssertEqual(container.sublayers?.count, 2)
                 XCTAssertTrue(container.sublayers?.allSatisfy { $0.name == "SpaceCanvas.window" } == true)
-                XCTAssertEqual(title.string as? String, "16 desktops · 15 empty")
+                XCTAssertEqual(title.string as? String, originalTitle, "Inventory refresh keeps the Here identity")
                 XCTAssertFalse(try XCTUnwrap(zones.path).isEmpty)
                 let previews = container.sublayers ?? []
                 XCTAssertFalse(view.refresh(cards: fresh), "An identical poll must be a no-op")
@@ -134,11 +140,11 @@ final class SpaceCanvasTests: XCTestCase {
                 XCTAssertTrue(view.refresh(cards: empty), "A genuinely emptied desktop must also update")
                 XCTAssertEqual(container.sublayers?.count, 1)
                 XCTAssertEqual(container.sublayers?.first?.name, "SpaceCanvas.empty")
-                XCTAssertEqual(title.string as? String, "16 desktops · 16 empty")
+                XCTAssertEqual(title.string as? String, originalTitle)
                 XCTAssertTrue(zones.path?.isEmpty == true)
             }
             XCTAssertEqual(view.camera, camera)
-            XCTAssertEqual(view.selected, 7)
+            XCTAssertEqual(view.selected, 0)
             XCTAssertTrue(unchanged.sublayers?.first === unchangedEmpty)
             XCTAssertEqual(root.sublayers?.map(ObjectIdentifier.init), rootLayers.map(ObjectIdentifier.init))
             XCTAssertEqual(plane.sublayers?.map(ObjectIdentifier.init), planeLayers.map(ObjectIdentifier.init))
@@ -165,6 +171,7 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 1, current: 0,
             room: CGSize(width: 1440, height: 900), scale: 2,
             handlers: .init(choose: { _ in }, land: {}, cancel: {}))
+        view.select(1, animated: false)
         let root = try XCTUnwrap(view.layer)
         let container = try namedLayer("SpaceCanvas.windows.11", in: root)
         let empty = try XCTUnwrap(container.sublayers?.first)
@@ -185,7 +192,7 @@ final class SpaceCanvasTests: XCTestCase {
         return try XCTUnwrap(find(root), "Missing layer \(name)")
     }
 
-    func testPointerHighlightThenUpZoomsTowardThatDesktopWithoutLanding() throws {
+    func testPointerHighlightDoesNotRedirectTheOriginalZoomRoute() throws {
         _ = NSApplication.shared
         let cards = (1...16).map { SpaceFilmstripCard(id: $0, number: $0, windows: []) }
         for target in [3, 6, 15] {
@@ -194,6 +201,7 @@ final class SpaceCanvasTests: XCTestCase {
             let view = SpaceCanvasView(cards: cards, selected: 0, current: 0,
                 room: CGSize(width: 1440, height: 900), scale: 2,
                 handlers: .init(choose: { choices.append($0) }, land: { landed += 1 }, cancel: {}))
+            view.showOverview(reduceMotion: true)
             let opening = view.camera
             let cell = view.layout.view(view.layout.cell(target), camera: opening)
             view.highlight(at: CGPoint(x: cell.midX, y: cell.midY))
@@ -205,10 +213,9 @@ final class SpaceCanvasTests: XCTestCase {
                 characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 126))
             view.keyDown(with: up)
             XCTAssertGreaterThan(view.camera.scale, opening.scale)
-            XCTAssertEqual(view.selected, target, "Up changes distance, not grid row")
-            let targetCell = view.layout.cell(target)
-            let expected = view.layout.clamped(SpaceCanvasCamera(
-                center: CGPoint(x: targetCell.midX, y: targetCell.midY), scale: opening.scale * 1.4))
+            XCTAssertEqual(view.selected, 0, "A straight zoom returns toward its original desktop")
+            let expected = SpaceCanvasNavigation(overview: opening, focused: view.layout.filling(0))
+                .camera(atScale: opening.scale * 1.4)
             XCTAssertEqual(view.camera, expected)
             XCTAssertEqual(landed, 0)
             let down = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
@@ -216,7 +223,8 @@ final class SpaceCanvasTests: XCTestCase {
                 characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 125))
             view.keyDown(with: down)
             XCTAssertEqual(view.camera.scale, opening.scale, accuracy: 0.001)
-            XCTAssertEqual(view.selected, target)
+            XCTAssertEqual(view.selected, 0)
+            XCTAssertEqual(view.camera, opening)
         }
     }
 
@@ -225,6 +233,8 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 6, current: 0,
             room: CGSize(width: 1440, height: 900), scale: 2,
             handlers: .init(choose: { _ in XCTFail("Chrome must not choose a desktop") }, land: {}, cancel: {}))
+        view.select(6, animated: false)
+        view.showOverview(reduceMotion: true)
         view.highlight(at: CGPoint(x: 100, y: 20))
         let map = view.layout.minimap
         view.highlight(at: CGPoint(x: map.midX, y: map.midY))
@@ -279,13 +289,14 @@ final class SpaceCanvasTests: XCTestCase {
         }
     }
 
-    func testCanvasOpensWithEveryDesktopVisibleAndZoomNeverLands() {
+    func testExplicitOverviewShowsEveryDesktopAndZoomNeverLands() {
         for count in [1, 5, 16, 18] {
             let cards = (1...count).map { SpaceFilmstripCard(id: $0, number: $0, windows: []) }
             var landed = 0
             let view = SpaceCanvasView(cards: cards, selected: count - 1, current: 0,
                 room: CGSize(width: 1440, height: 900), scale: 2,
                 handlers: .init(choose: { _ in }, land: { landed += 1 }, cancel: {}))
+            view.showOverview(reduceMotion: true)
             XCTAssertEqual(view.camera.scale, view.layout.fitScale)
             for index in 0..<count {
                 XCTAssertTrue(view.layout.stage.insetBy(dx: -0.001, dy: -0.001)
@@ -301,10 +312,13 @@ final class SpaceCanvasTests: XCTestCase {
 
     private func zoomFixture() -> SpaceCanvasView {
         _ = NSApplication.shared
-        return SpaceCanvasView(cards: (1...16).map { SpaceFilmstripCard(id: $0, number: $0, windows: []) },
+        let view = SpaceCanvasView(cards: (1...16).map { SpaceFilmstripCard(id: $0, number: $0, windows: []) },
             selected: 5, current: 0, room: CGSize(width: 1440, height: 900), scale: 2,
             handlers: .init(choose: { _ in XCTFail("Zoom must preserve selection") },
                             land: { XCTFail("Zoom must not land") }, cancel: { XCTFail("A hold must not exit") }))
+        view.select(5, animated: false)
+        view.showOverview(reduceMotion: true)
+        return view
     }
 
     func testZoomTapKeepsOnePreciseStepAndHeldKeyNeedsNoRepeat() {
@@ -471,7 +485,7 @@ final class SpaceCanvasTests: XCTestCase {
             let entry = try XCTUnwrap(plane.animation(forKey: "transform") as? CAKeyframeAnimation)
             let from = try XCTUnwrap(entry.values?.first as? NSValue).caTransform3DValue
             XCTAssertEqual(from.m11 * view.layout.openingScale, start.scale, accuracy: 1e-6)
-            XCTAssertEqual(view.camera, view.layout.opening(on: 9), "One move, to the whole map")
+            XCTAssertEqual(view.camera, view.layout.here(on: 2), "The strip arrives at the current screen")
         }
     }
 
@@ -483,6 +497,7 @@ final class SpaceCanvasTests: XCTestCase {
             var choices: [Int] = []
             let view = SpaceCanvasView(cards: cards, selected: 5, current: 0, room: room, scale: 2,
                 handlers: .init(choose: { choices.append($0) }, land: { landed += 1 }, cancel: {}))
+            view.select(5, animated: false)
             for _ in 0..<20 { view.keyDown(with: try key(126)); view.keyUp(with: try key(126, up: true)) }
             XCTAssertEqual(view.camera, view.layout.filling(5), "\(room)")
             XCTAssertTrue(view.locked)
@@ -509,6 +524,7 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 0, current: 0,
             room: CGSize(width: 1920, height: 1080), scale: 2,
             handlers: .init(choose: { choices.append($0) }, land: { XCTFail("Zoom must not land") }, cancel: {}))
+        view.showOverview(reduceMotion: true)
         let target = view.layout.view(view.layout.cell(10), camera: view.camera)
         for _ in 0..<20 { view.zoom(out: false, about: CGPoint(x: target.midX, y: target.midY), reduceMotion: true) }
         XCTAssertEqual(view.selected, 10)
@@ -522,6 +538,8 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 5, current: 0,
             room: CGSize(width: 1512, height: 982), scale: 2,
             handlers: .init(choose: { _ in }, land: { XCTFail("Zoom must not land") }, cancel: {}))
+        view.select(5, animated: false)
+        view.showOverview(reduceMotion: true)
         let root = try XCTUnwrap(view.layer)
         let center = CGPoint(x: 756, y: 491)
         for _ in 0..<12 { view.zoom(out: false) }
@@ -553,6 +571,8 @@ final class SpaceCanvasTests: XCTestCase {
                 room: CGSize(width: 3440, height: 1440), scale: 1,
                 handlers: .init(choose: { _ in XCTFail("Departure must retain its committed desktop") },
                                 land: { XCTFail("Late Enter") }, cancel: { XCTFail("Late Escape") }))
+            view.select(2, animated: false)
+            view.showOverview(reduceMotion: true)
             let other = view.layout.view(view.layout.cell(12), camera: view.camera)
             view.zoomKey(126, pressed: true, time: 1)
             view.endInteraction()
@@ -583,6 +603,7 @@ final class SpaceCanvasTests: XCTestCase {
             let view = SpaceCanvasView(cards: cards, selected: 4, current: 0,
                 room: CGSize(width: 3440, height: 1440), scale: 2,
                 handlers: .init(choose: { _ in }, land: {}, cancel: {}))
+            view.select(4, animated: false)
             let root = try XCTUnwrap(view.layer)
             let plane = try namedLayer("SpaceCanvas.plane", in: root)
             let arrived = expectation(description: "arrived")
@@ -608,6 +629,7 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 7, current: 2,
             room: CGSize(width: 1920, height: 1080), scale: 2,
             handlers: .init(choose: { _ in }, land: { XCTFail("Escape must not land") }, cancel: {}))
+        view.select(7, animated: false)
         view.dissolve(reduceMotion: false)
         XCTAssertEqual(view.camera, view.layout.filling(2))
         XCTAssertEqual(view.selected, 7, "Escape leaves the selection alone; the navigator drops it")
@@ -669,7 +691,7 @@ final class SpaceCanvasTests: XCTestCase {
         XCTAssertEqual(entry.timingFunction, SpaceCanvasView.entryTiming, "One curve across the whole path")
     }
 
-    func testLandingTurnsOpaqueBeforeItAuthorisesTheSwitch() throws {
+    func testLandingRestoresAPartialCoverBeforeItAuthorisesTheSwitch() throws {
         _ = NSApplication.shared
         let cards = (1...9).map { SpaceFilmstripCard(id: $0, number: $0, windows: []) }
         let view = SpaceCanvasView(cards: cards, selected: 4, current: 0,
@@ -678,6 +700,9 @@ final class SpaceCanvasTests: XCTestCase {
         view.open(from: nil, reduceMotion: false)
         let root = try XCTUnwrap(view.layer)
         let shade = try namedLayer("SpaceCanvas.shade", in: root)
+        // Exercise recovery from a partial handoff, even though browsing
+        // now starts with a fully opaque surround.
+        shade.backgroundColor = NSColor(calibratedWhite: 0.04, alpha: 0.78).cgColor
         var covered = 0
         view.land(reduceMotion: false, covered: { covered += 1 }, arrived: {})
         XCTAssertEqual(root.opacity, 1, "An Enter during the entry fade still covers fully")
@@ -704,9 +729,7 @@ final class SpaceCanvasTests: XCTestCase {
         view.open(from: nil, reduceMotion: false)
         let root = try XCTUnwrap(view.layer)
         let shade = try namedLayer("SpaceCanvas.shade", in: root)
-        // The same starting state as Reduce Transparency, without changing
-        // the user's system accessibility preference.
-        shade.backgroundColor = NSColor(calibratedWhite: 0.04, alpha: 1).cgColor
+        XCTAssertEqual(shade.backgroundColor?.alpha, 1, "Browsing hides the full-size desktop")
         var covered = false
         let ready = expectation(description: "root and shade opaque")
         view.land(reduceMotion: false, covered: { covered = true; ready.fulfill() }, arrived: {})
@@ -726,6 +749,7 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 1, current: 0,
             room: CGSize(width: 1920, height: 1080), scale: 2,
             handlers: .init(choose: { _ in }, land: {}, cancel: {}))
+        view.select(1, animated: false)
         view.land(reduceMotion: false, arrived: {})
         let total = view.reveal(reduceMotion: false)
         XCTAssertEqual(total, SpaceCanvasView.revealDuration + SpaceCanvasView.revealZoneDelay, accuracy: 1e-9)
@@ -747,6 +771,8 @@ final class SpaceCanvasTests: XCTestCase {
         let view = SpaceCanvasView(cards: cards, selected: 4, current: 0,
             room: CGSize(width: 3440, height: 1440), scale: 2,
             handlers: .init(choose: { _ in }, land: {}, cancel: {}))
+        view.select(4, animated: false)
+        view.showOverview(reduceMotion: true)
         let root = try XCTUnwrap(view.layer)
         func textScales(_ name: String) throws -> [CGFloat] {
             var out: [CGFloat] = []

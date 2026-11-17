@@ -93,7 +93,11 @@ final class SpaceSwitchNavigator {
 
     func press(offset: Int, repeated: Bool, point: CGPoint?) {
         dispatchPrecondition(condition: .onQueue(.main))
-        if landing {
+        if DesktopCanvasController.shared.active {
+            DesktopCanvasController.shared.returnToNormal { [weak self] in self?.press(offset: offset, repeated: repeated, point: point) }
+            return
+        }
+        if landing || waitingForCanvas {
             prepareLandingInput()
             landingInput?.press(offset, repeated: repeated)
             DiagnosticLog.shared.info("SpaceScrub: queued landing navigation target=\(landingInput?.selection.target ?? 0)")
@@ -131,10 +135,14 @@ final class SpaceSwitchNavigator {
         }
     }
 
-    /// First zoom-out opens the whole canvas. Once browsing, zoom only
+    /// First zoom-out opens Here. Once browsing, zoom only
     /// changes the camera; it never hands focus back or commits a destination.
     func zoom(out: Bool, point: CGPoint?, exitsAtMinimum: Bool = false) {
         dispatchPrecondition(condition: .onQueue(.main))
+        if DesktopCanvasController.shared.active {
+            DesktopCanvasController.shared.returnToNormal { [weak self] in self?.zoom(out: out, point: point, exitsAtMinimum: exitsAtMinimum) }
+            return
+        }
         if canvas {
             // A fresh Ctrl+↓ with the whole map already in view leaves, as
             // Escape does. Nothing is chosen.
@@ -148,21 +156,57 @@ final class SpaceSwitchNavigator {
         }
         if landing {
             if out {
-                prepareLandingInput()
+                prepareLandingInput(point: point)
                 landingInput?.openCanvas()
                 DiagnosticLog.shared.info("SpaceScrub: queued landing canvas target=\(landingInput?.selection.target ?? 0)")
             }
             return
         }
         guard out else { return }
-        if selection == nil {
-            guard let plan = WindowTiler.planAdjacentSpaceSwitch(offset: 0, from: point),
-                  let state = SpaceSwitchSelection(ordered: plan.display.orderedSpaceIds, current: plan.currentSpaceId) else { return }
-            basis = plan
-            selection = state
+        // A posted Dock gesture cannot be withdrawn. Wait for its completion
+        // before capturing Here, so it cannot change the real desktop behind
+        // an anchor that has already opened.
+        if running {
+            if selection == nil {
+                guard let plan = WindowTiler.planAdjacentSpaceSwitch(offset: 0, from: point),
+                      let state = SpaceSwitchSelection(ordered: plan.display.orderedSpaceIds,
+                                                       current: plan.display.currentSpaceId) else { return }
+                basis = plan
+                selection = state
+            }
+            prepareLandingInput(point: point)
+            landingInput?.openCanvas()
+            DiagnosticLog.shared.info("SpaceScrub: queued canvas until transit completes")
+            return
         }
-        guard let basis else { return }
-        selection?.hold()
+        let previous = selection?.target
+        let previousDisplay = basis?.screenDisplayID
+        let openingPoint = point ?? displayPoint
+        guard let fresh = WindowTiler.planAdjacentSpaceSwitch(offset: 0, from: openingPoint),
+              var state = SpaceSwitchSelection(ordered: fresh.display.orderedSpaceIds,
+                                               current: fresh.display.currentSpaceId) else {
+            cancel()
+            return
+        }
+        guard SpaceSwitchCanvasEntry(spaceIDs: fresh.display.spaces.map(\.id),
+                                     currentSpaceID: fresh.display.currentSpaceId) != nil else {
+            // Leave the existing strip and its pending destination intact.
+            // A full-screen Space has no honest Here representation yet.
+            SpaceSwitchBezel.shared.showCanvasUnavailable(on: WindowTiler.screen(for: fresh))
+            return
+        }
+        // Use this display's current Space, not the active Space from a
+        // different display or the gesture's original plan. Preserve only the
+        // visible thumbnail for the entry animation; openCanvas's choose
+        // callback resets the held destination to Here before accepting input.
+        let basis = WindowTiler.SpaceSwitchPlan(offset: 0, display: fresh.display,
+            screenDisplayID: fresh.screenDisplayID, activeSpaceId: fresh.activeSpaceId,
+            currentSpaceId: fresh.display.currentSpaceId, targetSpaceId: nil)
+        if previousDisplay == basis.screenDisplayID, let previous { state.choose(previous) }
+        state.hold()
+        self.basis = basis
+        selection = state
+        pending = false
         scrubSession = true
         // Populate from the retained inventory without an intermediate zoom
         // stop. A strip that isn't up is prepared, never flashed on screen.
@@ -175,7 +219,7 @@ final class SpaceSwitchNavigator {
             }, land: { [weak self] in self?.landCanvas() },
             cancel: { [weak self] in self?.cancel() },
             zoom: { [weak self] out, exits in self?.zoom(out: out, point: nil, exitsAtMinimum: exits) })
-        DiagnosticLog.shared.info("SpaceScrub: canvas opened=\(canvas) entry=full target=\(selection?.target ?? 0)")
+        DiagnosticLog.shared.info("SpaceScrub: canvas opened=\(canvas) entry=here current=\(basis.currentSpaceId) target=\(selection?.target ?? 0)")
         if canvas {
             SpaceSwitchBezel.shared.prepareTransitCover(on: WindowTiler.screen(for: basis))
         } else {
@@ -186,6 +230,13 @@ final class SpaceSwitchNavigator {
     /// Releasing a key ends ordinary scrubbing, but never commits a chooser.
     func release(control: Bool = true) {
         dispatchPrecondition(condition: .onQueue(.main))
+        if waitingForCanvas {
+            landingInput?.release()
+            // If Here cannot open after transit (for example, a full-screen
+            // destination), the original strip must still receive this release.
+            selection?.release()
+            return
+        }
         if landing {
             landingInput?.release()
             return
@@ -205,6 +256,7 @@ final class SpaceSwitchNavigator {
     @discardableResult
     func cancel(force: Bool = false) -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
+        guard force || !SpaceSwitchBezel.shared.canvasHasWindowInteraction else { return false }
         landingInput = nil
         guard force || !landing else { return false }
         canvas = false
@@ -224,6 +276,13 @@ final class SpaceSwitchNavigator {
         return true
     }
 
+    func yieldForDesktopCanvas() -> Bool {
+        // A Dock transit already posted cannot be cancelled. Leave its cover
+        // intact and allow entry again when the desktop has actually landed.
+        guard !running, !landing, !waitingForCanvas else { return false }
+        return cancel()
+    }
+
     /// From Enter until the switch reports, the canvas owns the screen. The
     /// commit was explicit and a posted Dock gesture cannot be withdrawn, so
     /// new navigation waits rather than tearing the cover off a live slide.
@@ -231,11 +290,18 @@ final class SpaceSwitchNavigator {
         awaitingCover || covered
     }
 
-    private func prepareLandingInput() {
+    private var waitingForCanvas: Bool {
+        running && landingInput?.wantsCanvas == true
+    }
+
+    private var displayPoint: CGPoint? {
+        basis?.screenDisplayID.map(CGDisplayBounds).map { CGPoint(x: $0.midX, y: $0.midY) }
+    }
+
+    private func prepareLandingInput(point: CGPoint? = nil) {
         guard landingInput == nil, let selection else { return }
-        let bounds = basis?.screenDisplayID.map(CGDisplayBounds)
         landingInput = SpaceSwitchLandingInput(selection: selection,
-            point: bounds.map { CGPoint(x: $0.midX, y: $0.midY) })
+            point: point ?? displayPoint)
     }
 
     /// Called only after the committed switch reports. Re-read the display so
@@ -243,6 +309,12 @@ final class SpaceSwitchNavigator {
     private func resumeLandingInput() {
         guard let input = landingInput else { return }
         landingInput = nil
+        if input.wantsCanvas {
+            // Here always refreshes the actual current Space after transit;
+            // queued arrow destinations must not become the entry anchor.
+            zoom(out: true, point: input.point)
+            return
+        }
         guard let plan = WindowTiler.planAdjacentSpaceSwitch(offset: 0, from: input.point),
               var next = SpaceSwitchSelection(ordered: plan.display.orderedSpaceIds, current: plan.currentSpaceId) else { return }
         next.choose(input.selection.target)
@@ -252,9 +324,7 @@ final class SpaceSwitchNavigator {
         lastDirection = input.direction
         pending = next.target != plan.currentSpaceId
         DiagnosticLog.shared.info("SpaceScrub: resumed landing input target=\(next.target) canvas=\(input.wantsCanvas)")
-        if input.wantsCanvas {
-            zoom(out: true, point: input.point)
-        } else if pending || next.scrubbing {
+        if pending || next.scrubbing {
             SpaceSwitchBezel.shared.abortLanding()
             if next.scrubbing {
                 scrubSession = true
@@ -334,6 +404,10 @@ final class SpaceSwitchNavigator {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.running = false
+                if !self.landing, self.landingInput?.wantsCanvas == true {
+                    self.resumeLandingInput()
+                    if self.canvas { return }
+                }
                 guard mine == self.epoch else { self.drain(); return }
                 if self.selection?.scrubbing == true { return }
                 // A preceding switch may finish while a newly covered landing

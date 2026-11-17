@@ -102,6 +102,33 @@ lattices uses a JSON-RPC-style protocol over authenticated WebSocket on the priv
 | `id`     | string         | Echoed from request                          |
 | `result` | any \| null    | Method return value (null on error)          |
 | `error`  | string \| null | Error message (null on success)              |
+| `delivery` | object       | Only on `mutate` methods. See [Delivery](#delivery) |
+
+### Delivery
+
+Every reply to a `mutate` method, success or error, carries `delivery`. It
+says how far the call got, so a caller knows whether to send it again. The Mac
+daemon and lattices-host on Linux use the same values.
+
+```json
+{ "status": "delivery_uncertain", "retrySafe": false, "recovery": "observe_then_retry" }
+```
+
+| `status` | Meaning |
+| --- | --- |
+| `not_delivered` | Refused before anything happened: missing parameter, not found, or a capability the host lacks. |
+| `delivery_uncertain` | The handler started and failed. It may have acted. |
+| `delivered_unverified` | The handler finished. Nothing read the result back. |
+
+`retrySafe` is true when sending the identical call again can't double its
+effect. That is always the case for `not_delivered`, and for repeatable methods
+such as `windows.focus`, `windows.place` and `sessions.launch`. It is false for
+clicks, keys and typing. `recovery` is `retry`, `observe_then_retry` (look
+first, then act only if the change is missing) or `none`.
+
+The Node client puts `delivery` on a successful object result and on the
+`DaemonError` it throws. When the connection drops after a `computer.*` call
+was sent, the client reports `delivery_uncertain` itself.
 
 ### Errors
 
@@ -314,6 +341,10 @@ try {
 Runs are local executions that produce trace events and artifacts. Capture
 methods write into the Lattices run store under
 `~/Library/Application Support/Lattices/Runs/`.
+
+The computer-use domain is `cua`. Every `computer.*` method below also answers
+as `cua.*` (for example `cua.click`), and `api.schema` lists the `cua.*` names
+under `aliases`. The CLI is `lats cua`; `lats computer` is an alias.
 
 | Method | Type | Description |
 |--------|------|-------------|
@@ -648,18 +679,17 @@ lats runs
 lats runs run_20260617-120000_a1b2c3
 lats terminals
 lats terminals --refresh
-lats computer prepare --text "# hello" --treatment stage
+lats cua prepare --text "# hello" --treatment stage
 lats call computer.windowState '{"app":"Finder","maxDepth":4}'
 lats call computer.pressKey '{"app":"Finder","key":"escape","treatment":"stage"}'
 lats call computer.hotkey '{"app":"Xcode","shortcut":"command+b","treatment":"stage"}'
-lats computer focus-window --wid 7258 --treatment present
-lats computer cursor --style marker --shape chevron --angle-deg -8 --label typing
-lats computer launch-app Scout
-lats computer scout --treatment present
-lats computer scout "Draft memo text" --execute
-lats computer type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
-lats computer click --app Scout --x-ratio .5 --y-ratio .86 --execute
-lats cua click --app Scout --x-ratio .74 --y-ratio .95 --transport ax --ax-label Send --execute
+lats cua focus-window --wid 7258 --treatment present
+lats cua cursor --style marker --shape chevron --angle-deg -8 --label typing
+lats cua launch-app Scout
+lats cua scout --treatment present
+lats cua scout "Draft memo text" --execute
+lats cua type-window --app Scout --text "Draft memo text" --x-ratio .5 --y-ratio .86 --execute
+lats cua click --app Scout --x-ratio .5 --y-ratio .86 --execute
 lats call computer.scroll '{"app":"Safari","direction":"down","amount":420,"treatment":"stage"}'
 lats call computer.drag '{"app":"Finder","fromXRatio":0.2,"fromYRatio":0.2,"toXRatio":0.7,"toYRatio":0.7,"treatment":"stage"}'
 lats call computer.doubleClick '{"app":"Finder","xRatio":0.5,"yRatio":0.5,"treatment":"stage"}'
@@ -669,8 +699,8 @@ lats call capture.screenshotRegion '{"app":"Safari","filename":"safari-region.pn
 lats call vision.analyzeWindow '{"app":"Safari","instruction":"Read visible text"}'
 lats call browser.getText '{"app":"Safari"}'
 lats call browser.queryDom '{"app":"Safari","selector":"h1","allowAutomation":true}'
-lats computer type-text --text "# hello from lattices"
-lats computer demo-terminal --dry-run
+lats cua type-text --text "# hello from lattices"
+lats cua demo-terminal --dry-run
 ```
 
 ---

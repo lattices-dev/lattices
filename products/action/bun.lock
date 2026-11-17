@@ -44,7 +44,7 @@
     },
     "packages/cua": {
       "name": "@lattices/action",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "action": "./bin/action.js",
       },
@@ -66,6 +66,9 @@
     "packages/runtime": {
       "name": "@action/runtime",
       "version": "0.0.0",
+      "dependencies": {
+        "@lattices/action": "workspace:*",
+      },
     },
   },
   "packages": {

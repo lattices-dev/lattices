@@ -1,8 +1,19 @@
 import { useState } from "react";
 import guide from "../data/action-start.json";
 
+type InstallPath = "action" | "lattices";
+
+const installPaths: Array<{ id: InstallPath; label: string }> = [
+  { id: "action", label: "On its own" },
+  { id: "lattices", label: "With Lattices" },
+];
+
+type Step = (typeof guide.steps)[number] & { latticesCommand?: string; latticesExpected?: string };
+
 export function ActionQuickStart() {
   const [copyStatus, setCopyStatus] = useState("");
+  const [path, setPath] = useState<InstallPath>("action");
+  const steps: Step[] = guide.steps;
 
   async function copyCommand(title: string, command: string) {
     try {
@@ -22,22 +33,39 @@ export function ActionQuickStart() {
         </div>
         <p>macOS on Apple Silicon · <a href="https://bun.sh/docs/installation">Install Bun first</a><br />No source build needed.</p>
       </div>
+      <div className="action-start-paths" role="group" aria-label="Install path">
+        {installPaths.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={path === option.id}
+            onClick={() => setPath(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
       <ol className="action-start-steps">
-        {guide.steps.map((step, index) => (
+        {steps.map((step, index) => {
+          const lattices = path === "lattices";
+          const command = (lattices && step.latticesCommand) || step.command;
+          const expected = (lattices && step.latticesExpected) || step.expected;
+          return (
           <li key={step.id} id={`action-start-${step.id}`}>
             <div className="action-start-instruction">
               <span className="action-start-number" aria-hidden="true">{index + 1}</span>
               <div>
                 <h3>{step.title}</h3>
-                <p><strong>Expect:</strong> {step.expected}</p>
+                <p><strong>Expect:</strong> {expected}</p>
               </div>
             </div>
             <div className="action-start-command">
-              <pre tabIndex={0} aria-label={`${step.title} commands`}><code>{step.command}</code></pre>
-              <button type="button" onClick={() => copyCommand(step.title, step.command)} aria-label={`Copy ${step.title.toLowerCase()} commands`}>Copy</button>
+              <pre tabIndex={0} aria-label={`${step.title} commands`}><code>{command}</code></pre>
+              <button type="button" onClick={() => copyCommand(step.title, command)} aria-label={`Copy ${step.title.toLowerCase()} commands`}>Copy</button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ol>
       <p className="action-start-copy-status" role="status" aria-live="polite">{copyStatus}</p>
       <details className="action-start-troubleshooting">

@@ -486,7 +486,6 @@ async function refineFromReview({ review, direction, brief, promptBlock, round4,
 }
 
 function visionConfigured() {
-  if (process.env.MINIMAX_API_KEY) return true;
   if (process.env.ACTION_VISION_PROVIDER === "moondream") return true;
   if (process.env.ACTION_MOONDREAM_PYTHON) return true;
   return false;
@@ -497,7 +496,7 @@ async function main() {
 
   if (!dryRun && !skipAnalyze && !visionConfigured()) {
     throw new Error(
-      "Vision provider not configured. Run: secret run MINIMAX_API_KEY -- bun run logo:analyze",
+      "Moondream not configured. Set ACTION_MOONDREAM_PYTHON to a Python with moondream installed, then rerun bun run logo:analyze",
     );
   }
 

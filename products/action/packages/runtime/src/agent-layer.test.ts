@@ -41,6 +41,7 @@ async function exists(path: string): Promise<boolean> {
 async function fixture(options: {
   stopExits?: boolean; writeState?: boolean; prepared?: boolean; terminateExits?: boolean; writeDisplayState?: boolean;
   sessionDisplayId?: number; sessionStatePid?: number; invalidateDisplayOnOpen?: boolean; malformedReply?: boolean;
+  returnToMacSupported?: boolean;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), "action-agent-layer-"));
   const live = new Set<number>();
@@ -76,6 +77,7 @@ async function fixture(options: {
     safetyPath,
     stateWaitMs: 200,
     closeWaitMs: 120,
+    returnWaitMs: 200,
     runHost: async (args) => {
       calls.push(args);
       const pid = nextPid++;
@@ -83,10 +85,13 @@ async function fixture(options: {
       if (args[0] === "agent-display") {
         owners.add(pid);
         if (options.writeDisplayState !== false) {
-          await writeFile(director.paths().displayState, JSON.stringify({
-            ...displayFor(pid, Number(args[args.indexOf("--width") + 1]), Number(args[args.indexOf("--height") + 1])),
-            scale: Number(args[args.indexOf("--scale") + 1]),
-          }));
+          const display = displayFor(pid, Number(args[args.indexOf("--width") + 1]), Number(args[args.indexOf("--height") + 1]));
+          display.scale = Number(args[args.indexOf("--scale") + 1]);
+          if (args.includes("--return-to-mac") && options.returnToMacSupported !== false) {
+            display.returnToMac = true;
+            display.returnShortcut = "Control-Option-Command-Escape";
+          }
+          await writeFile(director.paths().displayState, JSON.stringify(display));
         }
         return { stdout: JSON.stringify({ status: "agent-display-running", detail: String(pid) }) };
       }
@@ -118,6 +123,30 @@ async function fixture(options: {
 
 function displayFor(pid: number, width = 1280, height = 800): AgentLayerDisplayState {
   return { schemaVersion: 1, pid, displayId: 7, startedAt: "2026-09-29T11:00:00.000Z", width, height, serialNumber: 0x41435401 };
+}
+
+function returnRequestFor(display = displayFor(4000), requestId = "8b71e673-f346-43fd-9c44-13e44bc982d3") {
+  return { requestId, workspace: "default", displayId: display.displayId, displayOwnerPid: display.pid,
+    displayStartedAt: display.startedAt, reason: "test" };
+}
+
+async function waitForReturnRequest(director: AgentLayerDirector, previousId?: string) {
+  const deadline = Date.now() + 1000;
+  for (;;) {
+    try {
+      const request = JSON.parse(await readFile(director.paths().returnRequest, "utf8")) as ReturnType<typeof returnRequestFor>;
+      if (request.requestId !== previousId) return request;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (Date.now() >= deadline) throw new Error("Test owner did not receive a return request");
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+}
+
+async function enableReturnMode(director: AgentLayerDirector) {
+  await writeFile(director.paths().displayState, JSON.stringify({ ...displayFor(4000), returnToMac: true,
+    returnShortcut: "Control-Option-Command-Escape" }));
 }
 
 describe("parseAgentLayerOpen", () => {
@@ -184,6 +213,7 @@ describe("AgentLayerDirector", () => {
       assert.equal(prepared.display?.height, 900);
       assert.equal(calls[0]?.[0], "agent-display");
       assert.equal(calls[0]?.includes("--parent-pid"), false);
+      assert.equal(calls[0]?.includes("--return-to-mac"), false);
       assert.deepEqual(await director.prepareDisplay({ width: "1440", height: "900" }), prepared);
       assert.equal(calls.length, 1);
       await assert.rejects(director.prepareDisplay({ width: 1280, height: 800 }), /release and explicitly prepare/);
@@ -191,6 +221,171 @@ describe("AgentLayerDirector", () => {
       await assert.rejects(director.prepareDisplay({ width: 639, height: 400 }), /at least 640x400/);
       await assert.rejects(director.prepareDisplay({ width: 640 }), /go together/);
       await assert.rejects(director.prepareDisplay({ width: 8193, height: 900 }), /must not exceed 8192/);
+    } finally { await cleanup(); }
+  });
+
+  test("prepare explicitly enables Return to Mac and reuses only a matching owner", async () => {
+    const { director, calls, terminated, cleanup } = await fixture({ prepared: false });
+    try {
+      const prepared = await director.prepareDisplay({ returnToMac: true });
+      assert.equal(prepared.display?.returnToMac, true);
+      assert.equal(prepared.display?.returnShortcut, "Control-Option-Command-Escape");
+      assert.equal(calls[0]?.at(-1), "--return-to-mac");
+      assert.deepEqual(await director.prepareDisplay({ returnToMac: true }), prepared);
+      assert.deepEqual(await director.prepareDisplay(), prepared);
+      await assert.rejects(director.prepareDisplay({ returnToMac: false }), /requested Return to Mac mode/);
+      assert.deepEqual(await director.displayStatus(), prepared);
+      assert.equal(calls.length, 1);
+      assert.deepEqual(terminated, []);
+      assert.equal(await exists(director.paths().displayStop), false);
+    } finally { await cleanup(); }
+  });
+
+  test("legacy owners remain usable but cannot satisfy an explicit Return to Mac request", async () => {
+    const { director, calls, cleanup } = await fixture();
+    try {
+      const original = await director.displayStatus();
+      assert.deepEqual(await director.prepareDisplay(), original);
+      assert.deepEqual(await director.prepareDisplay({ returnToMac: false }), original);
+      await assert.rejects(director.prepareDisplay({ returnToMac: true }), /release and explicitly prepare/);
+      assert.deepEqual(await director.displayStatus(), original);
+      for (const returnShortcut of [undefined, "Escape"]) {
+        await writeFile(director.paths().displayState, JSON.stringify({ ...displayFor(4000), returnToMac: true, returnShortcut }));
+        await assert.rejects(director.prepareDisplay({ returnToMac: true }), /requested Return to Mac mode/);
+      }
+      assert.equal(calls.length, 0);
+      assert.equal(await exists(director.paths().displayStop), false);
+    } finally { await cleanup(); }
+  });
+
+  test("prepare rejects an owner that fails to confirm the requested return shortcut without removing it", async () => {
+    const { director, live, calls, terminated, cleanup } = await fixture({ prepared: false, returnToMacSupported: false });
+    try {
+      await assert.rejects(director.prepareDisplay({ returnToMac: true }), /requested Return to Mac mode.*owner PID 5000 may still be running/);
+      assert.equal(calls.length, 1);
+      assert.equal(live.has(5000), true);
+      assert.equal((await director.displayStatus()).active, true);
+      assert.deepEqual(terminated, []);
+      assert.equal(await exists(director.paths().displayStop), false);
+    } finally { await cleanup(); }
+  });
+
+  test("prepare validates return mode before invoking the native host", async () => {
+    const { director, calls, cleanup } = await fixture({ prepared: false });
+    try {
+      for (const returnToMac of ["true", "false", 1, null]) {
+        await assert.rejects(director.prepareDisplay({ returnToMac }), /returnToMac must be a boolean/);
+      }
+      assert.equal(calls.length, 0);
+      await director.prepareDisplay({ returnToMac: false });
+      assert.equal(calls[0]?.includes("--return-to-mac"), false);
+    } finally { await cleanup(); }
+  });
+
+  test("Return to Mac requires a live protected owner before writing a request", async () => {
+    const { director, calls, cleanup } = await fixture({ prepared: false });
+    try {
+      await assert.rejects(director.returnToMac(), /No prepared agent display/);
+      await director.prepareDisplay();
+      await assert.rejects(director.returnToMac(), /requested Return to Mac mode/);
+      assert.equal(await exists(director.paths().returnRequest), false);
+      assert.equal(calls.length, 1);
+    } finally { await cleanup(); }
+  });
+
+  test("Return to Mac accepts only the owner's matching verified result and retains evidence", async () => {
+    const { director, calls, live, cleanup } = await fixture();
+    try {
+      await enableReturnMode(director);
+      const returning = director.returnToMac();
+      const request = await waitForReturnRequest(director);
+      assert.equal(request.workspace, "default");
+      assert.equal(request.displayOwnerPid, 4000);
+      assert.equal(request.displayId, 7);
+      assert.equal(request.displayStartedAt, displayFor(4000).startedAt);
+      assert.equal(request.reason, "cli");
+      await writeFile(director.paths().returnStatus, JSON.stringify({ ...request, state: "returned",
+        detail: "All windows recovered; display disconnected", updatedAt: new Date().toISOString() }));
+      live.delete(4000);
+      const result = await returning;
+      assert.equal(result.ok, true);
+      assert.equal(result.state, "returned");
+      assert.equal(result.requestId, request.requestId);
+      assert.equal((await director.returnToMac()).requestId, request.requestId);
+      assert.equal(await exists(director.paths().returnRequest), true);
+      assert.equal(await exists(director.paths().returnStatus), true);
+      assert.equal(calls.length, 0);
+    } finally { await cleanup(); }
+  });
+
+  test("failed Return to Mac preserves records and an explicit retry gets a fresh request identity", async () => {
+    const { director, live, cleanup } = await fixture();
+    try {
+      await enableReturnMode(director);
+      const first = director.returnToMac();
+      const request = await waitForReturnRequest(director);
+      await writeFile(director.paths().returnStatus, JSON.stringify({ ...request, state: "failed",
+        detail: "A window could not be restored", updatedAt: new Date().toISOString() }));
+      assert.equal((await first).state, "failed");
+      assert.equal(live.has(4000), true);
+      assert.equal(await exists(director.paths().returnRequest), true);
+      const retry = director.returnToMac();
+      const next = await waitForReturnRequest(director, request.requestId);
+      assert.notEqual(next.requestId, request.requestId);
+      await writeFile(director.paths().returnStatus, JSON.stringify({ ...next, state: "returned", updatedAt: new Date().toISOString() }));
+      live.delete(4000);
+      assert.equal((await retry).ok, true);
+    } finally { await cleanup(); }
+  });
+
+  test("pending Return to Mac reuses its request and ignores a stale success from another owner", async () => {
+    const { director, live, cleanup } = await fixture();
+    try {
+      await enableReturnMode(director);
+      const request = returnRequestFor();
+      await writeFile(director.paths().returnRequest, JSON.stringify(request));
+      await writeFile(director.paths().returnStatus, JSON.stringify({ ...request, displayOwnerPid: 3999,
+        state: "returned", updatedAt: new Date().toISOString() }));
+      const result = await director.returnToMac();
+      assert.equal(result.ok, false);
+      assert.equal(result.state, "recovery-pending");
+      assert.equal(result.requestId, request.requestId);
+      assert.equal(live.has(4000), true);
+      assert.deepEqual(JSON.parse(await readFile(director.paths().returnRequest, "utf8")), request);
+    } finally { await cleanup(); }
+  });
+
+  test("Return to Mac refuses a request for a replacement owner without overwriting evidence", async () => {
+    const { director, cleanup } = await fixture();
+    try {
+      await enableReturnMode(director);
+      const request = { ...returnRequestFor(), displayOwnerPid: 3999 };
+      await writeFile(director.paths().returnRequest, JSON.stringify(request));
+      await assert.rejects(director.returnToMac(), /different display owner/);
+      assert.deepEqual(JSON.parse(await readFile(director.paths().returnRequest, "utf8")), request);
+    } finally { await cleanup(); }
+  });
+
+  test("recovery blocks ordinary lifecycle and input paths while preserving dead-session restoration records", async () => {
+    const { director, live, calls, cleanup } = await fixture();
+    try {
+      await enableReturnMode(director);
+      const opened = await director.open();
+      const original = await readFile(director.paths().state, "utf8");
+      const sidecar = await readFile(director.paths().request, "utf8");
+      await writeFile(director.paths().returnRequest, JSON.stringify(returnRequestFor()));
+      live.delete(opened.layer!.pid);
+      for (const operation of [() => director.open(), () => director.close(), () => director.showViewer(),
+        () => director.prepareDisplay({ returnToMac: true }), () => director.releaseDisplay(), () => director.mark({ kind: "aim" })]) {
+        await assert.rejects(operation(), /Return to Mac recovery/);
+      }
+      assert.match((await director.actRefusal())!, /Return to Mac recovery/);
+      assert.equal(await director.routing(), undefined);
+      assert.equal(await readFile(director.paths().state, "utf8"), original);
+      assert.equal(await readFile(director.paths().request, "utf8"), sidecar);
+      assert.equal(await exists(director.paths().stop), false);
+      assert.equal(await exists(director.paths().displayStop), false);
+      assert.equal(calls.length, 1);
     } finally { await cleanup(); }
   });
 
@@ -342,7 +537,7 @@ describe("AgentLayerDirector", () => {
   test("display manifest validation rejects reserved PIDs and out-of-range native IDs", async () => {
     const { director, cleanup } = await fixture();
     try {
-      for (const override of [{ pid: 1 }, { displayId: 0x100000000 }, { serialNumber: 0x100000000 }, { width: 8193 }]) {
+      for (const override of [{ pid: 1 }, { displayId: 0x100000000 }, { serialNumber: 0x100000000 }, { width: 8193 }, { returnToMac: "true" }, { returnShortcut: 1 }]) {
         await writeFile(director.paths().displayState, JSON.stringify({ ...displayFor(4000), ...override }));
         assert.equal((await director.displayStatus()).state, "invalid");
       }

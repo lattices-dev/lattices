@@ -1,4 +1,5 @@
 import { assertRequestActive } from "./request-context.ts";
+import { delivery } from "./delivery.ts";
 // The Linux host speaks the Mac daemon's protocol (docs/api.md, "Wire
 // protocol"): {id, method, params} in, {id, result, error} out, {event, data}
 // pushed. Endpoints use the LAT-012 domain names; old names are accepted as
@@ -39,8 +40,11 @@ export interface Response {
   id: string;
   result: Json;
   error: string | null;
+  /** On every reply to a mutating endpoint: how far it got (see delivery.ts). */
+  delivery?: Json;
 }
 
+/** A refusal before the handler touched anything: bad params, nothing to act on. */
 export class RouterError extends Error {
   static unknownMethod(method: string) {
     return new RouterError(`Unknown method: ${method}`);
@@ -76,7 +80,23 @@ export const METHOD_ALIASES: Record<string, string> = {
   "ocr.recent": "ocr.history",
 };
 
+/** Domain renames: `cua.*` is the computer-use domain's new name for `computer.*`. */
+export const DOMAIN_ALIASES: ReadonlyArray<readonly [alias: string, target: string]> = [["cua.", "computer."]];
+
+/** A method with any renamed domain prefix mapped to the name endpoints register under. */
+export function domainResolved(method: string): string {
+  for (const [alias, target] of DOMAIN_ALIASES) if (method.startsWith(alias)) return target + method.slice(alias.length);
+  return method;
+}
+
+/** The registered name a method (or any alias of it) dispatches to. */
+export function canonicalName(method: string): string {
+  const resolved = domainResolved(method);
+  return METHOD_ALIASES[resolved] ?? resolved;
+}
+
 export function resolveAlias(method: string, params: Params): { method: string; params: Params } {
+  method = domainResolved(method);
   const target = METHOD_ALIASES[method];
   if (!target) return { method, params };
   if (method === "window.tile" && params.placement == null) {
@@ -97,7 +117,7 @@ export class Router {
 
   /** The endpoint a method (or its alias) names, if any. */
   lookup(method: string): Endpoint | undefined {
-    return this.endpoints.get(METHOD_ALIASES[method] ?? method);
+    return this.endpoints.get(canonicalName(method));
   }
 
   /** Endpoints this host can serve right now. */
@@ -106,7 +126,8 @@ export class Router {
     return [...this.endpoints.values()].filter((e) => !e.capability || caps.has(e.capability));
   }
 
-  async dispatch(method: string, params: Params | null | undefined): Promise<Json> {
+  /** `onStart` runs just before the handler, after every check that refuses without acting. */
+  async dispatch(method: string, params: Params | null | undefined, onStart?: () => void): Promise<Json> {
     assertRequestActive();
     const resolved = resolveAlias(method, params ?? {});
     const endpoint = this.endpoints.get(resolved.method);
@@ -116,15 +137,32 @@ export class Router {
         `capability_unavailable: ${resolved.method} needs ${endpoint.capability}, which this host does not have`
       );
     }
+    onStart?.();
     return endpoint.handler(resolved.params);
   }
 
   async handle(request: Request): Promise<Response> {
+    const endpoint = this.lookup(request.method);
+    const mutates = endpoint?.access === "mutate";
+    let started = false;
     try {
-      const result = await this.dispatch(request.method, request.params);
-      return { id: request.id, result: result ?? null, error: null };
+      const result = await this.dispatch(request.method, request.params, () => { started = true; });
+      return {
+        id: request.id,
+        result: result ?? null,
+        error: null,
+        ...(mutates ? { delivery: delivery("delivered_unverified", endpoint.method) } : {}),
+      };
     } catch (err) {
-      return { id: request.id, result: null, error: (err as Error).message };
+      // A RouterError is a refusal; anything else the handler threw may follow
+      // a key it already pressed.
+      const reached = started && !(err instanceof RouterError);
+      return {
+        id: request.id,
+        result: null,
+        error: (err as Error).message,
+        ...(mutates ? { delivery: delivery(reached ? "delivery_uncertain" : "not_delivered", endpoint.method) } : {}),
+      };
     }
   }
 
@@ -143,7 +181,10 @@ export class Router {
       returns: { type: "custom", description: e.returns },
     }));
     const served = new Set(methods.map((m) => m.method));
-    const aliases = Object.fromEntries(Object.entries(METHOD_ALIASES).filter(([, to]) => served.has(to)));
+    const aliases: Record<string, string> = Object.fromEntries(Object.entries(METHOD_ALIASES).filter(([, to]) => served.has(to)));
+    for (const name of served) for (const [alias, target] of DOMAIN_ALIASES) {
+      if (name.startsWith(target)) aliases[alias + name.slice(target.length)] = name;
+    }
     return { version: "1.0", models: [], methods, aliases };
   }
 }

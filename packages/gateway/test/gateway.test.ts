@@ -46,6 +46,9 @@ test("gateway grants are exact, scoped to products, and fail closed on aliases a
   expect(authorizeMethod(read, "lattices", "window.place")).toContain("scope_denied");
   expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "new.execute")).toContain("method_denied");
   expect(authorizeMethod(read, "speech", "speech.status")).toContain("scope_denied");
+  expect(authorizeMethod(read, "lattices", "cua.observe")).toBe(authorizeMethod(read, "lattices", "computer.observe"));
+  expect(authorizeMethod(grantsForScope("lattices", "drive"), "lattices", "cua.click")).toBeNull();
+  expect(authorizeMethod(read, "lattices", "cua.click")).toContain("scope_denied: missing lattices:computer.click");
   expect(authorizeMethod(["action:status"], "action", "status")).toBeNull();
   expect(() => requestedGrants({ grants: ["action:*"], scope: "drive" })).toThrow();
   expect(() => requestedGrants({ grants: ["lattices:clients.approve"] })).toThrow();
@@ -112,6 +115,7 @@ async function fixture(run: (f: any) => Promise<void>) {
   } });
   router.register({ method: "windows.list", access: "read", description: "fixture", returns: "", handler: () => { calls.push("windows.list"); return [{ title: "private fixture" }]; } });
   router.register({ method: "windows.place", access: "mutate", description: "fixture", returns: "", handler: () => { calls.push("windows.place"); return { ok: true }; } });
+  router.register({ method: "computer.typeText", access: "mutate", description: "fixture", returns: "", handler: () => { calls.push("computer.typeText"); throw new Error("typing failed"); } });
   router.register({ method: "windows.get", access: "read", description: "fixture", returns: "", handler: () => new Promise(resolve => {
     stalled.started = true;
     currentRequestContext()?.signal?.addEventListener("abort", () => { stalled.aborted = true; resolve(null); }, { once: true });
@@ -255,6 +259,17 @@ test("signed Canvas and legacy Blink calls use the same private socket and exact
     if (previousCanvas === undefined) delete process.env.CANVAS_HOME; else process.env.CANVAS_HOME = previousCanvas;
     if (previousBlink === undefined) delete process.env.BLINK_HOME; else process.env.BLINK_HOME = previousBlink;
   }
+}));
+
+test("mutating replies carry the host's delivery through the gateway", () => fixture(async f => {
+  await f.pair(["lattices:windows.place", "lattices:computer.typeText"]);
+  const socket = await f.connect(f.signed());
+  const placed = await rpc(socket, "windows.place");
+  expect(placed.result.delivery).toEqual({ status: "delivered_unverified", retrySafe: true, recovery: "none" });
+  const typed = await rpc(socket, "computer.typeText");
+  expect(typed.error).toContain("typing failed");
+  expect(typed.delivery).toEqual({ status: "delivery_uncertain", retrySafe: false, recovery: "observe_then_retry" });
+  expect(f.calls).toEqual(["windows.place", "computer.typeText"]);
 }));
 
 test("approved replacement keys close connections authenticated by the former key", () => fixture(async f => {

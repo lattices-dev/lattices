@@ -26,7 +26,6 @@ enum HotkeyBootstrap {
                 HUDController.shared.hideVoiceBar()
             }
         }
-        store.register(action: .hud) { HUDController.shared.toggle() }
         store.register(action: .mouseFinder) { MouseFinder.shared.find() }
         store.register(action: .overlayActors) { ScreenOverlayCanvasController.shared.toggleAgentActorsVisibility() }
         store.register(action: .gridPlacement) {
@@ -183,10 +182,6 @@ enum HotkeyBootstrap {
         store.register(action: .motionMode) {
             TilePointerController.shared.cancelApply()
             WindowMotionMode.shared.toggleHyperspace()
-        }
-        store.register(action: .inPlaceMode) {
-            TilePointerController.shared.cancelApply()
-            WindowMotionMode.shared.toggleInPlace()
         }
         store.register(action: .chordHints) {
             TilePointerController.shared.cancelApply()

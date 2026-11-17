@@ -282,9 +282,8 @@ final class LatticesApi {
             ]),
             "models": .array(modelsList),
             "methods": .array(methodsList),
-            "aliases": .object(MethodAliases.table
-                .filter { endpoints[$0.value.method] != nil }
-                .mapValues { JSON.string($0.method) })
+            "aliases": .object(MethodAliases.advertised(for: endpoints.keys)
+                .mapValues { JSON.string($0) })
         ])
     }
 
@@ -1897,8 +1896,9 @@ final class LatticesApi {
                 Param(name: "height", type: "double", required: false, description: "Region height"),
                 Param(name: "maxWidth", type: "int", required: false, description: "Largest pixel width to return (default 1600)"),
                 Param(name: "quality", type: "int", required: false, description: "JPEG quality 20-95 (default 70)"),
+                Param(name: "cursor", type: "bool", required: false, description: "Include the host pointer (display default true; region default false; windows always omit it)"),
             ],
-            returns: .custom("Object with format, width, height, base64 data, and the captured frame in layout coordinates"),
+            returns: .custom("Object with format, width, height, cursor, base64 data, and the captured frame in layout coordinates"),
             handler: { params in
                 try CaptureController.shared.still(params: params)
             }
@@ -3750,6 +3750,20 @@ final class LatticesApi {
             }
         ))
 
+        api.register(Endpoint(
+            method: "app.show",
+            description: "Open the main window on a page, or Settings on a section",
+            access: .mutate,
+            params: [
+                Param(name: "page", type: "string", required: false, description: "home, overview, layers, machines, assistant, runs, activity, settings or docs. Defaults to home."),
+                Param(name: "section", type: "string", required: false, description: "With page settings: a Settings section such as permissions, shortcuts, voice or search."),
+            ],
+            returns: .custom("The page shown and the pages available"),
+            handler: { params in
+                try Self.showAppPage(params)
+            }
+        ))
+
         // ── Mouse Finder ────────────────────────────────────────
 
         api.register(Endpoint(
@@ -3901,6 +3915,92 @@ final class LatticesApi {
                 try MachineArrangementStore.addHost(name: name, address: address, port: port)
                 try Self.onMain { MainActor.assumeIsolated { RemoteHostsModel.shared.reload() } }
                 return .object(["ok": .bool(true)])
+            }
+        ))
+        api.register(Endpoint(
+            method: "hosts.view",
+            description: "Open an app on a host as an ordinary window here: the app moves to a headless display sized to the window, and returns when the window closes",
+            access: .mutate,
+            params: [Param(name: "host", type: "string", required: true, description: "Configured host name"),
+                     Param(name: "app", type: "string", required: true, description: "App name on the host, e.g. Spotify")],
+            returns: .custom("Object with ok, wid, display and reused"),
+            handler: { params in
+                guard let host = params?["host"]?.stringValue, !host.isEmpty,
+                      let app = params?["app"]?.stringValue, !app.isEmpty else { throw RouterError.custom("host and app are required") }
+                return try remoteAppOpened(method: "hosts.view", what: "\(app) on \(host)") {
+                    try await RemoteAppWindows.shared.open(app: app, on: host)
+                }
+            }
+        ))
+        api.register(Endpoint(
+            method: "views.list",
+            description: "Saved remote apps (~/.lattices/apps): id, host, app, name and size, with the Mac window id of any that are open",
+            access: .read, params: [],
+            returns: .custom("Array of {id, host, app, name, width?, height?, window?}"),
+            handler: { _ in
+                return .array(RemoteAppDefinitions.all().map { definition in
+                    guard case .object(var object) = definition.json else { return definition.json }
+                    if let app = RemoteAppBundles.running(definition.id).first,
+                       let window = RemoteAppBundles.window(pid: app.processIdentifier, title: RemoteAppBundles.displayName(definition)) {
+                        object["window"] = .int(window)
+                    }
+                    return .object(object)
+                })
+            }
+        ))
+        api.register(Endpoint(
+            method: "views.save",
+            description: "Save a remote app by name so views.open can open it as its own window here; replaces one with the same id",
+            access: .mutate,
+            params: [Param(name: "host", type: "string", required: true, description: "Configured host name"),
+                     Param(name: "app", type: "string", required: true, description: "App name on the host, e.g. Spotify"),
+                     Param(name: "name", type: "string", required: false, description: "Window name here; defaults to the app"),
+                     Param(name: "id", type: "string", required: false, description: "Defaults to app-host, e.g. spotify-archie"),
+                     Param(name: "width", type: "int", required: false, description: "First window width in points"),
+                     Param(name: "height", type: "int", required: false, description: "First window height in points")],
+            returns: .custom("The saved definition"),
+            handler: { params in
+                guard let host = params?["host"]?.stringValue, !host.isEmpty,
+                      let app = params?["app"]?.stringValue, !app.isEmpty else { throw RouterError.custom("host and app are required") }
+                guard RemoteHostsModel.configuredHosts().contains(where: { $0.name == host }) else { throw RouterError.custom("No configured host named \(host)") }
+                let width = params?["width"]?.intValue, height = params?["height"]?.intValue
+                guard (width == nil) == (height == nil) else { throw RouterError.custom("width and height go together") }
+                let definition = RemoteAppDefinition(
+                    id: params?["id"]?.stringValue ?? RemoteAppDefinition.slug(app: app, host: host),
+                    host: host, app: app, name: params?["name"]?.stringValue ?? app, width: width, height: height)
+                do { try RemoteAppDefinitions.save(definition) } catch { throw RouterError.custom(error.localizedDescription) }
+                // Its own app, for Cmd-Tab, the Dock and Spotlight.
+                guard case .object(var object) = definition.json else { return definition.json }
+                do { object["app_path"] = .string(try RemoteAppBundles.install(definition).path) }
+                catch { DiagnosticLog.shared.warn("RemoteApp: could not build the app for \(definition.id): \(error.localizedDescription)") }
+                return .object(object)
+            }
+        ))
+        api.register(Endpoint(
+            method: "views.open",
+            description: "Open a saved remote app as its own window here, or bring its window forward",
+            access: .mutate,
+            params: [Param(name: "id", type: "string", required: true, description: "Definition id from views.list")],
+            returns: .custom("Object with ok, id, wid (on the host), window (here), display and reused"),
+            handler: { params in
+                guard let id = params?["id"]?.stringValue, !id.isEmpty else { throw RouterError.missingParam("id") }
+                guard case .object(var object) = try remoteAppOpened(method: "views.open", what: id, open: {
+                    try await RemoteAppBundles.open(id)
+                }) else { return .null }
+                object["id"] = .string(id)
+                return .object(object)
+            }
+        ))
+        api.register(Endpoint(
+            method: "views.remove",
+            description: "Forget a saved remote app and delete its app; an open window closes and the app returns to its host",
+            access: .mutate,
+            params: [Param(name: "id", type: "string", required: true, description: "Definition id from views.list")],
+            returns: .custom("Object with ok and removed"),
+            handler: { params in
+                guard let id = params?["id"]?.stringValue, !id.isEmpty else { throw RouterError.missingParam("id") }
+                RemoteAppBundles.uninstall(id)
+                return .object(["ok": .bool(true), "removed": .bool(RemoteAppDefinitions.remove(id))])
             }
         ))
         #if LATTICES_BUNDLE
@@ -4773,6 +4873,29 @@ private extension LatticesApi {
         return spaceBezelSettingsResponse()
     }
 
+    static func showAppPage(_ params: JSON?) throws -> JSON {
+        let raw = params?["page"]?.stringValue ?? "home"
+        guard let page = AppPage.named(raw) else {
+            let options = AppPage.allCases.map(\.rawValue).joined(separator: ", ")
+            throw RouterError.custom("Unknown page: \(raw). Use \(options).")
+        }
+        let section = params?["section"]?.stringValue
+        let show = {
+            if page == .settings, let section, !section.isEmpty {
+                SettingsWindowController.shared.show(section: section)
+            } else {
+                ScreenMapWindowController.shared.showPage(page)
+            }
+        }
+        try onMain(show)
+        var result: [String: JSON] = [
+            "page": .string(page.rawValue),
+            "pages": .array(AppPage.allCases.map { .string($0.rawValue) }),
+        ]
+        if let section { result["section"] = .string(section) }
+        return .object(result)
+    }
+
     static func parsePlacement(from json: JSON?) -> PlacementSpec? {
         PlacementSpec(json: json)
     }
@@ -5411,5 +5534,35 @@ enum RouterError: LocalizedError {
         case .notFound(let what):   return "Not found: \(what)"
         case .custom(let msg):      return msg
         }
+    }
+}
+
+/// Runs a remote app open on the main actor for a daemon request, which waits
+/// on a blocking queue while the host sets up its display.
+private func remoteAppOpened(method: String, what: String, open: @escaping @MainActor () async throws -> [String: Any]) throws -> JSON {
+    guard !Thread.isMainThread else { throw RouterError.custom("\(method) must be called over the daemon") }
+    let done = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var outcome: Result<[String: Any], Error> = .failure(RouterError.custom("timed out"))
+    let context = DaemonContext.current
+    Task { @MainActor in
+        do {
+            try context?.checkActive()
+            outcome = .success(try await open())
+        }
+        catch { outcome = .failure(error) }
+        done.signal()
+    }
+    guard done.wait(timeout: .now() + 40) == .success else { throw RouterError.custom("Timed out opening \(what)") }
+    switch outcome {
+    case .success(let result):
+        return .object([
+            "ok": .bool(true),
+            "wid": .int(result["wid"] as? Int ?? 0),
+            "window": .int(result["window"] as? Int ?? 0),
+            "display": .string(result["display"] as? String ?? ""),
+            "reused": .bool(result["reused"] as? Bool ?? false),
+        ].merging((result["pid"] as? Int).map { ["pid": .int($0)] } ?? [:]) { $1 })
+    case .failure(let error):
+        throw RouterError.custom(error.localizedDescription)
     }
 }

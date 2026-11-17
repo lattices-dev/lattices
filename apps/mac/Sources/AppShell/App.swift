@@ -1,7 +1,18 @@
 import AppKit
 import SwiftUI
 
+/// One executable, two apps: Lattices itself, or a saved remote app when this
+/// is one of the bundles RemoteAppBundles builds from a clone of it.
 @main
+enum LatticesMain {
+    static func main() {
+        if let id = RemoteAppBundles.currentDefinition {
+            MainActor.assumeIsolated { RemoteAppShell.run(id: id) }
+        }
+        LatticesApp.main()
+    }
+}
+
 struct LatticesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
@@ -39,6 +50,23 @@ struct LatticesApp: App {
                 }
                 .disabled(!AppUpdater.shared.canUpdate)
 
+                Divider()
+            }
+
+            // The rail's pages in the View menu, ⌘1 down the rail, so every page
+            // is reachable from the keyboard and through the menu bar's
+            // accessibility tree.
+            CommandGroup(before: .sidebar) {
+                Button("Hyperspace") {
+                    WindowMotionMode.shared.toggleHyperspace()
+                }
+                Divider()
+                ForEach(Array(AppPage.primaryTabs.enumerated()), id: \.element) { index, page in
+                    Button(page.label) {
+                        ScreenMapWindowController.shared.showPage(page)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
                 Divider()
             }
         }

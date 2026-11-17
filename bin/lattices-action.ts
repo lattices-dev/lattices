@@ -309,6 +309,19 @@ function forwardToCheckout(checkout: string, args: string[]): void {
   }
 }
 
+// Permission setup lives in the published Action CLI, so both install paths
+// (`lats action` and `@lattices/action`) share one setup flow.
+function runActionCli(args: string[]): void {
+  let onPath = false;
+  try { execFileSync("which", ["action"], { stdio: "pipe" }); onPath = true; } catch { /* not installed globally */ }
+  const [cmd, cmdArgs] = onPath ? ["action", args] : ["bun", ["x", "@lattices/action", ...args]];
+  try {
+    execFileSync(cmd, cmdArgs, { stdio: "inherit" });
+  } catch (error) {
+    process.exit(typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 1);
+  }
+}
+
 function printUsage(): void {
   console.log(`lattices action — install and drive the Action product
 
@@ -318,6 +331,7 @@ Usage:
   lattices action update       Reinstall the latest release
   lattices action launch       Open Action.app (use --launch with install)
   lattices action quit         Quit Action.app
+  lattices action setup <b>    Grant permissions for a backend (e.g. action-cua)
   lattices action call <m> [j] Raw Action agent call (private local IPC)
   lattices action mcp          Start the installed Action MCP server over stdio
   lattices action capabilities Read-only build fingerprints, native capability manifest, and MCP routing
@@ -376,6 +390,10 @@ switch (first) {
   }
   case "call":
     await callAgent(rest[0], rest[1]);
+    break;
+  case "setup":
+  case "ask":
+    runActionCli(rawArgs);
     break;
   case "help":
   case "-h":

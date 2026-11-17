@@ -499,9 +499,10 @@ final class OverviewModel: ObservableObject {
         setSelection(next)
     }
 
-    /// Extends the selection over the rows from the focused one to `wid`.
-    func extend(to wid: UInt32) {
-        let rows = workingRows.map(\.wid)
+    /// Extends from the focused row to `wid`, using a grouped table's displayed
+    /// order when supplied, otherwise the projection's order.
+    func extend(to wid: UInt32, orderedRows: [UInt32]? = nil) {
+        let rows = orderedRows ?? workingRows.map(\.wid)
         guard let anchor = focusedWid, let a = rows.firstIndex(of: anchor), let b = rows.firstIndex(of: wid) else {
             toggle(wid); return
         }

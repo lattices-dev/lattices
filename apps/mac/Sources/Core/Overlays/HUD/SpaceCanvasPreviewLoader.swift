@@ -46,6 +46,10 @@ final class SpaceCanvasPreviewLoader {
     private var task: Task<Void, Never>?
     private var stopped = false
     private var lastDeliveredImages: [CGWindowID: ObjectIdentifier]?
+    private var atlas: SpaceCanvasAtlasSession?
+
+    /// Decoded bytes owned by the atlas, including its separate detail tier.
+    var atlasCachedBytes: Int { atlas?.cachedBytes ?? 0 }
 
     init(maximumBytes: Int = SpaceCanvasPreviewLoader.maximumCacheBytes,
          estimatedWindowBytes: Int = 1440 * 1440 * 4,
@@ -66,7 +70,7 @@ final class SpaceCanvasPreviewLoader {
     /// Start with the likely destination, then its neighbors, and put the
     /// desktop already visible on the physical monitor last.
     func prepare(cards: [SpaceFilmstripCard], selected: Int, current: Int) {
-        guard !stopped else { return }
+        guard !stopped, atlas == nil else { return }
         let near = min(max(selected, 0), max(0, cards.count - 1))
         let indices = cards.indices.sorted {
             if $0 == current { return false }
@@ -89,7 +93,7 @@ final class SpaceCanvasPreviewLoader {
     /// requested windows settle. Repeated calls never recapture a failed shot.
     func load(windows: [SpaceFilmstripWindow], displayPixelSize: CGSize? = nil,
               receive: @escaping (Images) -> Void) {
-        guard !stopped else { return }
+        guard !stopped, atlas == nil else { return }
         let next = identities(windows)
         guard !next.isEmpty else { suspendSelection(); return }
         let changed = next != demanded || receiver == nil
@@ -120,6 +124,32 @@ final class SpaceCanvasPreviewLoader {
 
     func cancel() { suspendSelection() }
 
+    /// Capture visible desktops and deliver the complete resident atlas without
+    /// replacing the camera or its layers. The optional selected desktop gets
+    /// sharper captures while other desktops keep their small atlas images.
+    func loadAtlas(cards: [SpaceFilmstripCard], visible: [Int], selected: Int?,
+                   atlasPixelSize: CGSize, displayPixelSize: CGSize? = nil,
+                   receive: @escaping (Images) -> Void) {
+        guard !stopped else { return }
+        if atlas == nil {
+            // Atlas and legacy selected-only loading do not speculate in
+            // parallel or retain two independent full cache budgets.
+            generation &+= 1
+            task?.cancel()
+            task = nil
+            suspendSelection()
+            ordered = []
+            predicted = []
+            current = []
+            cache = [:]
+            cachedBytes = 0
+            atlas = SpaceCanvasAtlasSession(maximumBytes: maximumBytes,
+                capture: capture, detailCapture: detailCapture)
+        }
+        atlas?.load(cards: cards, visible: visible, selected: selected,
+            atlasPixelSize: atlasPixelSize, displayPixelSize: displayPixelSize, receive: receive)
+    }
+
     /// Closing the canvas releases all pictures and rejects late SCK results.
     func stop() {
         stopped = true
@@ -136,6 +166,8 @@ final class SpaceCanvasPreviewLoader {
         detailAttempts = [:]
         cache = [:]
         cachedBytes = 0
+        atlas?.stop()
+        atlas = nil
     }
 
     /// Size for the final on-screen pixels, including the portion outside a
@@ -308,5 +340,270 @@ final class SpaceCanvasPreviewLoader {
             lastDeliveredImages = delivered
             receiver(images)
         }
+    }
+}
+
+/// A session has two bounded tiers. Small photographs stay resident across
+/// selection changes; display-density photographs never evict that atlas.
+/// Only one batch (at most two SCK captures) runs at a time, off the main actor.
+@MainActor
+private final class SpaceCanvasAtlasSession {
+    typealias Images = SpaceCanvasPreviewLoader.Images
+    typealias Capture = SpaceCanvasPreviewLoader.Capture
+    private struct Identity: Hashable {
+        let wid: CGWindowID
+        let pid: Int32
+    }
+    private struct Cached {
+        let image: CGImage
+        let bytes: Int
+        var touched: Int
+    }
+    private let capture: Capture
+    private let detailCapture: Capture
+    private let atlasBudget: Int
+    private let detailBudget: Int
+    private var previews: [Identity: Cached] = [:]
+    private var details: [Identity: Cached] = [:]
+    private var previewAttempts: [Identity: CGFloat] = [:]
+    private var detailAttempts: [Identity: CGFloat] = [:]
+    private var previewTargets: [Identity: CGFloat] = [:]
+    private var detailTargets: [Identity: CGFloat] = [:]
+    private var valid = Set<Identity>()
+    private var demanded: [Identity] = []
+    private var selected = Set<Identity>()
+    private var receiver: ((Images) -> Void)?
+    private var lastDelivered: [CGWindowID: ObjectIdentifier]?
+    private var task: Task<Void, Never>?
+    private var generation = 0
+    private var touch = 0
+    private var stopped = false
+    private var previewBytes = 0
+    private var detailBytes = 0
+    var cachedBytes: Int { previewBytes + detailBytes }
+
+    init(maximumBytes: Int, capture: @escaping Capture, detailCapture: @escaping Capture) {
+        atlasBudget = maximumBytes * 2 / 3
+        detailBudget = maximumBytes - atlasBudget
+        self.capture = capture
+        self.detailCapture = detailCapture
+    }
+
+    deinit { task?.cancel() }
+
+    func load(cards: [SpaceFilmstripCard], visible: [Int], selected: Int?,
+              atlasPixelSize: CGSize, displayPixelSize: CGSize?,
+              receive: @escaping (Images) -> Void) {
+        guard !stopped else { return }
+        let all = unique(cards.flatMap(\.allWindows))
+        valid = Set(all.map(identity))
+        let detailWindows = selected.flatMap { cards.indices.contains($0) ? cards[$0].allWindows : nil } ?? []
+        let oldSelection = self.selected
+        self.selected = Set(detailWindows.map(identity))
+        var indices: [Int] = []
+        if let selected, cards.indices.contains(selected) { indices.append(selected) }
+        indices += visible.filter { cards.indices.contains($0) && $0 != selected }
+        let windows = unique(indices.flatMap { cards[$0].allWindows })
+        let next = windows.map(identity)
+        let oldDemand = Set(demanded)
+        let changed = next != demanded || receiver == nil
+        demanded = next
+        receiver = receive
+        // Budget against the full atlas, not just the current viewport, so
+        // navigating around the map does not steadily increase its resolution.
+        previewTargets = limits(all, pixels: atlasPixelSize, maximum: 640, budget: atlasBudget)
+        detailTargets = displayPixelSize.map {
+            limits(unique(detailWindows), pixels: $0, maximum: 4096, budget: detailBudget)
+        } ?? [:]
+        for id in next where !oldDemand.contains(id) && previews[id] == nil {
+            // A failed capture has no cache entry too. Only evictions become
+            // retryable; failure markers remain until this canvas is closed.
+            if evicted.remove(id) != nil { previewAttempts.removeValue(forKey: id) }
+        }
+        for id in self.selected where !oldSelection.contains(id) && details[id] == nil {
+            if detailEvicted.remove(id) != nil { detailAttempts.removeValue(forKey: id) }
+        }
+        removeObsolete()
+        if changed { lastDelivered = nil }
+        deliver()
+        startNext()
+    }
+
+    func stop() {
+        stopped = true
+        generation &+= 1
+        task?.cancel()
+        task = nil
+        receiver = nil
+        lastDelivered = nil
+        previews = [:]
+        details = [:]
+        previewBytes = 0
+        detailBytes = 0
+    }
+
+    private var evicted = Set<Identity>()
+    private var detailEvicted = Set<Identity>()
+
+    private func identity(_ window: SpaceFilmstripWindow) -> Identity {
+        Identity(wid: window.wid, pid: window.pid)
+    }
+
+    private func unique(_ windows: [SpaceFilmstripWindow]) -> [SpaceFilmstripWindow] {
+        var seen = Set<CGWindowID>()
+        return windows.filter { $0.wid != 0 && seen.insert($0.wid).inserted }
+    }
+
+    private func limits(_ windows: [SpaceFilmstripWindow], pixels: CGSize,
+                        maximum: CGFloat, budget: Int) -> [Identity: CGFloat] {
+        guard pixels.width.isFinite, pixels.height.isFinite,
+              pixels.width > 0, pixels.height > 0, budget > 0 else { return [:] }
+        let sizes: [(Identity, CGFloat, CGFloat)] = windows.compactMap { window in
+            guard window.contentsRect.width > 0, window.contentsRect.height > 0 else { return nil }
+            let width = window.rect.width * pixels.width / window.contentsRect.width
+            let height = window.rect.height * pixels.height / window.contentsRect.height
+            guard width.isFinite, height.isFinite, width > 0, height > 0 else { return nil }
+            return (identity(window), min(maximum, max(width, height)), min(width, height) / max(width, height))
+        }
+        let bytes = sizes.reduce(CGFloat(0)) { $0 + $1.1 * $1.1 * $1.2 * 4 }
+        // Leave room for row alignment and capture rounding. Very large maps
+        // reduce image dimensions before eviction is necessary.
+        let factor = min(1, sqrt(CGFloat(budget) * 0.85 / max(1, bytes)))
+        return Dictionary(uniqueKeysWithValues: sizes.map { ($0.0, max(1, floor($0.1 * factor))) })
+    }
+
+    private func removeObsolete() {
+        for id in Array(previews.keys) where !valid.contains(id) {
+            previewBytes -= previews.removeValue(forKey: id)?.bytes ?? 0
+        }
+        for id in Array(details.keys) where !valid.contains(id) {
+            detailBytes -= details.removeValue(forKey: id)?.bytes ?? 0
+        }
+        previewAttempts = previewAttempts.filter { valid.contains($0.key) }
+        detailAttempts = detailAttempts.filter { valid.contains($0.key) }
+        evicted.formIntersection(valid)
+        detailEvicted.formIntersection(valid)
+    }
+
+    private func startNext() {
+        guard !stopped, task == nil else { return }
+        let missing = demanded.filter { id in
+            guard let target = previewTargets[id] else { return false }
+            return (previewAttempts[id] ?? 0) + 1 < target
+                && CGFloat(max(previews[id]?.image.width ?? 0, previews[id]?.image.height ?? 0)) + 1 < target
+        }
+        if let first = missing.first, let target = previewTargets[first] {
+            // Batch similar sizes so a narrow window does not inherit its
+            // neighbor's much larger texture allocation.
+            let batch = Array(missing.filter { abs((previewTargets[$0] ?? 0) - target) < 32 }.prefix(2))
+            let maximum = batch.compactMap { previewTargets[$0] }.max() ?? target
+            for id in batch { previewAttempts[id] = maximum }
+            startCapture(batch, maximum: maximum, detail: false)
+            return
+        }
+        if let id = demanded.first(where: { id in
+            guard selected.contains(id), let preview = previews[id], let target = detailTargets[id] else { return false }
+            let existing = details[id]?.image ?? preview.image
+            return CGFloat(max(existing.width, existing.height)) + 1 < target
+                && (detailAttempts[id] ?? 0) + 1 < target
+        }), let target = detailTargets[id] {
+            detailAttempts[id] = target
+            startCapture([id], maximum: target, detail: true)
+        }
+    }
+
+    private func startCapture(_ batch: [Identity], maximum: CGFloat, detail: Bool) {
+        let mine = generation
+        let capture = detail ? detailCapture : self.capture
+        task = Task.detached(priority: .utility) { [weak self] in
+            let started = CACurrentMediaTime()
+            let images = await capture(batch.map(\.wid), maximum)
+            guard !Task.isCancelled else { return }
+            await self?.finish(images, batch: batch, generation: mine, detail: detail,
+                               milliseconds: (CACurrentMediaTime() - started) * 1000)
+        }
+    }
+
+    private func finish(_ images: Images, batch: [Identity], generation mine: Int,
+                        detail: Bool, milliseconds: Double) {
+        guard !stopped, mine == generation else { return }
+        task = nil
+        for id in batch where valid.contains(id) {
+            if detail, !selected.contains(id) {
+                detailAttempts.removeValue(forKey: id)
+                continue
+            }
+            guard let image = images[id.wid] else { continue }
+            let bytes = image.bytesPerRow * image.height
+            guard bytes <= (detail ? detailBudget : atlasBudget) else { continue }
+            touch &+= 1
+            let value = Cached(image: image, bytes: bytes, touched: touch)
+            if detail {
+                let previous = details[id]?.image ?? previews[id]?.image
+                guard previous.map({ image.width * image.height > $0.width * $0.height }) ?? true else { continue }
+                detailBytes -= details[id]?.bytes ?? 0
+                details[id] = value
+                detailBytes += bytes
+                detailEvicted.remove(id)
+            } else {
+                previewBytes -= previews[id]?.bytes ?? 0
+                previews[id] = value
+                previewBytes += bytes
+                evicted.remove(id)
+            }
+        }
+        trim()
+        deliver()
+        DiagnosticLog.shared.info("SpaceCanvasAtlas: quality=\(detail ? "detail" : "atlas") ids=\(batch.map(\.wid)) cachedBytes=\(cachedBytes) captureMs=\(String(format: "%.1f", milliseconds))")
+        startNext()
+    }
+
+    private func trim() {
+        let visible = Set(demanded)
+        while previewBytes > atlasBudget {
+            let distant = previews.keys.filter { !visible.contains($0) }
+            let choices = distant.isEmpty ? Array(previews.keys) : distant
+            guard let victim = choices.min(by: { previews[$0]!.touched < previews[$1]!.touched }),
+                  let old = previews.removeValue(forKey: victim) else { break }
+            previewBytes -= old.bytes
+            evicted.insert(victim)
+        }
+        while detailBytes > detailBudget {
+            let distant = details.keys.filter { !selected.contains($0) }
+            let choices = distant.isEmpty ? Array(details.keys) : distant
+            guard let victim = choices.min(by: { details[$0]!.touched < details[$1]!.touched }),
+                  let old = details.removeValue(forKey: victim) else { break }
+            detailBytes -= old.bytes
+            detailEvicted.insert(victim)
+        }
+    }
+
+    private func deliver() {
+        guard let receiver else { return }
+        var images: Images = [:]
+        // The demand describes the camera's destination. Outgoing desktops
+        // can remain on screen during travel, so absence means eviction or
+        // invalidation, never merely that a desktop left the goal viewport.
+        // Only demanded entries are touched below to retain meaningful LRU.
+        for (id, cached) in previews where valid.contains(id) {
+            images[id.wid] = cached.image
+        }
+        for id in demanded {
+            if selected.contains(id), var cached = details[id] {
+                touch &+= 1
+                cached.touched = touch
+                details[id] = cached
+                images[id.wid] = cached.image
+            } else if var cached = previews[id] {
+                touch &+= 1
+                cached.touched = touch
+                previews[id] = cached
+                images[id.wid] = cached.image
+            }
+        }
+        let delivered = images.mapValues { ObjectIdentifier($0) }
+        guard delivered != lastDelivered else { return }
+        lastDelivered = delivered
+        receiver(images)
     }
 }

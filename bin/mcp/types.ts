@@ -18,6 +18,21 @@ export type ToolResult = {
   isError?: boolean;
 };
 
+/**
+ * A failed tool call as a result the agent can read. A daemon or host error on
+ * a mutation carries `delivery` (DaemonError), which says whether to resend.
+ */
+export function toolError(err: unknown): ToolResult {
+  const message = err instanceof Error ? err.message : String(err);
+  const delivery = (err as { delivery?: JsonObject } | null)?.delivery;
+  if (!delivery) return { content: [{ type: "text", text: message }], isError: true };
+  return {
+    content: [{ type: "text", text: JSON.stringify({ ok: false, error: message, delivery }, null, 2) }],
+    structuredContent: { ok: false, error: message, delivery },
+    isError: true,
+  };
+}
+
 export type ToolDefinition = {
   name: string;
   title?: string;

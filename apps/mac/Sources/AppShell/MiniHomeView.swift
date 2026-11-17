@@ -1,33 +1,31 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Mini-Home popover
-//
-// Rail + pane shell: the popover becomes a miniature of the Home window.
-// Move gets a to-scale placement map, Home shows the live desktop layout with
-// the active layer's slots, Studio lists groups/layers, and Assistant + Bar
-// hand off to their real surfaces.
+/// The menu-bar surface follows the system appearance independently of the
+/// main workspace window. NSPopover owns the material, edge, and shadow.
+private enum PopoverPalette {
+    static let bg = Color(nsColor: .windowBackgroundColor)
+    static let surface = Color.primary.opacity(0.045)
+    static let surfaceHov = Color.primary.opacity(0.09)
+    static let border = Color.primary.opacity(0.12)
+    static let borderLit = Color.primary.opacity(0.22)
+    static let text = Color.primary
+    static let textDim = Color.secondary
+    static let textMuted = Color.secondary
+    static let running = Color.accentColor
+}
 
 enum MiniHomePane: String, CaseIterable, Identifiable {
-    case move, assistant, home, command
+    case home, move, assistant, command
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .move: return "Move"
+        case .home: return "Workspace"
+        case .move: return "Move Window"
         case .assistant: return "Assistant"
-        case .home: return "Home"
-        case .command: return "Bar"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .move: return "arrow.up.left.and.arrow.down.right"
-        case .assistant: return "bubble.left.and.bubble.right"
-        case .home: return "house"
-        case .command: return "command"
+        case .command: return "Commands"
         }
     }
 }
@@ -35,439 +33,176 @@ enum MiniHomePane: String, CaseIterable, Identifiable {
 struct MiniHomeView: View {
     @ObservedObject var scanner: ProjectScanner
     @ObservedObject private var desktop = DesktopModel.shared
-    @ObservedObject private var workspace = WorkspaceManager.shared
-    @ObservedObject private var assistant = WorkspaceAssistantSession.shared
     @State private var pane: MiniHomePane = .home
-    /// Home's layer-slot selection, lifted so the pane header can name it.
     @State private var selectedLayer: Int?
-
-    private let headerHeight: CGFloat = 38
-    private let footerHeight: CGFloat = 46
 
     var body: some View {
         VStack(spacing: 0) {
-            topBand
-                .frame(height: headerHeight)
-            rule
-            middleBand
-                .frame(maxHeight: .infinity)
-            rule
-            paneFooter
-                .frame(height: footerHeight)
-            rule
-            bottomBand
-                .frame(height: 30)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
-            DesktopModel.shared.forcePoll()
-        }
-    }
+            header
+            Picker("View", selection: $pane) {
+                ForEach(MiniHomePane.allCases) { item in
+                    Text(item.label).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.regular)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
 
-    private var rule: some View {
-        Rectangle().fill(Palette.border).frame(height: 0.5)
-    }
-
-    // MARK: Bands
-
-    /// Top bar: rail side carries mark + wordmark, pane side carries the
-    /// pane's title — one continuous band closed by a full-width rule.
-    private var topBand: some View {
-        HStack(spacing: 0) {
-            railHeader
-                .frame(width: 100)
-                .padding(.horizontal, 6)
-            paneHeader
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(railBandBackground)
-    }
-
-    /// Middle: rail nav + texture | pane body. The vertical divider lives
-    /// only here, so the horizontal rules read uninterrupted.
-    private var middleBand: some View {
-        HStack(spacing: 0) {
-            railNav
-                .frame(width: 100)
-                .padding(.horizontal, 6)
-                .background(railBackground)
-            Rectangle().fill(Palette.border).frame(width: 0.5)
             paneContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-        }
-    }
 
-    /// Shared app controls span the entire popover, independent of the pane.
-    private var bottomBand: some View {
-        ZStack {
+            paneFooter
+                .padding(.vertical, 12)
+
+            Divider().padding(.horizontal, 16)
             spaceRow
-                .padding(.horizontal, 80)
-            lifecycleRow
         }
-        .padding(.horizontal, 8)
-        .background(railBandBackground)
+        .font(.system(size: 12))
+        .foregroundStyle(.primary)
+        .onReceive(NotificationCenter.default.publisher(for: .latticesPopoverWillShow)) { _ in
+            let started = desktop.requestRefresh()
+            DiagnosticLog.shared.info("menuBar.desktopRefresh \(started ? "scheduled" : "already in flight")")
+        }
     }
 
-    /// Neutral band fill for the top/bottom bars — a whisper lighter than the
-    /// rail so the bars read as shelves.
-    private var railBandBackground: some View {
-        LinearGradient(
-            colors: [Color.white.opacity(0.045), Color.white.opacity(0.015)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-
-    // MARK: Rail parts
-
-    private var railHeader: some View {
-        HStack(spacing: 6) {
+    private var header: some View {
+        HStack(spacing: 9) {
             latticeMark
             Text("Lattices")
-                .font(Typo.monoBold(9))
-                .foregroundColor(Palette.textDim)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-    }
-
-    private var railNav: some View {
-        VStack(spacing: 2) {
-            ForEach(MiniHomePane.allCases) { item in
-                MiniHomeRailButton(item: item, isActive: pane == item) {
-                    pane = item
-                }
+                .font(.system(size: 15, weight: .semibold))
+            Spacer(minLength: 8)
+            Button {
+                MenuBarController.shared.dismissPopover()
+                ScreenMapWindowController.shared.showPage(.home)
+            } label: {
+                Label("Open Workspace", systemImage: "arrow.up.right")
+                    .font(.system(size: 11, weight: .medium))
             }
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 8)
-    }
+            .buttonStyle(.borderless)
+            .help("Open the full workspace window")
 
-    /// Monochrome gradient + faint lattice-dot texture + top shine — keeps the
-    /// rail's empty middle feeling intentional instead of vacant.
-    private var railBackground: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.white.opacity(0.05), Color.black.opacity(0.24)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            Canvas { ctx, size in
-                let step: CGFloat = 11
-                var row = 0
-                var y: CGFloat = step * 0.5
-                while y < size.height {
-                    var x: CGFloat = (row % 2 == 0) ? step * 0.5 : step
-                    while x < size.width {
-                        ctx.fill(
-                            Path(ellipseIn: CGRect(x: x, y: y, width: 1.4, height: 1.4)),
-                            with: .color(Palette.text.opacity(0.06))
-                        )
-                        x += step
-                    }
-                    y += step
-                    row += 1
-                }
-            }
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black, location: 0.42),
-                        .init(color: .black, location: 0.72),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .allowsHitTesting(false)
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [Color.white.opacity(0.07), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 26)
-                Spacer(minLength: 0)
-            }
-            .allowsHitTesting(false)
-        }
-    }
-
-    /// Spaces on the popover's display — current space lit; click to switch.
-    @ViewBuilder
-    private var spaceRow: some View {
-        if let display = currentDisplaySpaces(), !display.spaces.isEmpty {
-            HStack(spacing: 4) {
-                Image(systemName: "display")
-                    .font(.system(size: 10))
-                    .foregroundColor(Palette.textMuted)
-                    .accessibilityLabel("Spaces on this display")
-                ForEach(display.spaces) { space in
-                    Button {
-                        _ = WindowTiler.switchToSpace(spaceId: space.id)
-                    } label: {
-                        Text("\(space.index)")
-                            .font(Typo.monoBold(7))
-                            .foregroundColor(space.isCurrent ? Palette.bg : Palette.textMuted)
-                            .frame(width: 13, height: 13)
-                            .background(
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(space.isCurrent
-                                          ? Palette.text.opacity(0.85)
-                                          : Palette.surface.opacity(0.7))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                            .strokeBorder(space.isCurrent ? .clear : Palette.border,
-                                                          lineWidth: 0.5)
-                                    )
-                            )
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Space \(space.index)")
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The popover's display = the screen hosting it (NSScreen.main once shown).
-    /// `getDisplaySpaces` enumerates in CG display order, matching NSScreen order.
-    private func currentDisplaySpaces() -> DisplaySpaces? {
-        let displays = WindowTiler.getDisplaySpaces()
-        guard !displays.isEmpty else { return nil }
-        if let main = NSScreen.main,
-           let idx = NSScreen.screens.firstIndex(of: main),
-           idx < displays.count {
-            return displays[idx]
-        }
-        return displays.first
-    }
-
-    /// App lifecycle: Settings, Restart, Quit.
-    private var lifecycleRow: some View {
-        HStack(spacing: 0) {
-            MiniHomeRailIcon(icon: "gearshape", help: "Settings") {
-                SettingsWindowController.shared.show()
-            }
-            .frame(width: 28)
-            Spacer(minLength: 0)
-            MiniHomeRailIcon(icon: "arrow.clockwise", help: "Restart Lattices") {
-                PermissionChecker.shared.quitAndRelaunch()
-            }
-            .frame(width: 28)
-            MiniHomeRailIcon(icon: "power", help: "Quit Lattices", tint: Palette.kill) {
-                NSApp.terminate(nil)
-            }
-            .frame(width: 28)
-        }
-    }
-
-    /// Same 3x3 lattice mark as the menu-bar icon. The mark itself carries the
-    /// build channel: amber in dev, neutral in prod.
-    private var latticeMark: some View {
-        let tint = LatticesRuntime.isDevBuild ? Palette.detach : Palette.text
-        let solid: Set<Int> = [0, 3, 6, 7, 8]
-        return VStack(spacing: 2.5) {
-            ForEach(0..<3, id: \.self) { row in
-                HStack(spacing: 2.5) {
-                    ForEach(0..<3, id: \.self) { col in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(tint.opacity(solid.contains(row * 3 + col) ? 0.9 : 0.28))
-                            .frame(width: 4.5, height: 4.5)
-                    }
-                }
-            }
-        }
-        .help(LatticesRuntime.buildChannelLabel)
-    }
-
-    // MARK: Pane dispatch
-
-    private var selectedLayerLabel: String? {
-        guard let selectedLayer,
-              let layers = workspace.config?.layers,
-              layers.indices.contains(selectedLayer) else { return nil }
-        return layers[selectedLayer].label
-    }
-
-    @ViewBuilder
-    private var paneHeader: some View {
-        switch pane {
-        case .move:
-            MiniHomePaneHeader(title: "MOVE", subtitle: nil) { EmptyView() }
-        case .assistant:
-            MiniHomePaneHeader(title: "ASSISTANT", subtitle: assistant.statusText) {
-                MiniHomeOpenLink(title: "Open") { AssistantAccess.show() }
-            }
-        case .home:
-            MiniHomePaneHeader(title: "Home", qualifier: selectedLayerLabel) {
-                MiniHomeOpenLink(title: "Open Home") {
+            Menu {
+                Button("Settings…") {
                     MenuBarController.shared.dismissPopover()
-                    ScreenMapWindowController.shared.showPage(.home)
+                    SettingsWindowController.shared.show()
+                }
+                Button("Activity Log…") {
+                    MenuBarController.shared.dismissPopover()
+                    ScreenMapWindowController.shared.showPage(.activity)
+                }
+                Divider()
+                Button("Restart Lattices…") { PermissionChecker.shared.quitAndRelaunch() }
+                Button("Quit Lattices") { NSApp.terminate(nil) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 16))
+                    .frame(width: 24, height: 26)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Lattices settings and more")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+    }
+
+    private var latticeMark: some View {
+        let solid: Set<Int> = [0, 3, 6, 7, 8]
+        return VStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { row in
+                HStack(spacing: 2) {
+                    ForEach(0..<3, id: \.self) { col in
+                        RoundedRectangle(cornerRadius: 0.8)
+                            .fill(Color.primary.opacity(solid.contains(row * 3 + col) ? 0.85 : 0.2))
+                            .frame(width: 4, height: 4)
+                    }
                 }
             }
-        case .command:
-            MiniHomePaneHeader(title: "BAR", subtitle: nil) { EmptyView() }
         }
+        .accessibilityHidden(true)
+        .help(LatticesRuntime.buildChannelLabel)
     }
 
     @ViewBuilder
     private var paneContent: some View {
         switch pane {
-        case .move:
-            MiniHomeMovePane()
-        case .assistant:
-            MiniHomeAssistantPane()
-        case .home:
-            MiniHomeHomePane(selectedLayer: $selectedLayer)
-        case .command:
-            MiniHomeCommandPane()
+        case .home: MiniHomeHomePane(selectedLayer: $selectedLayer)
+        case .move: MiniHomeMovePane()
+        case .assistant: MiniHomeAssistantPane()
+        case .command: MiniHomeCommandPane()
         }
     }
 
     @ViewBuilder
     private var paneFooter: some View {
         switch pane {
-        case .move:
-            MiniHomeMoveFooter()
-        case .assistant:
-            MiniHomeComposer()
-        case .home:
-            MiniHomeProjectStrip(scanner: scanner)
-        case .command:
-            MiniHomeCommandJumps()
+        case .home: MiniHomeProjectStrip(scanner: scanner)
+        case .move: MiniHomeMoveFooter()
+        case .assistant: MiniHomeComposer()
+        case .command: MiniHomeCommandJumps()
         }
     }
-}
 
-// MARK: - Rail buttons
-
-private struct MiniHomeRailButton: View {
-    let item: MiniHomePane
-    let isActive: Bool
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 10, weight: .medium))
-                    .frame(width: 14, alignment: .center)
-                Text(item.label)
-                    .font(Typo.mono(10))
-                Spacer(minLength: 0)
-            }
-            .foregroundColor(isActive ? Palette.text : (isHovered ? Palette.textDim : Palette.textMuted))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isActive ? Palette.surfaceHov : (isHovered ? Palette.surface.opacity(0.6) : Color.clear))
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-    }
-}
-
-private struct MiniHomeRailIcon: View {
-    let icon: String
-    let help: String
-    var tint: Color = Palette.textMuted
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(isHovered ? tint.opacity(1) : tint.opacity(0.75))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help(help)
-        .accessibilityLabel(help)
-    }
-}
-
-// MARK: - Pane chrome
-
-private struct MiniHomePaneHeader<Trailing: View>: View {
-    let title: String
-    var subtitle: String? = nil
-    var qualifier: String? = nil
-    let trailing: Trailing
-
-    init(title: String, subtitle: String? = nil, qualifier: String? = nil, @ViewBuilder trailing: () -> Trailing) {
-        self.title = title
-        self.subtitle = subtitle
-        self.qualifier = qualifier
-        self.trailing = trailing()
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(Typo.geistMonoBold(10))
-                        .foregroundColor(Palette.textDim)
-                    if let qualifier, !qualifier.isEmpty {
-                        Text("/ \(qualifier)")
-                            .font(Typo.mono(10))
-                            .foregroundColor(Palette.textMuted)
+    @ViewBuilder
+    private var spaceRow: some View {
+        if let display = currentDisplaySpaces(), !display.spaces.isEmpty {
+            HStack(spacing: 10) {
+                Label("Desktops", systemImage: "display")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 4) {
+                            ForEach(display.spaces) { space in
+                                Button {
+                                    _ = WindowTiler.switchToSpace(spaceId: space.id)
+                                } label: {
+                                    Text("\(space.index)")
+                                        .font(.system(size: 11, weight: space.isCurrent ? .semibold : .regular))
+                                        .monospacedDigit()
+                                        .foregroundStyle(space.isCurrent ? Color.accentColor : Color.secondary)
+                                        .frame(minWidth: 26, minHeight: 26)
+                                        .background(space.isCurrent ? Color.accentColor.opacity(0.12) : .clear,
+                                                    in: RoundedRectangle(cornerRadius: 6))
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .id(space.id)
+                                .accessibilityLabel("Desktop \(space.index)")
+                                .accessibilityAddTraits(space.isCurrent ? .isSelected : [])
+                                .help("Switch to Desktop \(space.index)")
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(height: 26)
+                    .onAppear {
+                        if let current = display.spaces.first(where: \.isCurrent) {
+                            proxy.scrollTo(current.id, anchor: .center)
+                        }
+                    }
+                    .onChange(of: display.spaces.first(where: \.isCurrent)?.id) { _, id in
+                        if let id { proxy.scrollTo(id, anchor: .center) }
                     }
                 }
-                .lineLimit(1)
-                .accessibilityElement(children: .combine)
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(Typo.mono(9))
-                        .foregroundColor(Palette.textMuted)
-                        .lineLimit(1)
-                }
             }
-            Spacer(minLength: 4)
-            trailing
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
-        .padding(.horizontal, 12)
-        .frame(maxHeight: .infinity)
     }
-}
 
-/// Small "Open X ↗" link shown in a pane header's trailing slot.
-private struct MiniHomeOpenLink: View {
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 3) {
-                Text(title)
-                    .font(Typo.mono(9))
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 7, weight: .bold))
-            }
-            .foregroundColor(Palette.textMuted)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Palette.surface.opacity(0.7))
-                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.border, lineWidth: 0.5))
-            )
+    private func currentDisplaySpaces() -> DisplaySpaces? {
+        let displays = WindowTiler.getDisplaySpaces()
+        if let main = NSScreen.main,
+           let index = NSScreen.screens.firstIndex(of: main), index < displays.count {
+            return displays[index]
         }
-        .buttonStyle(.plain)
+        return displays.first
     }
 }
 
@@ -564,10 +299,10 @@ struct MiniDesktopMap: View {
                 ForEach(Array(screenRects.enumerated()), id: \.offset) { _, item in
                     let r = mapRect(item.rect)
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Palette.surface.opacity(0.35))
+                        .fill(PopoverPalette.surface.opacity(0.35))
                         .overlay(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .strokeBorder(Palette.border, lineWidth: 0.75)
+                                .strokeBorder(PopoverPalette.border, lineWidth: 0.75)
                         )
                         .frame(width: r.width, height: r.height)
                         .offset(x: r.minX, y: r.minY)
@@ -579,13 +314,13 @@ struct MiniDesktopMap: View {
                         let r = mapRect(slot.rect)
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .strokeBorder(
-                                Palette.textMuted.opacity(0.55),
+                                PopoverPalette.textMuted.opacity(0.55),
                                 style: StrokeStyle(lineWidth: 0.75, dash: [3, 2])
                             )
                             .overlay(alignment: .topLeading) {
                                 Text(slot.label)
-                                    .font(Typo.mono(6.5))
-                                    .foregroundColor(Palette.textMuted)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(PopoverPalette.textMuted)
                                     .lineLimit(1)
                                     .padding(2)
                             }
@@ -614,10 +349,10 @@ struct MiniDesktopMap: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.black.opacity(0.22))
+                .fill(PopoverPalette.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .strokeBorder(PopoverPalette.border, lineWidth: 0.5)
                 )
         )
     }
@@ -627,11 +362,11 @@ struct MiniDesktopMap: View {
         let isFront = win.wid == frontWid
         let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
         let fill = isFront
-            ? (zonesEnabled ? Color.white.opacity(0.12) : Palette.running.opacity(0.45))
-            : Palette.textMuted.opacity(0.16)
+            ? Color.accentColor.opacity(0.10)
+            : PopoverPalette.text.opacity(0.07)
         let stroke = isFront
-            ? (zonesEnabled ? Palette.text.opacity(0.8) : Palette.running.opacity(0.9))
-            : Palette.border
+            ? Color.accentColor.opacity(0.65)
+            : PopoverPalette.border
 
         if let onWindowTap {
             Button {
@@ -641,20 +376,22 @@ struct MiniDesktopMap: View {
                     .fill(fill)
                     .overlay(shape.strokeBorder(stroke, lineWidth: isFront ? 1 : 0.5))
                     .overlay(alignment: .topLeading) {
-                        if r.width > 34 && r.height > 12 {
+                        if r.width > 60 && r.height > 26 {
                             Text(win.app)
-                                .font(Typo.mono(6.5))
-                                .foregroundColor(isFront ? Palette.text : Palette.textMuted)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(isFront ? PopoverPalette.text : PopoverPalette.textMuted)
                                 .lineLimit(1)
-                                .padding(2)
+                                .padding(6)
                         }
                     }
                     .frame(width: max(r.width, 4), height: max(r.height, 3))
+                    .clipShape(shape)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .offset(x: r.minX, y: r.minY)
-            .help("\(win.app) — \(win.title)")
+            .help("Focus \(win.app) — \(win.title)")
+            .accessibilityLabel("Focus \(win.app), \(win.title)")
         } else {
             shape
                 .fill(fill)
@@ -663,10 +400,10 @@ struct MiniDesktopMap: View {
                     if isFront && r.width > 70 && r.height > 20 {
                         Text("Current · \(win.app)")
                             .font(Typo.mono(8))
-                            .foregroundColor(Palette.text)
+                            .foregroundColor(PopoverPalette.text)
                             .lineLimit(1)
                             .padding(4)
-                            .background(Palette.bg.opacity(0.9))
+                            .background(PopoverPalette.bg.opacity(0.9))
                             .padding(3)
                     }
                 }
@@ -695,17 +432,17 @@ struct MiniDesktopMap: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .strokeBorder(
-                            isHovered ? Color.accentColor : Palette.textMuted,
+                            isHovered ? Color.accentColor : PopoverPalette.textMuted,
                             style: StrokeStyle(lineWidth: isHovered ? 1.5 : 0.5, dash: isHovered ? [] : [3, 3])
                         )
                 )
                 .overlay {
                     if isHovered {
                         Text(position.label)
-                            .font(Typo.monoBold(9))
-                            .foregroundColor(Palette.text)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(PopoverPalette.text)
                             .padding(4)
-                            .background(Palette.bg.opacity(0.9))
+                            .background(PopoverPalette.bg.opacity(0.9))
                     }
                 }
                 .frame(width: cell.width - 3, height: cell.height - 3)
@@ -772,29 +509,29 @@ private struct MiniHomeMovePane: View {
         VStack(alignment: .leading, spacing: 8) {
             if let target {
                 Text("Current window · \(target.app)")
-                    .font(Typo.monoBold(10))
-                    .foregroundColor(Palette.text)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(PopoverPalette.text)
                 if !target.title.isEmpty && target.title != target.app {
                     Text(target.title)
-                        .font(Typo.mono(9))
-                        .foregroundColor(Palette.textDim)
+                        .font(.system(size: 11))
+                        .foregroundColor(PopoverPalette.textDim)
                         .lineLimit(1)
                 }
             } else {
                 Text("Focus a window to move it")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.textDim)
+                    .font(.system(size: 12))
+                    .foregroundColor(PopoverPalette.textDim)
             }
             MiniDesktopMap(screen: frontScreen, zonesEnabled: canPlace) { position in
                 Self.place(position)
             }
             if canPlace {
                 Text("Choose a destination to move this window")
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textDim)
+                    .font(.system(size: 11))
+                    .foregroundColor(PopoverPalette.textDim)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
     }
 
@@ -818,13 +555,13 @@ private struct MiniHomeMoveFooter: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            pill(.maximize, label: "Max")
+            pill(.maximize, label: "Maximize")
             pill(.center, label: "Center")
-            pill(.leftThird, label: "⅓ L")
-            pill(.centerThird, label: "⅓ C")
-            pill(.rightThird, label: "⅓ R")
+            pill(.leftThird, label: "Left third")
+            pill(.centerThird, label: "Middle third")
+            pill(.rightThird, label: "Right third")
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 
     private func pill(_ position: TilePosition, label: String) -> some View {
@@ -832,16 +569,16 @@ private struct MiniHomeMoveFooter: View {
             MiniHomeMovePane.place(position)
         } label: {
             Text(label)
-                .font(Typo.monoBold(8))
-                .foregroundColor(canPlace ? Palette.textDim : Palette.textMuted)
+                .font(.system(size: 11))
+                .foregroundColor(canPlace ? PopoverPalette.textDim : PopoverPalette.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Palette.surface.opacity(0.7))
+                        .fill(PopoverPalette.surface.opacity(0.7))
                         .overlay(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .strokeBorder(Palette.border, lineWidth: 0.5)
+                                .strokeBorder(PopoverPalette.border, lineWidth: 0.5)
                         )
                 )
         }
@@ -852,153 +589,124 @@ private struct MiniHomeMoveFooter: View {
     }
 }
 
-// MARK: - Home pane
+// MARK: - Workspace
 
-/// The layout surface: layer chips over a big live desktop map with the
-/// selected layer's configured slots ghosted in. The project strip lives in
-/// the shared footer band; `selectedLayer` is owned by the shell so the top
-/// bar can name the selected layer.
 private struct MiniHomeHomePane: View {
     @Binding var selectedLayer: Int?
     @ObservedObject private var workspace = WorkspaceManager.shared
 
+    private var activeLayerLabel: String {
+        guard let selectedLayer, workspace.layers.indices.contains(selectedLayer) else {
+            return "All windows"
+        }
+        return workspace.layers[selectedLayer].label
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            if !workspace.layers.isEmpty || workspace.isLayerFocusActive || workspace.layerFocus.needsRecovery {
-                let layers = workspace.layers
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 10) {
-                        layerChips(layers)
-                        Button("Exit Layers") { workspace.exitLayers() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .fixedSize()
-                            .help("Restore windows and leave layer focus. Saved layers stay available.")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Layers")
+                    .font(.system(size: 12, weight: .semibold))
+                Menu {
+                    Button("All windows") { workspace.exitLayers() }
+                    if !workspace.layers.isEmpty { Divider() }
+                    ForEach(Array(workspace.layers.enumerated()), id: \.offset) { index, layer in
+                        Button {
+                            workspace.focusLayer(index: index)
+                        } label: {
+                            if index == selectedLayer {
+                                Label(layer.label, systemImage: "checkmark")
+                            } else {
+                                Text(layer.label)
+                            }
+                        }
                     }
-                    if let message = workspace.layerRecoveryMessage {
-                        Text(message)
-                            .font(Typo.caption())
-                            .foregroundColor(Palette.textDim)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                } label: {
+                    Text(activeLayerLabel).lineLimit(1)
                 }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
+                .frame(maxWidth: 170, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .help("Switch the focused layer")
+                Spacer(minLength: 4)
+                if workspace.isLayerFocusActive || workspace.layerFocus.needsRecovery {
+                    Button("Show All Windows") { workspace.exitLayers() }
+                        .controlSize(.small)
+                        .help("Restore windows and leave layer focus. Saved layers stay available.")
+                }
+            }
+            if let message = workspace.layerRecoveryMessage {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             MiniDesktopMap(layerIndex: selectedLayer, onWindowTap: { win in
                 _ = WindowTiler.focusWindow(wid: win.wid, pid: win.pid)
                 MenuBarController.shared.dismissPopover()
             })
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            .frame(minHeight: 100)
+
+            Label("Click a window to bring it forward", systemImage: "cursorarrow")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 16)
         .onAppear { selectedLayer = workspace.activeLayerSelection }
-        .onChange(of: workspace.activeLayerSelection) { _, newIndex in
-            selectedLayer = newIndex
-        }
+        .onChange(of: workspace.activeLayerSelection) { _, newIndex in selectedLayer = newIndex }
     }
-
-    private func layerChips(_ layers: [Layer]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                let windowCounts = workspace.layerWindowCounts()
-                ForEach(Array(layers.enumerated()), id: \.offset) { index, layer in
-                    let isActive = index == selectedLayer
-                    let count = windowCounts.indices.contains(index) ? windowCounts[index] : 0
-                    let verb = isActive ? "Exit" : "Focus"
-                    let facts: [String?] = ["\(verb) \(layer.label)", LayerOverview.chord(forIndex: index), LayerOverview.countNote(count)]
-                    let hint = facts.compactMap { $0 }.joined(separator: " · ")
-                    Button {
-                        if selectedLayer == index {
-                            workspace.exitLayers()
-                            selectedLayer = nil
-                        } else {
-                            selectedLayer = index
-                            workspace.focusLayer(index: index)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(layer.label)
-                                .font(Typo.mono(9))
-                            Text("\(count)")
-                                .font(Typo.monoBold(8))
-                                .foregroundColor(isActive ? Palette.bg.opacity(0.8) : Palette.textMuted)
-                        }
-                        .foregroundColor(isActive ? Palette.bg : Palette.textDim)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(isActive ? Palette.running : Palette.surface.opacity(0.7))
-                                .overlay(
-                                    Capsule().strokeBorder(isActive ? Color.clear : Palette.border, lineWidth: 0.5)
-                                )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .help(hint)
-                    .contextMenu {
-                        Button("Exit Layers") {
-                            workspace.exitLayers()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
 }
 
-/// Home's footer — a compact strip of project shortcuts.
 private struct MiniHomeProjectStrip: View {
     @ObservedObject var scanner: ProjectScanner
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Projects")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text("Open a terminal session")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
             if scanner.projects.isEmpty {
-                Text("No projects — set a scan root in Settings")
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Choose a projects folder…") {
+                    MenuBarController.shared.dismissPopover()
+                    SettingsWindowController.shared.show()
+                }
+                .buttonStyle(.borderless)
+                .font(.system(size: 12))
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 5) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
                         ForEach(scanner.projects) { project in
                             Button {
                                 SessionManager.launch(project: project)
                                 MenuBarController.shared.dismissPopover()
                             } label: {
-                                HStack(spacing: 5) {
-                                    Circle()
-                                        .fill(project.isRunning ? Palette.running : Palette.borderLit)
-                                        .frame(width: 5, height: 5)
-                                    Text(project.name)
-                                        .font(Typo.mono(9))
-                                        .foregroundColor(Palette.textDim)
-                                        .lineLimit(1)
+                                HStack(spacing: 6) {
+                                    Image(systemName: "terminal")
+                                        .foregroundStyle(project.isRunning ? Color.green : .secondary)
+                                    Text(project.name).lineLimit(1)
                                 }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .fill(Palette.surface.opacity(0.7))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 5)
-                                                .strokeBorder(Palette.border, lineWidth: 0.5)
-                                        )
-                                )
+                                .font(.system(size: 12))
+                                .padding(.horizontal, 10)
+                                .frame(height: 30)
+                                .background(PopoverPalette.surface, in: RoundedRectangle(cornerRadius: 6))
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .help(project.isRunning ? "Attach to \(project.name)" : "Launch \(project.name)")
+                            .accessibilityLabel("\(project.isRunning ? "Attach to" : "Launch") \(project.name)")
                         }
                     }
                 }
+                .scrollIndicators(.hidden)
+                .frame(height: 30)
             }
         }
-        .frame(height: 28)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 }
 
@@ -1017,6 +725,26 @@ private struct MiniHomeAssistantPane: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 6) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Workspace assistant").font(.system(size: 13, weight: .semibold))
+                            Text(session.statusText).font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Open Chat ↗") {
+                            MenuBarController.shared.dismissPopover()
+                            AssistantAccess.show()
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.bottom, 10)
+                    if visibleMessages.isEmpty {
+                        Text("Ask for help arranging windows, finding a project, or changing settings.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 20)
+                    }
                     ForEach(visibleMessages) { message in
                         messageRow(message)
                             .id(message.id)
@@ -1025,7 +753,7 @@ private struct MiniHomeAssistantPane: View {
                         HStack(spacing: 4) {
                             ForEach(0..<3, id: \.self) { i in
                                 Circle()
-                                    .fill(Palette.textMuted)
+                                    .fill(PopoverPalette.textMuted)
                                     .frame(width: 3, height: 3)
                                     .opacity(0.4 + 0.2 * Double(i))
                             }
@@ -1035,7 +763,7 @@ private struct MiniHomeAssistantPane: View {
                         .id("sending")
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
             }
@@ -1054,17 +782,17 @@ private struct MiniHomeAssistantPane: View {
         return HStack {
             if isUser { Spacer(minLength: 30) }
             Text(message.text)
-                .font(Typo.body(10))
-                .foregroundColor(isUser ? Palette.text : Palette.textDim)
+                .font(.system(size: 12))
+                .foregroundColor(isUser ? PopoverPalette.text : PopoverPalette.textDim)
                 .lineLimit(6)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isUser ? Palette.running.opacity(0.16) : Palette.surface.opacity(0.7))
+                        .fill(isUser ? PopoverPalette.running.opacity(0.16) : PopoverPalette.surface.opacity(0.7))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(isUser ? Palette.running.opacity(0.3) : Palette.border, lineWidth: 0.5)
+                                .strokeBorder(isUser ? PopoverPalette.running.opacity(0.3) : PopoverPalette.border, lineWidth: 0.5)
                         )
                 )
             if !isUser { Spacer(minLength: 30) }
@@ -1082,34 +810,34 @@ private struct MiniHomeComposer: View {
         HStack(spacing: 6) {
             TextField("Ask Scout…", text: $text)
                 .textFieldStyle(.plain)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.text)
+                .font(.system(size: 12))
+                .foregroundColor(PopoverPalette.text)
                 .focused($fieldFocused)
                 .onSubmit(send)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Palette.surface.opacity(0.7))
+                        .fill(PopoverPalette.surface.opacity(0.7))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(fieldFocused ? Palette.running.opacity(0.4) : Palette.border, lineWidth: 0.5)
+                                .strokeBorder(fieldFocused ? PopoverPalette.running.opacity(0.4) : PopoverPalette.border, lineWidth: 0.5)
                         )
                 )
 
             Button(action: send) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(text.isEmpty ? Palette.textMuted : Palette.bg)
+                    .foregroundColor(text.isEmpty ? PopoverPalette.textMuted : PopoverPalette.bg)
                     .frame(width: 24, height: 24)
                     .background(
-                        Circle().fill(text.isEmpty ? Palette.surfaceHov : Palette.running)
+                        Circle().fill(text.isEmpty ? PopoverPalette.surfaceHov : PopoverPalette.running)
                     )
             }
             .buttonStyle(.plain)
             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 
     private func send() {
@@ -1136,7 +864,7 @@ private struct MiniHomeCommandPane: View {
     var body: some View {
         VStack(spacing: 0) {
             inputField
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
 
@@ -1146,7 +874,7 @@ private struct MiniHomeCommandPane: View {
                         commandRow(command)
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 16)
             }
 
             Spacer(minLength: 0)
@@ -1157,21 +885,21 @@ private struct MiniHomeCommandPane: View {
         HStack(spacing: 6) {
             Image(systemName: "command")
                 .font(.system(size: 10))
-                .foregroundColor(Palette.textMuted)
-            TextField("search, or / for commands", text: $text)
+                .foregroundColor(PopoverPalette.textMuted)
+            TextField("Search windows, projects, or /commands", text: $text)
                 .textFieldStyle(.plain)
-                .font(Typo.mono(10))
-                .foregroundColor(Palette.text)
+                .font(.system(size: 12))
+                .foregroundColor(PopoverPalette.text)
                 .onSubmit { open(with: text) }
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Palette.surface.opacity(0.7))
+                .fill(PopoverPalette.surface.opacity(0.7))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Palette.border, lineWidth: 0.5)
+                        .strokeBorder(PopoverPalette.border, lineWidth: 0.5)
                 )
         )
     }
@@ -1184,14 +912,14 @@ private struct MiniHomeCommandPane: View {
             HStack(spacing: 8) {
                 Image(systemName: command.icon)
                     .font(.system(size: 10))
-                    .foregroundColor(Palette.running)
+                    .foregroundColor(PopoverPalette.running)
                     .frame(width: 14)
                 Text("/\(alias)")
-                    .font(Typo.mono(10))
-                    .foregroundColor(Palette.text)
+                    .font(.system(size: 12))
+                    .foregroundColor(PopoverPalette.text)
                 Text(command.title)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
+                    .font(.system(size: 11))
+                    .foregroundColor(PopoverPalette.textMuted)
                     .lineLimit(1)
                 Spacer(minLength: 4)
             }
@@ -1199,10 +927,10 @@ private struct MiniHomeCommandPane: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 5)
-                    .fill(Palette.surface.opacity(0.55))
+                    .fill(PopoverPalette.surface.opacity(0.55))
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Palette.border, lineWidth: 0.5)
+                            .strokeBorder(PopoverPalette.border, lineWidth: 0.5)
                     )
             )
             .contentShape(Rectangle())
@@ -1229,15 +957,15 @@ private struct MiniHomeCommandPane: View {
 private struct MiniHomeCommandJumps: View {
     var body: some View {
         HStack(spacing: 10) {
-            jump("magnifyingglass", "Inventory") {
+            jump("magnifyingglass", "Windows") {
                 ScreenMapWindowController.shared.showPage(.overview)
             }
-            jump("list.bullet.rectangle", "Activity") {
+            jump("stethoscope", "Diagnostics") {
                 ScreenMapWindowController.shared.showPage(.activity)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
     }
 
     private func jump(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -1248,13 +976,13 @@ private struct MiniHomeCommandJumps: View {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 9))
-                    .foregroundColor(Palette.textMuted)
+                    .foregroundColor(PopoverPalette.textMuted)
                 Text(label)
-                    .font(Typo.mono(9))
-                    .foregroundColor(Palette.textMuted)
+                    .font(.system(size: 11))
+                    .foregroundColor(PopoverPalette.textMuted)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 7, weight: .bold))
-                    .foregroundColor(Palette.textMuted)
+                    .foregroundColor(PopoverPalette.textMuted)
             }
             .padding(.vertical, 3)
             .contentShape(Rectangle())

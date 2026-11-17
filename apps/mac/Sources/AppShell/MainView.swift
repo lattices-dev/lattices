@@ -54,8 +54,10 @@ struct MainView: View {
             maxHeight: .infinity,
             alignment: .top
         )
-        .background(PanelBackground())
-        .preferredColorScheme(.dark)
+        .background {
+            if layout == .embedded { PanelBackground() }
+        }
+        .preferredColorScheme(layout == .embedded ? .dark : nil)
         .onAppear {
             runRefresh()
         }
@@ -78,9 +80,13 @@ struct MainView: View {
             scanner.projects = []
         }
 
-        let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
-        inventory.refresh()
-        DiagnosticLog.shared.finish(tInv)
+        // Only the full workspace displays orphan tmux sessions. The popup's
+        // projects are refreshed by the scanner's background queue above.
+        if layout == .embedded {
+            let tInv = DiagnosticLog.shared.startTimed("InventoryManager.refresh")
+            inventory.refresh()
+            DiagnosticLog.shared.finish(tInv)
+        }
 
         let tPerm = DiagnosticLog.shared.startTimed("PermissionChecker.check")
         permChecker.check()
@@ -96,7 +102,9 @@ struct MainView: View {
     private var mainContent: some View {
         VStack(spacing: 0) {
             // Permission banner — only when something is missing AND not snoozed
-            if !visiblyMissingCapabilities.isEmpty {
+            if layout == .popover {
+                popoverNotices
+            } else if !visiblyMissingCapabilities.isEmpty {
                 permissionBanner
             }
 
@@ -105,7 +113,7 @@ struct MainView: View {
                 scanRootSetupBanner
             }
 
-            if !tmuxModel.isAvailable && !tmuxBannerDismissed {
+            if layout == .embedded && !tmuxModel.isAvailable && !tmuxBannerDismissed {
                 tmuxBanner
             }
 
@@ -134,6 +142,52 @@ struct MainView: View {
                 bottomBar
             }
         }
+    }
+
+    /// Keep setup notices compact and adaptive so they do not displace the
+    /// menu's actions or inherit the full workspace's dark-only palette.
+    private var popoverNotices: some View {
+        VStack(spacing: 8) {
+            if !visiblyMissingCapabilities.isEmpty {
+                HStack(spacing: 8) {
+                    Button {
+                        PermissionsAssistantWindowController.shared.show(focus: visiblyMissingCapabilities.first)
+                    } label: {
+                        Label("Optional permissions…", systemImage: "slider.horizontal.3")
+                    }
+                    .help(bannerSummary(visiblyMissingCapabilities))
+                    Spacer()
+                    Button("Later") {
+                        for cap in visiblyMissingCapabilities { prefs.dismissCapability(cap.rawValue) }
+                    }
+                }
+            }
+            if !tmuxModel.isAvailable && !tmuxBannerDismissed {
+                HStack(spacing: 8) {
+                    Text("Terminal sessions need tmux.")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Install") { installTmux() }
+                    Button { tmuxBannerDismissed = true } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Dismiss tmux notice")
+                }
+            }
+        }
+        .font(.system(size: 11))
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 16)
+        .padding(.top, visiblyMissingCapabilities.isEmpty && (tmuxModel.isAvailable || tmuxBannerDismissed) ? 0 : 12)
+    }
+
+    private func installTmux() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        task.arguments = ["-lc", "brew install tmux"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
     }
 
     private var embeddedProjectArea: some View {
@@ -653,12 +707,7 @@ struct MainView: View {
                 .foregroundColor(Palette.text)
 
             Button {
-                let task = Process()
-                task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                task.arguments = ["-lc", "brew install tmux"]
-                task.standardOutput = FileHandle.nullDevice
-                task.standardError = FileHandle.nullDevice
-                try? task.run()
+                installTmux()
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.down.circle")

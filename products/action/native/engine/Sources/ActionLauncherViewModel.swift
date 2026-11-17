@@ -147,6 +147,9 @@ struct ActionSessionSummary: Identifiable {
     /// the agent saw on the socket. Empty for runs recorded before the agent
     /// kept the ledger.
     let client: String
+    /// The folder the driving harness worked in, e.g. "talkie". Empty when the
+    /// driver did not say, which includes every run before it could.
+    let project: String
     let outcome: ActionRunOutcome
 
     var agentFeedbackMarkdownURL: URL {
@@ -213,6 +216,25 @@ private struct PersistedSessionRecord: Decodable {
     let drive: PersistedDriveRecord?
 }
 
+/// The agent's last permission answer, kept across launches.
+private enum ActionLastPermissions {
+    private static let accessibilityKey = "lastAgentAccessibilityStatus"
+    private static let screenRecordingKey = "lastAgentScreenRecordingStatus"
+
+    static var accessibility: String? { known(UserDefaults.standard.string(forKey: accessibilityKey)) }
+    static var screenRecording: String? { known(UserDefaults.standard.string(forKey: screenRecordingKey)) }
+
+    static func remember(accessibility: String, screenRecording: String) {
+        UserDefaults.standard.set(accessibility, forKey: accessibilityKey)
+        UserDefaults.standard.set(screenRecording, forKey: screenRecordingKey)
+    }
+
+    private static func known(_ status: String?) -> String? {
+        guard let status, status.lowercased() != "unknown" else { return nil }
+        return status
+    }
+}
+
 private struct PersistedDriveRecord: Decodable {
     let agent: String?
     let task: String?
@@ -223,6 +245,7 @@ private struct PersistedDriveRecord: Decodable {
     let releasedAt: String?
     let client: String?
     let clientProcess: String?
+    let project: String?
 }
 
 private extension String {
@@ -249,8 +272,10 @@ final class ActionLauncherViewModel: ObservableObject {
     private let agentClient = ActionAgentClient()
 
     @Published var agentStatus: String = "Offline"
-    @Published var accessibilityStatus: String = "Unknown"
-    @Published var screenRecordingStatus: String = "Unknown"
+    // Start from the agent's last answer so the footer does not read "Unknown"
+    // for the moment it takes the agent to connect; the first fresh answer replaces it.
+    @Published var accessibilityStatus: String = ActionLastPermissions.accessibility ?? "Checking"
+    @Published var screenRecordingStatus: String = ActionLastPermissions.screenRecording ?? "Checking"
     @Published var permissionHelperFocus: ActionPermissionKind = .accessibility
     @Published var notes: [String] = []
     /// The status line before anything has happened. Surfaces compare against
@@ -953,6 +978,10 @@ final class ActionLauncherViewModel: ObservableObject {
 
                 accessibilityStatus = (result["accessibility"] ?? "unknown").capitalized
                 screenRecordingStatus = (result["screenRecording"] ?? "unknown").capitalized
+                ActionLastPermissions.remember(
+                    accessibility: accessibilityStatus,
+                    screenRecording: screenRecordingStatus
+                )
                 clearPermissionRegrantMarkerIfComplete()
                 notes = updatedNotes
                 agentStatus = "Connected"
@@ -1096,6 +1125,9 @@ final class ActionLauncherViewModel: ObservableObject {
             if !session.client.isEmpty {
                 row["client"] = session.client
             }
+            if !session.project.isEmpty {
+                row["project"] = session.project
+            }
             if !session.subtitle.isEmpty {
                 row["subtitle"] = session.subtitle
             }
@@ -1171,6 +1203,7 @@ final class ActionLauncherViewModel: ObservableObject {
             state: "completed",
             agent: "",
             client: "",
+            project: "",
             outcome: .ok
         )
     }
@@ -1199,7 +1232,10 @@ final class ActionLauncherViewModel: ObservableObject {
             kind = .capture
         }
 
-        let agentName = record.drive?.agent?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? ""
+        // The MCP server's placeholder is not a name; a blank says the same thing quieter.
+        let agentName = record.drive?.agent?.nilIfEmpty.flatMap {
+            $0 == "Unidentified MCP caller" ? nil : $0
+        } ?? ""
         let label: String
         let subtitle: String
         switch kind {
@@ -1266,6 +1302,7 @@ final class ActionLauncherViewModel: ObservableObject {
             client: [record.drive?.client, record.drive?.clientProcess]
                 .compactMap { $0?.nilIfEmpty }
                 .joined(separator: " · "),
+            project: record.drive?.project?.nilIfEmpty ?? "",
             // `finishedAt` is a release for a closed run and the last heartbeat
             // for an open one — either way it is the freshest thing the run said.
             outcome: ActionRunOutcome(state: resolvedState, lastActivity: finishedAt ?? startedAt)

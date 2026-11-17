@@ -35,4 +35,13 @@ final class ActionPrivateIPCTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: path))
         withExtendedLifetime(lease) {}
     }
+    func testLeaseNamesItsOwnerInTheLockFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("action.sock").path
+        let lease = try ActionPrivateSocketLease(path: path)
+        let owner = try String(contentsOfFile: path + ".lock", encoding: .utf8)
+        XCTAssertEqual(owner, "\(getpid())\n")
+        withExtendedLifetime(lease) {}
+    }
 }

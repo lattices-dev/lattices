@@ -195,15 +195,18 @@ extension View {
 
 /// The stage's ground: a faint dot grid, so the maps sit on a surface.
 struct OverviewStageGround: View {
+    var dotOpacity: Double = 0.07
+    var dotSize: CGFloat = 1
+
     var body: some View {
         Canvas { context, size in
             let step: CGFloat = 18
-            let dot = Path(ellipseIn: CGRect(x: 0, y: 0, width: 1, height: 1))
+            let dot = Path(ellipseIn: CGRect(x: 0, y: 0, width: dotSize, height: dotSize))
             var y: CGFloat = step / 2
             while y < size.height {
                 var x: CGFloat = step / 2
                 while x < size.width {
-                    context.fill(dot.offsetBy(dx: x, dy: y), with: .color(Color.white.opacity(0.07)))
+                    context.fill(dot.offsetBy(dx: x, dy: y), with: .color(Color.white.opacity(dotOpacity)))
                     x += step
                 }
                 y += step

@@ -21,7 +21,7 @@ the MCP connection in your agent harness after upgrading.
 |---------|-------|---------------|--------------|
 | `browser` | `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_click`, `browser_fill`, `browser_resize`, `browser_screenshot`, `browser_console`, `browser_close`, `browser_profiles`, `browser_use_profile`, `browser_profile_info`, `browser_import_cookies`, `browser_companion_status` | Action Browser code inside the `lattices` package, driving Action-owned Chrome over CDP | [Action browser](/action/docs/browser) |
 | `hosts` | `hosts_list`, `host_describe`, `host_windows`, `host_screenshot`, `host_read`, `host_place`, `host_focus`, `host_act`, `host_call` | This Mac's daemon over its private socket, or a paired host through its gateway | [Agent API](/lattices/docs/api) |
-| `windows` | `windows_search`, `windows_place`, `windows_focus`, `layers_list`, `layers_switch`, `history_undo` | This Mac's daemon over its private socket | [Agent API](/lattices/docs/api) |
+| `windows` | `windows_search`, `windows_place`, `windows_focus`, `layers_list`, `layers_switch`, `history_undo`, `views_list`, `views_save`, `views_open`, `views_remove` | This Mac's daemon over its private socket | [Agent API](/lattices/docs/api) |
 
 The `hosts` and `windows` toolsets reach this Mac's daemon the way `lats`
 does: over the Unix socket `~/.lattices/run/lattices.sock`, with the token in
@@ -43,11 +43,28 @@ one daemon method and reuses the CLI's search and place code:
 | `layers_list` | `layers.list` | `lats layer` |
 | `layers_switch` | `layers.activate` | `lats layer <name or slot>` |
 | `history_undo` | `history.undo` | `lats call history.undo` |
+| `views_list` | `views.list` | `lats views` |
+| `views_save` | `views.save` | `lats views save <host> <app>` |
+| `views_open` | `views.open` | `lats view <id>` |
+| `views_remove` | `views.remove` | `lats views rm <id>` |
 
 Search with the basic sources first. Set `deep: true` only when the basic
 search misses, for example a project that appears only in a terminal's cwd.
 `windows_place` returns the daemon receipt with its `receiptId` at the top
 level; pass that id to `history_undo` to put the window back.
+
+A saved remote app is an app on another host, such as Spotify on archie,
+kept by id in `~/.lattices/apps/<id>.json`. `views_open` moves the app to a
+headless display on its host and shows it here as its own window, titled
+"Spotify — archie", so search, place and focus find it.
+
+Each saved app is also a Mac app, `~/Applications/Lattices/Spotify — archie.app`,
+with the remote app's icon. It is in the Dock, ⌘Tab and Spotlight while open,
+and opening it from Spotlight or Finder opens the remote app. It runs as its own
+process, so it stays open when Lattices quits or restarts. Closing its window,
+or quitting it, returns the app to where it was on its host. `views_remove`
+deletes the Mac app with the definition. Lattices rebuilds these apps when it
+is updated.
 
 `lats mcp` is a Lattices entry point. The `browser` toolset is Action Browser
 code, so its workflow and profile rules belong to Action. Action.app also has

@@ -22,14 +22,14 @@
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { findActionApp } from "./locate.js";
 import type { BackendHost, BackendCallInput } from "./host.js";
 import type { BackendAvailability, BackendNeed } from "./types.js";
+import { findActionApp } from "./locate.js";
 
 export type AskItemState = "missing" | "granted" | "unknown";
 /** `step` links the row to the step that fixes it; the panel shows that step on the row. */
@@ -381,37 +381,47 @@ function appName(app: string | undefined): string {
 }
 
 /** Panel content for a backend's permission needs. Other need kinds are left to the caller. */
-export function permissionAsk(backend: string, needs: BackendNeed[], opts: { appPath?: string; retry?: boolean; requester?: AskRequest["requester"] } = {}): AskRequest | undefined {
+export function permissionAsk(backend: string, needs: BackendNeed[], opts: {
+  appPath?: string; retry?: boolean; requester?: AskRequest["requester"]; permissionContext?: BackendAvailability["permissionContext"];
+} = {}): AskRequest | undefined {
   const permissions = needs.filter((need): need is BackendNeed & { permission: NonNullable<BackendNeed["permission"]> } => need.kind === "permission" && !!need.permission);
   if (!permissions.length) return undefined;
   const app = permissions[0]!.app;
+  const launcher = opts.permissionContext?.kind === "launcher";
   const name = appName(opts.appPath ?? app);
   const unique = [...new Set(permissions.map((need) => need.permission))];
   const steps: AskStep[] = unique.slice(0, 2).map((pane) => ({ id: `open-${pane}`, label: "Open", action: { kind: "open-settings", pane } }));
-  if (opts.appPath) steps.push({ id: "reveal", label: `Show ${name} in Finder`, action: { kind: "reveal", path: opts.appPath } });
-  if (opts.retry) steps.push({ id: "retry", label: "Ask macOS again", action: { kind: "agent" } });
+  if (opts.appPath && !launcher) steps.push({ id: "reveal", label: `Show ${name} in Finder`, action: { kind: "reveal", path: opts.appPath } });
+  if (opts.retry) steps.push({ id: "retry", label: launcher ? "Request permissions" : "Ask macOS again", action: { kind: "agent" } });
   return {
-    key: `tcc:${app ?? backend}:${[...unique].sort().join("+")}`,
-    title: `Let ${name} control this Mac`,
-    why: `${backend} works through ${name}. Switch ${name} on in each list.`,
+    key: `tcc:${launcher ? `launcher:${backend}` : app ?? backend}:${[...unique].sort().join("+")}`,
+    title: launcher ? `Set up ${backend} permissions` : `Let ${name} control this Mac`,
+    why: launcher ? opts.permissionContext!.description : `${backend} works through ${name}. Switch ${name} on in each list.`,
     ...(opts.requester ? { requester: opts.requester } : {}),
-    ...(opts.appPath ? { subject: { name, path: opts.appPath } } : {}),
+    ...(opts.appPath && !launcher ? { subject: { name, path: opts.appPath } } : {}),
     items: unique.map((pane, index) => ({ id: pane, label: PANE_LABELS[pane] ?? pane, state: "missing" as const, ...(index < 2 ? { step: `open-${pane}` } : {}) })),
     steps: steps.slice(0, 4),
     resolution: "verify",
   };
 }
 
-/** A check() from a backend's availability: ready is satisfied, and each missing permission stays unticked. */
+/** Only a successful permission check can mark checklist items as granted. */
 export function availabilityCheck(read: () => Promise<BackendAvailability>, items: string[]): () => Promise<AskCheck> {
   return async () => {
-    const availability = await read();
-    const missing = new Set((availability.needs ?? []).map((need) => need.permission).filter(Boolean) as string[]);
+    let availability: BackendAvailability;
+    try { availability = await read(); }
+    catch (error) {
+      return { satisfied: false, items: Object.fromEntries(items.map((item) => [item, "unknown" as const])),
+        detail: error instanceof Error ? error.message : String(error) };
+    }
+    const needs = availability.needs ?? [];
+    const permissionsVerified = availability.ready || (needs.length > 0 && needs.every((need) => need.kind === "permission" && !!need.permission));
+    const missing = new Set(needs.filter((need) => need.kind === "permission").map((need) => need.permission).filter(Boolean) as string[]);
     return {
       satisfied: availability.ready,
-      items: Object.fromEntries(items.map((item) => [item, missing.has(item) ? "missing" : "granted"])),
+      items: Object.fromEntries(items.map((item) => [item, !permissionsVerified ? "unknown" : missing.has(item) ? "missing" : "granted"])),
       // The checklist already says what is missing; detail only carries news.
-      ...(!availability.ready && !missing.size && availability.reason ? { detail: availability.reason } : {}),
+      ...(!availability.ready && (!permissionsVerified || !missing.size) && availability.reason ? { detail: availability.reason } : {}),
     };
   };
 }
@@ -420,31 +430,45 @@ const APP_PATHS: Record<string, string> = { "com.trycua.driver": "/Applications/
 
 /**
  * Ask for whatever permissions a backend still needs, verified by its own
- * availability(). "Ask macOS again" re-runs the backend's setup (one at a time),
+ * setupAvailability(). "Ask macOS again" re-runs the backend's setup (one at a time),
  * which is how trycua-cua re-requests CuaDriver's grants.
  */
 export async function askForBackend(host: BackendHost, id: string, options: Omit<AskOptions, "check" | "onStep"> & {
   requester?: AskRequest["requester"]; call?: BackendCallInput;
 } = {}): Promise<AskResult & { needs?: BackendNeed[] }> {
-  const read = () => host.availability(id, { timeoutMs: 20_000, ...options.call });
-  const availability = await read();
-  if (availability.ready) return { outcome: "satisfied", asked: false };
-  const needs = availability.needs ?? [];
-  const appPath = needs.map((need) => need.app && (need.app.startsWith("/") ? need.app : APP_PATHS[need.app])).find((path) => path && existsSync(path)) || undefined;
-  const canRetry = typeof host.get(id).setup === "function";
-  const request = permissionAsk(id, needs, { ...(appPath ? { appPath } : {}), retry: canRetry, ...(options.requester ? { requester: options.requester } : {}) });
-  if (!request) return { outcome: "unsupported", asked: false, detail: availability.reason ?? `${id} needs something other than a permission.`, needs };
+  const lifetime = new AbortController();
+  const signal = AbortSignal.any([lifetime.signal, ...[options.signal, options.call?.signal].filter((value): value is AbortSignal => value !== undefined)]);
   let retrying: Promise<unknown> | undefined;
-  const result = await askOperator(request, {
-    ...options,
-    check: availabilityCheck(read, (request.items ?? []).map((item) => item.id)),
-    onStep: (step) => {
-      if (step !== "retry" || retrying) return;
-      const { timeoutMs: _availabilityTimeout, ...call } = options.call ?? {};
-      retrying = host.setup(id, { ...call, caller: call.caller ?? "ask" }, { interactive: true })
-        .catch(() => {}).finally(() => { retrying = undefined; });
-    },
-  });
-  if (result.outcome === "satisfied" || result.outcome === "confirmed") return result;
-  return { ...result, needs: (await read().catch(() => availability)).needs ?? needs };
+  let lastAvailability: BackendAvailability | undefined;
+  const read = async () => lastAvailability = await host.setupAvailability(id, { timeoutMs: 20_000, ...options.call, signal });
+  try {
+    const availability = await read();
+    if (availability.ready) return { outcome: "satisfied", asked: false };
+    const needs = availability.needs ?? [];
+    const appPath = availability.permissionContext?.kind === "launcher" ? undefined
+      : needs.map((need) => need.app && (need.app.startsWith("/") ? need.app : APP_PATHS[need.app])).find((path) => path && existsSync(path)) || undefined;
+    const canRetry = typeof host.get(id).setup === "function";
+    const request = permissionAsk(id, needs, { ...(appPath ? { appPath } : {}), retry: canRetry,
+      ...(availability.permissionContext ? { permissionContext: availability.permissionContext } : {}),
+      ...(options.requester ? { requester: options.requester } : {}) });
+    if (!request) return { outcome: "unsupported", asked: false, detail: availability.reason ?? `${id} needs something other than a permission.`, needs };
+    const result = await askOperator(request, {
+      ...options, signal,
+      check: availabilityCheck(read, (request.items ?? []).map((item) => item.id)),
+      onStep: (step) => {
+        if (step !== "retry" || retrying || signal.aborted) return;
+        const { timeoutMs: _availabilityTimeout, ...call } = options.call ?? {};
+        // The originating caller runs requests. Action.app only displays the panel;
+        // starting the backend there would change its macOS permission identity.
+        retrying = host.setup(id, { ...call, signal, caller: call.caller ?? "ask" }, { interactive: true })
+          .catch(() => {}).finally(() => { retrying = undefined; });
+      },
+    });
+    if (result.outcome === "satisfied" || result.outcome === "confirmed") return result;
+    return { ...result, needs: lastAvailability?.needs ?? needs };
+  } finally {
+    // Do not leave a permission request running after decline, expiry or cancellation.
+    lifetime.abort();
+    await retrying;
+  }
 }

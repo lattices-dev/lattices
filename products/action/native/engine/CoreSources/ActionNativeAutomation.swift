@@ -3,6 +3,86 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+@_silgen_name("_AXUIElementGetWindow")
+private func actionAXWindowNumber(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
+
+/// An explicit process/window selection never activates the app or changes its focused window.
+public struct ActionNativeWindowTarget: Sendable {
+    public let bundleId: String?
+    public let pid: pid_t?
+    public let windowNumber: CGWindowID?
+    private let bundlePath: String?
+
+    public init(bundleId: String? = nil, pid: String? = nil, windowNumber: String? = nil, bundlePath: String? = nil) throws {
+        self.bundleId = bundleId
+        self.bundlePath = bundlePath
+        if let pid {
+            guard let parsed = Int32(pid), parsed > 0 else {
+                throw ActionNativeAutomationError.accessibilityLookupFailed("--pid must be a positive process id")
+            }
+            self.pid = parsed
+        } else {
+            self.pid = nil
+        }
+        if let windowNumber {
+            guard let parsed = UInt32(windowNumber), parsed > 0 else {
+                throw ActionNativeAutomationError.accessibilityLookupFailed("--window-number must be a positive CGWindowID")
+            }
+            self.windowNumber = parsed
+        } else {
+            self.windowNumber = nil
+        }
+    }
+
+    public func application() throws -> NSRunningApplication {
+        do {
+            return try resolveApplication()
+        } catch {
+            if windowNumber != nil {
+                throw ActionNativeAutomationError.accessibilityLookupFailed("window-not-found: \(error.localizedDescription)")
+            }
+            throw error
+        }
+    }
+
+    private func resolveApplication() throws -> NSRunningApplication {
+        let app: NSRunningApplication
+        if let pid {
+            app = try ActionNativeAutomation.runningApplication(pid: pid)
+        } else if let bundlePath, !bundlePath.isEmpty {
+            app = try ActionNativeAutomation.runningApplication(bundlePath: bundlePath)
+        } else if let bundleId, !bundleId.isEmpty {
+            app = try ActionNativeAutomation.runningApplication(bundleId: bundleId)
+        } else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed("Missing --pid or --bundle-id")
+        }
+        try validateBundleIdentifier(app.bundleIdentifier, pid: app.processIdentifier)
+        guard !app.isTerminated else {
+            throw ActionNativeAutomationError.applicationNotRunning("pid \(app.processIdentifier)")
+        }
+        return app
+    }
+
+    func validateBundleIdentifier(_ actual: String?, pid: pid_t) throws {
+        if let bundleId, actual != bundleId {
+            throw ActionNativeAutomationError.accessibilityLookupFailed(
+                "Target pid \(pid) has bundle id \(actual ?? "unknown"), not \(bundleId)"
+            )
+        }
+    }
+}
+
+public struct ActionNativeAppWindowSnapshot: Encodable, Sendable {
+    public let pid: pid_t
+    public let bundleId: String
+    public let appName: String
+    public let windowNumber: CGWindowID
+    public let title: String
+    public let frame: ActionAccessibilityBounds
+    public let onScreen: Bool
+    public let layer: Int
+}
+
 public struct ActionCalculatorButtonSnapshot: Codable, Sendable {
     public let role: String
     public let title: String?
@@ -31,6 +111,12 @@ public struct ActionAccessibilityNodeSnapshot: Codable, Sendable {
     public let settableAttributes: [String]
     public let enabled: Bool?
     public let focused: Bool?
+    /// Zero-based AXChildren indices from the inspection root; "root" names the root itself.
+    public let path: String?
+    /// Inspection metadata lives only on the root node, preserving the existing JSON array.
+    public var root: ActionAccessibilityRoot?
+    public var rootWindow: ActionAccessibilityWindowSnapshot?
+    public var truncated: Bool?
 
     public init(
         role: String,
@@ -43,7 +129,8 @@ public struct ActionAccessibilityNodeSnapshot: Codable, Sendable {
         actions: [String] = [],
         settableAttributes: [String] = [],
         enabled: Bool? = nil,
-        focused: Bool? = nil
+        focused: Bool? = nil,
+        path: String? = nil
     ) {
         self.role = role
         self.title = title
@@ -56,6 +143,7 @@ public struct ActionAccessibilityNodeSnapshot: Codable, Sendable {
         self.settableAttributes = settableAttributes
         self.enabled = enabled
         self.focused = focused
+        self.path = path
     }
 }
 
@@ -70,6 +158,139 @@ public struct ActionAccessibilityBounds: Codable, Sendable {
         self.y = y
         self.width = width
         self.height = height
+    }
+}
+
+public enum ActionAccessibilityRoot: String, Codable, Sendable {
+    case window
+    case application
+
+    public static func parse(_ value: String) throws -> Self {
+        guard let root = Self(rawValue: value) else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed(
+                "path-mismatch: invalid root \(value); expected window or application"
+            )
+        }
+        return root
+    }
+}
+
+public struct ActionAccessibilityWindowSnapshot: Codable, Sendable {
+    public let title: String?
+    public let frame: ActionAccessibilityBounds?
+}
+
+/// Pure parsing and expectation checks shared by all path-addressed actions.
+public struct ActionAccessibilityPathTarget: Sendable {
+    public let indices: [Int]
+    public let path: String
+    public let root: ActionAccessibilityRoot
+    private let expectRole: String?
+    private let expectLabel: String?
+    private let expectFrame: ActionAccessibilityBounds?
+
+    public init(
+        path: String,
+        root: String = "window",
+        expectRole: String? = nil,
+        expectLabel: String? = nil,
+        expectFrame: String? = nil
+    ) throws {
+        self.root = try ActionAccessibilityRoot.parse(root)
+        if path == "root" {
+            indices = []
+        } else {
+            indices = try path.split(separator: ".", omittingEmptySubsequences: false).map { component in
+                guard !component.isEmpty,
+                      component.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+                      let index = Int(component) else {
+                    throw ActionNativeAutomationError.accessibilityLookupFailed(
+                        "path-mismatch: invalid path \(path); expected root or zero-based child indices such as 0.3.2"
+                    )
+                }
+                return index
+            }
+        }
+        self.path = indices.isEmpty ? "root" : indices.map(String.init).joined(separator: ".")
+        self.expectRole = expectRole
+        self.expectLabel = expectLabel
+        if let expectFrame {
+            let parts = expectFrame.split(separator: ",", omittingEmptySubsequences: false)
+            let values = parts.compactMap { Double($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            guard parts.count == 4, values.count == 4, values.allSatisfy(\.isFinite),
+                  values[2] >= 0, values[3] >= 0 else {
+                throw ActionNativeAutomationError.accessibilityLookupFailed(
+                    "path-mismatch: invalid expected frame; expected finite x,y,width,height with nonnegative size"
+                )
+            }
+            self.expectFrame = ActionAccessibilityBounds(x: values[0], y: values[1], width: values[2], height: values[3])
+        } else {
+            self.expectFrame = nil
+        }
+    }
+
+    func validate(role: String, labelCandidates: [String], frame: ActionAccessibilityBounds?) throws {
+        if let expectRole, normalizedRole(expectRole) == nil || normalizedRole(role) != normalizedRole(expectRole) {
+            throw ActionNativeAutomationError.accessibilityLookupFailed(
+                "path-mismatch: \(path) role \(role) does not match \(expectRole)"
+            )
+        }
+        if let expectLabel, !labelCandidates.contains(where: { normalizedText($0) == normalizedText(expectLabel) }) {
+            throw ActionNativeAutomationError.accessibilityLookupFailed(
+                "path-mismatch: \(path) label candidates do not match \(expectLabel)"
+            )
+        }
+        if let expectFrame {
+            guard let frame,
+                  abs(frame.x - expectFrame.x) <= 2, abs(frame.y - expectFrame.y) <= 2,
+                  abs(frame.width - expectFrame.width) <= 2, abs(frame.height - expectFrame.height) <= 2 else {
+                throw ActionNativeAutomationError.accessibilityLookupFailed(
+                    "path-mismatch: \(path) frame does not match expected frame within 2pt"
+                )
+            }
+        }
+    }
+}
+
+public enum ActionAccessibilityPathOperation: Sendable {
+    case press
+    case setValue(String)
+    case performAction(String)
+}
+
+/// Facts captured before the action, since a successful action may remove its target.
+public struct ActionAccessibilityPathResponse: Encodable, Sendable {
+    public let status: String
+    public let root: ActionAccessibilityRoot
+    public let path: String
+    public let role: String
+    public let labelCandidates: [String]
+    public let frame: ActionAccessibilityBounds?
+}
+
+/// Add executable capabilities without changing or inventing signed build provenance.
+public struct ActionNativeHostCapabilities: Encodable {
+    public init() {}
+
+    public func encode(to encoder: Encoder) throws {
+        try ActionBuildProvenance.current.encode(to: encoder)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode([
+            "press-accessibility-path",
+            "set-accessibility-value-path",
+            "perform-accessibility-action-path",
+        ], forKey: .accessibilityPathCommands)
+        try container.encode(["click-point"], forKey: .restoringInputCommands)
+        try container.encode(true, forKey: .windowScopedAccessibility)
+        try container.encode(1, forKey: .operatorAsk)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accessibilityPathCommands
+        case windowScopedAccessibility
+        case operatorAsk
+        /// Commands that accept `--restore auto|true|false`: the pointer and frontmost app go back right after the input (auto: only while a person is co-driving).
+        case restoringInputCommands
     }
 }
 
@@ -102,6 +323,53 @@ public enum ActionNativeAutomationError: LocalizedError {
 }
 
 public enum ActionNativeAutomation {
+    /// Window-server discovery includes windows on private displays and other Spaces, without AX.
+    public static func listAppWindows() -> [ActionNativeAppWindowSnapshot] {
+        let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.compactMap { info in
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid > 0,
+                  let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy == .regular,
+                  let bundleId = app.bundleIdentifier,
+                  let windowNumber = info[kCGWindowNumber as String] as? CGWindowID, windowNumber > 0,
+                  let rawBounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let frame = CGRect(dictionaryRepresentation: rawBounds as CFDictionary) else { return nil }
+            return ActionNativeAppWindowSnapshot(
+                pid: pid, bundleId: bundleId, appName: app.localizedName ?? bundleId,
+                windowNumber: windowNumber, title: info[kCGWindowName as String] as? String ?? "",
+                frame: ActionAccessibilityBounds(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height),
+                onScreen: info[kCGWindowIsOnscreen as String] as? Bool ?? false, layer: layer
+            )
+        }
+    }
+
+    /// Capture the requested CG window directly; never select a sibling or require AX access.
+    public static func screenshotWindow(selection: ActionNativeWindowTarget, outputPath: String) throws {
+        guard CGPreflightScreenCaptureAccess() else {
+            throw ActionCaptureError.screenRecordingPermissionMissing
+        }
+        let app = try selection.application()
+        guard let windowNumber = selection.windowNumber else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed("Missing --window-number")
+        }
+        let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, windowNumber) as? [[String: Any]] ?? []
+        guard windows.contains(where: {
+            ($0[kCGWindowNumber as String] as? CGWindowID) == windowNumber &&
+            ($0[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier
+        }) else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed(
+                "window-not-found: No window \(windowNumber) found for pid \(app.processIdentifier)"
+            )
+        }
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowNumber, [.bestResolution, .boundsIgnoreFraming]),
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw ActionCaptureError.unableToEncodeImage
+        }
+        let outputURL = URL(fileURLWithPath: outputPath)
+        try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: outputURL)
+    }
+
     @MainActor
     public static func launchApplication(bundleId: String) throws {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else {
@@ -391,6 +659,69 @@ public enum ActionNativeAutomation {
         }
 
         return snapshot(of: match.element, depth: match.depth)
+    }
+
+    public static func actOnAccessibilityPath(
+        bundleId: String,
+        target: ActionAccessibilityPathTarget,
+        operation: ActionAccessibilityPathOperation
+    ) throws -> ActionAccessibilityPathResponse {
+        try actOnAccessibilityPath(
+            selection: ActionNativeWindowTarget(bundleId: bundleId), target: target, operation: operation
+        )
+    }
+
+    public static func actOnAccessibilityPath(
+        selection: ActionNativeWindowTarget,
+        target: ActionAccessibilityPathTarget,
+        operation: ActionAccessibilityPathOperation
+    ) throws -> ActionAccessibilityPathResponse {
+        let element = try resolveAccessibilityPath(selection: selection, target: target)
+        let role = axValue(element, attribute: kAXRoleAttribute) as? String ?? ""
+        let labels = accessibilityLabelCandidates(for: element)
+        let frame = bounds(of: element)
+        try target.validate(role: role, labelCandidates: labels, frame: frame)
+
+        let status: String
+        // Only action-stage errors get this prefix; resolution/expectation failures never act.
+        do {
+            switch operation {
+            case .setValue(let value):
+                _ = try writeAccessibilityValue(
+                    to: element,
+                    depth: target.indices.count,
+                    value: value,
+                    describing: "\(selection.bundleId ?? "pid \(selection.pid ?? 0)") path \(target.path)"
+                )
+                status = "value-set"
+            case .press, .performAction:
+                let actionName: String
+                if case .performAction(let action) = operation {
+                    actionName = normalizedAccessibilityActionName(action)
+                } else {
+                    actionName = kAXPressAction as String
+                }
+                let availableActions = axActions(of: element)
+                guard availableActions.contains(actionName) else {
+                    throw ActionNativeAutomationError.accessibilityActionFailed(
+                        "\(actionName) is not available at \(target.path); available actions: \(availableActions.joined(separator: ", "))"
+                    )
+                }
+                let result = AXUIElementPerformAction(element, actionName as CFString)
+                guard result == .success else {
+                    throw ActionNativeAutomationError.accessibilityActionFailed(
+                        "\(actionName) failed at \(target.path): \(result.rawValue)"
+                    )
+                }
+                status = if case .press = operation { "pressed" } else { "performed" }
+            }
+        } catch {
+            throw ActionNativeAutomationError.accessibilityActionFailed("ax-action-failed: \(error.localizedDescription)")
+        }
+        return ActionAccessibilityPathResponse(
+            status: status, root: selection.windowNumber == nil ? target.root : .window, path: target.path,
+            role: role, labelCandidates: labels, frame: frame
+        )
     }
 
     public static func performAccessibilityAction(
@@ -836,48 +1167,60 @@ public enum ActionNativeAutomation {
     public static func accessibilityNodes(
         bundleId: String,
         maxDepth: Int = 6,
-        maxNodes: Int = 250
+        maxNodes: Int = 250,
+        root: ActionAccessibilityRoot = .window
     ) throws -> [ActionAccessibilityNodeSnapshot] {
         let app = try runningApplication(bundleId: bundleId)
-        return try accessibilityNodes(pid: app.processIdentifier, maxDepth: maxDepth, maxNodes: maxNodes)
+        return try accessibilityNodes(pid: app.processIdentifier, maxDepth: maxDepth, maxNodes: maxNodes, root: root)
+    }
+
+    public static func accessibilityNodes(
+        selection: ActionNativeWindowTarget,
+        maxDepth: Int = 6,
+        maxNodes: Int = 250,
+        root: ActionAccessibilityRoot = .window
+    ) throws -> [ActionAccessibilityNodeSnapshot] {
+        let app = try selection.application()
+        return try accessibilityNodes(
+            pid: app.processIdentifier, maxDepth: maxDepth, maxNodes: maxNodes,
+            root: root, windowNumber: selection.windowNumber
+        )
     }
 
     public static func accessibilityNodes(
         pid: pid_t,
         maxDepth: Int = 6,
-        maxNodes: Int = 250
+        maxNodes: Int = 250,
+        root: ActionAccessibilityRoot = .window,
+        windowNumber: CGWindowID? = nil
     ) throws -> [ActionAccessibilityNodeSnapshot] {
-        let window = try firstWindowElement(pid: pid)
-        var queue: [(AXUIElement, Int)] = [(window, 0)]
+        guard maxNodes > 0 else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed("max-nodes must be greater than zero")
+        }
+        let root = windowNumber == nil ? root : .window
+        let rootElement = try accessibilityRoot(pid: pid, root: root, windowNumber: windowNumber)
+        let rootWindow = root == .window ? ActionAccessibilityWindowSnapshot(
+            title: stringValue(axValue(rootElement, attribute: kAXTitleAttribute)),
+            frame: bounds(of: rootElement)
+        ) : nil
+        var queue: [(AXUIElement, Int, String)] = [(rootElement, 0, "root")]
+        var cursor = 0
         var result: [ActionAccessibilityNodeSnapshot] = []
 
-        while let (current, depth) = queue.first {
-            queue.removeFirst()
-            if result.count >= maxNodes {
-                break
-            }
-
-            result.append(
-                ActionAccessibilityNodeSnapshot(
-                    role: axValue(current, attribute: kAXRoleAttribute) as? String ?? "",
-                    title: stringValue(axValue(current, attribute: kAXTitleAttribute)),
-                    detail: stringValue(axValue(current, attribute: kAXDescriptionAttribute)),
-                    value: stringValue(axValue(current, attribute: kAXValueAttribute)),
-                    identifier: stringValue(axValue(current, attribute: kAXIdentifierAttribute)),
-                    depth: depth,
-                    frame: bounds(of: current),
-                    actions: axActions(of: current),
-                    settableAttributes: settableAttributes(of: current),
-                    enabled: boolValue(axValue(current, attribute: kAXEnabledAttribute)),
-                    focused: boolValue(axValue(current, attribute: kAXFocusedAttribute))
-                )
-            )
+        while cursor < queue.count, result.count < maxNodes {
+            let (current, depth, path) = queue[cursor]
+            cursor += 1
+            result.append(snapshot(of: current, depth: depth, path: path))
 
             if depth < maxDepth {
-                queue.append(contentsOf: axChildren(of: current).map { ($0, depth + 1) })
+                queue.append(contentsOf: axChildren(of: current).enumerated().map { index, child in
+                    (child, depth + 1, path == "root" ? "\(index)" : "\(path).\(index)")
+                })
             }
         }
-
+        result[0].root = root
+        result[0].rootWindow = rootWindow
+        result[0].truncated = cursor < queue.count
         return result
     }
 }
@@ -1032,7 +1375,7 @@ private func axChildren(of element: AXUIElement) -> [AXUIElement] {
     return []
 }
 
-private func snapshot(of element: AXUIElement, depth: Int) -> ActionAccessibilityNodeSnapshot {
+private func snapshot(of element: AXUIElement, depth: Int, path: String? = nil) -> ActionAccessibilityNodeSnapshot {
     ActionAccessibilityNodeSnapshot(
         role: axValue(element, attribute: kAXRoleAttribute) as? String ?? "",
         title: stringValue(axValue(element, attribute: kAXTitleAttribute)),
@@ -1044,7 +1387,8 @@ private func snapshot(of element: AXUIElement, depth: Int) -> ActionAccessibilit
         actions: axActions(of: element),
         settableAttributes: settableAttributes(of: element),
         enabled: boolValue(axValue(element, attribute: kAXEnabledAttribute)),
-        focused: boolValue(axValue(element, attribute: kAXFocusedAttribute))
+        focused: boolValue(axValue(element, attribute: kAXFocusedAttribute)),
+        path: path
     )
 }
 
@@ -1088,6 +1432,48 @@ private func bounds(of element: AXUIElement) -> ActionAccessibilityBounds? {
         width: size.width,
         height: size.height
     )
+}
+
+private func accessibilityRoot(pid: pid_t, root: ActionAccessibilityRoot, windowNumber: CGWindowID? = nil) throws -> AXUIElement {
+    if let windowNumber {
+        let application = AXUIElementCreateApplication(pid)
+        for window in collectWindows(of: application) {
+            var candidate: CGWindowID = 0
+            if actionAXWindowNumber(window, &candidate) == .success, candidate == windowNumber {
+                return window
+            }
+        }
+        throw ActionNativeAutomationError.accessibilityLookupFailed(
+            "window-not-found: No accessibility window \(windowNumber) found for pid \(pid)"
+        )
+    }
+    switch root {
+    case .window: return try firstWindowElement(pid: pid)
+    case .application: return AXUIElementCreateApplication(pid)
+    }
+}
+
+private func resolveAccessibilityPath(selection: ActionNativeWindowTarget, target: ActionAccessibilityPathTarget) throws -> AXUIElement {
+    do {
+        let app = try selection.application()
+        var element = try accessibilityRoot(pid: app.processIdentifier, root: target.root, windowNumber: selection.windowNumber)
+        for (depth, index) in target.indices.enumerated() {
+            let children = axChildren(of: element)
+            guard children.indices.contains(index) else {
+                throw ActionNativeAutomationError.accessibilityLookupFailed(
+                    "child \(index) at depth \(depth + 1) is out of range (\(children.count) children) for \(target.path)"
+                )
+            }
+            element = children[index]
+        }
+        // A stale/inaccessible AX reference must not reach an action even without expectations.
+        guard axValue(element, attribute: kAXRoleAttribute) is String else {
+            throw ActionNativeAutomationError.accessibilityLookupFailed("could not read resolved element at \(target.path)")
+        }
+        return element
+    } catch {
+        throw ActionNativeAutomationError.accessibilityLookupFailed("path-mismatch: \(error.localizedDescription)")
+    }
 }
 
 private func firstWindowElement(for bundleId: String) throws -> AXUIElement {

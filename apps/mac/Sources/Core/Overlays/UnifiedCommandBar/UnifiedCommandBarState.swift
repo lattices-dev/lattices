@@ -30,12 +30,13 @@ final class UnifiedCommandBarState: ObservableObject {
     /// Composed engines. `search.command` is the slash-command engine; `voice`
     /// is reused **verbatim** (its deadlock-safe DiagnosticLog observer is the
     /// highest-risk code to rewrite, so we compose rather than absorb it).
-    let search = OmniSearchState()
+    let search: OmniSearchState
     let voice = VoiceCommandState()
 
     private var cancellables = Set<AnyCancellable>()
 
-    init() {
+    init(arrangementTarget: AppArrangementTarget? = nil) {
+        search = OmniSearchState(arrangementTarget: arrangementTarget)
         // Re-publish nested engine changes so the view re-renders (and `detail`
         // recomputes) whenever results, command suggestions, or voice phase update.
         for child in [search.objectWillChange, voice.objectWillChange] {
@@ -67,6 +68,10 @@ final class UnifiedCommandBarState: ObservableObject {
     private var nlCache: (query: String, match: IntentMatch?)?
     var nlMatch: IntentMatch? {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+        // An explicit current-app arrangement result owns this small vocabulary.
+        // Do not let NL turn "tile Ghostty" into a single-window move or
+        // "arrange" into a distribution of every app on the desktop.
+        if search.arrangementTarget?.matches(trimmed) == true { return nil }
         guard !voiceActive, !commandMode, !wantsAssistant, !trimmed.isEmpty,
               IntentHeuristics.looksLikeCommand(trimmed.lowercased()) else { return nil }
         if let c = nlCache, c.query == trimmed { return c.match }

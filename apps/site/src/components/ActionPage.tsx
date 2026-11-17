@@ -134,14 +134,14 @@ export default function ActionPage() {
               </div>
               <div className="action-hero-actions">
                 <a href="#get-started" className="hero-primary-cta action-primary-cta">
-                  Get started
-                  <span aria-hidden="true">↗</span>
+                  Install Action
                 </a>
                 <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-secondary-cta action-secondary-cta">
-                  Download Mac app
+                  Download .dmg
+                  <span aria-hidden="true">↓</span>
                 </a>
               </div>
-              <p className="action-demo-platform">macOS · CLI, MCP &amp; TypeScript · Install independently</p>
+              <p className="action-demo-platform">Part of <a href="/">Lattices</a> · Works on its own · CLI + MCP</p>
               <p className="action-install-status" role="status" aria-live="polite">{copyStatus}</p>
             </div>
           </div>
@@ -176,6 +176,46 @@ export default function ActionPage() {
           <ActionArchitectureDiagram theme={theme} />
         </section>
 
+        <section className="action-purpose" aria-labelledby="action-purpose-title">
+          <div className="action-section-heading">
+            <p className="action-kicker">Part of Lattices</p>
+            <h2 id="action-purpose-title">One app, four ways in.</h2>
+            <p>
+              Every path installs the same signed Action.app, with the same agent and tools. Lattices finds Action when it is there. Action runs without Lattices.
+            </p>
+          </div>
+          <div className="action-paths">
+            <ol className="action-paths-doors" aria-label="Ways to install Action">
+              <li>
+                <span>Lattices menu bar</span>
+                <code>Install Action…</code>
+              </li>
+              <li>
+                <span>Lattices CLI</span>
+                <code>lats action install</code>
+              </li>
+              <li>
+                <span>Action CLI</span>
+                <code>bun add -g @lattices/action</code>
+              </li>
+              <li>
+                <span>Download</span>
+                <a href={downloadUrl} data-router="reload" onClick={startDownload}><code>Action.dmg</code></a>
+              </li>
+            </ol>
+            <article className="action-paths-app">
+              <span className="action-boundary-label action-boundary-label-product">Action.app</span>
+              <h3>Same app, same tools</h3>
+              <ul>
+                <li>Signed, in /Applications</li>
+                <li>Installs and updates on its own release line</li>
+                <li>The <code>action</code> and <code>lats action</code> CLIs, plus MCP for agents</li>
+              </ul>
+              <a href="/">Explore Lattices &rarr;</a>
+            </article>
+          </div>
+        </section>
+
         <section className="action-proof" aria-labelledby="action-proof-title">
           <img className="action-proof-art" src={actionTraceField} alt="" aria-hidden="true" />
           <div className="action-proof-inner">
@@ -205,42 +245,13 @@ export default function ActionPage() {
           </div>
         </section>
 
-        <section className="action-source" aria-labelledby="action-source-title">
-          <div className="action-source-copy">
-            <h2 id="action-source-title">Build it. Launch it. Prove it.</h2>
-            <p>
-              Local commands live in <code>package.json</code>. Run them with bun from <code>products/action</code>.
-            </p>
-            <ul className="action-source-reqs">
-              <li>macOS on Apple Silicon</li>
-              <li>Bun and the Swift toolchain</li>
-              <li>Accessibility permission</li>
-              <li>Screen Recording permission</li>
-            </ul>
-            <a href="/action/getting-started.md" data-router="reload" className="action-source-link">Getting started &rarr;</a>
-          </div>
-          <div className="action-terminal" aria-label="Action source commands">
-            <div className="action-terminal-bar">products/action</div>
-            <pre className="action-terminal-body">
-              <code>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun install</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:app:build</span>
-                <span className="action-terminal-output">Action.app signed and ready</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:doctor</span>
-                <span className="action-terminal-output">Accessibility: granted · Screen Recording: granted</span>
-                <span className="action-terminal-line"><span className="action-terminal-prompt">$</span> bun run native:launch</span>
-                <span className="action-terminal-output">Action.app running</span>
-              </code>
-            </pre>
-          </div>
-        </section>
-
         <section className="action-final-cta" aria-labelledby="action-final-title">
           <div className="action-final-copy">
             <h2 id="action-final-title">Give the agent a computer-use path you can review.</h2>
             <div className="action-final-links">
-              <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-primary-cta action-primary-cta">Download Action</a>
-              <a href={sourceUrl} className="hero-secondary-cta action-secondary-cta">View source</a>
+              <a href="#get-started" className="hero-primary-cta action-primary-cta">Install Action</a>
+              <a href={downloadUrl} data-router="reload" onClick={startDownload} className="hero-secondary-cta action-secondary-cta">Download .dmg</a>
+              <a href="/action/getting-started.md" data-router="reload" className="action-final-source">Build from source &rarr;</a>
             </div>
             <p className="action-family-note">Part of the <a href="/">Lattices family</a>. Install and use Action on its own.</p>
           </div>

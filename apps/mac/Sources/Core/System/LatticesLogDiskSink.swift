@@ -22,7 +22,9 @@ final class LatticesLogDiskSink: HudLogSink {
             .appendingPathComponent(".lattices")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        logFile = dir.appendingPathComponent("lattices.log")
+        // A remote app bundle is a second process on the same executable; two
+        // writers on one file overwrite each other's lines.
+        logFile = dir.appendingPathComponent(RemoteAppBundles.currentDefinition.map { "remote-app-\($0).log" } ?? "lattices.log")
 
         if let attrs = try? FileManager.default.attributesOfItem(atPath: logFile.path),
            let size = attrs[.size] as? UInt64, size > 1_000_000 {

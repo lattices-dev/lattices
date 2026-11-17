@@ -2,6 +2,87 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// An explicit bundle or path identifies one app even when several running
+/// apps share a display name. Name matching remains the legacy convenience.
+struct ComputerAppLaunchTarget {
+    let appName: String
+    let bundleIdentifier: String?
+    let appURL: URL?
+
+    init(appName: String, bundleIdentifier: String? = nil, path: String? = nil) throws {
+        self.appName = appName
+        if let bundleIdentifier {
+            let value = bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { throw RouterError.custom("App bundle identifier must not be empty") }
+            self.bundleIdentifier = value
+        } else {
+            self.bundleIdentifier = nil
+        }
+        if let path {
+            guard path.hasPrefix("/"), URL(fileURLWithPath: path).pathExtension.lowercased() == "app" else {
+                throw RouterError.custom("App path must be an absolute .app bundle path")
+            }
+            appURL = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+        } else {
+            appURL = nil
+        }
+    }
+
+    init(params: JSON?, appName: String) throws {
+        try self.init(appName: appName,
+                      bundleIdentifier: params?["bundleId"]?.stringValue ?? params?["bundleIdentifier"]?.stringValue,
+                      path: params?["path"]?.stringValue ?? params?["appPath"]?.stringValue)
+    }
+
+    var isPrecise: Bool { bundleIdentifier != nil || appURL != nil }
+
+    func matches(name: String?, bundleIdentifier: String?, url: URL?) -> Bool {
+        if let expected = self.bundleIdentifier, bundleIdentifier != expected { return false }
+        if let appURL {
+            return url?.standardizedFileURL.resolvingSymlinksInPath() == appURL
+        }
+        if self.bundleIdentifier != nil { return true }
+        return name?.localizedCaseInsensitiveContains(appName) == true
+            || bundleIdentifier?.localizedCaseInsensitiveContains(appName) == true
+    }
+
+    /// A missing or mismatched explicit target is an error, never permission
+    /// to launch a different application using the display name.
+    func applicationURL(lookup: (String) -> URL?) throws -> URL? {
+        guard isPrecise else { return nil }
+        let url: URL
+        if let appURL {
+            url = appURL
+        } else if let bundleIdentifier, let registered = lookup(bundleIdentifier) {
+            url = registered.standardizedFileURL.resolvingSymlinksInPath()
+        } else {
+            throw RouterError.custom("App bundle '\(bundleIdentifier ?? "")' is not installed")
+        }
+        var isDirectory: ObjCBool = false
+        guard url.pathExtension.lowercased() == "app",
+              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let bundle = Bundle(url: url), let actualIdentifier = bundle.bundleIdentifier else {
+            throw RouterError.custom("App bundle is unavailable at '\(url.path)'")
+        }
+        if let bundleIdentifier, actualIdentifier != bundleIdentifier {
+            throw RouterError.custom("App at '\(url.path)' does not match bundle '\(bundleIdentifier)'")
+        }
+        return url
+    }
+
+    func window(in windows: [WindowEntry], processIDs: Set<Int32>, title: String?) -> WindowEntry? {
+        windows.filter { window in
+            processIDs.contains(window.pid) && (title.map { window.titleContains($0) } ?? true)
+        }.sorted { lhs, rhs in
+            if lhs.isOnScreen != rhs.isOnScreen { return lhs.isOnScreen }
+            if lhs.zIndex != rhs.zIndex { return lhs.zIndex < rhs.zIndex }
+            let lhsArea = lhs.frame.w * lhs.frame.h, rhsArea = rhs.frame.w * rhs.frame.h
+            if lhsArea != rhsArea { return lhsArea > rhsArea }
+            return lhs.wid > rhs.wid
+        }.first
+    }
+}
+
 enum ComputerTreatment: String {
     case observe
     case stage
@@ -1317,6 +1398,7 @@ final class ComputerUseController {
         let treatment = ComputerTreatment.resolve(params: params, defaultValue: .present)
         let shouldCapture = params?["capture"]?.boolValue ?? true
         let appName = try appNameParam(params)
+        let launchTarget = try ComputerAppLaunchTarget(params: params, appName: appName)
         let title = params?["title"]?.stringValue
         let run = try RunStore.shared.createRun(
             title: "Launch \(appName)",
@@ -1335,7 +1417,7 @@ final class ComputerUseController {
                 ]
             )
 
-            let existing = windowForApp(appName, title: title)
+            let existing = windowForApp(appName, title: title, target: launchTarget)
             if treatment == .observe || treatment == .stage {
                 if let existing {
                     _ = try RunStore.shared.appendSurfaces(id: run.id, surfaces: [.window(existing)])
@@ -1369,7 +1451,7 @@ final class ComputerUseController {
                 throw RouterError.custom("Unable to launch app '\(appName)'")
             }
 
-            guard let window = waitForWindow(app: appName, title: title, timeout: 4.0) else {
+            guard let window = waitForWindow(app: appName, title: title, timeout: 4.0, target: launchTarget) else {
                 let completed = try RunStore.shared.complete(
                     id: run.id,
                     summary: "Launched app but no window was discovered yet",
@@ -2822,28 +2904,20 @@ final class ComputerUseController {
     }
 
     private func openOrActivateApp(params: JSON?, appName: String) throws -> Bool {
-        try onMain {
+        let target = try ComputerAppLaunchTarget(params: params, appName: appName)
+        return try onMain {
             if let running = NSWorkspace.shared.runningApplications.first(where: { app in
-                app.localizedName?.localizedCaseInsensitiveContains(appName) == true
-                    || app.bundleIdentifier?.localizedCaseInsensitiveContains(appName) == true
+                target.matches(name: app.localizedName, bundleIdentifier: app.bundleIdentifier, url: app.bundleURL)
             }) {
                 return running.activate(options: [.activateAllWindows])
             }
 
-            if let bundleId = params?["bundleId"]?.stringValue
-                ?? params?["bundleIdentifier"]?.stringValue,
-               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-                return true
-            }
-
-            if let path = params?["path"]?.stringValue
-                ?? params?["appPath"]?.stringValue,
-               FileManager.default.fileExists(atPath: path) {
-                NSWorkspace.shared.openApplication(
-                    at: URL(fileURLWithPath: path),
-                    configuration: NSWorkspace.OpenConfiguration()
-                )
+            if let url = try target.applicationURL(lookup: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }) {
+                let configuration = NSWorkspace.OpenConfiguration()
+                // A second installation may share its bundle ID. Opening an
+                // explicit path must not reactivate that other installation.
+                if target.appURL != nil { configuration.createsNewApplicationInstance = true }
+                NSWorkspace.shared.openApplication(at: url, configuration: configuration)
                 return true
             }
 
@@ -2872,19 +2946,29 @@ final class ComputerUseController {
         }
     }
 
-    private func waitForWindow(app appName: String, title: String?, timeout: TimeInterval) -> WindowEntry? {
+    private func waitForWindow(app appName: String, title: String?, timeout: TimeInterval,
+                               target: ComputerAppLaunchTarget? = nil) -> WindowEntry? {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            if let window = windowForApp(appName, title: title) {
+            if let window = windowForApp(appName, title: title, target: target) {
                 return window
             }
             usleep(90_000)
         } while Date() < deadline
-        return windowForApp(appName, title: title)
+        return windowForApp(appName, title: title, target: target)
     }
 
-    private func windowForApp(_ appName: String, title: String?) -> WindowEntry? {
+    private func windowForApp(_ appName: String, title: String?, target: ComputerAppLaunchTarget? = nil) -> WindowEntry? {
         DesktopModel.shared.forcePoll()
+        if let target, target.isPrecise {
+            let select = {
+                let processIDs = Set(NSWorkspace.shared.runningApplications.filter {
+                    target.matches(name: $0.localizedName, bundleIdentifier: $0.bundleIdentifier, url: $0.bundleURL)
+                }.map(\.processIdentifier))
+                return target.window(in: DesktopModel.shared.allWindows(), processIDs: processIDs, title: title)
+            }
+            return Thread.isMainThread ? select() : DispatchQueue.main.sync(execute: select)
+        }
         return DesktopModel.shared.windowForApp(app: appName, title: title)
     }
 

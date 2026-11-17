@@ -15,7 +15,9 @@
   <a href="../../skills/action/SKILL.md">Agent skill</a>
 </p>
 
-Action lets agents inspect and control native Mac apps and browser surfaces through a local runtime.
+Action is the computer-use part of Lattices. It lets agents inspect and control
+Mac apps and browser surfaces, and it records what they did. Install it from
+Lattices in one step, or on its own.
 
 <table><tr>
 <td width="33%" valign="top"><strong>Inspect</strong><br>Screenshots, accessibility trees, and OCR.</td>
@@ -25,20 +27,28 @@ Action lets agents inspect and control native Mac apps and browser surfaces thro
 
 ## Install and run
 
-Action is a separate macOS app. With Bun installed, install the Action CLI and
-let it install the app:
+Pick the path that matches what you already have. Every path installs the same
+signed `Action.app` in `/Applications`, with the same agent and MCP tools.
+
+| You have | Install |
+| --- | --- |
+| Lattices app | Menu bar → **Install Action…** |
+| Lattices CLI | `lats action install --launch` |
+| Bun, no Lattices | `bun add -g @lattices/action`, then `action install --launch` |
+| Neither | [Download `Action.dmg`](https://lattices.dev/action/download) |
+
+Then grant Accessibility and Screen Recording, and check the result:
 
 ```sh
-bun add -g @lattices/action
-action install --launch
-action setup action-cua
-action status
+lats action setup action-cua    # or: action setup action-cua
+lats action status              # or: action status
 ```
 
-The installer downloads `Action.dmg` from the latest `action-v*` release and
-installs `Action.app` in `/Applications`. It does not require a source checkout.
-Grant Accessibility and Screen Recording permissions when prompted for native
-control and capture.
+The installers download `Action.dmg` from the latest `action-v*` release. None
+of them needs a source checkout.
+
+Lattices finds Action when it is installed. Action does not need Lattices to
+run.
 
 To query the running Action agent:
 
@@ -78,9 +88,9 @@ as its working directory. The default tool names include:
 | `record_start`, `record_status`, `record_stop` | Control and verify recording |
 | `artifacts_list` | Read session artifacts |
 
-The product-level `bun run mcp` script starts the same server through the local
-`secret` helper and requires `MINIMAX_API_KEY`. Native capture and Apple Vision
-OCR do not require that provider. Older docs use dotted tool names such as
+The product-level `bun run mcp` script starts the same server and needs no API
+keys. Native capture, accessibility and Apple Vision OCR run on the Mac;
+`observe_vision` uses a local Moondream install when one is configured. Older docs use dotted tool names such as
 `action.observe.snapshot`; the server advertises underscore names by default.
 
 ## At home in Lattices
@@ -89,11 +99,11 @@ Lattices core owns workspace organization and its daemon at
 `ws://127.0.0.1:9399`. Action keeps its own app lifecycle and agent at
 `ws://127.0.0.1:4319`.
 
-- `action` (from `@lattices/action`) installs, launches, and queries Action.
-  Other product CLI commands are forwarded when a `products/action` checkout
-  or runtime is available. `lats action` offers the same from the Lattices CLI.
-- `lattices computer` calls the core daemon's `computer.*` workspace automation
-  methods. Its API is documented in the [core API reference](../../docs/api.md).
+- `lats action` and `action` (from `@lattices/action`) install, launch, set up,
+  and query the same Action. Other product CLI commands are forwarded when a
+  `products/action` checkout or runtime is available.
+- `lats cua` (alias `lats computer`) calls the core daemon's `cua.*` workspace
+  automation methods. Its API is documented in the [core API reference](../../docs/api.md).
 - `lattices mcp` serves the Action Browser tools from the Lattices CLI. These
   tools drive Action-owned Chrome profiles through CDP. The native Action MCP
   server above controls macOS surfaces through the Action runtime.

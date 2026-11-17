@@ -14,6 +14,24 @@ test("layer parsing preserves documented flags and record verbs", () => {
   assert.throws(() => parseLayerCommand(["open", "--preview-full=maybe"]), /expected true or false/);
 });
 
+test("experimental viewport is opt-in for open and pip with explicit boolean values", () => {
+  for (const command of ["open", "pip"]) {
+    assert.equal(parseLayerCommand([command]).flags.viewport, undefined);
+    assert.equal(parseLayerCommand([command, "--viewport"]).flags.viewport, "true");
+    assert.equal(parseLayerCommand([command, "--viewport", "true"]).flags.viewport, "true");
+    assert.equal(parseLayerCommand([command, "--viewport=false"]).flags.viewport, "false");
+    assert.deepEqual(parseLayerCommand([command, "--viewport", "--workspace", "wide"]).flags,
+      { viewport: "true", workspace: "wide" });
+    for (const value of ["maybe", "1", "0", "on", "off", ""]) {
+      assert.throws(() => parseLayerCommand([command, `--viewport=${value}`]), /expected true or false|Missing value/);
+    }
+    assert.throws(() => parseLayerCommand([command, "--viewport", "--viewport=false"]), /Duplicate layer flag/);
+  }
+  for (const command of ["prepare", "display-status", "status", "snapshot", "close", "release"]) {
+    assert.throws(() => parseLayerCommand([command, "--viewport"]), /Unsupported layer .* flag: --viewport/);
+  }
+});
+
 test("named workspaces target every operation and reject recursive previews", () => {
   for (const verb of ["prepare", "display-status", "open", "close", "release", "status", "snapshot", "pip"]) {
     assert.equal(parseLayerCommand([verb, "--workspace", "agent"]).flags.workspace, "agent");
@@ -44,6 +62,31 @@ test("persistent monitor setup and teardown are explicit commands", () => {
   }
 });
 
+test("Return to Mac is an explicit prepare-only boolean option", () => {
+  assert.equal(parseLayerCommand(["prepare"]).flags["return-to-mac"], undefined);
+  assert.equal(parseLayerCommand(["prepare", "--return-to-mac"]).flags["return-to-mac"], "true");
+  assert.equal(parseLayerCommand(["prepare", "--return-to-mac=true"]).flags["return-to-mac"], "true");
+  assert.equal(parseLayerCommand(["prepare", "--return-to-mac", "false"]).flags["return-to-mac"], "false");
+  assert.deepEqual(parseLayerCommand(["prepare", "--return-to-mac", "--workspace", "wide"]).flags,
+    { "return-to-mac": "true", workspace: "wide" });
+  for (const value of ["maybe", "1", "on", ""]) {
+    assert.throws(() => parseLayerCommand(["prepare", `--return-to-mac=${value}`]), /expected true or false|Missing value/);
+  }
+  assert.throws(() => parseLayerCommand(["prepare", "--return-to-mac", "--return-to-mac=false"]), /Duplicate layer flag/);
+  for (const command of ["open", "pip", "display-status", "status", "close", "release"]) {
+    assert.throws(() => parseLayerCommand([command, "--return-to-mac"]), /Unsupported layer .* flag: --return-to-mac/);
+  }
+});
+
+test("Return to Mac command targets a named workspace and rejects unrelated flags", () => {
+  assert.deepEqual(parseLayerCommand(["return-to-mac", "--workspace", "wide"]), {
+    positionals: ["return-to-mac"], flags: { workspace: "wide" },
+  });
+  for (const flag of ["--force", "--return-to-mac", "--viewport", "--width=6880"]) {
+    assert.throws(() => parseLayerCommand(["return-to-mac", flag]), /Unsupported layer return-to-mac flag/);
+  }
+});
+
 test("invalid and silently ignored arguments are rejected", () => {
   for (const args of [["open", "unexpected"], ["open", "--width"], ["open", "--width", "no"], ["open", "--pid=0"], ["open", "--pip=maybe"], ["open", "--width=1280", "--width=1440"], ["open", "--bundle-id=a", "--pid=123"], ["snapshot", "--full", "--window-id=5"], ["close", "extra"]]) {
     assert.throws(() => parseLayerCommand(args));
@@ -60,6 +103,30 @@ test("CLI rejects unsupported requests before invoking the native host", () => {
     assert.match(output.error, /MCP layer_open/);
     assert.doesNotMatch(output.error, /ENOENT/);
   }
+});
+
+test("CLI rejects invalid viewport options before invoking the native host", () => {
+  const cli = fileURLToPath(new URL("./main.ts", import.meta.url));
+  for (const args of [["layer", "open", "--viewport=maybe"], ["layer", "pip", "--viewport=on"], ["layer", "prepare", "--viewport"]]) {
+    const result = spawnSync("bun", [cli, ...args], { env: { ...process.env, ACTION_NATIVE_HOST: "/nonexistent/must-not-run" }, encoding: "utf8", timeout: 10_000 });
+    const output = JSON.parse(result.stdout);
+    assert.equal(result.status, 1);
+    assert.equal(output.ok, false);
+    assert.match(output.error, /--viewport/);
+    assert.doesNotMatch(output.error, /ENOENT/);
+  }
+});
+
+test("CLI rejects invalid return mode before invoking the native host", () => {
+  const cli = fileURLToPath(new URL("./main.ts", import.meta.url));
+  const result = spawnSync("bun", [cli, "layer", "prepare", "--return-to-mac=maybe"], {
+    env: { ...process.env, ACTION_NATIVE_HOST: "/nonexistent/must-not-run" }, encoding: "utf8", timeout: 10_000,
+  });
+  const output = JSON.parse(result.stdout);
+  assert.equal(result.status, 1);
+  assert.equal(output.ok, false);
+  assert.match(output.error, /Invalid --return-to-mac: expected true or false/);
+  assert.doesNotMatch(output.error, /ENOENT/);
 });
 
 test("explicit stage attach and detach commands", () => {

@@ -7,7 +7,7 @@ import guide from '../src/data/action-start.json' with { type: 'json' }
 const siteDir = fileURLToPath(new URL('..', import.meta.url))
 
 export function actionInstallMarkdown() {
-  return `# ${guide.title}\n\n${guide.description}\n\n## Prerequisites\n\n${guide.prerequisites}\n\nInstall Bun: https://bun.sh/docs/installation\n\n${guide.steps.map((step, index) => `## ${index + 1}. ${step.title}\n\n\`\`\`sh\n${step.command}\n\`\`\`\n\nExpected result: ${step.expected}\n`).join('\n')}\n## Troubleshooting\n\n${guide.troubleshooting}\n\n## Connect an agent\n\n${guide.agentNote}\n\nMCP setup: ${guide.siteUrl}/action/agent-setup.md\n\n## Linux\n\n${guide.linuxNote}\n\nRemote setup: ${guide.siteUrl}${guide.links.linux}\n`
+  return `# ${guide.title}\n\n${guide.description}\n\n## Prerequisites\n\n${guide.prerequisites}\n\nInstall Bun: https://bun.sh/docs/installation\n\n${guide.steps.map((step, index) => `## ${index + 1}. ${step.title}\n\n\`\`\`sh\n${step.command}\n\`\`\`\n\nExpected result: ${step.expected}\n${step.latticesCommand ? `\nWith Lattices:\n\n\`\`\`sh\n${step.latticesCommand}\n\`\`\`\n` : ''}`).join('\n')}\n## Troubleshooting\n\n${guide.troubleshooting}\n\n## Connect an agent\n\n${guide.agentNote}\n\nMCP setup: ${guide.siteUrl}/action/agent-setup.md\n\n## Linux\n\n${guide.linuxNote}\n\nRemote setup: ${guide.siteUrl}${guide.links.linux}\n`
 }
 
 export async function copyActionReferences({ repoRoot, distDir }) {

@@ -1708,7 +1708,9 @@ struct ActionLauncherRootView: View {
                         // as unrelated columns; together they say whether a run
                         // has real provenance or is an unidentified stray.
                         if !session.agent.isEmpty {
-                            Text(session.agent)
+                            (Text(session.agent)
+                                + Text(session.project.isEmpty ? "" : " · \(session.project)")
+                                .foregroundStyle(StageHUDTheme.textMuted.opacity(0.6)))
                                 .font(ActionType.uiCaption)
                                 .foregroundStyle(StageHUDTheme.textMuted)
                                 .lineLimit(1)

@@ -23,6 +23,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if LatticesRecordingProbeAppRunner.startFromCommandLineIfNeeded() {
             return
         }
+        // Visual-only Hyperspace stage; runs beside a live Lattices.
+        if HyperspacePreview.startFromCommandLineIfNeeded() {
+            return
+        }
 
         // Refuse before creating controllers or changing any global input state.
         // The peer check also covers older versions that predate the lease.
@@ -64,7 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         registerVisibleSurfaces()
         HotkeyBootstrap.registerHotkeys()
 
-        DispatchQueue.main.async { HUDController.shared.warmUp() }
         DispatchQueue.main.async { MenuBarController.shared.warmUpPopover() }
         DispatchQueue.main.async { ScreenOverlayCanvasController.shared.warmUp() }
 
@@ -77,6 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         WindowQuickMenu.shared.start()
         KeyboardRemapController.shared.start()
         SpaceSwitchInterceptor.shared.start()
+        DesktopCanvasController.shared.start()
         DispatchQueue.main.async { SpaceNumberMark.shared.refresh() }
         SecureEventInputMonitor.shared.start()
         installTerminationSignalHandlers()
@@ -84,6 +88,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             LayerStage.shared.restoreParked(reason: "launch")
         }
+        // Likewise remote apps left on a host's headless display.
+        Task { await RemoteAppWindows.shared.recoverStranded() }
+        DispatchQueue.global(qos: .utility).async { RemoteAppBundles.refresh() }
 
         if !OnboardingWindowController.shared.showIfNeeded() {
             PermissionChecker.shared.check()
@@ -162,6 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .global(qos: .userInitiated))
             source.setEventHandler {
                 KeyboardRemapController.shared.flushGlobalStateForAbruptTermination()
+                DesktopCanvasSession.shared.restore()
                 LayerStage.shared.restoreParked(reason: "signal \(sig)")
                 SpaceSwitchHotkeys.restoreForTermination()
                 SpaceZoomInput.terminate()
@@ -172,7 +180,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Remote app windows hand their apps back to the host before we go; a few
+    /// seconds at most, and the next launch finishes any that didn't answer.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard RemoteAppWindows.shared.hasOpenWindows else { return .terminateNow }
+        Task { @MainActor in
+            let deadline = Task { try? await Task.sleep(for: .seconds(4)); return false }
+            let released = Task { await RemoteAppWindows.shared.closeAll(); return true }
+            _ = await withTaskGroup(of: Bool.self) { group in
+                group.addTask { await released.value }
+                group.addTask { await deadline.value }
+                let first = await group.next()
+                group.cancelAll()
+                return first
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        DesktopCanvasSession.shared.restore()
         SpaceZoomInput.terminate()
         LayerStage.shared.restoreParked(reason: "quit")
         FocusModeController.shared.resetForTermination()
@@ -377,6 +405,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).map { ($0.name, $0.value ?? "") },
             uniquingKeysWith: { _, last in last }
         )
+        if let app = query["app"], !app.isEmpty, query["wid"] == nil {
+            // lattices://view/<host>?app=Spotify opens the app as its own window.
+            Task { @MainActor in
+                do { try await RemoteAppWindows.shared.open(app: app, on: host.name) }
+                catch { DiagnosticLog.shared.warn("DeepLink: \(app) on \(host.name): \(error.localizedDescription)") }
+            }
+            return
+        }
         let target: RemoteView.Target
         if let wid = query["wid"].flatMap(UInt32.init) {
             target = .window(wid: wid, app: query["app"] ?? "", title: query["title"] ?? "")

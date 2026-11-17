@@ -1138,17 +1138,14 @@ final class HUDController {
     private func tileSelectedItems() {
         let windows = selectedWindowsForActions()
         guard !windows.isEmpty else { return }
+        let screen = positionedScreen ?? mouseScreen()
+        let slots = WindowTiler.computeGridSlots(count: windows.count, screen: screen)
+        guard slots.count == windows.count else { return }
         let timed = AppFeedback.shared.beginTimed(
             "HUD tile selection",
             state: state,
             feedback: "Tiling \(windows.count) window\(windows.count == 1 ? "" : "s")"
         )
-
-        let screen = positionedScreen ?? mouseScreen()
-        let sf = screen.visibleFrame
-        let primaryH = NSScreen.screens.first?.frame.height ?? 900
-        let screenCGX = sf.origin.x
-        let screenCGY = primaryH - sf.origin.y - sf.height
 
         // Snapshot for restore
         state.tileSnapshot = windows.map { win in
@@ -1161,25 +1158,9 @@ final class HUDController {
         state.tiledWindows = []
         state.tileMode = true
 
-        // Grid layout
-        let count = windows.count
-        let cols = Int(ceil(sqrt(Double(count))))
-        let rows = Int(ceil(Double(count) / Double(cols)))
-        let cellW = sf.width / CGFloat(cols)
-        let cellH = sf.height / CGFloat(rows)
-        let gap: CGFloat = 2
-
-        var moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = []
-        for (i, win) in windows.enumerated() {
-            let col = i % cols
-            let row = i / cols
-            let frame = CGRect(
-                x: screenCGX + CGFloat(col) * cellW + gap,
-                y: screenCGY + CGFloat(row) * cellH + gap,
-                width: cellW - gap * 2,
-                height: cellH - gap * 2
-            )
-            moves.append((win.wid, win.pid, frame))
+        // Use the same row order and contiguous slots as distribute and arrange.
+        let moves: [(wid: UInt32, pid: Int32, frame: CGRect)] = zip(windows, slots).map { win, frame in
+            (wid: win.wid, pid: win.pid, frame: frame)
         }
 
         WindowTiler.batchMoveAndRaiseWindows(moves)

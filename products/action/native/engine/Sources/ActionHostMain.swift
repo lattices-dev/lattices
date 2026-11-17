@@ -41,6 +41,7 @@ enum ActionHostCommand: String {
     case openScreenRecordingSettings = "open-screen-recording-settings"
     case currentSurface = "current-surface"
     case supervisionOverlay = "supervision-overlay"
+    case askUser = "ask-user"
     case supervisorStop = "supervisor-stop"
     case stageOverlay = "stage-overlay"
     case drape
@@ -78,6 +79,9 @@ enum ActionHostCommand: String {
     case pressAccessibilityElement = "press-accessibility-element"
     case performAccessibilityAction = "perform-accessibility-action"
     case setAccessibilityValue = "set-accessibility-value"
+    case pressAccessibilityPath = "press-accessibility-path"
+    case setAccessibilityValuePath = "set-accessibility-value-path"
+    case performAccessibilityActionPath = "perform-accessibility-action-path"
     case setFocusedAccessibilityValue = "set-focused-accessibility-value"
     case setAccessibilityRoleValue = "set-accessibility-role-value"
     case clickCalculatorButton = "click-calculator-button"
@@ -646,6 +650,9 @@ func postKeyPressToApp(
 /// How long a plain click holds the mouse button down. Long enough for any app to see a
 /// press and a release as one click, short enough that nothing reads it as a press-and-hold.
 let defaultClickHoldMilliseconds = 30
+
+/// Real hardware input this recent means a person is using the Mac alongside the agent.
+let coDrivingIdleSeconds: Double = 5
 
 /// Clicks at a screen point, holding the button down for `holdMs` before releasing.
 /// The default is a plain click; larger values produce a press-and-hold, which is how
@@ -1466,6 +1473,7 @@ func composeRoundedScreenshot(
 final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegate {
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
+    private var frameObserver: WindowRecordingFrameObserver?
     private let writer: ResponseWriter
     private let logger: DebugLogger
     private var finishedSignalPath: String?
@@ -1491,7 +1499,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         )
     }
 
-    func recordRegion(rect: CGRect, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, fps: Double, scale: Double, includeSupervisionOverlay: Bool = true) async throws {
+    func recordRegion(rect: CGRect, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, fps: Double, scale: Double, includeSupervisionOverlay: Bool = true, frameTimingPath: String? = nil) async throws {
         logger.log("record-region: begin rect=\(rect) outputPath=\(outputPath)")
         self.finishedSignalPath = finishedSignalPath
         let outputURL = URL(fileURLWithPath: outputPath)
@@ -1524,6 +1532,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         logger.log("record-region: fps=\(fps) scale=\(scale) output=\(configuration.width)x\(configuration.height)")
 
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try attachFrameObserver(to: stream, timingPath: frameTimingPath)
         let recordingConfiguration = SCRecordingOutputConfiguration()
         recordingConfiguration.outputURL = outputURL
         recordingConfiguration.outputFileType = .mov
@@ -1541,13 +1550,14 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         try writer.write(ActionHostResponse(status: "recording", outputPath: outputPath, detail: nil))
 
         if let stopSignalPath {
-            try waitForStopSignal(at: stopSignalPath)
+            try await ActionRecordingStopSignal.wait(at: stopSignalPath)
         } else {
-            _ = try FileHandle.standardInput.readToEnd()
+            _ = try await Task.detached { try FileHandle.standardInput.readToEnd() }.value
         }
 
         try await stream.stopCapture()
         try await waitForRecordingFinish()
+        try writeFrameTiming(to: frameTimingPath)
         try writer.write(ActionHostResponse(status: "finished", outputPath: outputPath, detail: nil))
         try writeSignalFile(path: finishedSignalPath, contents: "finished\n")
     }
@@ -1561,7 +1571,7 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         )
     }
 
-    func recordAppWindow(bundleId: String, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?) async throws {
+    func recordAppWindow(bundleId: String, outputPath: String, stopSignalPath: String?, finishedSignalPath: String?, frameTimingPath: String? = nil) async throws {
         logger.log("record: begin bundleId=\(bundleId) outputPath=\(outputPath)")
         self.finishedSignalPath = finishedSignalPath
         let outputURL = URL(fileURLWithPath: outputPath)
@@ -1575,17 +1585,23 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
         let window = selection.window
         logger.log("record: window id=\(window.windowID) frame=\(window.frame)")
         logger.log("record: creating content filter")
-        let filter = SCContentFilter(display: selection.display, including: [window])
+        // An app-window recording follows the window's own content, rather than
+        // cropping a display. This remains correct when its display origin changes
+        // or part of the window is occluded or outside the display's bounds.
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        logger.log("record: filter=desktopIndependentWindow contentRect=\(filter.contentRect)")
         logger.log("record: creating stream configuration")
         let configuration = SCStreamConfiguration()
         configuration.width = max(Int(window.frame.width), 1)
         configuration.height = max(Int(window.frame.height), 1)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
-        configuration.sourceRect = window.frame
-        logger.log("record: configuration width=\(configuration.width) height=\(configuration.height)")
+        // The default sourceRect captures the full independent window. A global
+        // window frame is a display-space crop and must not be supplied here.
+        logger.log("record: configuration width=\(configuration.width) height=\(configuration.height) queueDepth=\(configuration.queueDepth) minimumFrameInterval=\(CMTimeGetSeconds(configuration.minimumFrameInterval))")
 
         logger.log("record: creating stream")
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try attachFrameObserver(to: stream, timingPath: frameTimingPath)
         let recordingConfiguration = SCRecordingOutputConfiguration()
         recordingConfiguration.outputURL = outputURL
         recordingConfiguration.outputFileType = .mov
@@ -1608,26 +1624,33 @@ final class WindowRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegat
 
         if let stopSignalPath {
             logger.log("record: waiting for stop file \(stopSignalPath)")
-            try waitForStopSignal(at: stopSignalPath)
+            try await ActionRecordingStopSignal.wait(at: stopSignalPath)
         } else {
             logger.log("record: waiting for stdin EOF")
-            _ = try FileHandle.standardInput.readToEnd()
+            _ = try await Task.detached { try FileHandle.standardInput.readToEnd() }.value
         }
 
         logger.log("record: stopping capture")
         try await stream.stopCapture()
         logger.log("record: capture stopped")
         try await waitForRecordingFinish()
+        try writeFrameTiming(to: frameTimingPath)
         try writer.write(ActionHostResponse(status: "finished", outputPath: outputPath, detail: nil))
         try writeSignalFile(path: finishedSignalPath, contents: "finished\n")
         logger.log("record: wrote finished reply")
     }
 
-    private func waitForStopSignal(at path: String) throws {
-        let stopURL = URL(fileURLWithPath: path)
-        while !FileManager.default.fileExists(atPath: stopURL.path) {
-            Thread.sleep(forTimeInterval: 0.1)
-        }
+    private func attachFrameObserver(to stream: SCStream, timingPath: String?) throws {
+        guard let timingPath, !timingPath.isEmpty else { return }
+        let observer = WindowRecordingFrameObserver()
+        try stream.addStreamOutput(observer, type: .screen, sampleHandlerQueue: observer.queue)
+        frameObserver = observer
+        logger.log("record: incoming frame timing enabled path=\(timingPath)")
+    }
+
+    private func writeFrameTiming(to path: String?) throws {
+        guard let path else { return }
+        try frameObserver?.write(to: path)
     }
 
     private func waitForRecordingStart() async throws {
@@ -3940,7 +3963,7 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             )
         )
     case .capabilities:
-        try writer.write(ActionBuildProvenance.current)
+        try writer.write(ActionNativeHostCapabilities())
     case .isolationContext:
         try writer.write(ActionIsolationContext.capture())
     case .status:
@@ -3959,6 +3982,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         try writer.write(try currentSurface())
     case .supervisionOverlay:
         throw ActionHostError.unsupportedOS("supervision-overlay should be started via runUICommand")
+    case .askUser:
+        throw ActionHostError.unsupportedOS("ask-user should be started via runUICommand")
     case .supervisorStop:
         let count = ActionSupervisionRegistry.triggerStopAll()
         try writer.write(
@@ -3981,6 +4006,9 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             "output": outputPath,
             "finishedFile": finishedSignalPath,
         ]
+        if let frameTimingFile = options.options["frame-timing-file"] {
+            params["frameTimingFile"] = frameTimingFile
+        }
         if let debugLog = options.options["debug-log"] {
             params["debugLog"] = debugLog
         }
@@ -4011,7 +4039,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             bundleId: bundleId,
             outputPath: outputPath,
             stopSignalPath: options.options["stop-file"],
-            finishedSignalPath: options.options["finished-file"]
+            finishedSignalPath: options.options["finished-file"],
+            frameTimingPath: options.options["frame-timing-file"]
         )
     case .recordRegion:
         guard #available(macOS 15.0, *) else {
@@ -4032,6 +4061,9 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             "scale": String(describing: options.double("scale", default: 1)),
             "includeSupervisionOverlay": String(options.bool("include-supervision-overlay", default: true)),
         ]
+        if let frameTimingFile = options.options["frame-timing-file"] {
+            params["frameTimingFile"] = frameTimingFile
+        }
         if let debugLog = options.options["debug-log"] {
             params["debugLog"] = debugLog
         }
@@ -4065,7 +4097,8 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             finishedSignalPath: options.options["finished-file"],
             fps: options.double("fps", default: 15),
             scale: options.double("scale", default: 1),
-            includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true)
+            includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true),
+            frameTimingPath: options.options["frame-timing-file"]
         )
     case .recordingProbe:
         throw ActionHostError.unsupportedOS("recording-probe must be started through the UI command path")
@@ -4074,8 +4107,17 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             throw ActionHostError.unsupportedOS("Window screenshots require macOS 14.0 or newer.")
         }
 
-        let app = try resolveTargetApplication(from: options)
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
         let outputPath = try options.required("output")
+        if selection.windowNumber != nil {
+            try ActionNativeAutomation.screenshotWindow(selection: selection, outputPath: outputPath)
+            try writer.write(ActionHostResponse(status: "screenshot", outputPath: outputPath, detail: nil))
+            break
+        }
+        let app = try selection.application()
         var params: [String: String] = [
             "pid": String(app.processIdentifier),
             "output": outputPath,
@@ -4188,6 +4230,10 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         }
         try writer.write(windowOrder(bounds: bounds))
     case .listAppWindows:
+        if options.options["pid"] == nil, options.options["bundle-id"] == nil, options.options["bundle-path"] == nil {
+            try writer.write(ActionNativeAutomation.listAppWindows())
+            break
+        }
         let app = try resolveTargetApplication(from: options)
         let response = try listAppWindows(
             app: app,
@@ -4409,6 +4455,15 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
             throw ActionHostError.missingOption("--x/--y")
         }
         let holdMs = Int(options.double("hold-ms", default: Double(defaultClickHoldMilliseconds)))
+        // --restore hands the pointer and focus straight back once the click is posted:
+        // true/false force it; auto restores only when a person is co-driving, i.e. real
+        // hardware input arrived in the last few seconds. A clean run (a demo) is left alone.
+        let restoreMode = (options.options["restore"] ?? "false").lowercased()
+        let hardwareIdle = CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!)
+        let coDriving = hardwareIdle < coDrivingIdleSeconds
+        let restore = restoreMode == "auto" ? coDriving : options.bool("restore", default: false)
+        let priorPointer = restore ? CGEvent(source: nil)?.location : nil
+        let priorFrontmost = restore ? NSWorkspace.shared.frontmostApplication : nil
         let gesture = try clickPoint(
             CGPoint(x: x, y: y),
             holdMs: holdMs,
@@ -4420,6 +4475,35 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
         if gesture.recorded {
             clickDetail += " pointerEvent=\(gesture.correlationId)"
         }
+        if restore {
+            // Let the target take the click before focus goes back, or the activation can race it.
+            usleep(60_000)
+            // Only undo what the click changed: skip the warp when the pointer was already there,
+            // or when someone has moved it since (their hand wins).
+            if let priorPointer, let now = CGEvent(source: nil)?.location,
+               hypot(now.x - x, now.y - y) < 2, hypot(priorPointer.x - x, priorPointer.y - y) >= 2 {
+                CGWarpMouseCursorPosition(priorPointer)
+            }
+            // The clicked app activates asynchronously; wait briefly for the switch before undoing it.
+            func frontmostPid() -> pid_t? {
+                RunLoop.current.run(until: Date())
+                return NSWorkspace.shared.frontmostApplication?.processIdentifier
+            }
+            var waited = 0
+            while let priorFrontmost, frontmostPid() == priorFrontmost.processIdentifier, waited < 300 {
+                usleep(20_000); waited += 20
+            }
+            if let priorFrontmost, frontmostPid() != priorFrontmost.processIdentifier {
+                // Cooperative activation ignores activate() from a background host, so ask
+                // through Accessibility (which Action holds) and fall back to activate().
+                let app = AXUIElementCreateApplication(priorFrontmost.processIdentifier)
+                if AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue) != .success {
+                    priorFrontmost.activate()
+                }
+            }
+            clickDetail += " restored"
+        }
+        if restoreMode == "auto" { clickDetail += coDriving ? " co-driving" : " clean-run" }
         try writer.write(ActionHostResponse(status: "clicked", outputPath: nil, detail: clickDetail))
     case .drag:
         let fromX = options.double("from-x", default: .nan)
@@ -4488,6 +4572,29 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
                 detail: "\(Int(x)),\(Int(y)) delta=\(Int(deltaX)),\(Int(deltaY))"
             )
         )
+    case .pressAccessibilityPath, .setAccessibilityValuePath, .performAccessibilityActionPath:
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
+        let target = try ActionAccessibilityPathTarget(
+            path: options.required("path"),
+            root: options.options["root"] ?? "window",
+            expectRole: options.options["expect-role"],
+            expectLabel: options.options["expect-label"],
+            expectFrame: options.options["expect-frame"]
+        )
+        let operation: ActionAccessibilityPathOperation
+        switch command {
+        case .setAccessibilityValuePath:
+            guard let value = options.options["value"] else { throw ActionHostError.missingOption("--value") }
+            operation = .setValue(value)
+        case .performAccessibilityActionPath:
+            operation = .performAction(try options.required("action"))
+        default:
+            operation = .press
+        }
+        try writer.write(ActionNativeAutomation.actOnAccessibilityPath(selection: selection, target: target, operation: operation))
     case .pressAccessibilityElement:
         let bundleId = try options.required("bundle-id")
         let label = try options.required("label")
@@ -4581,14 +4688,19 @@ func run(command: ActionHostCommand, options: CommandOptions, writer: ResponseWr
     case .inspectCalculatorUI:
         try writer.write(ActionNativeAutomation.calculatorAccessibilityNodes())
     case .inspectAppUI:
-        let app = try resolveTargetApplication(from: options)
+        let selection = try ActionNativeWindowTarget(
+            bundleId: options.options["bundle-id"], pid: options.options["pid"],
+            windowNumber: options.options["window-number"], bundlePath: options.options["bundle-path"]
+        )
         let maxDepth = Int(options.double("max-depth", default: 6))
         let maxNodes = Int(options.double("max-nodes", default: 250))
+        let root = try ActionAccessibilityRoot.parse(options.options["root"] ?? "window")
         try writer.write(
             ActionNativeAutomation.accessibilityNodes(
-                pid: app.processIdentifier,
+                selection: selection,
                 maxDepth: maxDepth,
-                maxNodes: maxNodes
+                maxNodes: maxNodes,
+                root: root
             )
         )
     case .getCalculatorDisplay:
@@ -4702,6 +4814,19 @@ struct ActionHostMain {
 
     private static func runUICommandIfNeeded(command: ActionHostCommand, options: CommandOptions) -> Bool {
         switch command {
+        case .askUser:
+            MainActor.assumeIsolated {
+                do {
+                    let controller = try ActionOperatorAskController(options: options)
+                    try controller.run()
+                } catch {
+                    let writer = ResponseWriter(replyFile: options.options["reply-file"])
+                    try? writer.write(ActionOperatorAskReply.error(detail: error.localizedDescription))
+                    FileHandle.standardError.write(Data("ActionHost failed: \(error.localizedDescription)\n".utf8))
+                    Darwin.exit(1)
+                }
+            }
+            return true
         case .supervisionOverlay:
             let replyFile = options.options["reply-file"]
             let debugLogPath = options.options["debug-log"]
@@ -4957,6 +5082,7 @@ struct ActionHostMain {
                 outputPath: outputPath,
                 stopSignalPath: options.options["stop-file"],
                 finishedSignalPath: options.options["finished-file"],
+                frameTimingPath: options.options["frame-timing-file"],
                 fps: options.double("fps", default: 15),
                 scale: options.double("scale", default: 1),
                 includeSupervisionOverlay: options.bool("include-supervision-overlay", default: true)

@@ -60,6 +60,28 @@ final class RemoteKeyboardTests: XCTestCase {
     }
 
     @MainActor
+    func testCommandHeldForControlClickStaysLocalUntilReleased() throws {
+        for code: UInt16 in [54, 55] {
+            let capture = RemoteKeyboardCapture()
+            capture.active = { true }
+            var keys: [String] = []
+            capture.key = { code, down in keys.append("\(code):\(down)") }
+            capture.prepareForCapture(keysAlreadyDown: [code])
+            let command = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false))
+            command.flags = []
+            XCTAssertNil(capture.receive(.flagsChanged, command))
+            XCTAssertTrue(keys.isEmpty, "Releasing the activation modifier must not press Super remotely")
+
+            command.flags = .maskCommand
+            _ = capture.receive(.flagsChanged, command)
+            command.flags = []
+            _ = capture.receive(.flagsChanged, command)
+            let remoteCode = try XCTUnwrap(RemoteKeyboard.evdev[code])
+            XCTAssertEqual(keys, ["\(remoteCode):true", "\(remoteCode):false"])
+        }
+    }
+
+    @MainActor
     func testLocalFullScreenReleasesHeldKeysBeforeTogglingAndDoesNotForwardF() throws {
         let capture = RemoteKeyboardCapture()
         capture.active = { true }

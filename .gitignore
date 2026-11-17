@@ -103,3 +103,6 @@ studies/filmstrip-demo-reel-2026-10-14/qc/
 .scratch-docs-report.md
 # Declares env vars without values; everything else under .env* stays ignored.
 !.env.schema
+
+# Local capture and study output
+.local/

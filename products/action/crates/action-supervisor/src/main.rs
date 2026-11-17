@@ -24,7 +24,6 @@ const STATE_WRITE_INTERVAL: Duration = Duration::from_secs(2);
 const SIGINT: i32 = 2;
 const SIGTERM: i32 = 15;
 const OPTIONAL_ENV_KEYS: &[&str] = &[
-    "MINIMAX_API_KEY",
     "ACTION_SECRETS_FILE",
     "ACTION_COMPANION_SECRETS_FILE",
     "ACTION_VISION_PROVIDER",

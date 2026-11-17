@@ -21,6 +21,9 @@ import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
 import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
 import { LatticeStudy } from "@/studio/studies/Lattice";
+import { HyperspaceHUDStudy } from "@/studio/studies/HyperspaceHUD";
+import { WindowsPageStudy } from "@/studio/studies/WindowsPage";
+import { LayersPageStudy } from "@/studio/studies/LayersPage";
 import {
   HOME_HREF,
   pages,
@@ -70,6 +73,8 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
     return <DocStudy slug={page.href.slice("/studio/eng/".length)} />;
   }
 
+  if (page?.href === "/studio/studies/windows-page") return <WindowsPageStudy page={page} />;
+  if (page?.href === "/studio/studies/layers-page") return <LayersPageStudy page={page} />;
   if (page?.href === "/studio/studies/intents") return <IntentsStudy entry={page} />;
   if (page?.href === "/studio/studies/handsoff") return <HandsoffStudy entry={page} />;
   if (page?.href === "/studio/studies/cursor") return <CursorStudy entry={page} />;
@@ -83,6 +88,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (page?.href === "/studio/studies/linux-command-center") return <LinuxCommandCenterStudy page={page} />;
   if (page?.href === "/studio/studies/product-family") return <ProductFamilyStudy page={page} />;
   if (page?.href === "/studio/studies/lattice") return <LatticeStudy page={page} />;
+  if (page?.href === "/studio/studies/hyperspace-hud") return <HyperspaceHUDStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

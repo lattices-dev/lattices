@@ -37,14 +37,14 @@ export function cuaTools(host: BackendHost): Tool[] {
     {
       name: "cua_setup",
       title: "Backend Setup",
-      description: "Set up the named backend. May show macOS permission dialogs or open System Settings, and waits up to about 2 minutes for the user to enable permissions. Reports steps and any remaining needs; only the user can grant macOS access.",
+      description: "Set up the named backend. May show macOS permission dialogs or open System Settings, and waits up to about 2 minutes for the user to enable permissions. Reports steps and any remaining needs; only the user can grant macOS access. agent-desktop requests Accessibility and Screen Recording for its launcher, without Automation, and verifies both in a fresh process.",
       inputSchema: schema({ backend }, ["backend"]),
       annotations: { readOnlyHint: false, idempotentHint: false },
     },
     {
       name: "cua_ask",
       title: "Ask The Operator",
-      description: "Ask the person at the Mac for the named backend's missing macOS permissions in an Action.app panel. Shows nothing when the backend is already ready. One panel per request across agents: a second caller waits on the first. The backend's own status check is the verdict; the panel ticks each permission as it lands and closes itself. Waits up to timeoutSeconds (default 300). outcome is satisfied, declined, cancelled, expired or unsupported (an Action.app without the panel: fall back to cua_status needs).",
+      description: "Ask the person at the Mac for the named backend's missing macOS permissions in an Action.app panel. Shows nothing when setup is complete; agent-desktop setup includes Screen Recording even when AX-only use is ready. One panel per request across agents: a second caller waits on the first. The backend's setup readiness check is the verdict. Requests run in the original caller, and closing the panel cancels pending setup. Waits up to timeoutSeconds (default 300). outcome is satisfied, declined, cancelled, expired or unsupported (use returned needs or cua_setup for setup instructions).",
       inputSchema: schema({
         backend,
         task: text("Optional: the task this is for, shown on the panel."),
@@ -76,6 +76,7 @@ export function cuaTools(host: BackendHost): Tool[] {
       description: "Act on a target through a backend. action.kind is press {ref}, setValue {ref, value}, secondary {ref, name}, type {text, ref?}, key {combo, e.g. \"cmd+l\"}, click {point, button?, count?}, or scroll {ref | point, direction, amount?}. "
         + `allowTiers (default ${JSON.stringify(defaultAllowTiers)}) lists the tiers this act may use; an action whose declared tier is outside it is refused before anything is sent. attention means keys or pointer events, so allow it only when that is intended. `
         + "action-cua points use macOS screen coordinates, and its key/type actions use the current global keyboard focus. "
+        + "agent-desktop type/scroll require refs; key requires the selected window already focused; coordinate clicks and secondary actions are unsupported. "
         + "A stale-ref refusal may carry a fresh observation: use its refs before trying again. Success carries delivery.status delivered_unverified; a BackendRefusal is not_delivered, and other errors are delivery_uncertain. Observe to verify the effect; do not blindly retry uncertain delivery.",
       inputSchema: schema({
         backend,

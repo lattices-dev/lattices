@@ -15,6 +15,8 @@ final class ActionAgentDisplayController {
         let height: Int
         let serialNumber: UInt32
         let workspace: String
+        let returnToMac: Bool
+        let returnShortcut: String?
         /// Backing pixels per point.
         let scale: Int
     }
@@ -27,6 +29,7 @@ final class ActionAgentDisplayController {
     private let stopURL: URL
     private let writer: ResponseWriter
     private let logger: DebugLogger
+    private let returnToMac: Bool
     private var display: CGVirtualDisplay?
     private var lockDescriptor: Int32 = -1
     private var topologyLock: ActionWorkspaceLock?
@@ -35,6 +38,10 @@ final class ActionAgentDisplayController {
     private var timer: Timer?
     private var signals: [DispatchSourceSignal] = []
     private var shuttingDown = false
+    private var recovery: ActionMonitorReturn?
+    private var recovering = false
+    private var lastReturnRequest: Data?
+    private var returnWhilePreparing = false
 
     init(options: CommandOptions) throws {
         workspace = try ActionVirtualWorkspace(options.options["workspace"] ?? "default")
@@ -57,6 +64,10 @@ final class ActionAgentDisplayController {
         stopURL = URL(fileURLWithPath: try options.required("stop-file"))
         writer = ResponseWriter(replyFile: options.options["reply-file"])
         logger = DebugLogger(path: options.options["debug-log"])
+        if let raw = options.options["return-to-mac"], !["true", "false", "1", "0", "yes", "no"].contains(raw.lowercased()) {
+            throw ActionHostError.unsupportedOS("return-to-mac must be a boolean")
+        }
+        returnToMac = options.bool("return-to-mac", default: false)
     }
 
     func run() throws {
@@ -94,6 +105,7 @@ final class ActionAgentDisplayController {
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.shuttingDown else { return }
+                self.checkReturnRequest()
                 if FileManager.default.fileExists(atPath: self.stopURL.path) {
                     self.stopIfUnused()
                 }
@@ -114,6 +126,11 @@ final class ActionAgentDisplayController {
     }
 
     private func prepare() async throws {
+        if returnToMac {
+            let recovery = ActionMonitorReturn(directory: stateURL.deletingLastPathComponent(), logger: logger)
+            self.recovery = recovery
+            try await recovery.prepare { [weak self] in self?.requestReturnToMac() }
+        }
         log("display-owner-pre-create")
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.queue = .main
@@ -164,6 +181,7 @@ final class ActionAgentDisplayController {
         let state = State(schemaVersion: 1, pid: getpid(), displayId: created.displayID,
                           startedAt: formatter.string(from: Date()), width: Int(size.width),
                           height: Int(size.height), serialNumber: workspace.serialNumber, workspace: workspace.name,
+                          returnToMac: returnToMac, returnShortcut: returnToMac ? ActionMonitorReturn.shortcut : nil,
                           scale: scale)
         self.state = state
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
@@ -172,6 +190,7 @@ final class ActionAgentDisplayController {
         Darwin.close(setupLeaseDescriptor)
         setupLeaseDescriptor = -1
         topologyLock = nil
+        if returnWhilePreparing { requestReturnToMac() }
     }
 
     /// A HiDPI virtual display comes up in its 1:1 pixel mode; pick the requested
@@ -240,6 +259,14 @@ final class ActionAgentDisplayController {
     }
 
     private func stopIfUnused() {
+        guard !recovering else { return }
+        // Explicit release of an interactive monitor must use the same recovery
+        // transaction as its button/shortcut, including manually moved windows.
+        if returnToMac, state != nil {
+            try? FileManager.default.removeItem(at: stopURL)
+            requestReturnToMac()
+            return
+        }
         let previewLock: ActionWorkspaceLock
         do {
             previewLock = try ActionWorkspaceLock(url: stateURL.deletingLastPathComponent().appendingPathComponent("display-preview.lock"))
@@ -287,6 +314,50 @@ final class ActionAgentDisplayController {
 
     private var topologyLockURL: URL {
         ActionLayerSafetyGate.defaultURL.deletingLastPathComponent().appendingPathComponent("display-topology.lock")
+    }
+
+    private func requestReturnToMac() {
+        guard !shuttingDown, !recovering, let recovery else { return }
+        guard let state else { returnWhilePreparing = true; return }
+        let request = ActionMonitorReturn.Request(requestId: UUID().uuidString, workspace: workspace.name,
+            displayId: state.displayId, displayOwnerPid: state.pid, displayStartedAt: state.startedAt, reason: "operator")
+        do { try recovery.writeRequest(request); checkReturnRequest() }
+        catch { recovery.status("failed", request: request, detail: error.localizedDescription) }
+    }
+
+    private func checkReturnRequest() {
+        guard !recovering, !shuttingDown, let recovery, let state,
+              let data = try? Data(contentsOf: recovery.requestURL), data != lastReturnRequest else { return }
+        lastReturnRequest = data
+        guard let request = try? JSONDecoder().decode(ActionMonitorReturn.Request.self, from: data),
+              !request.requestId.isEmpty, request.workspace == workspace.name,
+              request.displayId == state.displayId, request.displayOwnerPid == state.pid,
+              request.displayStartedAt == state.startedAt else {
+            logger.log("return-to-mac: rejected request with mismatched monitor identity")
+            return
+        }
+        recovering = true
+        recovery.status("recovering", request: request, detail: "Returning every window to a physical desktop…")
+        Task { @MainActor in
+            do {
+                let held = try await recovery.recover(request: request, serial: self.workspace.serialNumber)
+                defer { withExtendedLifetime(held) {} }
+                try recovery.verifyBeforeDisconnect(held, request: request, serial: self.workspace.serialNumber)
+                self.log("display-owner-before-return-release")
+                self.display = nil
+                self.log("display-owner-after-return-release")
+                try await recovery.finish(held, request: request)
+                // The shortcut and status item remain alive through verification.
+                self.shuttingDown = true
+                self.timer?.invalidate()
+                try? FileManager.default.removeItem(at: self.stateURL)
+                try? FileManager.default.removeItem(at: self.stopURL)
+                Darwin.exit(0)
+            } catch {
+                self.recovering = false
+                recovery.status("failed", request: request, detail: error.localizedDescription)
+            }
+        }
     }
 
     private func shutdown(exitCode: Int32) {

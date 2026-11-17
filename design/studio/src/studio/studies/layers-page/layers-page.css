@@ -1,0 +1,94 @@
+/* Layers page study. Same surface ladder as the Windows desk: page, card,
+   raised. Coral marks selection and the one primary action; no other hue. */
+
+.lp {
+  --card: #242528; --raised: #2f3135; --line: rgba(255,255,255,.07); --line-lit: rgba(255,255,255,.13);
+  --ink: rgba(255,255,255,.94); --ink-2: rgba(255,255,255,.7); --ink-3: rgba(255,255,255,.46);
+  --sel: #ef6a47;
+  --m: "Geist Mono", "GeistMono Nerd Font", "SF Mono", ui-monospace, monospace;
+  display: flex; flex: 1; min-height: 0; color: var(--ink); font: 12px/1.35 var(--sans);
+}
+.lp button { font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; text-align: left; }
+.lp h4 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; color: var(--ink-3); font: 600 10px var(--sans); letter-spacing: .07em; text-transform: uppercase; }
+.lp h4 span { color: var(--ink-3); font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 11px; }
+.lp-mono { font: 11px var(--m); }
+.lp-dim { color: var(--ink-3); }
+.lp-grow { flex: 1; }
+.lp-none { margin: 0; padding: 4px 6px; color: var(--ink-3); }
+.lp-slot { padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.06); color: var(--ink-3); font: 10px var(--m); }
+.lp-app { display: flex; align-items: center; gap: 7px; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.lp-app svg { flex: none; color: var(--ink-2); }
+.lp-ghost { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 5px; background: var(--raised) !important; color: var(--ink-2) !important; font-size: 11px !important; white-space: nowrap; }
+.lp-ghost:hover { color: var(--ink) !important; background: #383a3f !important; }
+.lp-add { display: flex; align-items: center; gap: 6px; height: 28px; margin-top: 4px; padding: 0 6px; border-radius: 5px; color: var(--ink-3) !important; }
+.lp-add:hover { color: var(--ink) !important; background: rgba(255,255,255,.04) !important; }
+
+/* Layer list (A) */
+.lp-layers { display: flex; flex-direction: column; gap: 2px; width: 184px; flex: none; padding: 14px 10px; border-right: 1px solid var(--line); }
+.lp .lp-layer { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 6px; color: var(--ink-2); }
+.lp .lp-layer:hover { background: rgba(255,255,255,.04); }
+.lp .lp-layer[data-selected="true"] { background: color-mix(in srgb, var(--sel) 16%, transparent); color: var(--ink); }
+.lp .lp-layer[data-selected="true"] .lp-slot { background: color-mix(in srgb, var(--sel) 30%, transparent); color: var(--ink); }
+.lp-layer em { font: 10.5px var(--m); font-style: normal; color: var(--ink-3); }
+.lp .lp-layer--add { display: flex; gap: 8px; margin-top: 6px; color: var(--ink-3); }
+
+.lp-main { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 0; padding: 14px 18px 16px; overflow: auto; }
+.lp-head { display: flex; align-items: center; gap: 10px; height: 28px; }
+.lp-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.lp-card { padding: 12px 12px 8px; border-radius: 10px; background: var(--card); }
+.lp-rule { display: grid; grid-template-columns: 110px minmax(120px, 190px) 1fr; gap: 12px; align-items: center; min-height: 30px; padding: 2px 6px; border-radius: 5px; }
+.lp-rule:hover { background: rgba(255,255,255,.035); }
+.lp-cond { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-holds { display: flex; gap: 4px; min-width: 0; overflow: hidden; color: var(--ink-3); }
+.lp-holds i { flex: none; max-width: 220px; padding: 2px 7px; border-radius: 4px; background: var(--raised); color: var(--ink-2); font: normal 10.5px var(--m); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-holds em { font-style: normal; font-size: 11px; }
+
+/* Tray of unclaimed windows (A) */
+.lp-tray { display: flex; flex-direction: column; gap: 4px; width: 270px; flex: none; padding: 16px 14px; border-left: 1px solid var(--line); background: #202124; overflow: auto; }
+.lp-loose { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 7px; }
+.lp-loose:hover { background: rgba(255,255,255,.035); }
+.lp-loose > .lp-mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-loose-acts { display: flex; gap: 5px; margin-top: 4px; }
+
+/* Assign menu */
+.lp-assign { position: relative; }
+.lp-menu { position: absolute; z-index: 5; top: 28px; right: 0; display: flex; flex-direction: column; gap: 1px; min-width: 250px; padding: 5px; border-radius: 8px; background: #2b2c30; box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px var(--line-lit); }
+.lp-menu-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px; padding: 3px 4px 3px 8px; border-radius: 5px; }
+.lp-menu-row:hover { background: rgba(255,255,255,.05); }
+.lp-menu-row button { padding: 3px 7px; border-radius: 4px; color: var(--ink-3) !important; font-size: 11px !important; }
+.lp-menu-row button:hover { background: var(--sel) !important; color: #fff !important; }
+
+/* By window (B) */
+.lp-bar { display: flex; align-items: center; gap: 8px; height: 28px; }
+.lp-count { color: var(--ink-2); } .lp-count strong { color: var(--ink); }
+.lp-seg { display: flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--card); }
+.lp .lp-seg button { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 4px; color: var(--ink-2); }
+.lp .lp-seg button[data-active="true"] { background: var(--raised); color: var(--ink); }
+.lp-seg em { font: normal 10px var(--m); color: var(--sel); }
+.lp-table { padding-top: 4px; }
+.lp-group h5 { display: flex; align-items: center; gap: 7px; margin: 10px 0 2px; padding: 0 6px; font-size: 12px; font-weight: 600; }
+.lp-group h5 svg { color: var(--ink-2); }
+.lp-trow { display: grid; grid-template-columns: 1fr 150px 190px; gap: 12px; align-items: center; height: 30px; padding: 0 6px 0 26px; border-radius: 5px; }
+.lp-trow:hover { background: rgba(255,255,255,.035); }
+.lp-trow > .lp-mono { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-trow[data-loose="true"] > .lp-mono { color: var(--ink); }
+.lp-trow .lp-assign { justify-self: start; }
+.lp-layername { display: flex; align-items: center; gap: 7px; }
+.lp-why { display: inline-flex; align-items: center; gap: 5px; justify-self: start; padding: 2px 7px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line-lit); color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+.lp-why[data-kind="pin"] { color: var(--ink-2); }
+
+/* Board (C) */
+.lp--board { gap: 10px; padding: 14px 16px; overflow-x: auto; align-items: flex-start; }
+.lp-col { display: flex; flex-direction: column; gap: 6px; width: 190px; flex: none; padding: 10px; border-radius: 10px; background: var(--card); }
+.lp-col h4 { justify-content: space-between; align-items: center; color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+.lp-col--loose { width: 220px; background: transparent; box-shadow: inset 0 0 0 1px var(--line-lit); }
+.lp-col--loose h4 span { font: 10.5px var(--m); color: var(--sel); }
+.lp-chip { display: flex; flex-direction: column; gap: 3px; padding: 7px 8px; border-radius: 7px; background: var(--card); }
+.lp-chip > .lp-mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-chip .lp-assign { margin-top: 3px; }
+.lp-chip .lp-menu { left: 0; right: auto; }
+.lp-rulecard { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 7px; background: var(--raised); }
+.lp-rulecard-head { display: flex; align-items: center; justify-content: space-between; color: var(--ink-2); }
+.lp-rulecard .lp-cond { white-space: normal; }
+.lp-rulecard .lp-cond .lp-mono { color: var(--ink-2); }
+.lp-held { color: var(--ink-3); font: 10.5px var(--m); }

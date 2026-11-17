@@ -30,6 +30,8 @@ export type BackendAxNode = {
   value?: string;
   actions?: string[];
   settable?: boolean;
+  /** The backend observed this node but could not finish reading its descendants. */
+  subtreeTruncated?: boolean;
   /** Screen-point frame, when the backend reports one. For action-cua it is also the click coordinate space. */
   frame?: { x: number; y: number; width: number; height: number };
 };
@@ -38,6 +40,10 @@ export type BackendObservation = {
   observationId: string;
   targetId: string;
   at: number;
+  /** Completeness of the presented accessibility tree, when reported by the backend. */
+  complete?: boolean;
+  truncated?: boolean;
+  nodesObserved?: number;
   bounds?: { x: number; y: number; width: number; height: number };
   scale?: number;
   ax?: BackendAxNode[];
@@ -80,7 +86,14 @@ export type BackendNeed = {
   fix: string;
 };
 
-export type BackendAvailability = { ready: boolean; reason?: string; version?: string; needs?: BackendNeed[] };
+export type BackendAvailability = {
+  ready: boolean;
+  reason?: string;
+  version?: string;
+  needs?: BackendNeed[];
+  /** Permission ownership follows the invoking app; no exact app identity is claimed. */
+  permissionContext?: { kind: "launcher"; description: string };
+};
 export type BackendSetupStep = {
   step: string;
   status: "done" | "waiting-on-user" | "failed" | "skipped";
@@ -141,6 +154,8 @@ export type Backend = {
     actions: Partial<Record<BackendActionKind, BackendTier>>;
   };
   availability(call: BackendCall): Promise<BackendAvailability>;
+  /** Readiness for explicit setup, including optional features such as screenshots. */
+  setupAvailability?(call: BackendCall): Promise<BackendAvailability>;
   setup?(call: BackendCall, opts: BackendSetupOptions): Promise<BackendSetupResult>;
   targets(call: BackendCall): Promise<BackendTarget[]>;
   observe(call: BackendCall, targetId: string, opts: { screenshot?: boolean }): Promise<BackendObservation>;

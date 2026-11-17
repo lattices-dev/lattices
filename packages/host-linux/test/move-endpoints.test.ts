@@ -35,3 +35,23 @@ test("moves preserve first origin, aliases, dry-run and failed-return recovery",
     expect(moves.get(42)).toBeUndefined();
   } finally { moves.clear(); }
 });
+
+test("a loaded move origin survives a host restart", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "moves-"));
+  const path = join(dir, "host-moves.json");
+  try {
+    moves.load(path);
+    moves.record({ wid: 7, address: "0x7", spaceIds: [3], isFloating: false, frame: { x: 0, y: 0, w: 10, h: 10 } } as any);
+    moves.clear();
+    expect(moves.get(7)).toBeUndefined();
+    moves.load(path);
+    expect(moves.get(7)?.workspace).toBe(3);
+    moves.forget(7);
+    moves.clear();
+    moves.load(path);
+    expect(moves.get(7)).toBeUndefined();
+  } finally { moves.clear(); rmSync(dir, { recursive: true, force: true }); }
+});

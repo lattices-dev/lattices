@@ -24,7 +24,7 @@ struct MachineBuild: Equatable {
         }
         return false
     }
-    enum Drift: String { case behind = "Behind", different = "Different build" }
+    enum Drift: String { case behind = "Older build", different = "Different build" }
 
     var identity: String {
         guard version != nil || commit != nil else { return "—" }

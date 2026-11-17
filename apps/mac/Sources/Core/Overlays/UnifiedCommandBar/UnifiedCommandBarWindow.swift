@@ -61,13 +61,20 @@ final class UnifiedCommandBarWindow {
             return
         }
 
-        // Capture the frontmost window before presenting (command mode acts on it).
-        if let entry = DesktopModel.shared.frontmostWindow() {
+        // Capture app identity and display before presenting takes focus.
+        DesktopModel.shared.forcePoll()
+        let front = DesktopModel.shared.frontmostWindow()
+        if let entry = front {
             capturedTarget = (wid: entry.wid, pid: entry.pid)
             capturedScreen = screenForWindowFrame(entry.frame)
         }
 
-        let st = UnifiedCommandBarState()
+        let arrangement = AppArrangementTarget.make(
+            anchor: front, windows: DesktopModel.shared.allWindows(),
+            displayName: capturedScreen?.localizedName ?? "Current display",
+            displayForWindow: AppArrangementTarget.displayID(for:)
+        )
+        let st = UnifiedCommandBarState(arrangementTarget: arrangement)
         if mode == .command {
             st.query = "/"
         }
@@ -348,8 +355,31 @@ final class UnifiedCommandBarWindow {
             // highlighted/clicked.
             let ordered = st.search.groupedResults.flatMap { $0.1 }
             guard st.search.selectedIndex >= 0, st.search.selectedIndex < ordered.count else { return }
-            ordered[st.search.selectedIndex].action()
-            dismiss()
+            let result = ordered[st.search.selectedIndex]
+            if result.arrangementTarget != nil {
+                dismiss()
+                result.action()
+            } else {
+                result.action()
+                dismiss()
+            }
+        }
+    }
+
+    /// Dismiss first so the launcher's key/focus teardown cannot close Motion.
+    /// The captured set is validated again, never re-resolved as "all terminals".
+    func openArrangement(_ target: AppArrangementTarget) {
+        dismiss()
+        DesktopModel.shared.forcePoll()
+        let valid = target.isValid(in: DesktopModel.shared.allWindows(),
+                                   displayForWindow: AppArrangementTarget.displayID(for:))
+        guard valid, WindowMotionMode.shared.arrangeWindows(windowIDs: target.windowIDs, on: target.displayID) else {
+            let screen = NSScreen.screens.first {
+                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == target.displayID
+            }
+            showConfirmation(glyph: "exclamationmark.triangle", title: "Windows changed",
+                             subtitle: "Reopen the command bar to refresh \(target.appName).", on: screen)
+            return
         }
     }
 

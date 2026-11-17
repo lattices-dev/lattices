@@ -9,6 +9,10 @@ struct SpaceFilmstripCard: Equatable {
     let id: Int
     let number: Int
     let windows: [SpaceFilmstripWindow]
+    /// The strip keeps its six foremost silhouettes, while the full canvas
+    /// retains every eligible window in the same back-to-front order.
+    var canvasWindows: [SpaceFilmstripWindow]? = nil
+    var allWindows: [SpaceFilmstripWindow] { canvasWindows ?? windows }
 }
 
 struct SpaceFilmstripWindow: Equatable {
@@ -67,8 +71,8 @@ enum SpaceFilmstripLayout {
             return spaces.map { SpaceFilmstripCard(id: $0.id, number: $0.index, windows: []) }
         }
 
-        // Sort the inventory once, then retain at most six visible windows
-        // per desktop. Never rescan or sort it separately for each desktop.
+        // Sort the inventory once. The canvas needs the complete membership;
+        // only the small filmstrip presentation limits its silhouettes.
         let requested = Set(spaces.map(\.id))
         let ownPID = getpid()
         var members: [Int: [SpaceFilmstripWindow]] = [:]
@@ -79,16 +83,15 @@ enum SpaceFilmstripLayout {
                   window.frame.w >= 120, window.frame.h >= 120 else { continue }
             var preview: SpaceFilmstripWindow?
             for (index, id) in window.spaceIds.enumerated() where requested.contains(id) {
-                guard (members[id]?.count ?? 0) < 6,
-                      !window.spaceIds[..<index].contains(id) else { continue }
+                guard !window.spaceIds[..<index].contains(id) else { continue }
                 if preview == nil {
                     let frame = window.frame
                     let source = CGRect(x: (frame.x - bounds.minX) / bounds.width,
                                       y: (frame.y - bounds.minY) / bounds.height,
                                       width: frame.w / bounds.width, height: frame.h / bounds.height)
                     let rect = source.intersection(unit)
-                    // Clip before counting: off-display windows cannot crowd
-                    // a visible window out of the six preview slots.
+                    // Clip before retaining membership so a window belonging
+                    // to this Space but on another monitor is not duplicated.
                     guard !rect.isNull, rect.width > 0.01, rect.height > 0.01 else { break }
                     let crop = CGRect(x: (rect.minX - source.minX) / source.width,
                                       y: (rect.minY - source.minY) / source.height,
@@ -101,8 +104,9 @@ enum SpaceFilmstripLayout {
             }
         }
         return spaces.map { space in
-            SpaceFilmstripCard(id: space.id, number: space.index,
-                windows: Array((members[space.id] ?? []).reversed()))
+            let all = Array((members[space.id] ?? []).reversed())
+            return SpaceFilmstripCard(id: space.id, number: space.index,
+                windows: Array(all.suffix(6)), canvasWindows: all)
         }
     }
 }

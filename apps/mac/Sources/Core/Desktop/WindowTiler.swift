@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import LatticesLayoutKit
 
 // Private API: get CGWindowID from an AXUIElement
 @_silgen_name("_AXUIElementGetWindow")
@@ -147,11 +148,19 @@ final class WindowSelectionOverlay {
         var frame: NSRect
         var slot: Int?
         var isHoverTarget = false
+        /// Overview marks every window in place with the key that picks it.
+        var hint: String? = nil
+        /// Keys of stacked windows would land on one spot; shift right to keep each readable.
+        var hintShift: CGFloat = 0
+        /// Screen frames of windows in front of this one. An overview mark is cut
+        /// away wherever they cover it, so outlines never run across other windows.
+        var occluders: [NSRect] = []
     }
 
     private var windows: [UInt32: NSWindow] = [:]
 
     func sync(_ entries: [Entry]) {
+        for entry in entries { WindowCornerRadius.measure(entry.wid) }
         let keep = Set(entries.map(\.wid))
         for wid in windows.keys where !keep.contains(wid) {
             windows[wid]?.orderOut(nil)
@@ -161,13 +170,17 @@ final class WindowSelectionOverlay {
         if entries.isEmpty { clear() }
     }
 
+    func refreshRadius(_ wid: UInt32) {
+        (windows[wid]?.contentView as? SelectedWindowBorderView)?.windowRadius = WindowCornerRadius.radius(for: wid)
+    }
+
     func clear() {
         windows.values.forEach { $0.orderOut(nil) }
         windows.removeAll()
     }
 
     private func upsert(_ entry: Entry) {
-        let expanded = entry.frame.insetBy(dx: -6, dy: -6)
+        let expanded = entry.frame.insetBy(dx: -SelectedWindowBorderView.pad, dy: -SelectedWindowBorderView.pad)
 
         if let existing = windows[entry.wid] {
             if existing.frame != expanded {
@@ -177,6 +190,10 @@ final class WindowSelectionOverlay {
             if let border = existing.contentView as? SelectedWindowBorderView {
                 border.slot = entry.slot
                 border.isHoverTarget = entry.isHoverTarget
+                border.hint = entry.hint
+                border.hintShift = entry.hintShift
+                border.occluders = entry.occluders.map { $0.offsetBy(dx: -expanded.minX, dy: -expanded.minY) }
+                border.windowRadius = WindowCornerRadius.radius(for: entry.wid)
             }
             existing.orderFrontRegardless()
             return
@@ -201,6 +218,10 @@ final class WindowSelectionOverlay {
             slot: entry.slot,
             isHoverTarget: entry.isHoverTarget
         )
+        borderView.hint = entry.hint
+        borderView.hintShift = entry.hintShift
+        borderView.occluders = entry.occluders.map { $0.offsetBy(dx: -expanded.minX, dy: -expanded.minY) }
+        borderView.windowRadius = WindowCornerRadius.radius(for: entry.wid)
         window.contentView = borderView
         window.alphaValue = 1
         window.orderFrontRegardless()
@@ -209,8 +230,15 @@ final class WindowSelectionOverlay {
 }
 
 private class SelectedWindowBorderView: NSView {
+    /// Room around the window for the ring and the slot tab on its top edge.
+    static let pad: CGFloat = 10
     var slot: Int? { didSet { needsDisplay = true } }
     var isHoverTarget: Bool { didSet { needsDisplay = true } }
+    var hint: String? { didSet { needsDisplay = true } }
+    var hintShift: CGFloat = 0 { didSet { needsDisplay = true } }
+    var occluders: [NSRect] = [] { didSet { if occluders != oldValue { needsDisplay = true } } }
+    /// The real window's corner radius; every outline is drawn concentric to it.
+    var windowRadius: CGFloat = WindowCornerRadius.fallback { didSet { if windowRadius != oldValue { needsDisplay = true } } }
 
     init(frame: NSRect, slot: Int?, isHoverTarget: Bool) {
         self.slot = slot
@@ -225,62 +253,143 @@ private class SelectedWindowBorderView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let selected = slot != nil
-        let accent = selected
-            ? NSColor(calibratedRed: 0.20, green: 0.78, blue: 0.45, alpha: 1.0)
-            : NSColor(calibratedRed: 0.36, green: 0.82, blue: 1.0, alpha: 1.0)
-        let borderWidth: CGFloat = selected ? 3 : 2
-        let cornerRadius: CGFloat = 12
-
-        let glowRect = bounds.insetBy(dx: 1, dy: 1)
-        let glowPath = NSBezierPath(roundedRect: glowRect, xRadius: cornerRadius + 2, yRadius: cornerRadius + 2)
-        glowPath.lineWidth = borderWidth + (selected ? 4 : 3)
-        accent.withAlphaComponent(selected ? 0.22 : 0.14).setStroke()
-        glowPath.stroke()
-
-        let rect = bounds.insetBy(dx: borderWidth / 2 + 2, dy: borderWidth / 2 + 2)
+        let accent = HyperspaceChrome.accentColor
+        let borderWidth: CGFloat = selected ? 1.5 : 1
+        // The overlay is the window grown by `pad`; the stroke's centre line sits
+        // `outset` outside the window edge, so its radius grows by the same amount
+        // and the ring stays concentric with the real corner.
+        let outset: CGFloat = 1.25
+        let rect = bounds.insetBy(dx: Self.pad - outset, dy: Self.pad - outset)
+        let cornerRadius = windowRadius + outset
+        if !selected && !isHoverTarget, let hint {
+            drawMark(in: rect, radius: cornerRadius, hint: hint)
+            return
+        }
         let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
         path.lineWidth = borderWidth
         if isHoverTarget && !selected {
-            path.setLineDash([6, 4], count: 2, phase: 0)
+            path.setLineDash([4, 3], count: 2, phase: 0)
         }
-        accent.withAlphaComponent(selected ? 0.95 : 0.82).setStroke()
+        accent.withAlphaComponent(selected ? 0.95 : 0.7).setStroke()
         path.stroke()
 
-        let innerRect = rect.insetBy(dx: 3, dy: 3)
-        let innerPath = NSBezierPath(roundedRect: innerRect, xRadius: max(cornerRadius - 3, 6), yRadius: max(cornerRadius - 3, 6))
-        innerPath.lineWidth = 1
-        NSColor.white.withAlphaComponent(selected ? 0.72 : 0.24).setStroke()
-        innerPath.stroke()
-
-        if let badgeText = slot.map(String.init) ?? (isHoverTarget ? "click to select" : nil) {
-            let badge = badgeText as NSString
-            let font = NSFont.monospacedSystemFont(ofSize: selected ? 11 : 10, weight: .bold)
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: selected
-                    ? NSColor.black.withAlphaComponent(0.86)
-                    : NSColor.white.withAlphaComponent(0.94),
-            ]
-            let size = badge.size(withAttributes: attrs)
-            let padH: CGFloat = 7
-            let padV: CGFloat = 3
-            let badgeW = size.width + padH * 2
-            let badgeH = size.height + padV * 2
-            let badgeRect = NSRect(x: rect.minX + 8, y: rect.maxY - badgeH - 8, width: badgeW, height: badgeH)
-            let badgePath = NSBezierPath(roundedRect: badgeRect, xRadius: 8, yRadius: 8)
-            if selected {
-                accent.withAlphaComponent(0.95).setFill()
-            } else {
-                NSColor.black.withAlphaComponent(0.78).setFill()
-            }
-            badgePath.fill()
-            if !selected {
-                accent.withAlphaComponent(0.84).setStroke()
-                badgePath.lineWidth = 1
-                badgePath.stroke()
-            }
-            badge.draw(at: NSPoint(x: badgeRect.minX + padH, y: badgeRect.minY + padV), withAttributes: attrs)
+        guard let slot else {
+            if let hint { drawKey(hint, in: rect) }
+            return
         }
+        // The slot rides the ring's top edge just past the corner, a tab on the
+        // frame rather than a sticker over the window's own buttons.
+        let badge = "\(slot)" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: Lens.onAccent,
+        ]
+        let size = badge.size(withAttributes: attrs)
+        let height: CGFloat = 16
+        let width = max(height, ceil(size.width) + 10)
+        var top = rect.maxY + height / 2
+        // A window flush with the top of the display keeps its tab on screen.
+        if let window, let screen = window.screen ?? NSScreen.main {
+            top = min(top, screen.frame.maxY - window.frame.minY - 2)
+        }
+        let badgeRect = NSRect(x: (rect.minX + cornerRadius + 6).rounded(), y: (top - height).rounded(),
+                               width: width, height: height)
+        accent.setFill()
+        NSBezierPath(roundedRect: badgeRect, xRadius: height / 2, yRadius: height / 2).fill()
+        badge.draw(at: NSPoint(x: badgeRect.midX - size.width / 2, y: badgeRect.midY - size.height / 2),
+                   withAttributes: attrs)
+    }
+
+    /// An unpicked window in overview: a paired hairline that reads on light
+    /// and dark windows alike, and the key that picks it.
+    private func drawMark(in rect: NSRect, radius: CGFloat, hint: String) {
+        // Ink on the window edge reads against light windows; a white halo just
+        // outside it reads against dark ones and the wallpaper.
+        let halo = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+        halo.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.85).setStroke()
+        halo.stroke()
+        let edge = NSBezierPath(roundedRect: rect.insetBy(dx: 1.25, dy: 1.25), xRadius: radius - 1.25, yRadius: radius - 1.25)
+        edge.lineWidth = 1.5
+        HyperspaceChrome.inkColor.withAlphaComponent(0.58).setStroke()
+        edge.stroke()
+        // Erase what windows in front cover; the frame shows only where this window does.
+        if let ctx = NSGraphicsContext.current {
+            ctx.compositingOperation = .clear
+            for o in occluders { NSBezierPath(rect: o).fill() }
+            ctx.compositingOperation = .sourceOver
+        }
+        drawKey(hint, in: rect)
+    }
+
+    /// A white keycap with an ink letter, top-left inside the window.
+    private func drawKey(_ hint: String, in rect: NSRect) {
+        let key = hint.uppercased() as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: HyperspaceChrome.inkColor,
+        ]
+        var attrsOut = attrs
+        let size = key.size(withAttributes: attrs)
+        let side: CGFloat = 20
+        let w = max(side, size.width + 10)
+        // Clear of the title bar and its buttons; the first corner a window in
+        // front doesn't cover, else the top-left.
+        let titleBar: CGFloat = 40
+        let candidates = [
+            NSRect(x: rect.minX + 12 + hintShift, y: rect.maxY - titleBar - side, width: w, height: side),
+            NSRect(x: rect.maxX - 12 - w - hintShift, y: rect.maxY - titleBar - side, width: w, height: side),
+            NSRect(x: rect.minX + 12 + hintShift, y: rect.minY + 12, width: w, height: side),
+            NSRect(x: rect.maxX - 12 - w - hintShift, y: rect.minY + 12, width: w, height: side),
+            NSRect(x: rect.midX - w / 2, y: rect.midY - side / 2, width: w, height: side),
+        ].filter { rect.contains($0) }
+        let visible: (NSRect) -> Bool = { c in !self.occluders.contains { $0.intersects(c.insetBy(dx: -4, dy: -4)) } }
+        // Buried corners: scan the window for any patch still showing.
+        let scanned: NSRect? = {
+            var y = rect.maxY - titleBar - side
+            while y >= rect.minY + 8 {
+                var x = rect.minX + 12
+                while x + w <= rect.maxX - 12 {
+                    let c = NSRect(x: x, y: y, width: w, height: side)
+                    if visible(c) { return c }
+                    x += 24
+                }
+                y -= 24
+            }
+            return nil
+        }()
+        let open = candidates.first(where: visible) ?? scanned
+        // Wholly buried: the key still brings it forward, drawn recessed so it
+        // doesn't read as the front window's.
+        let buried = open == nil
+        let capRect = open
+            ?? candidates.first
+            ?? NSRect(x: rect.minX + 8, y: rect.maxY - side - 8, width: w, height: side)
+        let cap = NSBezierPath(roundedRect: capRect, xRadius: 5, yRadius: 5)
+        if buried {
+            NSColor.white.withAlphaComponent(0.6).setFill()
+            cap.fill()
+            cap.lineWidth = 1
+            cap.setLineDash([2, 2], count: 2, phase: 0)
+            HyperspaceChrome.inkColor.withAlphaComponent(0.45).setStroke()
+            cap.stroke()
+            attrsOut[.foregroundColor] = HyperspaceChrome.inkColor.withAlphaComponent(0.55)
+        } else {
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
+            shadow.shadowBlurRadius = 3
+            shadow.shadowOffset = NSSize(width: 0, height: -1)
+            shadow.set()
+            NSColor.white.withAlphaComponent(0.97).setFill()
+            cap.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            cap.lineWidth = 0.5
+            HyperspaceChrome.inkColor.withAlphaComponent(0.22).setStroke()
+            cap.stroke()
+        }
+        key.draw(at: NSPoint(x: capRect.midX - size.width / 2, y: capRect.midY - size.height / 2),
+                 withAttributes: attrsOut)
     }
 }
 
@@ -2686,30 +2795,12 @@ enum WindowTiler {
     /// Returns array of column counts per row (top row first).
     /// e.g. 5 → [3, 2] means 3 on top row, 2 on bottom row.
     static func gridShape(for count: Int) -> [Int] {
-        switch count {
-        case 1:  return [1]
-        case 2:  return [2]
-        case 3:  return [3]
-        case 4:  return [2, 2]
-        case 5:  return [3, 2]
-        case 6:  return [3, 3]
-        case 7:  return [4, 3]
-        case 8:  return [4, 4]
-        case 9:  return [3, 3, 3]
-        case 10: return [5, 5]
-        case 11: return [4, 4, 3]
-        case 12: return [4, 4, 4]
-        default:
-            // General: bias toward more columns (landscape screens)
-            let cols = Int(ceil(sqrt(Double(count) * 1.5)))
-            var rows: [Int] = []
-            var remaining = count
-            while remaining > 0 {
-                rows.append(min(cols, remaining))
-                remaining -= cols
-            }
-            return rows
-        }
+        WindowGridPlanner.shape(for: count)
+    }
+
+    /// Unit grid slots shared by arrangement previews and actual placement.
+    static func normalizedGridSlots(count: Int) -> [CGRect] {
+        WindowGridPlanner.normalizedSlots(count: count)
     }
 
     /// Compute grid slot rects in AX coordinates (top-left origin) for N windows.
@@ -2724,42 +2815,15 @@ enum WindowTiler {
         guard count > 0 else { return [] }
         let visible = screen.visibleFrame
         guard let primaryScreen = NSScreen.screens.first else { return [] }
-        let primaryHeight = primaryScreen.frame.height
-
-        // Compute the target area — full visible frame or a fractional sub-region
-        let targetArea: CGRect
-        if let (rx, ry, rw, rh) = region {
-            targetArea = CGRect(
-                x: visible.origin.x + visible.width * rx,
-                y: visible.origin.y + visible.height * (1.0 - ry - rh),  // NSRect is bottom-left origin
-                width: visible.width * rw,
-                height: visible.height * rh
-            )
-        } else {
-            targetArea = visible
-        }
-
-        // AX Y of target area's top edge
-        let axTop = primaryHeight - targetArea.maxY
-        let resolvedShape: [Int]
-        if let shape, shape.reduce(0, +) == count, !shape.contains(where: { $0 <= 0 }) {
-            resolvedShape = shape
-        } else {
-            resolvedShape = gridShape(for: count)
-        }
-        let rowCount = resolvedShape.count
-        let rowH = targetArea.height / CGFloat(rowCount)
-
-        var slots: [CGRect] = []
-        for (row, cols) in resolvedShape.enumerated() {
-            let colW = targetArea.width / CGFloat(cols)
-            let axY = axTop + CGFloat(row) * rowH
-            for col in 0..<cols {
-                let x = targetArea.origin.x + CGFloat(col) * colW
-                slots.append(CGRect(x: x, y: axY, width: colW, height: rowH))
-            }
-        }
-        return slots
+        // Convert once from AppKit's bottom-left origin to AX's top-left origin.
+        let area = CGRect(
+            x: visible.minX,
+            y: primaryScreen.frame.height - visible.maxY,
+            width: visible.width,
+            height: visible.height
+        )
+        let fractionalRegion = region.map { CGRect(x: $0.0, y: $0.1, width: $0.2, height: $0.3) }
+        return WindowGridPlanner.slots(count: count, in: area, region: fractionalRegion, shape: shape)
     }
 
     /// Raise multiple windows and arrange in smart grid — single CG query, single AX query per process.
@@ -2795,12 +2859,7 @@ enum WindowTiler {
         let visible = screen.visibleFrame
         let screenFrame = screen.frame
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let effectiveShape: [Int]
-        if let shapeOverride, shapeOverride.reduce(0, +) == windows.count, !shapeOverride.contains(where: { $0 <= 0 }) {
-            effectiveShape = shapeOverride
-        } else {
-            effectiveShape = gridShape(for: windows.count)
-        }
+        let effectiveShape = WindowGridPlanner.shape(for: windows.count, requested: shapeOverride)
         let desc = effectiveShape.map(String.init).joined(separator: "+")
 
         diag.info("Grid layout: \(windows.count) windows → [\(desc)]")
@@ -3234,5 +3293,52 @@ enum WindowTiler {
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         try? task.run()
+    }
+}
+
+/// Corner radii of real windows, read once per window from its own pixels, so
+/// selection outlines and marks sit concentric to the window instead of
+/// approximating it. Tahoe's standard windows measure 16pt.
+/// Touched only from the overlay's main-thread sync and the main-actor task below.
+enum WindowCornerRadius {
+    static let fallback: CGFloat = 16
+    nonisolated(unsafe) private static var known: [UInt32: CGFloat] = [:]
+    nonisolated(unsafe) private static var pending: Set<UInt32> = []
+
+    static func radius(for wid: UInt32) -> CGFloat { known[wid] ?? fallback }
+
+    static func measure(_ wid: UInt32) {
+        guard known[wid] == nil, !pending.contains(wid) else { return }
+        pending.insert(wid)
+        Task { @MainActor in
+            defer { pending.remove(wid) }
+            let corner = CGRect(x: 0, y: 0, width: 40, height: 40)
+            guard let image = await WindowCapture.image(
+                bounds: corner, listOption: .optionIncludingWindow,
+                windowID: CGWindowID(wid), imageOption: [.boundsIgnoreFraming, .nominalResolution]
+            ), let r = topRun(image) else { return }
+            known[wid] = r
+            WindowSelectionOverlay.shared.refreshRadius(wid)
+        }
+    }
+
+    /// Transparent pixels along the top row before the window begins: for a
+    /// circular corner this is the radius.
+    private static func topRun(_ image: CGImage) -> CGFloat? {
+        let w = image.width, h = image.height
+        guard w >= 8, h >= 8 else { return nil }
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        // Memory row 0 is the image's top edge.
+        let row = 0
+        var x = 0
+        while x < w, px[row + x * 4 + 3] < 128 { x += 1 }
+        guard x < w else { return nil }                 // fully clear: not a window corner
+        let scale = CGFloat(w) / 40
+        let r = CGFloat(x) / scale
+        return (4...40).contains(r) ? r : (r < 4 ? 0 : nil)
     }
 }

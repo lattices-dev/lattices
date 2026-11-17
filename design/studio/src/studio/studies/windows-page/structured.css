@@ -1,0 +1,104 @@
+/* F · Structured. Three surface steps (page, card, well) carry the structure
+   instead of hairlines; coral is the only hue and marks the selection. */
+
+.wps {
+  --page: transparent; --card: #242528; --well: #121315; --raised: #2f3135; --tile: #282a2f; --tile-bar: #33363c;
+  --line: rgba(255,255,255,.07); --line-lit: rgba(255,255,255,.13);
+  --ink: rgba(255,255,255,.94); --ink-2: rgba(255,255,255,.7); --ink-3: rgba(255,255,255,.46);
+  --sel: var(--accent, #ef6a47);
+  --m: "Geist Mono", "GeistMono Nerd Font", "SF Mono", ui-monospace, monospace;
+  display: flex; flex: 1; min-height: 0; background: var(--page); color: var(--ink); font: 12px/1.35 var(--sans);
+}
+.wps button { font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; text-align: left; }
+.wps-grow { flex: 1; }
+.wps-mono { font: 10.5px var(--m); color: var(--ink-3); }
+.wps h4 { margin: 0 0 8px; color: var(--ink-3); font: 600 10px var(--sans); letter-spacing: .07em; text-transform: uppercase; }
+
+.wps-main { display: flex; flex-direction: column; gap: 14px; flex: 1; min-width: 0; padding: 14px 18px 16px; overflow: auto; }
+
+/* Toolbar */
+.wps-bar { display: flex; align-items: center; gap: 8px; height: 28px; }
+.wps-count { color: var(--ink-2); }
+.wps-count strong { color: var(--ink); font-weight: 600; }
+.wps-layer, .wps-filter { position: relative; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 6px; background: var(--card); color: var(--ink-2); }
+.wps-layer select { appearance: none; padding-right: 14px; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.wps-layer svg { position: absolute; right: 8px; pointer-events: none; }
+.wps-filter { width: 180px; }
+.wps-filter input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; }
+.wps-filter kbd { color: var(--ink-3); font: 10px var(--m); }
+
+/* Display cards */
+.wps-card { display: flex; flex-direction: column; flex-basis: 0; min-width: 0; padding: 12px; border-radius: 10px; background: var(--card); }
+.wps-card-head { display: flex; align-items: baseline; gap: 8px; padding: 0 2px 9px; }
+.wps-card-head strong { font-size: 12.5px; font-weight: 600; }
+
+.wps-tabs { display: flex; gap: 2px; margin-bottom: 10px; }
+.wps .wps-tabs button { display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 5px; color: var(--ink-2); font: 11px var(--m); }
+.wps .wps-tabs button:hover { background: rgba(255,255,255,.05); color: var(--ink); }
+.wps .wps-tabs button[aria-selected="true"] { background: var(--raised); color: var(--ink); }
+.wps-tabs button[data-empty="true"] { color: var(--ink-3); }
+.wps-tabs em { font-style: normal; color: var(--ink-3); }
+.wps-tabs i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
+
+.wps-map { position: relative; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.wps-map-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); }
+.wps-map-ghost { position: absolute; inset: 10px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,255,255,.03), rgba(255,255,255,.07), rgba(255,255,255,.03)); background-size: 200% 100%; animation: wps-shimmer 1s linear infinite; }
+.wps .wps-tile {
+  position: absolute; display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  border-radius: 4px; background: var(--tile); box-shadow: inset 0 0 0 1px var(--line-lit); animation: wps-in .18s ease-out both;
+}
+.wps .wps-tile:hover { background: #2a2c32; }
+.wps-tile-bar { display: flex; align-items: center; gap: 5px; flex: none; height: 18px; padding: 0 7px; background: var(--tile-bar); color: var(--ink); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.wps-tile-bar svg { color: var(--ink-2); }
+.wps-tile-title { padding: 5px 7px; color: var(--ink-2); font: 9.5px/1.35 var(--m); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.wps .wps-tile[data-selected="true"] { z-index: 1; box-shadow: inset 0 0 0 1.5px var(--sel), 0 0 0 3px color-mix(in srgb, var(--sel) 22%, transparent); }
+.wps-tile[data-selected="true"] .wps-tile-bar { background: color-mix(in srgb, var(--sel) 30%, var(--tile-bar)); }
+
+/* Table: same windows as the map, aligned in three columns */
+.wps-table { display: flex; flex-direction: column; margin-top: 10px; }
+.wps .wps-tr { display: grid; width: 100%; grid-template-columns: 124px 1fr 72px; gap: 10px; align-items: center; height: 26px; padding: 0 6px; border-radius: 5px; white-space: nowrap; }
+.wps .wps-tr:hover { background: rgba(255,255,255,.04); }
+.wps .wps-tr[data-selected="true"] { background: color-mix(in srgb, var(--sel) 14%, transparent); }
+.wps-td-app { display: flex; align-items: center; gap: 7px; font-weight: 600; overflow: hidden; }
+.wps-td-app svg { flex: none; color: var(--ink-2); }
+.wps-td-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); font: 11px var(--m); }
+.wps-td-where { color: var(--ink-3); font-size: 11px; text-align: right; }
+.wps-tr--ghost { display: flex !important; gap: 10px; cursor: default; }
+.wps-tr--ghost i { height: 7px; width: 70px; border-radius: 3px; background: rgba(255,255,255,.06); }
+.wps-tr--ghost i:last-child { flex: 1; max-width: 160px; }
+
+
+/* Inspector */
+.wps-insp { display: flex; flex-direction: column; gap: 16px; width: 248px; flex: none; padding: 16px; background: #202124; border-left: 1px solid var(--line); overflow: auto; }
+.wps-insp--empty { align-items: center; justify-content: center; color: var(--ink-3); }
+.wps-insp-id { display: grid; grid-template-columns: 30px 1fr; gap: 8px 10px; align-items: center; }
+.wps-insp-icon { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 7px; background: var(--raised); color: var(--ink); }
+.wps-insp-id strong { font-size: 13px; font-weight: 600; }
+.wps-insp-id p { grid-column: 1 / -1; margin: 0; color: var(--ink-2); font: 11px/1.45 var(--m); overflow-wrap: anywhere; }
+.wps-insp dl { display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; margin: 0; padding: 12px 0; border-block: 1px solid var(--line); }
+.wps-insp dt { color: var(--ink-3); }
+.wps-insp dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wps .wps-primary { display: flex; align-items: center; justify-content: center; gap: 8px; height: 30px; border-radius: 6px; background: var(--sel); color: #fff; font-weight: 600; text-align: center; }
+.wps-primary kbd { opacity: .7; font: 10px var(--m); }
+.wps-place { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.wps .wps-place button { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 6px; background: var(--raised); color: var(--ink-2); }
+.wps .wps-place button:hover { color: var(--ink); background: #2e3036; }
+.wps-desks { display: flex; gap: 4px; }
+.wps .wps-desks button { flex: 1; height: 26px; border-radius: 5px; background: var(--raised); color: var(--ink-2); font: 11px var(--m); text-align: center; }
+.wps .wps-desks button:hover:not(:disabled) { color: var(--ink); background: #2e3036; }
+.wps .wps-desks button:disabled { background: transparent; box-shadow: inset 0 0 0 1px var(--line-lit); color: var(--ink-3); cursor: default; }
+
+/* Desk: both displays on one desk, one table below */
+.wps-desk { gap: 4px; }
+.wps-desk-row { display: flex; gap: 16px; align-items: flex-end; }
+.wps-desk-display { display: flex; flex-direction: column; flex-basis: 0; min-width: 0; }
+.wps-desk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.wps-desk-head .wps-card-head { padding: 0 2px; }
+.wps-desk-head .wps-tabs { margin: 0; }
+.wps-table--grouped { margin-top: 6px; }
+.wps-table--grouped h4 { display: flex; gap: 8px; margin: 12px 0 4px; padding: 0 6px; }
+.wps-table--grouped h4 span { color: var(--ink-3); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.wps-none { margin: 0; padding: 4px 6px; color: var(--ink-3); }
+
+@keyframes wps-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wps-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }

@@ -14,6 +14,9 @@ import { type LayerView } from "./layer-primitives.js";
 import { LayerWorkspaces } from "./layer-workspaces.js";
 import { LayerDriver, guardLayerDispatch, parseLayerSteps, type LayerVerb } from "./layer-driver.js";
 import { recordToolCall, verbForTool } from "./tool-ledger.js";
+import { DeliveryError, delivery, withDelivery } from "./delivery.js";
+import { backendHandlers, backendRefusalMetadata, backendTools } from "./backend-tools.js";
+import { BackendHost } from "@action/runtime";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -225,8 +228,8 @@ function objectProperty(description: string): object {
 }
 
 
-function parseVisionProvider(value: unknown): "minimax" | "moondream" | undefined {
-  return value === "moondream" || value === "minimax" ? value : undefined;
+function parseVisionProvider(value: unknown): "moondream" | undefined {
+  return value === "moondream" ? value : undefined;
 }
 
 function enumProperty(values: string[], description: string): object {
@@ -445,6 +448,7 @@ async function ensureDriveLeaseForAct(input: {
     const identity = driverIdentity.get();
     const begun = await driveClient.begin({
       agent: identity.agent,
+      project: identity.project,
       task: identity.task ?? input.description ?? input.actionKind,
       mode: "background",
       implicit: true,
@@ -943,9 +947,9 @@ const tools: Tool[] = [
       sessionId: textProperty("Optional session id. A new inspection session id is generated when omitted."),
       outputDir: textProperty("Optional absolute or Action-root-relative output directory."),
       includeOcr: booleanProperty("Whether to run Apple Vision OCR on the screenshot. Defaults to true."),
-      includeVision: booleanProperty("Whether to run vision analysis via MiniMax MCP. Defaults to false."),
+      includeVision: booleanProperty("Whether to run local Moondream vision analysis. Defaults to false."),
       visionPrompt: textProperty("Optional vision prompt when includeVision is true."),
-      visionProvider: enumProperty(["minimax", "moondream"], "Vision provider. Defaults to minimax when MINIMAX_API_KEY is set."),
+      visionProvider: enumProperty(["moondream"], "Vision provider. Moondream, running locally, is the only one."),
       direct: booleanProperty("Bypass action-companion and run as a one-shot MCP call."),
       mockNative: booleanProperty("Use companion mock native mode for verification when ActionAgent is unavailable."),
       leaseId: textProperty("Optional drive lease id to heartbeat while observing."),
@@ -966,12 +970,12 @@ const tools: Tool[] = [
   tool(
     "action.observe.vision",
     "Observe Vision",
-    "Run vision analysis on an existing screenshot or the current focused surface. Defaults to MiniMax MCP understand_image.",
+    "Run local Moondream vision analysis on an existing screenshot or the current focused surface.",
     objectSchema({
       imagePath: textProperty("Optional screenshot path. Captures the current surface when omitted."),
       outputPath: textProperty("Optional JSON output path for vision analysis."),
       prompt: textProperty("Optional vision prompt."),
-      provider: enumProperty(["minimax", "moondream"], "Vision provider. Defaults to minimax when MINIMAX_API_KEY is set."),
+      provider: enumProperty(["moondream"], "Vision provider. Moondream, running locally, is the only one."),
       direct: booleanProperty("Bypass action-companion and run as a one-shot MCP call."),
       mockNative: booleanProperty("Use companion mock native mode for verification when ActionAgent is unavailable."),
     }),
@@ -1234,7 +1238,7 @@ const tools: Tool[] = [
   tool(
     "action.act.execute",
     "Execute Action",
-    "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates.",
+    "Execute a deterministic runtime action. Prefer resolved targets over raw coordinates. Every reply, success or error, carries delivery { status: not_delivered | delivery_uncertain | delivered_unverified, retrySafe, recovery }: resend only when retrySafe is true; on observe_then_retry, look before acting again.",
     objectSchema({
       action: objectProperty(
         "RuntimeAction object. kind is one of click, type, press-key, drag, scroll, focus-window, open-app. "
@@ -1310,6 +1314,10 @@ const tools: Tool[] = [
   ),
 ];
 
+// Computer-use backends (codex-cua, trycua-cua): started lazily, one generation per MCP process.
+const backendHost = new BackendHost();
+tools.push(...backendTools(backendHost));
+
 
 async function runCompanionJobIfAvailable(kind: string, payload: JsonObject, direct: boolean | undefined): Promise<JsonObject | undefined> {
   // The companion worker drives the local Mac; remote runs go through the engine directly.
@@ -1379,6 +1387,7 @@ async function beginLayerLease(args: JsonObject): Promise<string | undefined> {
   const identity = driverIdentity.get();
   const begun = await driveClient.begin({
     agent: identity.agent,
+    project: identity.project,
     task: optionalString(args.task) ?? layerTaskName({
       bundleId: optionalString(args.bundleId),
       url: optionalString(args.url),
@@ -1576,10 +1585,11 @@ const handlers: Record<string, ToolHandler> = {
     if (!agent || !task) {
       throw new Error("agent and task are required");
     }
-    driverIdentity.identify(agent, task);
+    const identity = driverIdentity.identify(agent, task);
     const result = await driveClient.begin({
       agent,
       task,
+      project: identity.project,
       mode: parseDriveMode(args.mode),
       sessionId: optionalString(args.sessionId),
       showSupervisionLabel: optionalBoolean(args.showSupervisionLabel) ?? true,
@@ -2028,6 +2038,9 @@ const handlers: Record<string, ToolHandler> = {
     }
 
     let hostDetail: string | undefined;
+    // Everything before the first host command left the app untouched. From it on,
+    // a throw may follow a click that already landed.
+    let dispatched = false;
     try {
       await guardLayerDispatch(initialLayer, {
         status: () => layerContext().director.status(),
@@ -2036,9 +2049,15 @@ const handlers: Record<string, ToolHandler> = {
           if (refusal) throw new Error(refusal);
         },
       });
-      hostDetail = engine instanceof MacOSCommandEngine
-        ? await engine.performAction(action, target, { agentLayer })
-        : (await engine.performAction(action, target)) ?? undefined;
+      if (engine instanceof MacOSCommandEngine) {
+        hostDetail = await engine.performAction(action, target, {
+          agentLayer,
+          onDispatch: () => { dispatched = true; },
+        });
+      } else {
+        dispatched = true;
+        hostDetail = (await engine.performAction(action, target)) ?? undefined;
+      }
     } catch (error) {
       if (pointerFocusWarningShown) {
         try {
@@ -2052,10 +2071,14 @@ const handlers: Record<string, ToolHandler> = {
           // The native lease expiry remains the independent cleanup path.
         }
       }
-      throw error;
+      throw withDelivery(error, dispatched ? "delivery_uncertain" : "not_delivered", action.kind);
     }
     if (!offScreen) {
-      await presentActCue({ lease, action, target });
+      try {
+        await presentActCue({ lease, action, target });
+      } catch (error) {
+        throw withDelivery(error, "delivered_unverified", action.kind);
+      }
     }
 
     return {
@@ -2070,6 +2093,7 @@ const handlers: Record<string, ToolHandler> = {
         // via=pointer borrowed focus or the pointer for a moment.
         ...(hostDetail ? { host: hostDetail } : {}),
         axTier,
+        delivery: delivery("delivered_unverified", action.kind),
       },
       action,
       target,
@@ -2503,6 +2527,15 @@ const handlers: Record<string, ToolHandler> = {
   },
 };
 
+Object.assign(handlers, backendHandlers({
+  host: backendHost,
+  ensureLease: ensureDriveLeaseForAct,
+  actRefusal: () => layerContext().director.actRefusal(),
+  assertLocal: (name) => {
+    if (isRemote()) nativeOnly(name);
+  },
+}));
+
 /** Grok (and the MCP 2025 name grammar) reject dots in tool names.
  *  `action.health` stays the handler key for Hermes. Spec names
  *  (`health`, `observe_snapshot`, …) are what tools/list advertises
@@ -2570,6 +2603,12 @@ function createServer(): Server {
     },
   );
 
+  // Name implicit leases after the harness that connected, so a caller that never
+  // calls drive_begin or driver_identify still shows up as "Claude Code", not a stray.
+  server.oninitialized = () => {
+    driverIdentity.adoptClient(server.getClientVersion());
+  };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: advertisedTools(),
   }));
@@ -2615,8 +2654,16 @@ function createServer(): Server {
           stage: error.stage as unknown as JsonObject,
         });
       }
+      // An act that throws before its handler tags it never reached the host.
+      const failedDelivery = error instanceof DeliveryError
+        ? error.delivery
+        : canonical === "action.act.execute"
+          ? delivery("not_delivered", verbForTool(canonical, args))
+          : undefined;
       return mcpError(error instanceof Error ? error.message : String(error), {
         tool: request.params.name,
+        ...(failedDelivery ? { delivery: failedDelivery as unknown as JsonObject } : {}),
+        ...(backendRefusalMetadata(error) ?? {}),
       });
     }
   });
