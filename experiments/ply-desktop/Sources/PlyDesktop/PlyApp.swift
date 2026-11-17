@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import SwiftUI
 
 @main
 struct PlyDesktopApp {
@@ -20,7 +21,7 @@ struct PlyDesktopApp {
 }
 
 @MainActor
-final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSPopoverDelegate {
     private let atlas: PlyAtlas
     private let view: PlyView
     private let panel: PlyPanel
@@ -30,6 +31,9 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settle: DispatchWorkItem?
     private var selectedPose: PlyPose?
     private var greetingCount = 0
+    private var workspaceOpenCount = 0
+    private let workspacePopover = NSPopover()
+    private let workspaces: PlyWorkspaceStore
     private let selfCheckPath: String?
     private let selfCheckDomain: String?
 
@@ -39,6 +43,15 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         selfCheckPath = checkIndex.flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
         selfCheckDomain = checkIndex == nil ? nil : "dev.arach.lattices.ply-selfcheck.\(UUID().uuidString)"
         defaults = selfCheckDomain.map { UserDefaults(suiteName: $0)! } ?? .standard
+        let client = PlyLatticesClient.bundled()
+        workspaces = PlyWorkspaceStore { request in
+            // Native self-checks never mutate the user's workspace.
+            if checkIndex != nil {
+                return Data("{\"layers\":[],\"active\":null,\"focusActive\":false}".utf8)
+            }
+            guard let client else { throw PlyWorkspaceError.unavailable }
+            return try await client.call(request)
+        }
         self.atlas = atlas
         view = PlyView(atlas: atlas)
         panel = PlyPanel(contentRect: view.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -59,11 +72,12 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         view.onHover = { [weak self] entered in
             guard let self else { return }
             self.settle?.cancel()
-            self.view.show(entered ? .noticed : self.basePose)
+            self.view.show(entered && !self.workspacePopover.isShown ? .noticed : self.basePose)
         }
-        view.onPress = { [weak self] in self?.greet() }
+        view.onPress = { [weak self] in self?.openWorkspaces() }
         view.onDragStart = { [weak self] in
             self?.settle?.cancel()
+            self?.workspacePopover.performClose(nil)
             self?.view.show(.noticed)
         }
         view.onDrop = { [weak self] in
@@ -77,9 +91,18 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         status?.button?.image = atlas.image(.rest, size: 21)
-        status?.button?.toolTip = "Ply — desktop companion"
+        status?.button?.toolTip = "Ply — click your companion to switch workspaces"
         status?.button?.setAccessibilityLabel("Ply menu")
         status?.menu = makeMenu()
+        workspacePopover.behavior = .transient
+        workspacePopover.delegate = self
+        workspacePopover.contentViewController = NSHostingController(rootView:
+            PlyWorkspaceView(store: workspaces) { [weak self] in self?.workspacePopover.performClose(nil) })
+        workspaces.onChange = { [weak self] phase in
+            guard let self else { return }
+            if case .success = phase { self.flash(.happy, for: 1.5, bounce: true) }
+            else if self.workspacePopover.isShown { self.settle?.cancel(); self.view.show(phase.pose) }
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(refreshAccessibility), name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         refreshAccessibility()
@@ -103,7 +126,26 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let selfCheckDomain { defaults.removePersistentDomain(forName: selfCheckDomain) }
     }
 
-    private var basePose: PlyPose { selectedPose ?? .rest }
+    private var basePose: PlyPose { workspacePopover.isShown ? workspaces.phase.pose : (selectedPose ?? .rest) }
+
+    @objc private func openWorkspaces() {
+        workspaceOpenCount += 1
+        if workspacePopover.isShown { workspacePopover.performClose(nil); return }
+        show()
+        // The companion commonly sits at the bottom edge. A side attachment
+        // can extend below the physical screen on a nonactivating panel.
+        let visible = panel.screen?.visibleFrame ?? .zero
+        let edge: NSRectEdge = visible.maxY - panel.frame.maxY >= 460 ? .maxY : .minY
+        workspacePopover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
+        Task { await workspaces.refresh() }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        workspaces.dismiss()
+        settle?.cancel()
+        // AppKit can still report isShown while delivering this callback.
+        view.show(selectedPose ?? .rest)
+    }
 
     private func greet() {
         greetingCount += 1
@@ -127,6 +169,7 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.orderFrontRegardless()
     }
     private func hide() {
+        workspacePopover.performClose(nil)
         settle?.cancel()
         defaults.set(true, forKey: "hidden")
         panel.orderOut(nil)
@@ -158,8 +201,9 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) { populate(menu) }
     private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let heading = NSMenuItem(title: "Ply · desktop preview", action: nil, keyEquivalent: "")
+        let heading = NSMenuItem(title: "Ply · workspace companion", action: nil, keyEquivalent: "")
         heading.isEnabled = false; menu.addItem(heading)
+        item("Switch workspace…", #selector(openWorkspaces), in: menu)
         item(panel.isVisible ? "Hide Ply" : "Show Ply", #selector(toggleVisibility), in: menu)
         item("Say hello", #selector(sayHello), in: menu)
         let sizeMenu = NSMenu(title: "Size")
@@ -214,14 +258,17 @@ final class PlyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         check(atlas.frames.count == 8 && atlas.alpha(at: CGPoint(x: 0.02, y: 0.02), pose: .rest) < 0.02, "Eight model-rendered poses have transparent margins")
         let origin = panel.frame.origin
         let before = greetingCount
+        let openedBefore = workspaceOpenCount
         view.beginDrag(at: CGPoint(x: 400, y: 400), origin: origin)
         view.continueDrag(to: CGPoint(x: 402, y: 401)); view.endDrag()
-        check(greetingCount == before + 1 && panel.frame.origin == origin, "Small pointer movement stays a click and greets")
+        check(workspaceOpenCount == openedBefore + 1 && workspacePopover.isShown && panel.frame.origin == origin,
+              "Small pointer movement opens the workspace picker")
+        workspacePopover.performClose(nil)
         view.beginDrag(at: CGPoint(x: 400, y: 400), origin: origin)
         view.continueDrag(to: CGPoint(x: 340, y: 420))
         check(panel.frame.minX == origin.x - 60 && panel.frame.minY == origin.y + 20 && view.pose == .noticed, "Pickup moves the actual panel with an eager pose")
         view.endDrag()
-        check(view.pose == .happy && greetingCount == before + 1 && defaults.string(forKey: "home") != nil, "Drop smiles, remembers placement, and does not become a click")
+        check(view.pose == .happy && greetingCount == before && workspaceOpenCount == openedBefore + 1 && defaults.string(forKey: "home") != nil, "Drop smiles, remembers placement, and does not open the picker")
         hide(); check(!panel.isVisible, "Hide removes the panel")
         show(); check(panel.isVisible, "Menu can restore the hidden companion")
         let menu = makeMenu()

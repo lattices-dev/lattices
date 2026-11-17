@@ -4,6 +4,8 @@ set -euo pipefail
 PLY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLY_MODE="${1:-run}"
 PLY_BUNDLE="$PLY_ROOT/dist/Ply.app"
+PLY_REPOSITORY="$(cd "$PLY_ROOT/../.." && pwd)"
+PLY_BUN="$(command -v bun)"
 
 # Compile before stopping the previous preview.
 swift build --package-path "$PLY_ROOT"
@@ -29,6 +31,10 @@ cat > "$PLY_BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST
+# LaunchServices does not inherit a login shell PATH. Record this checkout's
+# exact CLI and Bun paths; plist tooling safely encodes spaces and XML characters.
+/usr/bin/plutil -insert PlyRepositoryRoot -string "$PLY_REPOSITORY" "$PLY_BUNDLE/Contents/Info.plist"
+/usr/bin/plutil -insert PlyBunPath -string "$PLY_BUN" "$PLY_BUNDLE/Contents/Info.plist"
 /usr/bin/codesign --force --sign - "$PLY_BUNDLE"
 
 case "$PLY_MODE" in

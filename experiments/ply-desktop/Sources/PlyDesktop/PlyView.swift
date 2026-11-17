@@ -45,7 +45,8 @@ final class PlyView: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel("Ply")
-        setAccessibilityHelp("Click to say hello. Drag to move. Right-click for size, expressions, hide, and quit.")
+        toolTip = "Click to switch workspace · Drag to move"
+        setAccessibilityHelp("Click to switch Lattices workspaces. Drag to move. Right-click for hello, size, expressions, hide, and quit.")
         setAccessibilityValue(pose.title)
     }
 
