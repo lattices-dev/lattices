@@ -97,6 +97,7 @@ struct AppShellView: View {
     /// Actions the visible page published with `.pageActions(_:)`.
     @State private var pageActions: [PageAction] = []
     @ObservedObject private var desktop = DesktopModel.shared
+    @ObservedObject private var agentLayer = AgentLayerShortcut.shared
 
     private var manifest: HudAppManifest {
         HudAppManifest(name: "Lattices", accent: Palette.textDim, targetLabel: "Machine")
@@ -163,6 +164,12 @@ struct AppShellView: View {
         .hudsonAppManifest(manifest)
         .onChange(of: windowController.activePage) { page in
             clearRelevantDismissals(for: page)
+            if [.overview, .layers, .machines].contains(page) { agentLayer.refresh() }
+        }
+        .onAppear { agentLayer.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            guard (note.object as? NSWindow) === windowController.nsWindow else { return }
+            agentLayer.refresh()
         }
     }
 
@@ -252,6 +259,10 @@ struct AppShellView: View {
                 if !wrap {
                     ForEach(pageActions) { action in PageActionButton(action: action, compact: compact) }
                 }
+                if showsAgentLayer {
+                    PageActionButton(action: agentLayerAction, compact: compact)
+                        .help(agentLayerHelp)
+                }
                 PageActionButton(action: searchAction, compact: compact)
             }
             if wrap {
@@ -274,6 +285,27 @@ struct AppShellView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(layers ? Color.white.opacity(0.07) : Palette.border)
                 .frame(height: layers ? 1 : Chrome.hairline)
+        }
+    }
+
+    /// The workspace pages, where the desktop's other surfaces live.
+    private var showsAgentLayer: Bool {
+        [.overview, .layers, .machines].contains(windowController.activePage)
+    }
+
+    private var agentLayerAction: PageAction {
+        PageAction(id: "chrome.agentLayer", title: "Agent layer", icon: "pip",
+            isEnabled: agentLayer.canShow) {
+            agentLayer.show()
+        }
+    }
+
+    private var agentLayerHelp: String {
+        if let error = agentLayer.lastError { return error }
+        switch agentLayer.activeWorkspaces.count {
+        case 0: return "Check for an agent task and show its virtual display"
+        case 1: return "Show the \(agentLayer.activeWorkspaces[0]) agent layer"
+        default: return "Show \(agentLayer.activeWorkspaces.count) agent layers"
         }
     }
 
