@@ -27,7 +27,9 @@ final class WindowHoverPreview {
     private let morphDuration: CFTimeInterval = 0.10
     private let revealDuration: CFTimeInterval = 0.08
     private let dismissDuration: CFTimeInterval = 0.06
-    private let cornerRadius: CGFloat = plateCornerRadius
+    /// Full-size landing plates take a real window's corner, so a preview
+    /// reads as the window that will land there.
+    private let cornerRadius: CGFloat = 16
 
     /// Shared with Hyperspace landing spots so a suggested frame reads as the
     /// same plate Command-drag draws around a window.

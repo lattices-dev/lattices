@@ -23,6 +23,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if LatticesRecordingProbeAppRunner.startFromCommandLineIfNeeded() {
             return
         }
+        // Visual-only Hyperspace stage; runs beside a live Lattices.
+        if HyperspacePreview.startFromCommandLineIfNeeded() {
+            return
+        }
 
         // Refuse before creating controllers or changing any global input state.
         // The peer check also covers older versions that predate the lease.
@@ -64,7 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         registerVisibleSurfaces()
         HotkeyBootstrap.registerHotkeys()
 
-        DispatchQueue.main.async { HUDController.shared.warmUp() }
         DispatchQueue.main.async { MenuBarController.shared.warmUpPopover() }
         DispatchQueue.main.async { ScreenOverlayCanvasController.shared.warmUp() }
 

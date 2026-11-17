@@ -364,13 +364,11 @@ struct CheatSheetView: View {
             shortcutRow(action: .commandBar)
             shortcutRow(action: .unifiedWindow)
             shortcutRow(action: .bezel)
-            shortcutRow(action: .hud)
             shortcutRow(action: .voiceCommand)
             shortcutRow(action: .cheatSheet)
 
             columnHeader("Workspace")
             shortcutRow(action: .motionMode)
-            shortcutRow(action: .inPlaceMode)
             shortcutRow(action: .chordHints)
             shortcutRow(action: .screenMap)
         }

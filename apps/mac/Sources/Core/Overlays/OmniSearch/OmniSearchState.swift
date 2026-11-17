@@ -23,6 +23,7 @@ struct OmniResult: Identifiable {
     let subtitle: String
     let icon: String
     let score: Int           // higher = better match
+    var arrangementTarget: AppArrangementTarget? = nil
     let action: () -> Void
 
     /// Group label for display
@@ -80,8 +81,10 @@ final class OmniSearchState: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var debounceTimer: AnyCancellable?
+    let arrangementTarget: AppArrangementTarget?
 
-    init() {
+    init(arrangementTarget: AppArrangementTarget? = nil) {
+        self.arrangementTarget = arrangementTarget
         // Single-char queries fire immediately with a lightweight search;
         // longer queries debounce 150ms and run the full search.
         debounceTimer = $query
@@ -95,7 +98,7 @@ final class OmniSearchState: ObservableObject {
                     return
                 }
                 if q.isEmpty {
-                    self.results = BrowseMenu.build()   // no-typing browse menu (was the palette)
+                    self.results = self.arrangementResults(for: "") + BrowseMenu.build()
                     self.refreshSummary()
                 } else if q.count == 1 {
                     self.quickSearch(q)        // single char: window index only, no debounce
@@ -117,12 +120,18 @@ final class OmniSearchState: ObservableObject {
 
     private var fullSearchTask: DispatchWorkItem?
 
+    func arrangementResults(for query: String) -> [OmniResult] {
+        guard let target = arrangementTarget,
+              query.isEmpty || target.matches(query) else { return [] }
+        return [target.result]
+    }
+
     // MARK: - Quick search (first character — window index only, no terminal/OCR/projects)
 
     private func quickSearch(_ query: String) {
         let q = query.lowercased()
         let desktop = DesktopModel.shared
-        var all: [OmniResult] = BrowseMenu.machinesSection().filter { row in
+        var all: [OmniResult] = arrangementResults(for: query) + BrowseMenu.machinesSection().filter { row in
             q.split(separator: " ").allSatisfy { row.title.localizedCaseInsensitiveContains(String($0)) }
         }
 
@@ -155,7 +164,7 @@ final class OmniSearchState: ObservableObject {
 
     private func search(_ query: String) {
         let q = query.lowercased()
-        var all: [OmniResult] = BrowseMenu.machinesSection().filter { row in
+        var all: [OmniResult] = arrangementResults(for: query) + BrowseMenu.machinesSection().filter { row in
             q.split(separator: " ").allSatisfy { row.title.localizedCaseInsensitiveContains(String($0)) }
         }
 

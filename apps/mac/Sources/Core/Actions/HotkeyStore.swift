@@ -23,7 +23,6 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case voiceCommand
     case handsOff
     case unifiedWindow
-    case hud
     case mouseFinder
     case overlayActors
     case workspaceAssistant
@@ -42,7 +41,6 @@ enum HotkeyAction: String, CaseIterable, Codable {
     case tileLeftThird, tileCenterThird, tileRightThird
     case tileOpenCell
     case motionMode
-    case inPlaceMode
     case chordHints
 
     var label: String {
@@ -56,7 +54,6 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .voiceCommand:    return "Voice Command"
         case .handsOff:        return "Hands-Off Mode"
         case .unifiedWindow:   return "Workspace Home"
-        case .hud:             return "HUD"
         case .mouseFinder:     return "Find Mouse"
         case .overlayActors:   return "Toggle Overlay Actors"
         case .workspaceAssistant: return "Workspace Assistant"
@@ -97,14 +94,13 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileRightThird:  return "Right Third"
         case .tileOpenCell:    return "Fill Open Cell"
         case .motionMode:      return "Hyperspace"
-        case .inPlaceMode:     return "In-Place Tools"
         case .chordHints:      return "Window Nav Hints"
         }
     }
 
     var group: HotkeyGroup {
         switch self {
-        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .hud, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .focusMode, .stageMode, .inPlaceMode, .chordHints: return .app
+        case .palette, .screenMap, .bezel, .cheatSheet, .desktopInventory, .omniSearch, .voiceCommand, .handsOff, .unifiedWindow, .mouseFinder, .overlayActors, .workspaceAssistant, .activityLog, .gridPlacement, .commandBar, .focusMode, .stageMode, .chordHints: return .app
         case .layer1, .layer2, .layer3, .layer4, .layer5,
              .layer6, .layer7, .layer8, .layer9,
              .layerNext, .layerPrev, .layerUp, .layerDown, .layerTag: return .layers
@@ -123,7 +119,6 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .voiceCommand:    return 205
         case .handsOff:        return 206
         case .unifiedWindow:   return 207
-        case .hud:             return 208
         case .mouseFinder:     return 209
         case .overlayActors:   return 210
         case .workspaceAssistant: return 211
@@ -163,7 +158,6 @@ enum HotkeyAction: String, CaseIterable, Codable {
         case .tileRightThird:  return 313
         case .tileOrganize:    return 315
         case .motionMode:      return 316
-        case .inPlaceMode:     return 317
         case .tileOpenCell:    return 318
         case .chordHints:      return 319
         }
@@ -299,7 +293,6 @@ class HotkeyStore: ObservableObject {
         bind(.unifiedWindow, 18, hyper)  // Hyper+1 (Workspace Home)
         bind(.screenMap, 37, hyper)      // Hyper+L (Layout)
         bind(.bezel,     19, hyper)      // Hyper+2
-        bind(.hud,       20, hyper)      // Hyper+3 (HUD overlay)
         let cmdCtrl = UInt32(cmdKey | controlKey)
         bind(.handsOff, 46, cmdCtrl)          // Ctrl+Cmd+M
         bind(.activityLog, 37, cmdShift)   // Cmd+Shift+L
@@ -341,8 +334,7 @@ class HotkeyStore: ObservableObject {
         bind(.tileRightThird,   20, ctrlOptShift)  // Ctrl+Opt+Shift+3
         bind(.tileOrganize,     31, ctrlOpt)  // Ctrl+Opt+O
         bind(.tileOpenCell,      9, ctrlOpt)  // Ctrl+Opt+V
-        bind(.motionMode,       49, hyper)    // Hyper+Space — Hyperspace (full survey)
-        bind(.inPlaceMode,       5, hyper)    // Hyper+G — in-place window tools
+        bind(.motionMode,       49, hyper)    // Hyper+Space — Hyperspace
         bind(.chordHints,        4, hyper)    // Hyper+H — jump-letter badges on windows
 
         return d

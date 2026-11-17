@@ -57,6 +57,10 @@ struct LatticesApp: App {
             // is reachable from the keyboard and through the menu bar's
             // accessibility tree.
             CommandGroup(before: .sidebar) {
+                Button("Hyperspace") {
+                    WindowMotionMode.shared.toggleHyperspace()
+                }
+                Divider()
                 ForEach(Array(AppPage.primaryTabs.enumerated()), id: \.element) { index, page in
                     Button(page.label) {
                         ScreenMapWindowController.shared.showPage(page)

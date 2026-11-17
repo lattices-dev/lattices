@@ -416,7 +416,11 @@ struct HUDRightBar: View {
 }
 
 struct HUDHoverPreviewView: View {
+    enum Appearance { case hud, hyperspace }
     @ObservedObject var state: HUDState
+    var appearance: Appearance = .hud
+    var actionTitle: String = "inspect"
+    var onActivate: ((WindowEntry) -> Void)? = nil
     @ObservedObject private var previewModel = WindowPreviewStore.shared
     @ObservedObject private var desktop = DesktopModel.shared
     @ObservedObject private var xp = HUDExperienceStore.shared
@@ -424,9 +428,14 @@ struct HUDHoverPreviewView: View {
     @State private var renderedWindowID: UInt32?
     @State private var renderedImage: NSImage?
 
+    private var isHyperspace: Bool { appearance == .hyperspace }
+    private var text: Color { isHyperspace ? HyperspaceChrome.ink : Palette.text }
+    private var secondary: Color { isHyperspace ? HyperspaceChrome.secondary : Palette.textMuted }
+
     private var previewCornerRadii: RectangleCornerRadii {
-        let r: CGFloat = xp.showChrome ? 0 : 14
-        return .init(topLeading: 0, bottomLeading: 0, bottomTrailing: r, topTrailing: r)
+        let r: CGFloat = isHyperspace ? 14 : (xp.showChrome ? 0 : 14)
+        return .init(topLeading: isHyperspace ? r : 0, bottomLeading: isHyperspace ? r : 0,
+                     bottomTrailing: r, topTrailing: r)
     }
 
     private var activeWindow: WindowEntry? {
@@ -443,24 +452,28 @@ struct HUDHoverPreviewView: View {
         Group {
             if let window = renderedWindow ?? activeWindow {
                 Button {
-                    state.pinInspectorCandidate(source: "preview")
+                    if let onActivate { onActivate(window) }
+                    else { state.pinInspectorCandidate(source: "preview") }
                 } label: {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(window.title)
-                                    .font(Typo.monoBold(12))
-                                    .foregroundColor(Palette.text)
+                                    .font(isHyperspace ? Typo.heading(12) : Typo.monoBold(12))
+                                    .foregroundColor(text)
                                     .lineLimit(1)
                                 Text(window.app)
-                                    .font(Typo.mono(10))
-                                    .foregroundColor(Palette.textMuted)
+                                    .font(isHyperspace ? Typo.caption(11) : Typo.mono(10))
+                                    .foregroundColor(secondary)
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Text("inspect")
-                                .font(Typo.mono(9))
-                                .foregroundColor(Palette.textDim)
+                            Text(actionTitle)
+                                .font(isHyperspace ? Typo.heading(11) : Typo.mono(9))
+                                .foregroundColor(isHyperspace ? HyperspaceChrome.secondary : Palette.textDim)
+                                .padding(.horizontal, isHyperspace ? 9 : 0)
+                                .padding(.vertical, isHyperspace ? 5 : 0)
+                                .background(Capsule().fill(isHyperspace ? HyperspaceChrome.well : .clear))
                         }
 
                         ZStack {
@@ -472,8 +485,10 @@ struct HUDHoverPreviewView: View {
                                     containerCornerRadius: 10,
                                     imageCornerRadius: 8,
                                     imagePadding: 8,
-                                    background: HUDChrome.glassFill,
-                                    border: HUDChrome.glassStrokeSoft
+                                    background: isHyperspace ? HyperspaceChrome.well : HUDChrome.glassFill,
+                                    border: isHyperspace ? HyperspaceChrome.border : HUDChrome.glassStrokeSoft,
+                                    placeholderForeground: secondary,
+                                    placeholderSecondary: isHyperspace ? secondary : Palette.textDim
                                 ),
                                 holdingPreviousPreview: isHoldingPreviousPreview(for: window)
                             ) {
@@ -488,17 +503,20 @@ struct HUDHoverPreviewView: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(HUDPanelBackground())
+                    .background {
+                        if isHyperspace { HyperspaceGlassBackground() }
+                        else { HUDPanelBackground() }
+                    }
                     .overlay(
                         UnevenRoundedRectangle(cornerRadii: previewCornerRadii, style: .continuous)
-                            .strokeBorder(HUDChrome.glassStroke, lineWidth: 0.75)
+                            .strokeBorder(isHyperspace ? HyperspaceChrome.border : HUDChrome.glassStroke, lineWidth: isHyperspace ? 0.5 : 0.75)
                     )
                     .clipShape(UnevenRoundedRectangle(cornerRadii: previewCornerRadii, style: .continuous))
-                    .hudEdgeGlow()
+                    .hudEdgeGlow(intensity: isHyperspace ? 0 : 1)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .shadow(color: Color.black.opacity(0.22), radius: 18, x: 0, y: 10)
+                .shadow(color: Color.black.opacity(isHyperspace ? 0.12 : 0.22), radius: 18, x: 0, y: 10)
                 .onHover { isHovering in
                     state.previewInteractionActive = isHovering
                     guard !isHovering else { return }
@@ -545,19 +563,19 @@ struct HUDHoverPreviewView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Palette.text)
+                        .foregroundColor(text)
                     Text(label)
-                        .font(Typo.mono(9))
-                        .foregroundColor(Palette.text)
+                        .font(isHyperspace ? Typo.caption(10) : Typo.mono(9))
+                        .foregroundColor(text)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(HUDChrome.glassFillStrong)
+                        .fill(isHyperspace ? HyperspaceChrome.well : HUDChrome.glassFillStrong)
                         .overlay(
                             Capsule()
-                                .strokeBorder(HUDChrome.glassStrokeSoft, lineWidth: 0.5)
+                                .strokeBorder(isHyperspace ? HyperspaceChrome.border : HUDChrome.glassStrokeSoft, lineWidth: 0.5)
                         )
                 )
                 .padding(14)
