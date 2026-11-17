@@ -1,5 +1,5 @@
-import { publishedDocs, rewriteDocLinks, type DocEntry, type ProductId } from './docs-catalog'
-import { rewriteDocMarkdown } from '../seo/describe'
+import { type DocEntry, type ProductId } from './docs-catalog'
+import publicDocs from '../.generated/docs.public.json'
 import { splitFrontmatter } from './frontmatter'
 import { extractHeadings, prepareMarkdown, type Heading } from './markdown'
 
@@ -9,6 +9,7 @@ export interface DocPage extends DocEntry {
   order: number
   content: string
   headings: Heading[]
+  gated: boolean
 }
 
 export interface BlogPost {
@@ -23,37 +24,13 @@ export interface BlogPost {
   headings: Heading[]
 }
 
-const docModules = import.meta.glob<string>(['../../../../docs/*.md', '../../../../products/action/docs/*.md', '../../../../products/blink/docs/*.md', '../../../../products/blink/landing/public/agents.md', '../../../../products/voice/docs/*.md', '../../content/action/*.md'], {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-})
-
 const blogModules = import.meta.glob<string>('../../content/blog/*.{md,mdx}', {
   query: '?raw',
   import: 'default',
   eager: true,
 })
 
-export const docs: DocPage[] = publishedDocs.map((entry) => {
-  const path = entry.source.startsWith('apps/site/')
-    ? `../../${entry.source.slice('apps/site/'.length)}`
-    : `../../../../${entry.source}`
-  const raw = docModules[path]
-  if (raw === undefined) throw new Error(`Missing catalog source: ${entry.source}`)
-  const { data, content } = splitFrontmatter(raw)
-  const prepared = prepareMarkdown(rewriteDocLinks(content, entry.source))
-  const explicitTitle = stringValue(data.title)
-  const rewritten = rewriteDocMarkdown(prepared, explicitTitle)
-  return {
-    ...entry,
-    title: explicitTitle || rewritten.firstH1 || entry.title,
-    description: stringValue(data.description) || rewritten.summary,
-    order: numberValue(data.order) ?? 999,
-    content: rewritten.markdown,
-    headings: extractHeadings(rewritten.markdown),
-  }
-})
+export const docs = publicDocs as DocPage[]
 
 export const blogPosts: BlogPost[] = Object.entries(blogModules)
   .map(([path, raw]) => {
@@ -102,10 +79,6 @@ function titleFromSlug(slug: string): string {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined
 }
 
 function booleanValue(value: unknown): boolean {

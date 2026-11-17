@@ -113,7 +113,7 @@ export const staticRoutes: readonly RouteMeta[] = [
   },
   {
     path: '/action',
-    title: 'Action — computer use from Lattices',
+    title: 'Action — computer use for agents',
     description: actionDescription,
     priority: '0.9',
     jsonLd: 'none',

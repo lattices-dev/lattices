@@ -1767,6 +1767,22 @@
       "ownership": "action"
     },
     {
+      "id": "action:agent-desktop",
+      "product": "action",
+      "slug": "agent-desktop",
+      "source": "products/action/docs/agent-desktop.md",
+      "title": "agent-desktop backend",
+      "kind": "guide",
+      "canonicalPath": "/action/docs/agent-desktop",
+      "aliases": [],
+      "navGroup": "Reference",
+      "agent": true,
+      "rawAliases": [
+        "/action/agent-desktop.md"
+      ],
+      "ownership": "action"
+    },
+    {
       "id": "action:remote-engine",
       "product": "action",
       "slug": "remote-engine",

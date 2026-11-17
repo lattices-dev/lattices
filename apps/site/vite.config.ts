@@ -8,6 +8,7 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 export default defineConfig({
   plugins: [react(), staticPreview()],
   base: "/",
+  build: { manifest: true },
   server: {
     fs: {
       allow: [repoRoot],

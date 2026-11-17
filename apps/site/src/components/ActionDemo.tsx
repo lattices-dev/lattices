@@ -32,22 +32,19 @@ export function ActionDemo() {
         height={1080}
         poster={demoPoster}
         aria-label="Action demo: a terminal drives a browser and opens a live virtual workspace preview"
-        aria-describedby="action-demo-caption"
+        aria-describedby="action-demo-description"
       >
         <source src={demoVideo} type="video/mp4" />
         <a href={demoVideo}>Watch the Action demo.</a>
       </video>
-      <figcaption id="action-demo-caption">
-        <div>
-          <strong>A real terminal. A real browser. A live agent preview.</strong>
+      <figcaption>
+        <div id="action-demo-description" className="action-demo-description">
+          <p>A real terminal. A real browser. A live agent preview.</p>
           <p>29-second development preview. Scripted sequence, real MCP calls.</p>
+          <p>A Ghostty terminal sits on the left and a browser on the right of a virtual desktop. The terminal runs an Action call that opens the Lattices docs. Its next call creates a second virtual workspace, whose live preview appears over the browser. Further calls navigate that workspace to the docs and read the page title. The entire stage is recorded locally on a Mac. This is a timed script executing real calls, not an agent deciding its next steps live. There is no audio.</p>
         </div>
         <a href={demoVideo} target="_blank" rel="noopener noreferrer">Open full-size video <span aria-hidden="true">↗</span></a>
       </figcaption>
-      <details className="action-demo-description">
-        <summary>What happens in the demo</summary>
-        <p>A Ghostty terminal sits on the left and a browser on the right of a virtual desktop. The terminal runs an Action call that opens the Lattices docs. Its next call creates a second virtual workspace, whose live preview appears over the browser. Further calls navigate that workspace to the docs and read the page title. The entire stage is recorded locally on a Mac. This is a timed script executing real calls, not an agent deciding its next steps live. There is no audio.</p>
-      </details>
     </figure>
   );
 }

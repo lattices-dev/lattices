@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Try Hyperspace — Lattices</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ef6a47' d='M1 1h6v6H1zm8 0h6v6H9zM1 9h6v6H1zm8 0h6v6H9z'/%3E%3C/svg%3E">
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --ink:#101518;
+  --ink-2:rgba(16,21,24,.66);
+  --ink-3:rgba(16,21,24,.46);
+  --hair:rgba(16,21,24,.10);
+  --coral:#ef6a47;
+  --coral-hover:#f27a59;
+  --coral-press:#e35d3a;
+  --coral-ink:#2b0f06;
+  --coral-wash:rgba(239,106,71,.09);
+  --glass:rgba(239,244,255,.66);
+  --r-win:12px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --dur:280ms;
+  --sh:0 0 0 .5px rgba(16,21,24,.16),0 1px 2px rgba(16,21,24,.06),0 16px 36px -14px rgba(30,36,62,.34);
+  --sh-hover:0 0 0 1px rgba(16,21,24,.32),0 1px 2px rgba(16,21,24,.06),0 16px 36px -14px rgba(30,36,62,.34);
+  --sh-sel:0 0 0 1.5px var(--coral),0 0 0 4.5px rgba(239,106,71,.14),0 1px 2px rgba(16,21,24,.06),0 18px 38px -14px rgba(110,48,30,.32);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{font-family:var(--font);color:var(--ink);background:#dde1eb;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:rgba(239,106,71,.24);color:inherit}
+button{font:inherit;color:inherit}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+p{margin:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- backdrop ---------- */
+.backdrop{position:fixed;inset:0;z-index:0;background:#c7d4ed url("assets/alpine-wallpaper.png") center/cover no-repeat}
+.veil{position:absolute;inset:0;background:rgba(255,255,255,.34);opacity:0;transition:opacity var(--dur) var(--ease)}
+.app[data-view="overview"] .veil{opacity:1}
+
+/* ---------- menu bar (desktop view) ---------- */
+.menubar{position:fixed;top:0;left:0;right:0;height:28px;z-index:5;display:flex;align-items:center;gap:18px;padding:0 14px;font-size:13px;color:var(--ink);background:rgba(244,245,249,.56);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);box-shadow:0 .5px 0 rgba(16,21,24,.10);transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease)}
+.app[data-view="overview"] .menubar{opacity:0;transform:translateY(-100%)}
+.menubar b{font-weight:650}
+.menubar .mk{width:15px;height:15px}
+.mb-right{margin-left:auto;display:flex;align-items:center;gap:14px;font-variant-numeric:tabular-nums}
+.mb-right .batt{width:24px;height:16px}
+
+/* ---------- scene + windows ---------- */
+.scene{position:fixed;inset:0;z-index:2}
+.win{position:absolute;left:0;top:0;cursor:pointer;outline:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.ready .win{transition:transform var(--dur) var(--ease),width var(--dur) var(--ease),height var(--dur) var(--ease)}
+.resizing .win,.resizing .ghost{transition:none!important}
+.frame{position:absolute;inset:0;z-index:0;border-radius:var(--r-win);overflow:hidden;display:flex;flex-direction:column;background:rgba(247,250,255,.76);-webkit-backdrop-filter:blur(22px) saturate(1.18);backdrop-filter:blur(22px) saturate(1.18);box-shadow:var(--sh);pointer-events:none;container-type:inline-size;transition:box-shadow .18s var(--ease)}
+.frame::after{content:"";position:absolute;inset:0;z-index:5;border-radius:inherit;box-shadow:inset 0 1px 0 rgba(255,255,255,.92),inset 0 0 0 1px rgba(255,255,255,.64);pointer-events:none}
+.win:hover .frame{box-shadow:var(--sh-hover)}
+.win[aria-checked="true"] .frame{box-shadow:var(--sh-sel)}
+.win:focus-visible::after{content:"";position:absolute;inset:-7px;z-index:1;border-radius:calc(var(--r-win) + 7px);box-shadow:0 0 0 2px var(--ink);pointer-events:none}
+.badge{position:absolute;top:-8px;right:-8px;z-index:2;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font:700 11px/1 var(--font);font-variant-numeric:tabular-nums;color:var(--coral-ink);background:var(--coral);box-shadow:0 0 0 2px #fff,0 2px 6px -1px rgba(120,40,20,.35);opacity:0;transform:scale(.6);transition:opacity .16s var(--ease),transform .22s var(--ease)}
+.win[aria-checked="true"] .badge{opacity:1;transform:none}
+.win[aria-checked="false"]:hover .badge{opacity:1;transform:none;color:transparent;background:rgba(255,255,255,.92);box-shadow:inset 0 0 0 1.5px rgba(16,21,24,.34),0 2px 6px -2px rgba(16,21,24,.25)}
+
+/* proposal outlines on the desktop */
+.ghosts{position:absolute;inset:0;z-index:30;pointer-events:none}
+.ghost{position:absolute;left:0;top:0;border-radius:var(--r-win);background:rgba(239,106,71,.07);box-shadow:inset 0 0 0 1.5px var(--coral);opacity:0;transition:opacity .18s var(--ease)}
+.ready .ghost{transition:opacity .18s var(--ease),transform var(--dur) var(--ease),width var(--dur) var(--ease),height var(--dur) var(--ease)}
+.ghost.on{opacity:1}
+.ghost-tag{position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:6px;height:24px;padding:0 10px 0 2px;border-radius:12px;background:rgba(255,255,255,.92);box-shadow:0 1px 3px rgba(16,21,24,.16);font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap}
+.ghost-tag b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--coral);color:var(--coral-ink);font-size:11px;font-variant-numeric:tabular-nums}
+
+/* ---------- shared window chrome ---------- */
+.tb{position:relative;flex:none;height:38px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(246,249,255,.50);box-shadow:inset 0 -.5px 0 rgba(16,21,24,.12);font-size:13px;font-weight:600;color:#262a2f;white-space:nowrap}
+.lights{display:flex;gap:8px;flex:none}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.2)}
+.lights i:nth-child(2){background:#febc2e}
+.lights i:nth-child(3){background:#28c840}
+.app-ic{width:16px;height:16px;flex:none}
+.tb-title{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:8px;pointer-events:none}
+
+/* browser */
+.f-browser{background:rgba(248,250,255,.80)}
+.tb-browser{height:46px;gap:14px;background:rgba(238,242,252,.60);color:#565b62}
+.nav{display:flex;gap:10px;color:#565b62}
+.nav .dim{opacity:.4}
+.url{flex:1;max-width:460px;margin:0 auto;height:28px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;background:rgba(16,21,24,.055);font-size:13px;font-weight:500;color:#262a2f}
+.url .ic{width:12px;height:12px;color:#6b7077}
+.tb-tools{display:flex;gap:14px}
+.page{flex:1;min-height:0;overflow:hidden}
+.site{display:flex;align-items:center;gap:28px;height:54px;margin:0 clamp(18px,5cqi,40px);box-shadow:inset 0 -1px 0 #ececf0}
+.arxiv{font:400 25px/1 Georgia,"Times New Roman",serif;letter-spacing:-.01em;color:#141414}
+.arxiv span{color:#b31b1b;font-weight:700}
+.site-nav{display:flex;gap:26px;font-size:13.5px;font-weight:500;color:#23272c}
+.site-search{margin-left:auto;color:#3d4248;width:17px;height:17px}
+.abs{padding:16px clamp(18px,5cqi,40px) 0}
+.crumb{font-size:12.5px;color:#3b4046}
+.abs-head{display:flex;align-items:flex-start;gap:20px;margin-top:14px}
+.abs-title{flex:1;min-width:0;font-size:clamp(19px,4.6cqi,31px);line-height:1.13;font-weight:680;letter-spacing:-.022em;color:#121518;text-wrap:balance;max-width:18em}
+.formats{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:9px;padding-top:4px}
+.pdf{display:flex;align-items:center;gap:6px;height:30px;padding:0 13px 0 10px;border-radius:8px;box-shadow:inset 0 0 0 1px #dfe1e6;font-size:13px;font-weight:500;color:#23272c}
+.other{display:flex;align-items:center;gap:4px;font-size:12px;color:#3b4046}
+.other .ic{width:12px;height:12px}
+.authors{margin-top:12px;font-size:13px;color:#3b4046}
+.dateline{margin-top:3px;font-size:12px;color:#646a71;font-variant-numeric:tabular-nums}
+.abs-h{margin-top:18px;font-size:16px;font-weight:650;letter-spacing:-.01em}
+.abstract{margin-top:6px;max-width:72ch;font-size:13.5px;line-height:1.55;color:#23272c}
+.fig{margin:16px 0 0}
+.fig-plot{display:block;width:100%;height:118px;border-radius:8px;background:#f4f6fa}
+.fig-plot path{fill:none;vector-effect:non-scaling-stroke;stroke-width:1.6;stroke-linecap:round}
+.fig-plot .grid path{stroke:#dfe3ea;stroke-width:1}
+.fig-plot .w1{stroke:#2f5d9e}.fig-plot .w2{stroke:#6f8fc4}.fig-plot .w3{stroke:#a9bcdc}
+.fig figcaption{margin-top:7px;font-size:11.5px;color:#646a71}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:18px 0 0;font-size:12.5px;color:#23272c;max-width:72ch}
+.meta dt{font-weight:600;color:#3b4046}
+.meta dd{margin:0}
+
+/* editor */
+.f-editor{background:#1c1d22;color:#c9ccd3}
+.f-editor .tb{background:rgba(43,46,57,.88);box-shadow:inset 0 -1px 0 #141519;color:#d7dae0}
+.f-editor::after{box-shadow:inset 0 1px 0 rgba(255,255,255,.30),inset 0 0 0 1px rgba(255,255,255,.15)}
+.f-editor .tb-title{font-weight:500}
+.f-editor .tb-title .dim{color:#9196a0}
+.ed-body{flex:1;min-height:0;display:flex}
+.ed-side{width:clamp(148px,30%,220px);flex:none;background:#212227;box-shadow:inset -1px 0 0 #16171b;padding:10px 0;font-size:12.5px;color:#c3c6cd;overflow:hidden}
+.ed-h{padding:0 14px 8px;font-size:10.5px;font-weight:650;letter-spacing:.06em;color:#9196a0}
+.tr{display:flex;align-items:center;gap:7px;height:26px;padding-left:14px;white-space:nowrap}
+.tr.l2{padding-left:32px}
+.tr.on{background:rgba(255,255,255,.08);color:#f1f2f4}
+.tr .ic{width:14px;height:14px;color:#9aa0aa}
+.ft{width:13px;height:13px;flex:none;border-radius:3px;box-shadow:inset 0 0 0 1.2px currentColor;font:700 8px/13px var(--mono);text-align:center}
+.ft.rs{color:#e2875f}.ft.md{color:#6fa3dc}
+.ed-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ed-tabs{height:34px;flex:none;display:flex;background:#212227;box-shadow:inset 0 -1px 0 #16171b}
+.ed-tab{display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12.5px;color:#868b95;box-shadow:inset -1px 0 0 #16171b;white-space:nowrap}
+.ed-tab.on{background:#1c1d22;color:#e8eaee;box-shadow:inset 0 1px 0 #5b8def,inset -1px 0 0 #16171b}
+.ed-tab .ic{width:11px;height:11px;opacity:.7}
+.code{flex:1;min-height:0;display:flex;padding:10px 0;font:12.5px/20px var(--mono);overflow:hidden}
+.gutter{flex:none;width:46px;padding-right:16px;text-align:right;color:#555a64;font-variant-numeric:tabular-nums}
+.gutter span{display:block}
+.gutter .cur{color:#c9ccd3}
+.lines{flex:1;min-width:0;white-space:pre;color:#c9ccd3}
+.lines .l{display:block;min-height:20px;padding-left:2px}
+.lines .l.cur{background:rgba(255,255,255,.045)}
+.k{color:#c792ea}.t{color:#e5c07b}.fn{color:#7fb3f5}.sf{color:#56b6c2}.cm{color:#6b717c;font-style:italic}
+.ed-status{height:22px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;font-size:11px;color:#8b9099;background:#18191d;box-shadow:inset 0 1px 0 #121316;white-space:nowrap}
+.ed-status .r{margin-left:auto}
+
+/* notes */
+.f-notes{background:rgba(255,252,249,.78)}
+.f-notes .tb{background:rgba(248,246,250,.56)}
+.fmt{height:34px;flex:none;display:flex;justify-content:flex-end;align-items:center;gap:18px;padding:0 18px;background:rgba(251,249,252,.40);box-shadow:inset 0 -.5px 0 rgba(16,21,24,.10);color:#5b5f66;font-size:13px;font-weight:500}
+.doc{padding:16px clamp(18px,7cqi,40px);overflow:hidden}
+.doc-date{text-align:center;font-size:11.5px;color:#6e7279;margin-bottom:12px}
+.doc-h1{font-size:clamp(20px,4.3cqi,28px);line-height:1.15;font-weight:700;letter-spacing:-.022em;color:#16191c;margin-bottom:10px}
+.doc-h2{font-size:15px;font-weight:650;letter-spacing:-.01em;margin-bottom:6px;color:#1c2024}
+.doc ul{margin:0;padding-left:20px;font-size:14px;line-height:1.6;color:#24282d}
+
+/* plan */
+.f-plan{background:rgba(247,249,255,.72)}
+.tasks{list-style:none;margin:0;padding:8px 16px}
+.tasks li{display:flex;align-items:center;gap:11px;height:36px;font-size:13.5px;color:#22262b;box-shadow:inset 0 -.5px 0 rgba(16,21,24,.08);white-space:nowrap}
+.tasks li:last-child{box-shadow:none}
+.box{width:16px;height:16px;flex:none;border-radius:4.5px;background:#fff;box-shadow:inset 0 0 0 1.25px rgba(16,21,24,.34);display:grid;place-items:center}
+.box.on{background:#38424e;box-shadow:none;color:#fff}
+.box .ic{width:12px;height:12px;stroke-width:2}
+.tasks .done{color:#646a71}
+.due{margin-left:auto;font-size:11.5px;color:#6e737a;font-variant-numeric:tabular-nums}
+
+/* files */
+.f-files{background:rgba(247,249,255,.70)}
+.fbar{height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;color:#5b5f66;box-shadow:inset 0 -.5px 0 rgba(16,21,24,.10)}
+.fbar .sp{flex:1}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:14px 6px;padding:16px 12px}
+.folder{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:#22262b}
+.folder svg{width:52px;height:42px}
+
+@container (max-width:540px){.formats{display:none}.site-nav{gap:18px}}
+@container (max-width:430px){.tb-tools,.nav,.site-nav{display:none}}
+@container (max-width:400px){.ed-side{display:none}}
+@container (max-width:330px){.fmt .opt{display:none}.due{display:none}}
+
+/* ---------- floating instrument ---------- */
+.hud{position:fixed;left:50%;bottom:24px;z-index:50;transform:translateX(-50%);display:flex;align-items:center;height:64px;padding:0 7px 0 14px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,.02)),var(--glass);-webkit-backdrop-filter:blur(28px) saturate(1.35);backdrop-filter:blur(28px) saturate(1.35);box-shadow:0 0 0 1px rgba(255,255,255,.74),inset 0 1px 0 rgba(255,255,255,.96),inset 0 -1px 0 rgba(255,255,255,.30),0 1px 2px rgba(16,21,24,.06),0 18px 40px -16px rgba(28,34,58,.40);white-space:nowrap}
+.brand{display:flex;align-items:center;gap:9px}
+.brand .mark{width:24px;height:24px;flex:none}
+.brand-text{display:flex;flex-direction:column}
+.brand-name{font-size:14px;line-height:16px;font-weight:650;letter-spacing:-.01em}
+.brand-sub{font-size:11.5px;line-height:14px;color:var(--ink-2)}
+.sep{width:1px;height:28px;margin:0 12px;background:var(--hair);flex:none}
+.seg{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:11px;background:rgba(16,21,24,.06)}
+.seg::before{content:"";position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:8px;background:#fff;box-shadow:0 0 0 .5px rgba(16,21,24,.10),0 1px 3px rgba(16,21,24,.12);transition:transform var(--dur) var(--ease)}
+.app[data-view="overview"] .seg::before{transform:translateX(100%)}
+.seg button{position:relative;min-width:80px;height:30px;padding:0 14px;border:0;border-radius:8px;background:none;font-size:13px;font-weight:500;color:var(--ink-2);cursor:pointer}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{color:var(--ink);font-weight:600}
+.count{min-width:98px;padding-right:6px;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+.count.is-empty{color:var(--ink-2)}
+.layouts{display:flex;gap:2px}
+.lay{width:60px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);font-size:11px;font-weight:500;line-height:13px;cursor:pointer;transition:background-color .14s var(--ease)}
+.lay svg{display:block;width:34px;height:24px;overflow:visible}
+.lay:hover:not(:disabled){background:rgba(16,21,24,.05);color:var(--ink)}
+.lay:active:not(:disabled){background:rgba(16,21,24,.08)}
+.lay[aria-pressed="true"]{background:var(--coral-wash);box-shadow:inset 0 0 0 1px rgba(239,106,71,.45);color:var(--ink);font-weight:600}
+.lay[aria-pressed="true"]:hover{background:rgba(239,106,71,.13)}
+.lay:disabled{opacity:.42;cursor:default}
+.cell{fill:rgba(16,21,24,.05);stroke:rgba(16,21,24,.56);stroke-width:1}
+.cell.lead{fill:rgba(16,21,24,.17)}
+.lay[aria-pressed="true"] .cell{fill:rgba(239,106,71,.16);stroke:var(--coral)}
+.lay[aria-pressed="true"] .cell.lead{fill:rgba(239,106,71,.66)}
+.apply{height:38px;display:inline-flex;align-items:center;gap:9px;padding:0 9px 0 15px;border:0;border-radius:11px;background:var(--coral);color:var(--coral-ink);font-size:13px;font-weight:600;cursor:pointer;box-shadow:inset 0 .5px 0 rgba(255,255,255,.45),0 1px 2px rgba(150,50,20,.22),0 6px 14px -6px rgba(200,70,35,.5);transition:background-color .14s var(--ease)}
+.apply kbd{display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:rgba(43,15,6,.12);font:inherit}
+.apply kbd .ic{width:13px;height:13px;stroke-width:1.7}
+.apply:hover:not(:disabled){background:var(--coral-hover)}
+.apply:active:not(:disabled){background:var(--coral-press)}
+.apply:disabled{background:rgba(16,21,24,.06);color:rgba(16,21,24,.40);box-shadow:none;cursor:default}
+.apply:disabled kbd{background:rgba(16,21,24,.06)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:100px;z-index:60;display:flex;align-items:center;gap:10px;height:36px;padding:0 5px 0 12px;border-radius:12px;background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.5);backdrop-filter:blur(24px) saturate(1.5);box-shadow:0 0 0 .5px rgba(16,21,24,.12),0 10px 26px -12px rgba(28,34,58,.38);font-size:12.5px;font-weight:500;white-space:nowrap;opacity:0;visibility:hidden;transform:translate(-50%,6px);transition:opacity .2s var(--ease),transform .2s var(--ease),visibility 0s linear .2s}
+.toast.on{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.toast .ic{color:var(--ink-2)}
+.toast button{height:26px;padding:0 10px;border:0;border-radius:8px;background:rgba(16,21,24,.07);font-size:12px;font-weight:600;cursor:pointer}
+.toast button:hover{background:rgba(16,21,24,.11)}
+
+/* demo affordance */
+.demo{position:fixed;top:12px;right:14px;z-index:55;display:flex;align-items:center;gap:2px;height:30px;padding:0 3px 0 11px;border-radius:10px;background:rgba(255,255,255,.40);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 0 0 .5px rgba(16,21,24,.10);font-size:11.5px;color:var(--ink-2);transition:top var(--dur) var(--ease)}
+.app[data-view="desktop"] .demo{top:36px}
+.demo span{margin-right:6px}
+.demo button{height:24px;padding:0 9px;border:0;border-radius:7px;background:transparent;font-size:11.5px;font-weight:600;color:var(--ink);cursor:pointer}
+.demo button:hover{background:rgba(16,21,24,.07)}
+.demo button[aria-pressed="true"]{background:rgba(16,21,24,.09)}
+
+/* reference comparison */
+.ref{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:#e4e6ee}
+.ref[hidden]{display:none}
+.ref img{width:100%;height:100%;object-fit:contain}
+.ref-bar{position:fixed;top:12px;right:14px;display:flex;align-items:center;gap:8px;height:30px;padding:0 3px 0 11px;border-radius:10px;background:rgba(255,255,255,.78);box-shadow:0 0 0 .5px rgba(16,21,24,.12);font-size:11.5px;color:var(--ink-2)}
+.ref-bar button{height:24px;padding:0 9px;border:0;border-radius:7px;background:rgba(16,21,24,.07);font-size:11.5px;font-weight:600;cursor:pointer}
+.ref-missing{font-size:13px;color:var(--ink-2)}
+
+/* compact map */
+.map{display:none;width:100%;max-width:640px;flex:none}
+.map-screen{position:relative;aspect-ratio:16/10;border-radius:14px;background:rgba(255,255,255,.34);box-shadow:inset 0 0 0 .5px rgba(16,21,24,.16)}
+.tile{position:absolute;display:flex;align-items:flex-start;gap:5px;padding:5px 6px;border-radius:6px;background:rgba(255,255,255,.94);box-shadow:0 0 0 .5px rgba(16,21,24,.2),0 4px 10px -6px rgba(30,36,62,.35);font-size:10.5px;font-weight:600;line-height:12px;overflow:hidden;white-space:nowrap}
+.tile .dot{width:8px;height:8px;margin-top:2px;border-radius:2.5px;flex:none}
+.tile b{margin-left:auto;width:16px;height:16px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--coral);color:var(--coral-ink);font-size:9.5px;line-height:1}
+.tile.sel{box-shadow:0 0 0 1.5px var(--coral),0 4px 10px -6px rgba(30,36,62,.35)}
+.tile.ghost{background:rgba(239,106,71,.08);box-shadow:inset 0 0 0 1.5px var(--coral)}
+.tile.ghost .dot,.tile.ghost .tile-name{display:none}
+.map-empty{position:absolute;inset:0;display:grid;place-items:center;font-size:12.5px;color:var(--ink-2)}
+
+@media (max-width:859px),(max-height:539px){
+  .scene{overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;align-items:center;gap:14px;padding:54px 14px 210px;scrollbar-width:thin;scrollbar-color:rgba(16,21,24,.24) transparent}
+  .scene::-webkit-scrollbar{width:8px}
+  .scene::-webkit-scrollbar-thumb{background:rgba(16,21,24,.22);border-radius:4px}
+  .map{display:block}
+  .win{position:relative;flex:none;width:100%;max-width:640px;height:196px}
+  .ghosts,.menubar{display:none}
+  .app[data-view="desktop"] .demo{top:12px}
+  .hud{left:10px;right:10px;bottom:10px;margin:0 auto;max-width:640px;transform:none;height:auto;display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"brand seg . count" "lay lay lay apply";align-items:center;gap:8px 10px;padding:10px;border-radius:18px}
+  .brand{grid-area:brand}
+  .brand-text{display:none}
+  .seg{grid-area:seg}
+  .count{grid-area:count;min-width:0;padding:0 4px 0 0;text-align:right}
+  .layouts{grid-area:lay;display:grid;grid-template-columns:repeat(4,1fr)}
+  .lay{width:auto}
+  .apply{grid-area:apply;height:50px}
+  .sep{display:none}
+}
+@media (max-width:519px){
+  .hud{grid-template-columns:auto auto 1fr;grid-template-areas:"brand seg count" "lay lay lay" "apply apply apply"}
+  .apply{height:42px;justify-content:center}
+  .seg button{min-width:72px;padding:0 10px}
+  .demo span{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation-duration:0s!important}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="mark" viewBox="0 0 20 20"><rect x="2" y="2" width="4.533" height="4.533" rx="1" fill="#101518"/><rect x="7.733" y="2" width="4.533" height="4.533" rx="1" fill="#101518" fill-opacity=".22"/><rect x="13.467" y="2" width="4.533" height="4.533" rx="1" fill="#101518" fill-opacity=".22"/><rect x="2" y="7.733" width="4.533" height="4.533" rx="1" fill="#101518"/><path d="M7.733 12.267C7.698 12.231 7.733 12.161 7.809 12.059L9.337 7.861Q9.431 7.602 9.519 7.867L9.748 9.333Q9.925 10.075 10.667 10.252L12.133 10.481Q12.398 10.569 12.139 10.663L7.941 12.191C7.839 12.267 7.769 12.302 7.733 12.267Z" fill="#ef6a47"/><rect x="13.467" y="7.733" width="4.533" height="4.533" rx="1" fill="#101518" fill-opacity=".22"/><rect x="2" y="13.467" width="4.533" height="4.533" rx="1" fill="#101518"/><rect x="7.733" y="13.467" width="4.533" height="4.533" rx="1" fill="#101518"/><rect x="13.467" y="13.467" width="4.533" height="4.533" rx="1" fill="#101518"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="7" rx="1.6" fill="currentColor" stroke="none"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7"/></symbol>
+    <symbol id="i-share" viewBox="0 0 16 16"><path d="M8 1.8v8.4M5.2 4.4 8 1.6l2.8 2.8M5.6 6.6H4.4a1 1 0 0 0-1 1v5.9a1 1 0 0 0 1 1h7.2a1 1 0 0 0 1-1V7.6a1 1 0 0 0-1-1h-1.2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+    <symbol id="i-tabs" viewBox="0 0 16 16"><rect x="2.5" y="4.5" width="9" height="9" rx="1.6"/><path d="M5 2.5h7a1.5 1.5 0 0 1 1.5 1.5v7"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3"/><path d="m10.3 10.3 3.2 3.2"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4.5 2.5h4.7l2.8 2.8v8.2a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5zM9 2.6v3h3"/></symbol>
+    <symbol id="i-align" viewBox="0 0 16 16"><path d="M3 4h10M3 7h7M3 10h10M3 13h6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 16 16"><path d="M6.5 4.5h7M6.5 8h7M6.5 11.5h7"/><circle cx="3.3" cy="4.5" r=".9" fill="currentColor" stroke="none"/><circle cx="3.3" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="3.3" cy="11.5" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-image" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.6"/><circle cx="6" cy="6.4" r="1.1"/><path d="m3 12 3.4-3.4 2.4 2.4 1.6-1.6 3 3"/></symbol>
+    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></symbol>
+    <symbol id="i-rows" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5"/></symbol>
+    <symbol id="i-cols" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.6"/><path d="M6.2 3v10M9.8 3v10"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.4 6.6 11.4 12.5 4.8"/></symbol>
+    <symbol id="i-ret" viewBox="0 0 16 16"><path d="M12.5 3.5v3.6a2 2 0 0 1-2 2H3.6M6.5 6.2 3.6 9.1 6.5 12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6 5 5M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4"/></symbol>
+    <symbol id="i-folder-o" viewBox="0 0 16 16"><path d="M2 4.6a1 1 0 0 1 1-1h3.2l1.4 1.6H13a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M2 6.3a9 9 0 0 1 12 0M4.2 8.7a6 6 0 0 1 7.6 0M6.4 11.1a3 3 0 0 1 3.2 0"/><circle cx="8" cy="13.2" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-batt" viewBox="0 0 24 16"><rect x="1.5" y="4" width="18" height="8.5" rx="2.4"/><rect x="3.3" y="5.8" width="11.5" height="4.9" rx="1.1" fill="currentColor" stroke="none"/><path d="M21.6 7v2.5"/></symbol>
+    <symbol id="app-editor" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#2f7de1"/><path d="M6.3 5 3.6 8l2.7 3M9.7 5l2.7 3-2.7 3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="app-notes" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#f2a33a"/><path d="M4.5 6h7M4.5 8.6h7M4.5 11.2h4.4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="app-plan" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#24292f"/><path d="M4.4 8.3 6.9 10.8 11.6 5.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="app-files" viewBox="0 0 16 16"><path d="M1 4a1.6 1.6 0 0 1 1.6-1.6h3.6a1.6 1.6 0 0 1 1.2.5l1 1.1h5a1.6 1.6 0 0 1 1.6 1.6v6.8a1.6 1.6 0 0 1-1.6 1.6H2.6A1.6 1.6 0 0 1 1 12.4z" fill="#4f9de8"/><path d="M1 6.2a1.6 1.6 0 0 1 1.6-1.6h10.8A1.6 1.6 0 0 1 15 6.2v6.2a1.6 1.6 0 0 1-1.6 1.6H2.6A1.6 1.6 0 0 1 1 12.4z" fill="#74b9f4"/></symbol>
+    <symbol id="folder" viewBox="0 0 52 42"><path d="M3 7.5A3.5 3.5 0 0 1 6.5 4h12.2a3.5 3.5 0 0 1 2.6 1.2L24 8h21.5A3.5 3.5 0 0 1 49 11.5v24A3.5 3.5 0 0 1 45.5 39h-39A3.5 3.5 0 0 1 3 35.5z" fill="#4f9de8"/><path d="M3 14.5A3.5 3.5 0 0 1 6.5 11h39a3.5 3.5 0 0 1 3.5 3.5v21a3.5 3.5 0 0 1-3.5 3.5h-39A3.5 3.5 0 0 1 3 35.5z" fill="#74b9f4"/><path d="M3 15a3.5 3.5 0 0 1 3.5-3.5h39A3.5 3.5 0 0 1 49 15" fill="none" stroke="#a6d3fa" stroke-width="1"/></symbol>
+  </defs>
+</svg>
+
+<div class="app" id="app" data-view="overview">
+  <h1 class="sr">Lattices Hyperspace, simulated window layout demo</h1>
+  <div class="backdrop" aria-hidden="true"><div class="veil"></div></div>
+
+  <header class="menubar" aria-hidden="true">
+    <svg class="mk"><use href="#mark"/></svg>
+    <b>Notes</b><span>File</span><span>Edit</span><span>Format</span><span>View</span><span>Window</span><span>Help</span>
+    <span class="mb-right"><svg class="ic"><use href="#i-wifi"/></svg><svg class="ic batt"><use href="#i-batt"/></svg><span>Sun Nov 8&#8195;9:41</span></span>
+  </header>
+
+  <main class="scene" id="scene" aria-label="Simulated windows">
+    <div class="map" id="map" aria-hidden="true"><div class="map-screen" id="mapScreen"></div></div>
+
+    <!-- Browser -->
+    <div class="win" data-id="browser" role="checkbox" aria-checked="false" tabindex="0">
+      <div class="frame f-browser" aria-hidden="true">
+        <div class="tb tb-browser">
+          <span class="lights"><i></i><i></i><i></i></span>
+          <span class="nav"><svg class="ic"><use href="#i-chev-l"/></svg><svg class="ic dim"><use href="#i-chev-r"/></svg></span>
+          <span class="url"><svg class="ic"><use href="#i-lock"/></svg>arxiv.org</span>
+          <span class="tb-tools"><svg class="ic"><use href="#i-share"/></svg><svg class="ic"><use href="#i-plus"/></svg><svg class="ic"><use href="#i-tabs"/></svg></span>
+        </div>
+        <div class="page">
+          <div class="site"><span class="arxiv">ar<span>X</span>iv</span><span class="site-nav"><span>Browse</span><span>Subjects</span><span>Help</span></span><svg class="ic site-search"><use href="#i-search"/></svg></div>
+          <div class="abs">
+            <p class="crumb">cs &gt; cs.AI</p>
+            <div class="abs-head">
+              <div class="abs-title">Tideline: Phase-Aligned Scheduling for Long-Horizon Agents</div>
+              <div class="formats"><span class="pdf"><svg class="ic"><use href="#i-doc"/></svg>PDF</span><span class="other">Other formats<svg class="ic"><use href="#i-chev-d"/></svg></span></div>
+            </div>
+            <p class="authors">Authors: R. Okafor, M. Lindqvist, S. Tan, et al.</p>
+            <p class="dateline">[v1] 4 Nov 2026 · arXiv:2611.04127</p>
+            <p class="abs-h">Abstract</p>
+            <p class="abstract">We present Tideline, a scheduler that aligns agent subtasks to shared phases of a planning horizon. Instead of interleaving work greedily, Tideline defers each task to the next slack phase, which keeps long-horizon plans consistent while reducing redundant tool calls. Across three planning suites it improves task completion at equal compute.</p>
+            <figure class="fig">
+              <svg class="fig-plot" viewBox="0 0 600 140" preserveAspectRatio="none">
+                <g class="grid"><path d="M0 70H600"/><path d="M150 0V140M300 0V140M450 0V140"/></g>
+                <path class="w3" data-phase="-1.7" data-amp="18"/>
+                <path class="w2" data-phase="1.9" data-amp="26"/>
+                <path class="w1" data-phase="0" data-amp="34"/>
+              </svg>
+              <figcaption>Figure 1. Three task phases converge on a shared horizon.</figcaption>
+            </figure>
+            <dl class="meta"><dt>Comments</dt><dd>14 pages, 6 figures</dd><dt>Subjects</dt><dd>Artificial Intelligence (cs.AI); Machine Learning (cs.LG)</dd></dl>
+          </div>
+        </div>
+      </div>
+      <span class="badge" aria-hidden="true"></span>
+    </div>
+
+    <!-- Editor -->
+    <div class="win" data-id="editor" role="checkbox" aria-checked="false" tabindex="0">
+      <div class="frame f-editor" aria-hidden="true">
+        <div class="tb">
+          <span class="lights"><i></i><i></i><i></i></span>
+          <span class="tb-title"><svg class="app-ic"><use href="#app-editor"/></svg>tideline <span class="dim">— tide.rs</span></span>
+        </div>
+        <div class="ed-body">
+          <div class="ed-side">
+            <div class="ed-h">TIDELINE</div>
+            <div class="tr"><svg class="ic"><use href="#i-chev-d"/></svg>src</div>
+            <div class="tr l2 on"><span class="ft rs">R</span>tide.rs</div>
+            <div class="tr l2"><span class="ft rs">R</span>scheduler.rs</div>
+            <div class="tr l2"><span class="ft rs">R</span>phase.rs</div>
+            <div class="tr"><svg class="ic"><use href="#i-gear"/></svg>Cargo.toml</div>
+            <div class="tr"><span class="ft md">M</span>README.md</div>
+          </div>
+          <div class="ed-main">
+            <div class="ed-tabs"><span class="ed-tab on">tide.rs<svg class="ic"><use href="#i-x"/></svg></span><span class="ed-tab">scheduler.rs</span></div>
+            <div class="code">
+              <div class="gutter"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span class="cur">15</span><span>16</span><span>17</span><span>18</span><span>19</span></div>
+              <div class="lines"><span class="l"><span class="k">use</span> std::time::<span class="t">Duration</span>;</span><span class="l"></span><span class="l"><span class="k">pub struct</span> <span class="t">Tide</span>&lt;<span class="t">T</span>&gt; {</span><span class="l">    phases: <span class="t">Vec</span>&lt;<span class="t">Phase</span>&lt;<span class="t">T</span>&gt;&gt;,</span><span class="l">    horizon: <span class="t">Duration</span>,</span><span class="l">}</span><span class="l"></span><span class="l"><span class="k">impl</span>&lt;<span class="t">T</span>: <span class="t">Task</span>&gt; <span class="t">Tide</span>&lt;<span class="t">T</span>&gt; {</span><span class="l">    <span class="k">pub fn</span> <span class="fn">new</span>(horizon: <span class="t">Duration</span>) -&gt; <span class="t">Self</span> {</span><span class="l">        <span class="t">Self</span> { phases: <span class="t">Vec</span>::<span class="fn">new</span>(), horizon }</span><span class="l">    }</span><span class="l"></span><span class="l">    <span class="cm">/// Place a task on the next slack phase.</span></span><span class="l">    <span class="k">pub fn</span> <span class="fn">schedule</span>(&amp;<span class="k">mut</span> <span class="sf">self</span>, task: <span class="t">T</span>) -&gt; <span class="t">PhaseId</span> {</span><span class="l cur">        <span class="k">let</span> slot = <span class="sf">self</span>.<span class="fn">slack_phase</span>();</span><span class="l">        <span class="sf">self</span>.phases[slot].<span class="fn">push</span>(task);</span><span class="l">        <span class="t">PhaseId</span>(slot)</span><span class="l">    }</span><span class="l">}</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="ed-status"><span>main</span><span>0 problems</span><span class="r">Rust</span><span>Ln 15, Col 41</span></div>
+      </div>
+      <span class="badge" aria-hidden="true"></span>
+    </div>
+
+    <!-- Notes -->
+    <div class="win" data-id="notes" role="checkbox" aria-checked="false" tabindex="0">
+      <div class="frame f-notes" aria-hidden="true">
+        <div class="tb"><span class="lights"><i></i><i></i><i></i></span><svg class="app-ic"><use href="#app-notes"/></svg>Research Notes</div>
+        <div class="fmt"><span>Aa</span><svg class="ic"><use href="#i-align"/></svg><svg class="ic"><use href="#i-list"/></svg><svg class="ic opt"><use href="#i-image"/></svg><svg class="ic opt"><use href="#i-more"/></svg></div>
+        <div class="doc">
+          <p class="doc-date">November 8, 2026 at 9:32</p>
+          <p class="doc-h1">Research Notes</p>
+          <p class="doc-h2">Tideline · phase alignment</p>
+          <ul>
+            <li>Tasks share one tidal horizon</li>
+            <li>Scheduler drains work at slack phase</li>
+            <li>Plans stay consistent past 400 steps</li>
+            <li>Next: rerun evals on the planning suite</li>
+          </ul>
+        </div>
+      </div>
+      <span class="badge" aria-hidden="true"></span>
+    </div>
+
+    <!-- Plan -->
+    <div class="win" data-id="plan" role="checkbox" aria-checked="false" tabindex="0">
+      <div class="frame f-plan" aria-hidden="true">
+        <div class="tb"><span class="lights"><i></i><i></i><i></i></span><svg class="app-ic"><use href="#app-plan"/></svg>Project Plan</div>
+        <ul class="tasks">
+          <li><span class="box on"><svg class="ic"><use href="#i-check"/></svg></span><span class="done">Literature review</span><span class="due">Nov 6</span></li>
+          <li><span class="box"></span><span>Experiment design</span><span class="due">Nov 12</span></li>
+          <li><span class="box"></span><span>Run evaluations</span><span class="due">Nov 19</span></li>
+          <li><span class="box"></span><span>Write draft</span><span class="due">Nov 26</span></li>
+        </ul>
+      </div>
+      <span class="badge" aria-hidden="true"></span>
+    </div>
+
+    <!-- Files -->
+    <div class="win" data-id="files" role="checkbox" aria-checked="false" tabindex="0">
+      <div class="frame f-files" aria-hidden="true">
+        <div class="tb"><span class="lights"><i></i><i></i><i></i></span><svg class="app-ic"><use href="#app-files"/></svg>tideline</div>
+        <div class="fbar"><svg class="ic"><use href="#i-chev-l"/></svg><svg class="ic"><use href="#i-chev-r"/></svg><span class="sp"></span><svg class="ic"><use href="#i-grid"/></svg><svg class="ic"><use href="#i-rows"/></svg><svg class="ic"><use href="#i-cols"/></svg><svg class="ic"><use href="#i-eye"/></svg></div>
+        <div class="fgrid">
+          <span class="folder"><svg><use href="#folder"/></svg>papers</span>
+          <span class="folder"><svg><use href="#folder"/></svg>datasets</span>
+          <span class="folder"><svg><use href="#folder"/></svg>results</span>
+          <span class="folder"><svg><use href="#folder"/></svg>drafts</span>
+        </div>
+      </div>
+      <span class="badge" aria-hidden="true"></span>
+    </div>
+
+    <div class="ghosts" id="ghosts" aria-hidden="true"></div>
+  </main>
+
+  <div class="hud" id="hud" role="region" aria-label="Hyperspace">
+    <div class="brand"><svg class="mark" aria-hidden="true"><use href="#mark"/></svg><div class="brand-text"><span class="brand-name">Lattices</span><span class="brand-sub">Hyperspace</span></div></div>
+    <span class="sep" aria-hidden="true"></span>
+    <div class="seg" role="group" aria-label="Presentation">
+      <button type="button" data-view="desktop" aria-pressed="false" title="Desktop (E)">Desktop</button>
+      <button type="button" data-view="overview" aria-pressed="true" title="Overview (E)">Overview</button>
+    </div>
+    <span class="sep" aria-hidden="true"></span>
+    <div class="count" id="count">3 selected</div>
+    <div class="layouts" role="group" aria-label="Layout">
+      <button type="button" class="lay" data-layout="columns" aria-pressed="false" aria-keyshortcuts="1" title="Columns (1)"><svg viewBox="0 0 34 24" aria-hidden="true"></svg><span>Columns</span></button>
+      <button type="button" class="lay" data-layout="mainLeft" aria-pressed="false" aria-keyshortcuts="2" title="Main left (2)"><svg viewBox="0 0 34 24" aria-hidden="true"></svg><span>Main left</span></button>
+      <button type="button" class="lay" data-layout="mainRight" aria-pressed="false" aria-keyshortcuts="3" title="Main right (3)"><svg viewBox="0 0 34 24" aria-hidden="true"></svg><span>Main right</span></button>
+      <button type="button" class="lay" data-layout="rows" aria-pressed="false" aria-keyshortcuts="4" title="Rows (4)"><svg viewBox="0 0 34 24" aria-hidden="true"></svg><span>Rows</span></button>
+    </div>
+    <span class="sep" aria-hidden="true"></span>
+    <button type="button" class="apply" id="apply" aria-keyshortcuts="Enter" title="Apply layout (Return)"><span>Apply layout</span><kbd aria-hidden="true"><svg class="ic"><use href="#i-ret"/></svg></kbd></button>
+  </div>
+
+  <div class="toast" id="toast"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span id="toastMsg"></span><button type="button" id="toastUndo">Undo</button></div>
+
+  <div class="demo" role="group" aria-label="Demo">
+    <span>Simulated windows</span>
+    <button type="button" id="refBtn" aria-pressed="false">Reference</button>
+    <button type="button" id="resetBtn">Reset</button>
+  </div>
+
+  <div class="ref" id="ref" hidden role="dialog" aria-modal="true" aria-label="Reference image">
+    <img id="refImg" src="assets/design-reference.png" loading="lazy" alt="Approved Luminous concept image, shown for comparison only">
+    <div class="ref-bar"><span>Reference · 01-luminous.png</span><button type="button" id="refClose">Close</button></div>
+  </div>
+
+  <div class="sr" id="live" aria-live="polite"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const IDS = ['browser', 'editor', 'notes', 'plan', 'files'];
+  const LABEL = {
+    browser: 'Browser, arXiv paper Tideline',
+    editor: 'Editor, tide.rs',
+    notes: 'Notes, Research Notes',
+    plan: 'Tasks, Project Plan',
+    files: 'Files, tideline folder'
+  };
+  const SHORT = { browser: 'Browser', editor: 'Editor', notes: 'Notes', plan: 'Plan', files: 'Files' };
+  const TINT = { browser: '#5b7bb5', editor: '#2f7de1', notes: '#f2a33a', plan: '#2b323b', files: '#4f9de8' };
+  const LAYOUT_NAME = { columns: 'Columns', mainLeft: 'Main left', mainRight: 'Main right', rows: 'Rows' };
+  const LAYOUT_KEYS = Object.keys(LAYOUT_NAME);
+  const MAIN = 0.55;        // main pane share for Main left / Main right
+  const MENU = 28;          // simulated menu bar height
+  const DESK_GAP = 14;      // desktop inset and gap between tiled windows
+  const OV_GAP = 16;        // overview gap between previews
+  const RAIL = 0.27;        // companion rail width as a share of the stage
+  const GROUP_GAP = 40;     // stage to rail separation
+  const SURVEY_ASPECT = 1.45;
+
+  const INITIAL = {
+    view: 'overview',
+    selection: ['browser', 'editor', 'notes'],
+    pending: 'mainLeft',
+    arranged: null,
+    frames: {
+      browser: { x: 0.03, y: 0.06, w: 0.47, h: 0.80 },
+      editor: { x: 0.36, y: 0.12, w: 0.42, h: 0.50 },
+      notes: { x: 0.47, y: 0.40, w: 0.36, h: 0.48 },
+      plan: { x: 0.775, y: 0.05, w: 0.195, h: 0.34 },
+      files: { x: 0.71, y: 0.60, w: 0.25, h: 0.30 }
+    },
+    z: ['files', 'plan', 'browser', 'notes', 'editor']
+  };
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  let S = clone(INITIAL);
+  const history = [];
+
+  const app = document.getElementById('app');
+  const hud = document.getElementById('hud');
+  const countEl = document.getElementById('count');
+  const applyBtn = document.getElementById('apply');
+  const segBtns = [...document.querySelectorAll('.seg button')];
+  const layBtns = [...document.querySelectorAll('.lay')];
+  const ghostsEl = document.getElementById('ghosts');
+  const mapScreen = document.getElementById('mapScreen');
+  const toastEl = document.getElementById('toast');
+  const toastMsg = document.getElementById('toastMsg');
+  const toastUndo = document.getElementById('toastUndo');
+  const live = document.getElementById('live');
+  const refEl = document.getElementById('ref');
+  const refImg = document.getElementById('refImg');
+  const refBtn = document.getElementById('refBtn');
+  const refClose = document.getElementById('refClose');
+  let refReturnFocus = null;
+  let refBackground = [];
+  const resetBtn = document.getElementById('resetBtn');
+  const mq = window.matchMedia('(max-width: 859px), (max-height: 539px)');
+
+  const wins = {};
+  document.querySelectorAll('.win').forEach((el) => { wins[el.dataset.id] = el; });
+  const ghostEls = IDS.map(() => {
+    const g = document.createElement('div');
+    g.className = 'ghost';
+    g.innerHTML = '<span class="ghost-tag"><b></b><span></span></span>';
+    ghostsEl.appendChild(g);
+    return g;
+  });
+
+  /* ---------- geometry ---------- */
+  function split(r, count, g, axis) {
+    const out = [];
+    const size = ((axis === 'x' ? r.w : r.h) - g * (count - 1)) / count;
+    for (let i = 0; i < count; i++) {
+      out.push(axis === 'x'
+        ? { x: r.x + i * (size + g), y: r.y, w: size, h: r.h }
+        : { x: r.x, y: r.y + i * (size + g), w: r.w, h: size });
+    }
+    return out;
+  }
+  function layoutRects(kind, n, r, g) {
+    if (n < 1) return [];
+    if (n === 1) return [{ x: r.x, y: r.y, w: r.w, h: r.h }];
+    if (kind === 'columns') return split(r, n, g, 'x');
+    if (kind === 'rows') return split(r, n, g, 'y');
+    const mw = (r.w - g) * MAIN;
+    const sw = r.w - g - mw;
+    if (kind === 'mainLeft') {
+      return [{ x: r.x, y: r.y, w: mw, h: r.h }].concat(split({ x: r.x + mw + g, y: r.y, w: sw, h: r.h }, n - 1, g, 'y'));
+    }
+    return [{ x: r.x + sw + g, y: r.y, w: mw, h: r.h }].concat(split({ x: r.x, y: r.y, w: sw, h: r.h }, n - 1, g, 'y'));
+  }
+  function pack(n, r, g, aspect) {
+    if (n < 1) return [];
+    let best = null;
+    for (let c = 1; c <= n; c++) {
+      const rows = Math.ceil(n / c);
+      let w = (r.w - g * (c - 1)) / c;
+      let h = (r.h - g * (rows - 1)) / rows;
+      if (w / h > aspect) w = h * aspect; else h = w / aspect;
+      if (!best || w * h > best.w * best.h) best = { c, rows, w, h };
+    }
+    const out = [];
+    const blockH = best.rows * best.h + (best.rows - 1) * g;
+    let y = r.y + (r.h - blockH) / 2;
+    for (let row = 0; row < best.rows; row++) {
+      const k = Math.min(best.c, n - row * best.c);
+      const rowW = k * best.w + (k - 1) * g;
+      const x = r.x + (r.w - rowW) / 2;
+      for (let i = 0; i < k; i++) out.push({ x: x + i * (best.w + g), y, w: best.w, h: best.h });
+      y += best.h + g;
+    }
+    return out;
+  }
+  const inset = (r, d) => ({ x: r.x + d, y: r.y + d, w: r.w - 2 * d, h: r.h - 2 * d });
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function snap(r) {
+    const x = Math.round(r.x), y = Math.round(r.y);
+    return { x, y, w: Math.round(r.x + r.w) - x, h: Math.round(r.y + r.h) - y };
+  }
+  function place(el, r, z) {
+    const s = snap(r);
+    el.style.transform = 'translate3d(' + s.x + 'px,' + s.y + 'px,0)';
+    el.style.width = s.w + 'px';
+    el.style.height = s.h + 'px';
+    if (z != null) el.style.zIndex = z;
+  }
+  const displayRect = () => ({ x: 0, y: MENU, w: window.innerWidth, h: window.innerHeight - MENU });
+  const sameIds = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  function arrangement() {
+    if (S.pending) return S.pending;
+    if (S.arranged && sameIds(S.arranged.ids, S.selection)) return S.arranged.layout;
+    return null;
+  }
+
+  function overviewBox() {
+    const W = window.innerWidth, H = window.innerHeight;
+    const padX = clamp(W * 0.045, 28, 88);
+    const top = clamp(H * 0.07, 56, 84);
+    const bottom = H - (24 + 64 + clamp(H * 0.04, 24, 40));
+    const availW = W - padX * 2, availH = bottom - top;
+    const aspect = W / (H - MENU);
+    const sw = Math.min((availW - GROUP_GAP) / (1 + RAIL), availH * aspect);
+    const sh = sw / aspect;
+    const rw = sw * RAIL;
+    const total = sw + GROUP_GAP + rw;
+    const x0 = (W - total) / 2;
+    const y0 = top + (availH - sh) / 2;
+    return {
+      stage: { x: x0, y: y0, w: sw, h: sh },
+      rail: { x: x0 + sw + GROUP_GAP, y: y0, w: rw, h: sh },
+      all: { x: x0, y: y0, w: total, h: sh }
+    };
+  }
+  function railRects(k, rail) {
+    let h = rail.w / 1.36;
+    if (k * h + (k - 1) * OV_GAP > rail.h) h = (rail.h - (k - 1) * OV_GAP) / k;
+    return Array.from({ length: k }, (_, i) => ({ x: rail.x, y: rail.y + i * (h + OV_GAP), w: rail.w, h }));
+  }
+
+  function layoutOverview() {
+    const b = overviewBox();
+    const sel = S.selection, n = sel.length;
+    const rects = {};
+    if (n === 0) {
+      pack(IDS.length, b.all, OV_GAP, SURVEY_ASPECT).forEach((r, i) => { rects[IDS[i]] = r; });
+    } else {
+      const kind = arrangement();
+      const rs = kind ? layoutRects(kind, n, b.stage, OV_GAP) : pack(n, b.stage, OV_GAP, SURVEY_ASPECT);
+      sel.forEach((id, i) => { rects[id] = rs[i]; });
+      const rest = IDS.filter((id) => !sel.includes(id));
+      railRects(rest.length, b.rail).forEach((r, i) => { rects[rest[i]] = r; });
+    }
+    IDS.forEach((id) => place(wins[id], rects[id], sel.includes(id) ? 20 : 10));
+  }
+  function layoutDesktop() {
+    const d = displayRect();
+    IDS.forEach((id) => {
+      const f = S.frames[id];
+      place(wins[id], { x: d.x + f.x * d.w, y: d.y + f.y * d.h, w: f.w * d.w, h: f.h * d.h }, 10 + S.z.indexOf(id));
+    });
+  }
+  function renderGhosts() {
+    const n = S.selection.length;
+    const show = !mq.matches && S.view === 'desktop' && S.pending && n >= 2;
+    const rs = show ? layoutRects(S.pending, n, inset(displayRect(), DESK_GAP), DESK_GAP) : [];
+    ghostEls.forEach((g, i) => {
+      if (i < rs.length) {
+        if (!g.classList.contains('on')) {
+          g.style.transition = 'none';
+          place(g, rs[i]);
+          void g.offsetWidth;
+          g.style.transition = '';
+        } else {
+          place(g, rs[i]);
+        }
+        g.querySelector('b').textContent = String(i + 1);
+        g.querySelector('.ghost-tag span').textContent = SHORT[S.selection[i]];
+        g.classList.add('on');
+      } else {
+        g.classList.remove('on');
+      }
+    });
+  }
+  function clearPlacement() {
+    IDS.forEach((id) => {
+      const el = wins[id];
+      el.style.transform = '';
+      el.style.width = '';
+      el.style.height = '';
+      el.style.zIndex = '';
+    });
+  }
+  function tile(r, id, i, cls) {
+    const s = snap(r);
+    return '<div class="tile ' + cls + (i >= 0 ? ' sel' : '') + '" style="left:' + s.x + 'px;top:' + s.y + 'px;width:' + s.w + 'px;height:' + s.h + 'px">'
+      + '<span class="dot" style="background:' + TINT[id] + '"></span><span class="tile-name">' + SHORT[id] + '</span>'
+      + (i >= 0 ? '<b>' + (i + 1) + '</b>' : '') + '</div>';
+  }
+  function renderMap() {
+    const r = { x: 0, y: 0, w: mapScreen.clientWidth, h: mapScreen.clientHeight };
+    if (!r.w) return;
+    const sel = S.selection, n = sel.length;
+    const parts = [];
+    if (S.view === 'desktop') {
+      S.z.forEach((id) => {
+        const f = S.frames[id];
+        parts.push(tile({ x: f.x * r.w, y: f.y * r.h, w: f.w * r.w, h: f.h * r.h }, id, sel.indexOf(id), ''));
+      });
+      if (S.pending && n >= 2) {
+        layoutRects(S.pending, n, inset(r, 6), 6).forEach((g, i) => parts.push(tile(g, sel[i], i, 'ghost')));
+      }
+    } else if (n) {
+      const kind = arrangement();
+      const rs = kind ? layoutRects(kind, n, inset(r, 6), 6) : pack(n, inset(r, 10), 8, SURVEY_ASPECT);
+      sel.forEach((id, i) => parts.push(tile(rs[i], id, i, '')));
+    } else {
+      parts.push('<p class="map-empty">Select windows below</p>');
+    }
+    mapScreen.innerHTML = parts.join('');
+  }
+
+  /* ---------- layout diagrams (drawn by the same geometry function) ---------- */
+  let diagramCount = 0;
+  function drawDiagrams(n) {
+    const k = Math.max(2, Math.min(5, n));
+    if (k === diagramCount) return;
+    diagramCount = k;
+    const g = k >= 4 ? 2 : 3;
+    layBtns.forEach((btn) => {
+      const rs = layoutRects(btn.dataset.layout, k, { x: 0, y: 0, w: 34, h: 24 }, g);
+      btn.querySelector('svg').innerHTML = rs.map((r, i) => {
+        const x0 = Math.round(r.x), y0 = Math.round(r.y);
+        const w = Math.max(1, Math.round(r.x + r.w) - x0 - 1);
+        const h = Math.max(1, Math.round(r.y + r.h) - y0 - 1);
+        return '<rect class="cell' + (i === 0 ? ' lead' : '') + '" x="' + (x0 + 0.5) + '" y="' + (y0 + 0.5) + '" width="' + w + '" height="' + h + '" rx="2"/>';
+      }).join('');
+    });
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    const compact = mq.matches;
+    const sel = S.selection, n = sel.length;
+    app.dataset.view = S.view;
+    IDS.forEach((id) => {
+      const el = wins[id];
+      const i = sel.indexOf(id);
+      el.setAttribute('aria-checked', String(i >= 0));
+      el.querySelector('.badge').textContent = i >= 0 ? String(i + 1) : '';
+      el.setAttribute('aria-label', LABEL[id] + (i >= 0 ? ', number ' + (i + 1) + ' in selection' : ''));
+    });
+    segBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
+    countEl.textContent = n ? n + ' selected' : 'Select windows';
+    countEl.classList.toggle('is-empty', !n);
+    drawDiagrams(n);
+    layBtns.forEach((b) => {
+      b.disabled = n < 2;
+      b.title = n < 2 ? 'Select two or more windows' : LAYOUT_NAME[b.dataset.layout] + ' (' + (LAYOUT_KEYS.indexOf(b.dataset.layout) + 1) + ')';
+      b.setAttribute('aria-pressed', String(S.pending === b.dataset.layout));
+    });
+    applyBtn.disabled = !S.pending;
+    if (compact) {
+      clearPlacement();
+      renderMap();
+    } else if (S.view === 'overview') {
+      layoutOverview();
+    } else {
+      layoutDesktop();
+    }
+    renderGhosts();
+    toastEl.style.bottom = Math.round(hud.getBoundingClientRect().height + (compact ? 10 : 24) + 10) + 'px';
+  }
+
+  /* ---------- actions ---------- */
+  let liveTimer = 0;
+  function announce(msg) {
+    live.textContent = '';
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => { live.textContent = msg; }, 30);
+  }
+  let toastTimer = 0;
+  function showToast(msg) {
+    toastMsg.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 5200);
+  }
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastEl.classList.remove('on');
+  }
+
+  function toggle(id) {
+    const i = S.selection.indexOf(id);
+    if (i >= 0) S.selection.splice(i, 1); else S.selection.push(id);
+    const n = S.selection.length;
+    if (n < 2 && S.pending) S.pending = null;
+    render();
+    announce(i >= 0 ? SHORT[id] + ' removed, ' + n + ' selected' : SHORT[id] + ' selected as number ' + n);
+  }
+  function choose(kind) {
+    const n = S.selection.length;
+    if (n < 2) { announce('Select two or more windows to choose a layout'); return; }
+    S.pending = S.pending === kind ? null : kind;
+    render();
+    announce(S.pending ? LAYOUT_NAME[kind] + ' previewed for ' + n + ' windows. Enter applies, Escape cancels.' : 'Proposal cleared');
+  }
+  function cancel() {
+    if (!S.pending) return;
+    S.pending = null;
+    render();
+    announce('Proposal cleared');
+  }
+  function setView(v) {
+    if (S.view === v) return;
+    S.view = v;
+    render();
+    announce(v === 'desktop' ? 'Desktop' : 'Overview');
+  }
+  function apply() {
+    const sel = S.selection, n = sel.length;
+    if (!S.pending || n < 2) return;
+    const compact = mq.matches;
+    const W = compact ? 1440 : window.innerWidth;
+    const H = compact ? 900 : window.innerHeight;
+    const disp = { x: 0, y: MENU, w: W, h: H - MENU };
+    const rs = layoutRects(S.pending, n, inset(disp, DESK_GAP), DESK_GAP);
+    history.push({ frames: clone(S.frames), z: S.z.slice(), arranged: S.arranged ? clone(S.arranged) : null });
+    sel.forEach((id, i) => {
+      const r = rs[i];
+      S.frames[id] = { x: (r.x - disp.x) / disp.w, y: (r.y - disp.y) / disp.h, w: r.w / disp.w, h: r.h / disp.h };
+    });
+    S.z = S.z.filter((id) => !sel.includes(id)).concat(sel.slice().reverse());
+    S.arranged = { layout: S.pending, ids: sel.slice() };
+    const name = LAYOUT_NAME[S.pending];
+    S.pending = null;
+    S.view = 'desktop';
+    render();
+    showToast(name + ' applied to ' + n + ' windows');
+    announce(name + ' applied to ' + n + ' windows. Command Z undoes.');
+  }
+  function undoLast() {
+    if (S.pending) { cancel(); return; }
+    const prev = history.pop();
+    if (!prev) return;
+    S.frames = prev.frames;
+    S.z = prev.z;
+    S.arranged = prev.arranged;
+    hideToast();
+    render();
+    announce('Layout undone');
+  }
+  function reset() {
+    S = clone(INITIAL);
+    history.length = 0;
+    hideToast();
+    render();
+    announce('Demo reset to three selected windows with Main left previewed');
+  }
+  function openRef() {
+    if (!refImg.getAttribute('src')) refImg.setAttribute('src', 'assets/design-reference.png');
+    refReturnFocus = document.activeElement;
+    refBackground = [...app.children].filter((el) => el !== refEl).map((el) => [el, el.inert]);
+    refBackground.forEach(([el]) => { el.inert = true; });
+    refEl.hidden = false;
+    refBtn.setAttribute('aria-pressed', 'true');
+    refClose.focus();
+  }
+  function closeRef() {
+    refEl.hidden = true;
+    refBackground.forEach(([el, inert]) => { el.inert = inert; });
+    refBackground = [];
+    refBtn.setAttribute('aria-pressed', 'false');
+    const target = refReturnFocus instanceof HTMLElement && refReturnFocus !== document.body ? refReturnFocus : refBtn;
+    target.focus();
+    refReturnFocus = null;
+  }
+  refImg.addEventListener('error', () => {
+    const p = document.createElement('p');
+    p.className = 'ref-missing';
+    p.textContent = 'Reference image not found at assets/design-reference.png';
+    refImg.replaceWith(p);
+  });
+
+  /* ---------- events ---------- */
+  IDS.forEach((id) => {
+    const el = wins[id];
+    el.addEventListener('click', () => toggle(id));
+    el.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggle(id); }
+    });
+  });
+  segBtns.forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+  layBtns.forEach((b) => b.addEventListener('click', () => choose(b.dataset.layout)));
+  applyBtn.addEventListener('click', apply);
+  toastUndo.addEventListener('click', undoLast);
+  resetBtn.addEventListener('click', reset);
+  refBtn.addEventListener('click', () => (refEl.hidden ? openRef() : closeRef()));
+  refClose.addEventListener('click', closeRef);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
+    if (!refEl.hidden) {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef(); }
+      if (e.key === 'Tab') { e.preventDefault(); refClose.focus(); }
+      return;
+    }
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) { e.preventDefault(); undoLast(); return; }
+    if (mod || e.altKey) return;
+    const t = e.target;
+    if (e.key === 'Escape') {
+      if (S.pending) { e.preventDefault(); cancel(); }
+      return;
+    }
+    if (e.key === 'Enter') {
+      const btn = t && t.closest ? t.closest('button') : null;
+      if (btn && !btn.classList.contains('lay') && btn !== applyBtn) return;
+      if (S.pending) { e.preventDefault(); apply(); }
+      return;
+    }
+    if (/^[1-4]$/.test(e.key)) { e.preventDefault(); choose(LAYOUT_KEYS[Number(e.key) - 1]); return; }
+    if (e.key === 'e' || e.key === 'E') { setView(S.view === 'overview' ? 'desktop' : 'overview'); }
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    app.classList.add('resizing');
+    render();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => app.classList.remove('resizing'), 140);
+  });
+  if (mq.addEventListener) mq.addEventListener('change', render); else mq.addListener(render);
+
+  /* paper figure: three waves whose phases converge toward the right edge */
+  document.querySelectorAll('path[data-phase]').forEach((p) => {
+    const ph = parseFloat(p.dataset.phase), amp = parseFloat(p.dataset.amp);
+    let d = '';
+    for (let x = 0; x <= 600; x += 5) {
+      const t = x / 600;
+      const y = 70 - amp * Math.sin((2 * Math.PI * x) / 200 + ph * (1 - t) * (1 - t));
+      d += (x ? 'L' : 'M') + x + ' ' + y.toFixed(1);
+    }
+    p.setAttribute('d', d);
+  });
+
+  render();
+  requestAnimationFrame(() => requestAnimationFrame(() => app.classList.add('ready')));
+})();
+</script>
+</body>
+</html>

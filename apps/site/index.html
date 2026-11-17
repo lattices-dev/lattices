@@ -28,18 +28,21 @@
     <meta property="twitter:description" content="Take control of windows, terminals, and projects. Give your agents the same workspace controls across every computer you connect. Free and open source." />
     <meta property="twitter:image" content="https://lattices.dev/og.png" />
 
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-25C3DG2J2D"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-25C3DG2J2D');
-    </script>
-
-    <script>
-      // Pulse records visits only on the production site.
+    <script id="site-analytics">
+      // Vite replaces %PROD%. Dev servers, previews, and unprocessed HTML stay untracked.
       (function () {
-        if (window.location.origin !== 'https://lattices.dev' || navigator.doNotTrack === '1' || navigator.globalPrivacyControl) return;
+        if ('%PROD%' !== 'true' || window.location.origin !== 'https://lattices.dev') return;
+
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', 'G-25C3DG2J2D');
+        var googleScript = document.createElement('script');
+        googleScript.async = true;
+        googleScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-25C3DG2J2D';
+        document.head.appendChild(googleScript);
+
+        if (navigator.doNotTrack === '1' || navigator.globalPrivacyControl) return;
         var script = document.createElement('script');
         script.async = true;
         script.src = 'https://pulse.arach.dev/track.js';

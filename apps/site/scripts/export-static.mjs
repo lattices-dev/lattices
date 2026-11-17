@@ -24,7 +24,7 @@ import { renderMdxComponent } from './render-mdx.mjs'
 import { getLastUpdatedBatch, repoInfo } from './git-meta.mjs'
 import { stripMdxImports, stripMarkdown } from '../src/lib/markdown.ts'
 import LandingPage from '../src/components/LandingPage.tsx'
-import ConceptExperimentPage from '../src/components/ConceptExperimentPage.tsx'
+import StudyAccess from '../src/components/StudyAccess.tsx'
 import ActionPage from '../src/components/ActionPage.tsx'
 import BlinkPage from '../src/components/BlinkPage.tsx'
 import SpeechPage from '../src/components/SpeechPage.tsx'
@@ -39,6 +39,9 @@ import { clampMeta, rewriteDocMarkdown } from '../src/seo/describe.ts'
 import { articleJsonLd, routeJsonLd } from '../src/seo/jsonld.ts'
 import { docHeadLinks, docJsonLd, sourceDate } from '../src/seo/docs.ts'
 import { absoluteUrl, routeMeta, SITE_ORIGIN as SITE_URL } from '../src/seo/routes.ts'
+import { publicDocContent } from '../src/lib/doc-access.ts'
+import { EmailAccess } from '../src/components/EmailAccess.tsx'
+import { packageAccess } from './package-access.ts'
 
 const siteDir = resolve(import.meta.dirname, '..')
 const repoRoot = resolve(siteDir, '..', '..')
@@ -97,8 +100,8 @@ const postUpdated = await getLastUpdatedBatch(
 )
 
 await writeStaticRoute('/', renderToString(createElement(LandingPage)))
-await writeStaticRoute('/experiment', renderToString(createElement(ConceptExperimentPage)))
-await writeStaticRoute('/concept', renderToString(createElement(ConceptExperimentPage)))
+await writeStaticRoute('/experiment', renderToString(createElement(StudyAccess)))
+await writeStaticRoute('/concept', renderToString(createElement(StudyAccess)))
 await writeStaticRoute('/action', renderActionPage())
 await copyActionDocs()
 await patchActionAgentsHead()
@@ -168,7 +171,7 @@ await copyDocsAssets()
 for (const route of learningRoutes) {
   await writeRoute(route.path, `${route.title} — Lattices`, route.description, renderToString(createElement(LearnPage, { path: route.path })))
 }
-await writeAgentArtifacts({ siteDir, repoRoot, distDir })
+const agentArtifacts = await writeAgentArtifacts({ siteDir, repoRoot, distDir })
 
 // Emit a tiny manifest the React SPA can read on hydration for last-updated
 // timestamps without shelling out to git at runtime.
@@ -206,6 +209,7 @@ await writeSitemap()
 await writeRobots()
 await writeRssFeed()
 await writeNotFound()
+await packageAccess({ siteDir, distDir, artifactPaths: agentArtifacts.artifacts })
 
 async function writeSitemap() {
   // Copied agent docs keep the URL their own canonical and the site footer already use.
@@ -506,7 +510,8 @@ function renderFooter(current) {
 
 function docPage(doc) {
   const explicitTitle = typeof doc.data.title === 'string' ? doc.data.title : ''
-  const { content, components } = prepareMarkdown(rewriteDocLinks(doc.content, doc.source))
+  const preview = publicDocContent(doc.content, doc)
+  const { content, components } = prepareMarkdown(rewriteDocLinks(preview.content, doc.source))
   const rewritten = rewriteDocMarkdown(content, explicitTitle || undefined)
   const title = explicitTitle || rewritten.firstH1 || titleFromSlug(doc.slug)
   const description = clampMeta(
@@ -532,6 +537,7 @@ function docPage(doc) {
         </header>
         ${!isCurrentDoc(doc) ? `<p class="docs-status-notice">Archived ${doc.kind}. This document records a proposal or past work and is not current product guidance. <a href="${docsHome(doc.product)}">Read the current ${docsProduct(doc.product).title} docs.</a></p>` : ''}
         <div class="markdown-body">${rendered}</div>
+        ${preview.gated ? renderToString(createElement(EmailAccess, { onUnlock: () => {} })) : ''}
         ${renderToString(createElement(DocPager, { product: doc.product, currentSlug: doc.slug }))}
       </article>
     </main>

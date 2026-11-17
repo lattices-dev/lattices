@@ -7,7 +7,7 @@ import LinuxPage from './components/LinuxPage'
 import ProductsPage from './components/ProductsPage'
 import { DocsPage } from './components/Docs'
 import LandingPage from './components/LandingPage'
-import ConceptExperimentPage from './components/ConceptExperimentPage'
+import StudyAccess from './components/StudyAccess'
 import LearnPage from './components/LearnPage'
 import { getLearningRoute, LEARNING_SITE_URL } from './lib/learning'
 import BrandPage from './components/BrandPage'
@@ -130,7 +130,7 @@ export default function SiteApp() {
 
   if (route.kind === 'home') return <LandingPage />
   if (route.kind === 'learning') return <LearnPage path={path} />
-  if (route.kind === 'experiment') return <ConceptExperimentPage />
+  if (route.kind === 'experiment') return <StudyAccess />
   if (route.kind === 'action') return <ActionPage />
   if (route.kind === 'blink') return <BlinkPage />
   if (route.kind === 'speech') return <SpeechPage />

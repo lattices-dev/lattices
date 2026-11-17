@@ -1,0 +1,372 @@
+.action-page .action-product-brand {
+  gap: 10px;
+  color: var(--action-ink);
+}
+
+.action-product-brand .nav-name {
+  font-size: 24px;
+}
+
+.action-page .action-nav-engines {
+  display: inline-flex;
+}
+
+.action-standalone-intro {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 40px;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.action-standalone-intro h1 {
+  max-width: 20ch;
+  font-size: clamp(3rem, 4.7vw, 4.75rem);
+}
+
+.action-standalone-intro .action-demo-lead {
+  max-width: 53ch;
+}
+
+.action-standalone-install {
+  min-width: 0;
+}
+
+.action-install-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--action-rule-strong);
+  background: var(--action-paper-light);
+}
+
+.action-install-command code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.action-install-command button {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--action-rule);
+  background: transparent;
+  color: var(--action-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.action-install-command button:hover {
+  background: color-mix(in srgb, var(--action-ink) 8%, transparent);
+}
+
+.action-standalone-install .action-hero-actions {
+  margin-top: 16px;
+  gap: 16px;
+}
+
+.action-install-status {
+  min-height: 1.5em;
+  margin-top: 8px;
+  color: var(--action-copy);
+  font-size: 12px;
+}
+
+.action-engine-strip {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin: 28px 0 32px;
+  padding: 24px 0;
+  border-block: 1px solid var(--action-rule);
+}
+
+.action-engine-strip-label,
+.action-engine-native-link {
+  color: var(--action-copy);
+  font-size: 13px;
+}
+
+.action-engine-strip > a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--action-ink);
+  font-size: 14px;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.action-engine-strip > a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.action-engine-strip .action-engine-native-link {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--action-copy);
+}
+
+.action-provider-byline {
+  display: block;
+  color: var(--action-copy);
+  font-size: 12px;
+}
+
+.action-provider-mark,
+.action-cua-mark {
+  display: block;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  color: #000;
+}
+
+.action-cua-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.action-cua-mark .action-provider-dark {
+  display: none;
+}
+
+:root[data-theme='dark'] .action-provider-mark {
+  color: #fff;
+}
+
+:root[data-theme='dark'] .action-cua-mark .action-provider-light {
+  display: none;
+}
+
+:root[data-theme='dark'] .action-cua-mark .action-provider-dark {
+  display: block;
+}
+
+.action-backends,
+.action-standalone-start {
+  width: min(1200px, calc(100% - 48px));
+  margin-inline: auto;
+}
+
+.action-backends {
+  padding: 72px 0 32px;
+  scroll-margin-top: 88px;
+}
+
+.action-backends-heading {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: 48px;
+  margin-bottom: 40px;
+}
+
+.action-backends-heading h2 {
+  margin: 0;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: clamp(2.5rem, 4vw, 3.5rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.action-backends-heading p,
+.action-engine-row > p,
+.action-engine-control p {
+  margin: 0;
+  color: var(--action-copy);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.action-engine-list {
+  border-top: 1px solid var(--action-rule-strong);
+}
+
+.action-engine-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, .9fr);
+  align-items: center;
+  gap: 32px;
+  padding: 30px 0;
+  border-bottom: 1px solid var(--action-rule);
+  scroll-margin-top: 88px;
+}
+
+.action-engine-identity {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.action-engine-identity > svg,
+.action-engine-identity > .action-cua-mark {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+}
+
+.action-engine-identity h3 {
+  margin: 0;
+  font-family: "EB Garamond", Georgia, serif;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.action-engine-identity p,
+.action-engine-command span {
+  display: block;
+  margin: 6px 0 0;
+  color: var(--action-copy);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.action-engine-command code,
+.action-engine-control code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--action-ink);
+}
+
+.action-engine-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.95fr);
+  gap: 32px;
+  padding-top: 32px;
+}
+
+.action-engine-control h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.action-engine-control p + p {
+  margin-top: 12px;
+}
+
+.action-engine-control a,
+.action-family-note a {
+  color: var(--action-ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.action-family-note {
+  margin-top: 24px;
+  color: var(--action-copy);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.action-standalone-start {
+  margin-bottom: 64px;
+}
+
+.action-page :focus-visible {
+  outline: 2px solid var(--action-coral);
+  outline-offset: 4px;
+}
+
+.action-page ::selection {
+  background: var(--action-ink);
+  color: var(--action-paper);
+}
+
+@media (max-width: 1000px) {
+  .action-standalone-intro {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .action-standalone-install {
+    max-width: 420px;
+  }
+
+  .action-engine-strip {
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+
+  .action-engine-strip .action-engine-native-link {
+    margin-left: 0;
+  }
+
+  .action-engine-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 16px 32px;
+  }
+
+  .action-engine-command {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .action-page .action-nav-engines {
+    display: none;
+  }
+
+  .action-backends,
+  .action-standalone-start {
+    width: calc(100% - 32px);
+  }
+
+  .action-standalone-intro h1 {
+    font-size: clamp(2.75rem, 10vw, 3.75rem);
+  }
+
+  .action-standalone-install {
+    max-width: none;
+  }
+
+  .action-install-command {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .action-install-command code {
+    font-size: 11px;
+  }
+
+  .action-engine-strip {
+    gap: 20px 24px;
+    margin-top: 20px;
+  }
+
+  .action-engine-strip-label {
+    flex-basis: 100%;
+  }
+
+  .action-engine-strip > a {
+    font-size: 13px;
+    gap: 10px;
+  }
+
+  .action-engine-strip .action-engine-native-link {
+    flex-basis: 100%;
+  }
+
+  .action-backends-heading,
+  .action-engine-row,
+  .action-engine-control {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .action-backends-heading h2 br {
+    display: none;
+  }
+
+  .action-engine-command {
+    grid-column: auto;
+  }
+}

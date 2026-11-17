@@ -1,4 +1,4 @@
-name: Deploy site to GitHub Pages
+name: Deploy site to Cloudflare
 
 # Hosted runner usage is opt in. Start this workflow manually from Actions.
 on:
@@ -8,12 +8,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: cloudflare-site
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: cloudflare
+      url: https://lattices-site.arach.workers.dev
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -29,24 +32,13 @@ jobs:
       - run: bun install --frozen-lockfile
         working-directory: apps/site
 
-      - run: bun run build
+      - name: Verify Cloudflare credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: test -n "$CLOUDFLARE_API_TOKEN"
+
+      - name: Test, build protected assets, and deploy Worker
+        run: bun run deploy:cloudflare
         working-directory: apps/site
-
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
-        with:
-          path: apps/site/dist
-
-  deploy:
-    permissions:
-      pages: write
-      id-token: write
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
