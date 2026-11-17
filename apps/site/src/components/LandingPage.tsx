@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { HeroControlHeadline } from "./HeroControlHeadline";
 import { GestureMatrix } from "./GestureMatrix";
+import { HyperspaceShowcase } from "./HyperspaceShowcase";
 import { LatticesMark } from "./LatticesMark";
 import { ProductsMenu, SiteFooter } from "./SiteChrome";
 import { heroLayer, heroOverlapCount, heroSearchResults, heroWindowLayouts, heroWindowMeta } from "./heroDesktopMap";
@@ -1060,6 +1061,7 @@ export default function App() {
         </section>
 
         <div className="shell">
+        <HyperspaceShowcase />
         <HandsOnSection />
 
         {/* macOS app */}

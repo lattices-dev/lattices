@@ -1,7 +1,7 @@
 {
   "siteUrl": "https://lattices.dev",
-  "title": "Try Action on your Mac",
-  "description": "Install Action, grant permissions, and take your first screenshot.",
+  "title": "Try Action’s native engine",
+  "description": "Install Action.app, grant permissions, and take your first screenshot.",
   "prerequisites": "macOS on Apple Silicon, with Bun installed. No source build needed.",
   "steps": [
     {

@@ -7,6 +7,8 @@ import { docsProduct, docsHome, isCurrentDoc, type ProductId } from '../lib/docs
 import { SiteFooter, SiteHeader } from './SiteChrome'
 import { DocsAgentContext } from './DocsAgentContext'
 import { sourceDate } from '../seo/docs'
+import { EmailAccess } from './EmailAccess'
+import { accessPaths } from '../lib/access-paths'
 
 interface DocsPageProps {
   slug?: string
@@ -14,8 +16,28 @@ interface DocsPageProps {
 }
 
 export function DocsPage({ slug, product }: DocsPageProps) {
-  const doc = slug ? getDoc(slug, product) : defaultDoc(product)
+  const preview = slug ? getDoc(slug, product) : defaultDoc(product)
+  const [unlockedDoc, setUnlockedDoc] = useState<DocPage | null>(null)
+  const [accessError, setAccessError] = useState('')
+  const doc = unlockedDoc?.id === preview?.id ? unlockedDoc : preview
   const [meta, setMeta] = useState<DocMeta | null>(null)
+
+  async function loadFullDoc(signal?: AbortSignal, reportFailure = false) {
+    if (!preview?.gated) return
+    try {
+      const response = await fetch(accessPaths.doc(preview.id), { credentials: 'same-origin', cache: 'no-store', signal })
+      if (!response.ok) { if (reportFailure) setAccessError('Your code was accepted, but the guide couldn’t load. Refresh this page to try again.'); return }
+      const full = await response.json()
+      if (full.id === preview.id && typeof full.content === 'string') { setUnlockedDoc(full); setAccessError('') }
+    } catch { if (reportFailure && !signal?.aborted) setAccessError('The guide couldn’t load. Refresh this page to try again.') }
+  }
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadFullDoc(controller.signal)
+    return () => controller.abort()
+    // Each route checks the HttpOnly cookie; no access token is kept in the UI.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview?.id])
 
   useEffect(() => {
     if (!doc) return
@@ -81,6 +103,8 @@ export function DocsPage({ slug, product }: DocsPageProps) {
             <p className="docs-status-notice">Archived {doc.kind}. This document records a proposal or past work and is not current product guidance. <a href={docsHome(product)}>Read the current {docsProduct(product).title} docs.</a></p>
           )}
           <MarkdownRenderer content={doc.content} />
+          {doc.gated && <EmailAccess key={doc.id} onUnlock={() => { void loadFullDoc(undefined, true) }} />}
+          {accessError && <p role="alert">{accessError}</p>}
           <DocPager product={product} currentSlug={doc.slug} />
         </article>
         <aside className="docs-toc" data-pagefind-ignore>

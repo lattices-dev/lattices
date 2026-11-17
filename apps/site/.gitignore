@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.generated/
+src/.generated/
+private-dist/
+.worker-assets/
+.wrangler/
 *.local
 
 # Editor directories and files

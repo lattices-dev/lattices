@@ -1,6 +1,6 @@
 import guide from "../data/action-start.json";
 
-export const actionDescription = "An API for agents to use your computer. Native macOS automation and remote Linux computer use, with capture and review.";
+export const actionDescription = "A standalone CLI, MCP server and Mac app for computer use. Choose Action’s native engine, Codex Computer Use or Cua Driver.";
 
 export function actionSchema() {
   const productUrl = `${guide.siteUrl}/action`;
