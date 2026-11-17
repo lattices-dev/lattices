@@ -33,6 +33,7 @@ export type MapWindow = {
   frame: Frame;
   spaceIds: number[];
   isOnScreen: boolean;
+  cgLayer?: number;
   axVerified?: boolean;
   latticesSession?: string;
 };
@@ -454,7 +455,7 @@ function windowsForDisplay(display: MapDisplay, windows: MapWindow[]): MapWindow
   if (!hasArea(frame)) return [];
   return windows.filter((window) =>
     window.isOnScreen &&
-    window.spaceIds.includes(display.currentSpaceId) &&
+    (window.cgLayer !== undefined || window.spaceIds.includes(display.currentSpaceId)) &&
     intersects(window.frame, frame)
   );
 }
@@ -484,6 +485,7 @@ function snapshotWindow(window: MapWindow, zIndex: number): WorkspaceMapSnapshot
     frame: snapshotFrame(window.frame),
     spaceIds: [...window.spaceIds],
     isOnScreen: window.isOnScreen,
+    ...(window.cgLayer === undefined ? {} : { cgLayer: window.cgLayer }),
     ...(window.axVerified === undefined ? {} : { axVerified: window.axVerified }),
     ...(window.latticesSession === undefined ? {} : { latticesSession: window.latticesSession }),
     zIndex,
@@ -792,6 +794,7 @@ export function mapUsage(): string {
 Render the current Space of every display as one scaled map of the desktop.
 
 Options:
+  --include-panels  Read-only on-screen CG inventory, including non-zero layers
   --display <n>  Render one display index
   --width <n>    Maximum map width (32–120; defaults to terminal width)
   --height <n>   Maximum map height (8–40; defaults to 24)
@@ -863,9 +866,14 @@ export async function mapCommand(
     console.log(mapUsage());
     return;
   }
-  const { json, display, height, width: requestedWidth } = parseMapOptions(args);
+  const includePanels = args.includes("--include-panels");
+  const { json, display, height, width: requestedWidth } = parseMapOptions(args.filter(arg => arg !== "--include-panels"));
   const width = requestedWidth ?? process.stdout.columns;
-  const { displays, windows } = await loadMapState(daemonCall);
+  const state = await loadMapState(daemonCall);
+  const displays = state.displays;
+  const windows = includePanels
+    ? await daemonCall("windows.list", { includePanels: true }) as MapWindow[]
+    : state.windows;
 
   if (json) {
     // A display without geometry would yield a valid-looking snapshot whose

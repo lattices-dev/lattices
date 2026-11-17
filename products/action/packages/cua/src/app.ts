@@ -10,6 +10,7 @@ import type { IncomingMessage } from "node:http";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findActionApp } from "./locate.js";
 import { actionAgentCall, agentSocketPath, isActionAgentRunning, type ActionAgentResult } from "./agent.js";
 
 // The numeric repository identity survives owner/name transfers.
@@ -53,13 +54,7 @@ function isRunning(): boolean {
 }
 
 export function installedPath(): string | null {
-  if (process.env.ACTION_APP && existsSync(process.env.ACTION_APP)) return process.env.ACTION_APP;
-  for (const path of [INSTALL_PATH, join(homedir(), "Applications", APP_NAME)]) if (existsSync(path)) return path;
-  try {
-    const found = execFileSync("mdfind", [`kMDItemCFBundleIdentifier == '${BUNDLE_ID}'`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().split("\n")[0];
-    if (found && existsSync(found)) return found;
-  } catch { /* Spotlight unavailable */ }
-  return null;
+  return findActionApp() ?? null;
 }
 
 function installedVersion(appPath: string): string | null {
@@ -168,7 +163,8 @@ export const systemApp: AppControl = {
     const asset = release.assets.find((a) => a.name === DMG_ASSET);
     if (!asset) throw new Error(`Release ${release.tag_name} has no ${DMG_ASSET}.`);
     const version = release.tag_name.slice(TAG_PREFIX.length);
-    const existing = installedPath();
+    // Only an installed copy counts here: a running dev build is not the release.
+    const existing = findActionApp(undefined, { running: false });
     if (existing && installedVersion(existing) === version) return { version, path: existing, changed: false };
     log(`Downloading Action ${version}…`);
     const directory = mkdtempSync(join(tmpdir(), "action-download-"));

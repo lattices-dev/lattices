@@ -516,17 +516,26 @@ window is in front.
 > See [Screen OCR](/docs/ocr) for full details on configuration, scanning,
 > search, and agent usage.
 
-The app reads text from visible windows using Apple's Vision framework
-and stores results in a local SQLite database with FTS5 full-text search.
-Agents can use this to "see" what's on screen.
+[Screen-text security](security-screen-text.md) describes the current source
+policy for collection, saved history and remote access, including its limits.
+
+In current source builds, quick and single-window scans read eligible
+on-screen windows through Accessibility. Deep scans use Apple's Vision
+framework to recognize text in window images. The latest results
+stay in memory. Bundle builds also save history in a local SQLite database
+with FTS5 full-text search; free builds do not install the history store.
+
+OCR is off by default on new installs. Enable it in Settings to start scanning.
+Turning it off or excluding an app stops future collection, including manual
+scans. Saved history remains until expiry or **Clear saved history**.
 
 ### How it works
 
-1. Every 60 seconds, the app captures the top visible windows as images
-2. A SHA256 hash detects whether the window content has changed
-3. Changed windows are processed through `VNRecognizeTextRequest` (fast mode)
-4. Results are stored in `~/.lattices/ocr.db` with full-text indexing
-5. Entries older than 3 days are automatically purged
+1. While enabled, quick scans run every 60 seconds and deep scans every two hours by default. Settings controls intervals and window limits.
+2. Quick and single-window scans read Accessibility text. Deep scans capture eligible windows for Vision OCR.
+3. A SHA-256 image hash avoids repeated Vision processing when content is unchanged. Accurate recognition is the default; fast mode is optional.
+4. Bundle builds store history in `~/.lattices/ocr.db` with full-text indexing.
+5. Saved history expires after seven days by default. Queries apply the configured cutoff immediately; periodic maintenance removes expired rows.
 
 ### Desktop Inventory integration
 
@@ -537,14 +546,15 @@ use Desktop Inventory or omni search when the on-screen text is the target.
 
 ### API access
 
-Agents can query OCR data through four API methods:
+Agents can read the live index or request a scan. Bundle builds also provide
+the history methods:
 
 | Method         | Description                                    |
 |----------------|------------------------------------------------|
-| `ocr.snapshot` | Current OCR results for all visible windows    |
+| `ocr.snapshot` | Latest cached results for indexed windows    |
 | `ocr.search`   | Full-text search across history (FTS5 syntax)  |
 | `ocr.history`  | Timeline of OCR results for a specific window  |
-| `ocr.scan`     | Trigger an immediate scan (bypasses timer)     |
+| `ocr.scan`     | Request an immediate scan while indexing is enabled; exclusions still apply |
 
 ```js
 import { daemonCall } from '@lattices/lattices'
@@ -552,7 +562,7 @@ import { daemonCall } from '@lattices/lattices'
 // Find windows showing error messages
 const errors = await daemonCall('ocr.search', { query: 'error OR failed' })
 
-// Read what's currently on screen
+// Read the latest cached screen-text results
 const snapshot = await daemonCall('ocr.snapshot')
 ```
 

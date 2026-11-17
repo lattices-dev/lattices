@@ -1,22 +1,32 @@
 ---
 title: Screen OCR & Search
-description: Vision-powered screen reading with full-text search for agents
+description: Screen-text indexing and search through Accessibility and Vision
 order: 3.5
 ---
 
-The menu bar app reads text from visible windows using Apple's Vision
-framework and keeps the latest results in memory, so `windows.search`,
-the command palette and Omni search match windows by what they show.
-Agents can use this to "see" what's on screen.
+In current source builds, quick and single-window scans read eligible
+on-screen windows through Accessibility. Deep scans use Apple's Vision
+framework to recognize text in window images. The latest results stay in
+memory for screen-text search.
 
-Bundle builds also store every scan in a local SQLite database with FTS5
+Bundle builds also store changed text in a local SQLite database with FTS5
 full-text search. `ocr.search` and `ocr.history` read that
 history; the free build doesn't have them.
+
+[Screen-text security](security-screen-text.md) defines collection rules,
+exclusions, retention and remote grants for the unshipped source changes.
+Window capture can include covered content. Indexing does not guarantee
+private-tab detection or secret removal.
 
 ## Enabling OCR
 
 Open **Settings** (via command palette or gear icon) and toggle
 **Search & OCR** on. OCR is disabled by default.
+
+In current source builds, turning indexing off blocks scheduled and manual
+scans. Excluded apps are skipped by all scan types. Changing either setting
+invalidates pending results before publication or persistence. Existing saved
+history remains until expiry or **Clear saved history**.
 
 ### Accuracy modes
 
@@ -33,16 +43,18 @@ The app runs two scan schedules:
 
 | Schedule | Interval | Window limit | Purpose |
 |----------|----------|-------------|---------|
-| **Quick scan** | 60 seconds | Top 5 windows | Keep recent content fresh |
-| **Deep scan** | 2 hours | Up to 15 windows | Catch less-active windows |
+| **Quick scan** | 60 seconds | Top 5 eligible windows | Refresh Accessibility text |
+| **Deep scan** | 2 hours | Up to 15 eligible windows | Recognize text from window images |
 
 Both intervals and limits are configurable in Settings.
+Deep scans prioritize stale windows and limit Vision work to the configured
+per-pass budget, which defaults to three windows.
 
 ### Change detection
 
-Before running OCR on a window, the app captures the window image and
+Before Vision processing in a deep scan, the app captures the window image and
 computes a SHA-256 hash of the pixel data. If the hash matches the
-previous scan, the cached result is reused. No Vision processing needed.
+previous Vision scan, the cached result is reused without new recognition.
 
 This keeps CPU usage low when windows haven't changed. A 100ms throttle
 between windows further limits processing bursts.
@@ -64,10 +76,13 @@ contextual snippets.
 ### From the CLI
 
 ```bash
-# Search windows by title, app, session, and OCR content
+# Search window and terminal metadata
 lats search "error"
 
-# Deep search — also inspects terminal tabs and processes
+# Search the cached screen-text index explicitly
+lats search "error" --sources=ocr
+
+# Deep search includes OCR, terminal metadata and processes
 lats search "myproject" --deep
 
 # Same as --deep (all search sources)
@@ -91,18 +106,20 @@ lats scan history 12345
 
 ### From the agent API
 
-Agents can query OCR data through four API methods:
+Agents can read the live index or request a scan. Bundle builds also provide
+the history methods:
 
 | Method | Description |
 |--------|-------------|
-| `ocr.snapshot` | Current OCR results for all visible windows |
+| `ocr.snapshot` | Latest cached results for indexed windows |
 | `ocr.search` | Full-text search across history (FTS5 syntax) |
 | `ocr.history` | Timeline of OCR results for one window, or all windows without `wid` |
-| `ocr.scan` | Trigger an immediate deep scan |
+| `ocr.scan` | Request a deep scan while indexing is enabled; exclusions still apply |
 
 #### `ocr.snapshot`
 
-Returns the latest OCR results for all on-screen windows.
+Returns the latest cached results for indexed windows. It does not trigger a
+scan or guarantee coverage of every on-screen window.
 
 ```js
 import { daemonCall } from '@lattices/lattices'
@@ -151,7 +168,10 @@ const history = await daemonCall('ocr.history', {
 
 #### `ocr.scan`
 
-Trigger an immediate deep scan (all visible windows up to the deep limit).
+Request an asynchronous deep scan of eligible windows within the configured
+limits. The reply acknowledges the request, not completion. If indexing is
+disabled, no new scan starts. Subscribe to `ocr.scanComplete` when a workflow
+depends on completion rather than the existing cache.
 
 ```js
 await daemonCall('ocr.scan')
@@ -160,8 +180,9 @@ await daemonCall('ocr.scan')
 
 ## Storage
 
-OCR data is stored in `~/.lattices/ocr.db`, a SQLite database in WAL
-(Write-Ahead Logging) mode for safe concurrent reads.
+Bundle builds store OCR history in `~/.lattices/ocr.db`, a SQLite database in
+WAL (Write-Ahead Logging) mode. Store operations share a serial queue. The
+database and sidecars use owner-only permissions (`0600`).
 
 The schema uses two tables:
 - `ocr_entry` — stores window ID, app, title, frame, full text, and timestamp
@@ -169,19 +190,25 @@ The schema uses two tables:
 
 Triggers keep the FTS index in sync with inserts, updates, and deletes.
 
-Entries older than 3 days are automatically deleted.
+The retention default is seven days. Each query applies the current cutoff;
+periodic maintenance deletes expired rows. Turning indexing off or excluding
+an app does not delete saved history. **Clear saved history** invalidates old
+scans and deletes saved rows and search terms. New scans can start while
+indexing remains enabled. Clearing is not a forensic purge and does not remove
+backups.
 
 ## Agent usage
 
-A typical agent workflow: trigger a scan, then search for relevant content.
+Search the existing cache or saved history for an immediate result. A
+requested refresh runs asynchronously and can finish after that search.
 
 ```js
 import { daemonCall } from '@lattices/lattices'
 
-// Trigger a fresh scan
+// Request a refresh; the reply does not mean scanning has finished
 await daemonCall('ocr.scan')
 
-// Search for compilation errors across all windows
+// Search saved history, which can precede the requested refresh
 const errors = await daemonCall('ocr.search', { query: 'error OR warning' })
 
 for (const result of errors) {
@@ -189,7 +216,7 @@ for (const result of errors) {
   console.log(result.snippet)
 }
 
-// Read everything currently visible
+// Read the latest cached screen-text results
 const snapshot = await daemonCall('ocr.snapshot')
 for (const win of snapshot) {
   console.log(`${win.app}: ${win.fullText.slice(0, 200)}`)

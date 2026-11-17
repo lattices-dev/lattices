@@ -6,6 +6,7 @@ import { actionMarkBox } from "../lib/marks";
 import actionTraceField from "../../../../products/action/docs/assets/brand/landing-trace-field.webp";
 import { ActionDemo } from "./ActionDemo";
 import { ActionQuickStart } from "./ActionQuickStart";
+import { ActionBackends } from "./ActionBackends";
 import { actionSchema } from "../lib/action-schema";
 import "../styles/action-demo.css";
 import { ActionArchitectureDiagram } from "./ActionArchitectureDiagram";
@@ -141,6 +142,8 @@ export default function ActionPage() {
           <span>AX + OCR</span>
           <span>CLI + MCP</span>
         </div>
+
+        <ActionBackends />
 
         <section id="architecture" className="action-architecture" aria-labelledby="action-architecture-title">
           <div className="action-architecture-copy">

@@ -310,6 +310,7 @@ final class LatticesApi {
             Field(name: "title", type: "string", required: true, description: "Window title"),
             Field(name: "frame", type: "Frame", required: true, description: "Window frame {x, y, w, h}"),
             Field(name: "spaceIds", type: "[int]", required: true, description: "Space IDs the window is on"),
+            Field(name: "cgLayer", type: "int", required: false, description: "Raw WindowServer layer in read-only panel inventory, not a workspace layer"),
             Field(name: "isOnScreen", type: "bool", required: true, description: "Whether window is currently visible"),
             Field(name: "latticesSession", type: "string", required: false, description: "Associated lattices session name"),
         ]))
@@ -600,10 +601,11 @@ final class LatticesApi {
             method: "windows.list",
             description: "List all windows known to the system",
             access: .read,
-            params: [],
+            params: [Param(name: "includePanels", type: "bool", required: false, description: "Read-only on-screen CG inventory including panels and non-zero layers")],
             returns: .array(model: "Window"),
-            handler: { _ in
-                let entries = DesktopModel.shared.allWindows()
+            handler: { params in
+                let entries = params?["includePanels"]?.boolValue == true
+                    ? DesktopModel.captureWindows() : DesktopModel.shared.allWindows()
                 return .array(entries.map { Encoders.window($0) })
             }
         ))
@@ -5310,6 +5312,7 @@ enum Encoders {
             "zIndex": .int(w.zIndex),
             "focused": .bool(focusedWid == w.wid),
         ]
+        if let layer = w.cgLayer { obj["cgLayer"] = .int(layer) }
         if let session = w.latticesSession {
             obj["latticesSession"] = .string(session)
         }

@@ -245,6 +245,7 @@ async function main(argv: string[]): Promise<void> {
       const display = await director.prepareDisplay({
         width: flags.width,
         height: flags.height,
+        scale: flags.scale,
         returnToMac: flags["return-to-mac"] === undefined ? undefined : flags["return-to-mac"] === "true",
       });
       printJson({ ok: display.active, display });
@@ -314,6 +315,14 @@ async function main(argv: string[]): Promise<void> {
       }
       throw new Error("Usage: layer record start [--out <file.mov>] | layer record stop");
     }
+    if (arg === "attach") {
+      printJson(await director.attach(JSON.parse(flags.subjects ?? "null")));
+      return;
+    }
+    if (arg === "detach") {
+      printJson(await director.detach());
+      return;
+    }
     if (arg === "snapshot") {
       const snapshot = await director.snapshot({
         windowId: flags["window-id"] ? requiredNumber(flags, "window-id") : undefined,
@@ -335,7 +344,7 @@ async function main(argv: string[]): Promise<void> {
       "bun packages/cli/src/main.ts stage status",
       "bun packages/cli/src/main.ts capabilities",
       "bun packages/cli/src/main.ts layer list (list named workspaces; all other layer commands accept --workspace <name>, default: default)",
-      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] [--return-to-mac true|false] (connect a persistent monitor; may change desktop topology)",
+      "bun packages/cli/src/main.ts layer prepare [--workspace <name>] [--width <w> --height <h>] [--scale 1|2] [--return-to-mac true|false] (connect a persistent monitor; may change desktop topology)",
       "bun packages/cli/src/main.ts layer display-status",
       "bun packages/cli/src/main.ts layer return-to-mac [--workspace <name>] (recover all monitor windows and disconnect only after verification)",
       "bun packages/cli/src/main.ts layer open [--workspace <name>] [--bundle-id <id> | --pid <pid>] [--width <w> --height <h>] [--window-id <n> | --window-title <text>] [--pip on|off] [--preview-workspace <name>] [--viewport true|false] (attach to the prepared monitor; viewport is experimental)",

@@ -419,6 +419,25 @@
       "ownership": "lattices"
     },
     {
+      "id": "lattices:security-screen-text",
+      "product": "lattices",
+      "slug": "security-screen-text",
+      "source": "docs/security-screen-text.md",
+      "title": "Screen-text security",
+      "kind": "reference",
+      "canonicalPath": "/lattices/docs/security-screen-text",
+      "aliases": [
+        "/docs/security-screen-text"
+      ],
+      "navGroup": "Workspace",
+      "agent": true,
+      "rawAliases": [
+        "/docs/markdown/security-screen-text.md",
+        "/agent/raw/docs/security-screen-text.md"
+      ],
+      "ownership": "lattices"
+    },
+    {
       "id": "lattices:visit",
       "product": "lattices",
       "slug": "visit",

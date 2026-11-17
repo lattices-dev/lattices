@@ -9,6 +9,7 @@ struct WindowEntry: Codable, Identifiable, Equatable {
     let spaceIds: [Int]
     let isOnScreen: Bool
     let latticesSession: String?
+    var cgLayer: Int? = nil // Raw WindowServer layer, not a Lattices workspace layer
     var axVerified: Bool = true
     var zIndex: Int = 0 // 0 = frontmost, from CGWindowList order
     var bundleId: String? = nil

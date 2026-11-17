@@ -13,6 +13,7 @@ export interface SearchResult {
 export type DaemonCaller = Pick<DaemonClient, "daemonCall">;
 
 export interface SearchOptions {
+  includePanels?: boolean;
   sources?: string[];
   after?: string;
   before?: string;
@@ -22,6 +23,12 @@ export interface SearchOptions {
 
 export async function searchWithClient(client: DaemonCaller, query: string, opts: SearchOptions = {}): Promise<SearchResult[]> {
   const { daemonCall } = client;
+  if (opts.includePanels) {
+    const windows = await daemonCall("windows.list", { includePanels: true }) as any[];
+    return windows.filter(w => [w.app, w.title].some(value =>
+      String(value ?? "").toLowerCase().includes(query.toLowerCase())))
+      .map(window => ({ window, score: 1, tabs: [], reasons: ["app/title inventory"] }));
+  }
   const params: Record<string, any> = { query };
   if (opts.sources) params.sources = opts.sources;
   if (opts.after) params.after = opts.after;
@@ -87,7 +94,7 @@ export async function searchCommand(
   rawArgs: string[] = []
 ): Promise<void> {
   if (!query) {
-    console.log("Usage: lats search <query> [--quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
+    console.log("Usage: lats search <query> [--include-panels | --quick | --terminal | --all | --deep | --sources=... | --after=... | --before=... | --json | --wid]");
     return;
   }
 
@@ -111,6 +118,7 @@ export async function searchCommand(
 
   if (flags.has("--no-recency")) opts.recency = false;
 
+  opts.includePanels = flags.has("--include-panels");
   const ranked = await search(query, opts);
   const jsonOut = flags.has("--json");
   const widOnly = flags.has("--wid");

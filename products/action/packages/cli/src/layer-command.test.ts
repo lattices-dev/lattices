@@ -56,7 +56,8 @@ test("persistent monitor setup and teardown are explicit commands", () => {
   for (const command of ["prepare", "display-status", "release"]) {
     assert.deepEqual(parseLayerCommand([command]), { positionals: [command], flags: {} });
   }
-  for (const args of [["prepare", "--browser"], ["prepare", "--bundle-id=app"], ["prepare", "--width=-1"], ["prepare", "--height=0"], ["display-status", "--width=1440"], ["release", "--force"], ["release", "--clear-quarantine"]]) {
+  assert.deepEqual(parseLayerCommand(["prepare", "--scale", "1"]).flags, { scale: "1" });
+  for (const args of [["prepare", "--scale=3"], ["prepare", "--scale", "1.5"], ["open", "--scale=2"], ["prepare", "--browser"], ["prepare", "--bundle-id=app"], ["prepare", "--width=-1"], ["prepare", "--height=0"], ["display-status", "--width=1440"], ["release", "--force"], ["release", "--clear-quarantine"]]) {
     assert.throws(() => parseLayerCommand(args));
   }
 });
@@ -126,4 +127,15 @@ test("CLI rejects invalid return mode before invoking the native host", () => {
   assert.equal(output.ok, false);
   assert.match(output.error, /Invalid --return-to-mac: expected true or false/);
   assert.doesNotMatch(output.error, /ENOENT/);
+});
+
+test("explicit stage attach and detach commands", () => {
+  const subjects = '[{"windowId":123}]';
+  assert.deepEqual(parseLayerCommand(["attach", "--workspace", "stage", "--subjects", subjects]), {
+    positionals: ["attach"], flags: {workspace:"stage", subjects},
+  });
+  assert.deepEqual(parseLayerCommand(["detach", "--workspace", "stage"]), {
+    positionals: ["detach"], flags: {workspace:"stage"},
+  });
+  assert.throws(() => parseLayerCommand(["detach", "--subjects", subjects]));
 });
