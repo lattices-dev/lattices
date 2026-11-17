@@ -21,6 +21,7 @@ import { ActionDefinitionsStudy } from "@/studio/studies/ActionDefinitions";
 import { LinuxCommandCenterStudy } from "@/studio/studies/LinuxCommandCenter";
 import { ProductFamilyStudy } from "@/studio/studies/ProductFamily";
 import { LatticeStudy } from "@/studio/studies/Lattice";
+import { HyperspaceHUDStudy } from "@/studio/studies/HyperspaceHUD";
 import { WindowsPageStudy } from "@/studio/studies/WindowsPage";
 import { LayersPageStudy } from "@/studio/studies/LayersPage";
 import {
@@ -87,6 +88,7 @@ export function renderStudioPage({ pathname, page }: RenderContext) {
   if (page?.href === "/studio/studies/linux-command-center") return <LinuxCommandCenterStudy page={page} />;
   if (page?.href === "/studio/studies/product-family") return <ProductFamilyStudy page={page} />;
   if (page?.href === "/studio/studies/lattice") return <LatticeStudy page={page} />;
+  if (page?.href === "/studio/studies/hyperspace-hud") return <HyperspaceHUDStudy page={page} />;
   if (page) return <PlaceholderPage page={page} />;
   return <NotFoundPage />;
 }

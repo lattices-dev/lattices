@@ -25,6 +25,19 @@ const studioPages: readonly LatticesPage[] = [
       "Design surface for the Lattices macOS workspace manager — studies land here before SwiftUI gets touched.",
   },
   {
+    href: "/studio/studies/hyperspace-hud",
+    label: "Hyperspace HUD — review fixes",
+    bucket: "studies",
+    surface: "macos",
+    status: "in-flight",
+    blurb:
+      "The Lens HUD as built today next to the self-review fixes, at true point size: chip selection, map tile, title width, the Overview line and the hover preview, each switchable on its own.",
+    source: [
+      "design/studio/src/studio/studies/HyperspaceHUD.tsx",
+      "apps/mac/Sources/Core/Overlays/Motion/HyperspaceDesktopHUD.swift",
+    ],
+  },
+  {
     href: "/studio/studies/lattice",
     label: "A more considered lattice.",
     bucket: "studies",
