@@ -1,5 +1,5 @@
 import { docsHome, docsProduct, type ProductId } from '../lib/docs-catalog'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { footerColumns, licenseUrl } from '../data/footer'
 import { productLinks, productMenuExtras } from '../data/products'
 import { actionMarkBox } from '../lib/marks'
@@ -8,6 +8,7 @@ import { BlinkMark } from './blink/BlinkMark'
 import { LatticesMark } from './LatticesMark'
 import { SpeechMark } from './SpeechMark'
 import { ThemeToggle } from './ThemeToggle'
+import '../styles/header-menu.css'
 
 declare global {
   interface Window {
@@ -15,7 +16,8 @@ declare global {
   }
 }
 
-export function ProductsMenu() {
+export function ProductsMenu({ children }: { children: ReactNode }) {
+  const panelId = useId()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -41,41 +43,46 @@ export function ProductsMenu() {
   }, [open])
 
   return (
-    <div className="products-menu" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="nav-link products-menu-trigger"
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-controls="products-menu-panel"
-        onClick={() => setOpen((current) => !current)}
-      >
-        Products
-        <svg className="products-menu-chevron" viewBox="0 0 12 12" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" />
-        </svg>
-      </button>
-      {open ? (
-        <div id="products-menu-panel" className="products-menu-panel" aria-label="Products">
-          {productLinks.flatMap((product) => (productMenuExtras[product.href] ? [product, productMenuExtras[product.href]] : [product])).map((product) => (
-            <a
-              key={product.href}
-              href={product.href}
-              className="products-menu-link"
-              onClick={() => setOpen(false)}
-            >
-              <span>{product.title}</span>
-              <small>{product.description}</small>
+    <>
+      <div className="products-menu" ref={rootRef} onBlur={(event) => {
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false)
+      }}>
+        <button
+          ref={triggerRef}
+          type="button"
+          className="nav-link products-menu-trigger"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <span className="wide-menu-label">Products</span><span className="compact-menu-label">Menu</span>
+          <svg className="products-menu-chevron" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        </button>
+        {open ? (
+          <div id={panelId} className="products-menu-panel">
+            <div className="compact-menu-links" onClick={() => setOpen(false)}>{children}</div>
+            {productLinks.flatMap((product) => (productMenuExtras[product.href] ? [product, productMenuExtras[product.href]] : [product])).map((product) => (
+              <a
+                key={product.href}
+                href={product.href}
+                className="products-menu-link"
+                onClick={() => setOpen(false)}
+              >
+                <span>{product.title}</span>
+                <small>{product.description}</small>
+              </a>
+            ))}
+            <a href="/products" className="products-menu-link products-menu-all" onClick={() => setOpen(false)}>
+              <span>Products and documentation</span>
+              <small>Choose a product and its docs</small>
             </a>
-          ))}
-          <a href="/products" className="products-menu-link products-menu-all" onClick={() => setOpen(false)}>
-            <span>Products and documentation</span>
-            <small>Choose a product and its docs</small>
-          </a>
-        </div>
-      ) : null}
-    </div>
+          </div>
+        ) : null}
+      </div>
+      <div className="wide-menu-links">{children}</div>
+    </>
   )
 }
 
@@ -136,14 +143,15 @@ export function SiteHeader({ product, docsProductId }: { product?: HeaderProduct
             </a>
           )}
           <nav className="site-links" aria-label="Primary navigation">
-            <ProductsMenu />
-            <a href="/learn">Learn</a>
-            <a href="/blog" className="nav-blog-link">Blog</a>
-            <a href={docsHome(docsProductId || (product?.href.slice(1) as ProductId) || 'lattices')}>{docsProductId ? `${docsProduct(docsProductId).title} docs` : 'Docs'}</a>
-            <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
-              Search
-              <span aria-hidden="true">⌘K</span>
-            </button>
+            <ProductsMenu>
+              <a href="/learn">Learn</a>
+              <a href="/blog" className="nav-blog-link">Blog</a>
+              <a href={docsHome(docsProductId || (product?.href.slice(1) as ProductId) || 'lattices')}>{docsProductId ? `${docsProduct(docsProductId).title} docs` : 'Docs'}</a>
+              <button type="button" onClick={() => setSearchOpen(true)} aria-label="Open search (Cmd+K)">
+                Search
+                <span aria-hidden="true">⌘K</span>
+              </button>
+            </ProductsMenu>
             <ThemeToggle
               theme={theme}
               onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

@@ -919,23 +919,24 @@ export default function App() {
             <span className="nav-name">lattices</span>
           </a>
           <div className="nav-links">
-            <ProductsMenu />
-            <a href="/learn" className="nav-link">Learn</a>
-            <a href="/blog" className="nav-link nav-blog-link">
-              Blog
-            </a>
-            <a href="/lattices/docs/overview" className="nav-link">
-              Docs
-            </a>
-            <a
-              href="https://github.com/lattices-dev/lattices"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-github"
-            >
-              <GitHubIcon />
-              <span className="github-label">GitHub</span>
-            </a>
+            <ProductsMenu>
+              <a href="/learn" className="nav-link">Learn</a>
+              <a href="/blog" className="nav-link nav-blog-link">
+                Blog
+              </a>
+              <a href="/lattices/docs/overview" className="nav-link">
+                Docs
+              </a>
+              <a
+                href="https://github.com/lattices-dev/lattices"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="nav-github"
+              >
+                <GitHubIcon />
+                <span className="github-label">GitHub</span>
+              </a>
+            </ProductsMenu>
             <ThemeToggle
               theme={theme}
               onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
