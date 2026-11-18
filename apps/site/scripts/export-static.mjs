@@ -1,3 +1,4 @@
+import { canvasDmgName } from '../src/data/canvas-release.ts'
 import { MacRuntimeDiagram, LinuxRuntimeDiagram } from '../src/components/RuntimeBoundaryDiagram.tsx'
 import { publishedDocs, docsHome, docsProduct, isCurrentDoc, docEditUrl, rewriteDocLinks } from '../src/lib/docs-catalog.ts'
 import { DocsSidebar, DocPager } from '../src/components/DocsNavigation.tsx'
@@ -56,7 +57,7 @@ function recordSitemap(path, { priority = '0.7', lastmod } = {}) {
 const ACTION_RELEASES_API_URL = actionDownload.releasesUrl
 const ACTION_LEGACY_DOWNLOAD_URL = actionDownload.fallbackUrl
 const BLINK_RELEASES_API_URL = 'https://api.github.com/repos/lattices-dev/lattices/releases?per_page=100'
-const BLINK_LEGACY_DOWNLOAD_URL = 'https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/Canvas.dmg'
+const BLINK_LEGACY_DOWNLOAD_URL = `https://github.com/lattices-dev/lattices/releases/download/canvas-v2.3.0/${canvasDmgName}`
 const template = await readFile(join(distDir, 'index.html'), 'utf8')
 const shikiTheme = JSON.parse(await readFile(join(siteDir, 'src', 'data', 'lattices-shiki-theme.json'), 'utf8'))
 const highlighter = await createHighlighterCore({
@@ -726,7 +727,7 @@ async function writeBlinkDownloadRedirect() {
             typeof candidate.tag_name === 'string' &&
             candidate.tag_name.startsWith('canvas-v')
           )
-          const asset = release?.assets?.find((candidate) => candidate.name === 'Canvas.dmg')
+          const asset = release?.assets?.find((candidate) => candidate.name === ${JSON.stringify(canvasDmgName)})
 
           if (asset?.browser_download_url) {
             link.href = asset.browser_download_url
