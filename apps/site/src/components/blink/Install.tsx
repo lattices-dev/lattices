@@ -1,3 +1,4 @@
+import { canvasDmgName } from '../../data/canvas-release'
 import { SectionHeader, PrimaryButton, GhostButton, Reveal, MockTitleBar } from './shared'
 
 /** Canvas's own references, which the family footer doesn't carry. */
@@ -28,7 +29,7 @@ export function Install() {
               <MockTitleBar title="release — latest" />
               <div className="flex flex-col gap-6 p-5 md:flex-row md:items-center md:justify-between md:gap-8 md:p-6">
                 <div className="min-w-0">
-                  <div className="text-[15px] font-bold text-[var(--text)]">Blink.dmg</div>
+                  <div className="text-[15px] font-bold text-[var(--text)]">{canvasDmgName}</div>
                   <div className="mt-1 text-[11px] text-faintx">
                     Apple Silicon · macOS 14+ · notarized · no account
                   </div>
