@@ -105,10 +105,11 @@ export default function ActionPage() {
             <span className="nav-name">action</span>
           </a>
           <div className="nav-links">
-            <ProductsMenu />
-            <a href="#backends" className="nav-link action-nav-engines">Engines</a>
-            <a href="/action/docs" className="nav-link action-nav-optional">Docs</a>
-            <a href={sourceUrl} className="nav-link action-nav-source">Source</a>
+            <ProductsMenu>
+              <a href="#backends" className="nav-link action-nav-engines">Engines</a>
+              <a href="/action/docs" className="nav-link action-nav-optional">Docs</a>
+              <a href={sourceUrl} className="nav-link action-nav-source">Source</a>
+            </ProductsMenu>
             <ThemeToggle
               theme={theme}
               onToggle={() => setTheme(theme === "dark" ? "light" : "dark")}
