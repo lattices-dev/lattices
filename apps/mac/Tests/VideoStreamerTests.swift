@@ -1,5 +1,7 @@
 import CoreGraphics
+import CoreMedia
 import CoreVideo
+import VideoToolbox
 import XCTest
 @testable import Lattices
 
@@ -62,6 +64,226 @@ final class VideoStreamerTests: XCTestCase {
         XCTAssertEqual(VideoStreamMath.bitRate(width: 320, height: 200, fps: 5), 500_000)
     }
 
+    func testAdaptiveBitRateRequiresSustainedExcessAndRecoversAtFivePercentPerSecond() {
+        var controller = VideoBitRateController(startingRate: 2_000_000)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 0))
+        // A spike and jitter alone are insufficient.
+        XCTAssertNil(controller.record(rtt: 0.160, now: 0.125))
+        for tick in 2...8 {
+            XCTAssertNil(controller.record(rtt: 0.020, now: Double(tick) / 8))
+        }
+
+        var cuts: [Int] = []
+        for tick in 9...19 {
+            if let proposal = controller.record(rtt: 0.120, now: Double(tick) / 8) {
+                cuts.append(proposal)
+                controller.didAccept(proposal)
+            }
+            if tick < 14 { XCTAssertTrue(cuts.isEmpty) }
+        }
+        XCTAssertEqual(cuts, [1_600_000, 1_280_000])
+
+        for tick in 20...28 {
+            if let proposal = controller.record(rtt: 0.020, now: Double(tick) / 8) {
+                controller.didAccept(proposal)
+            }
+        }
+        let cleanRate = controller.acceptedRate
+        for tick in 29...36 {
+            if let proposal = controller.record(rtt: 0.020, now: Double(tick) / 8) {
+                controller.didAccept(proposal)
+            }
+        }
+        XCTAssertEqual(controller.acceptedRate, cleanRate + 100_000)
+        for tick in 37...120 {
+            if let proposal = controller.record(rtt: 0.020, now: Double(tick) / 8) {
+                controller.didAccept(proposal)
+            }
+        }
+        XCTAssertEqual(controller.acceptedRate, 2_000_000)
+    }
+
+    func testAdaptiveBitRateIgnoresViewerDelayButCutsForNetworkDelay() {
+        var flow = VideoFlowWindow(fps: 30)
+        var controller = VideoBitRateController(startingRate: 2_000_000)
+        for tick in 0...16 {
+            let now = 1 + Double(tick) / 4
+            // Both phases take 140 ms to ACK. Only the first is viewer work.
+            let elapsed: TimeInterval = tick == 0 ? 0.020 : 0.140
+            let viewerDelayMs: Double = (1...8).contains(tick) ? 120 : 0
+            flow.sent(bytes: 1000, now: now - elapsed)
+            guard case .timed(let rtt, let viewerDelay) = flow.ack(flow.lastSent, viewerDelayMs: viewerDelayMs, now: now) else {
+                return XCTFail("Expected a valid timed ACK")
+            }
+            if let proposal = controller.record(rtt: rtt, viewerDelay: viewerDelay, now: now) {
+                controller.didAccept(proposal)
+            }
+            if tick <= 8 {
+                XCTAssertEqual(controller.acceptedRate, 2_000_000)
+            }
+        }
+        XCTAssertLessThan(controller.acceptedRate, 2_000_000)
+    }
+
+    func testAdaptiveBitRateIdleBreaksEvidenceAndAgesOutTheBaseline() {
+        var controller = VideoBitRateController(startingRate: 1_000_000)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 0))
+        XCTAssertNil(controller.record(rtt: 0.200, now: 0.125))
+        XCTAssertNil(controller.record(rtt: 0.200, now: 0.250))
+        // Idle is not elapsed congestion time. The resumed samples need a
+        // fresh sustained interval, but still compare against the recent floor.
+        for tick in 0...3 {
+            XCTAssertNil(controller.record(rtt: 0.200, now: 10 + Double(tick) / 8))
+        }
+        XCTAssertEqual(controller.record(rtt: 0.200, now: 10.5), 800_000)
+        controller.didAccept(800_000)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 12))
+        XCTAssertEqual(controller.record(rtt: 0.020, now: 12.125), 806_250)
+        controller.didAccept(806_250)
+        // Once the old lower RTT expires, a new stable path is not congested.
+        XCTAssertNil(controller.record(rtt: 0.200, now: 43))
+        XCTAssertEqual(controller.record(rtt: 0.200, now: 43.125), 812_500)
+    }
+
+    func testSparseAcksOnABusyLinkAreNotAnIdleGap() {
+        var controller = VideoBitRateController(startingRate: 1_000_000)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 0))
+        XCTAssertNil(controller.record(rtt: 0.600, now: 0.600))
+        XCTAssertEqual(controller.record(rtt: 0.600, now: 1.200), 800_000)
+    }
+
+    func testAdaptiveBitRateClampsAndRejectionKeepsLastAcceptedRate() {
+        var controller = VideoBitRateController(startingRate: 1_000_000)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 0))
+        for tick in 1...40 {
+            if let proposal = controller.record(rtt: 0.200, now: Double(tick) / 8) {
+                controller.didAccept(proposal)
+            }
+        }
+        XCTAssertEqual(controller.acceptedRate, 500_000)
+        let proposals = (41...60).compactMap { controller.record(rtt: 0.020, now: Double($0) / 8) }
+        XCTAssertFalse(proposals.isEmpty)
+        controller.didReject()
+        XCTAssertEqual(controller.acceptedRate, 500_000)
+        XCTAssertFalse(controller.isEnabled)
+        XCTAssertNil(controller.record(rtt: 0.020, now: 60.125))
+    }
+
+    func testAdaptiveBitRateUnderLoadOnLowLatencyEncoder() throws {
+        try assertAdaptiveBitRateUnderLoad(lowLatency: true)
+    }
+
+    func testAdaptiveBitRateUnderLoadOnDefaultEncoder() throws {
+        try assertAdaptiveBitRateUnderLoad(lowLatency: false)
+    }
+
+    private func assertAdaptiveBitRateUnderLoad(lowLatency: Bool) throws {
+        let width = 960, height = 540, fps = 30
+        let startingRate = VideoStreamMath.bitRate(width: width, height: height, fps: fps)
+        let encoder = VideoStream.makeEncoderSession(width: width, height: height, fps: fps,
+                                                     startingRate: startingRate, lowLatency: lowLatency)
+        if lowLatency, encoder.session == nil,
+           encoder.status == kVTCouldNotFindVideoEncoderErr || encoder.status == kVTVideoEncoderNotAvailableNowErr {
+            throw XCTSkip("Low-latency H.264 encoder unavailable on this host (\(encoder.status))")
+        }
+        let session = try XCTUnwrap(encoder.session, "Encoder creation failed (\(encoder.status))")
+        defer { VTCompressionSessionInvalidate(session) }
+        XCTAssertTrue(encoder.initialRateAccepted)
+        var controller = VideoBitRateController(startingRate: startingRate)
+        let outputs = EncoderOutputs()
+        let pending = DispatchSemaphore(value: 4)
+
+        // Use the same session with no frame flush or forced keyframe between
+        // the phases. Bound in-flight frames like the streaming flow window.
+        var reducedRate = startingRate
+        for index in 0..<180 {
+            let slot = pending.wait(timeout: .now() + 2)
+            XCTAssertEqual(slot, .success, "Encoder stopped delivering callbacks")
+            guard slot == .success else { return }
+            let rtt = (40..<120).contains(index) ? 0.200 : 0.020
+            if let proposal = controller.record(rtt: rtt, now: Double(index) / Double(fps)) {
+                let status = VideoStream.setEncoderBitRate(session, rate: proposal)
+                XCTAssertEqual(status, noErr, "Active encoder rejected a bitrate update")
+                if status == noErr { controller.didAccept(proposal) } else { controller.didReject() }
+            }
+            if index == 119 { reducedRate = controller.acceptedRate }
+            let pixels = try encoderPixels(width: width, height: height, index: index)
+            let encodeStatus = VTCompressionSessionEncodeFrame(
+                session, imageBuffer: pixels,
+                presentationTimeStamp: CMTime(value: Int64(index), timescale: Int32(fps)),
+                duration: .invalid, frameProperties: nil, infoFlagsOut: nil
+            ) { status, _, sample in
+                outputs.record(index: index, status: status, sample: sample)
+                pending.signal()
+            }
+            XCTAssertEqual(encodeStatus, noErr)
+            guard encodeStatus == noErr else { return }
+        }
+        XCTAssertEqual(VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid), noErr)
+        XCTAssertTrue(controller.isEnabled)
+        XCTAssertLessThan(reducedRate, startingRate)
+        XCTAssertGreaterThan(controller.acceptedRate, reducedRate)
+        var accepted: CFTypeRef?
+        let propertyStatus = withUnsafeMutablePointer(to: &accepted) {
+            VTSessionCopyProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, allocator: nil, valueOut: $0)
+        }
+        XCTAssertEqual(propertyStatus, noErr)
+        XCTAssertEqual((accepted as? NSNumber)?.intValue, controller.acceptedRate)
+        let before = outputs.byteCount(in: 10..<40)
+        let after = outputs.byteCount(in: 90..<120)
+        XCTAssertGreaterThan(before, 0)
+        XCTAssertGreaterThan(after, 0)
+        XCTAssertLessThan(after, before, "Same encoder should produce smaller access units after tuning")
+    }
+
+    private final class EncoderOutputs: @unchecked Sendable {
+        private let lock = NSLock()
+        private var bytes: [Int: Int] = [:]
+
+        func record(index: Int, status: OSStatus, sample: CMSampleBuffer?) {
+            guard status == noErr, let sample, let data = CMSampleBufferGetDataBuffer(sample) else { return }
+            lock.lock()
+            bytes[index] = CMBlockBufferGetDataLength(data)
+            lock.unlock()
+        }
+
+        func byteCount(in range: Range<Int>) -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            for index in range { XCTAssertGreaterThan(bytes[index] ?? 0, 0, "No access unit for frame \(index)") }
+            return range.reduce(0) { $0 + (bytes[$1] ?? 0) }
+        }
+    }
+
+    private func encoderPixels(width: Int, height: Int, index: Int) throws -> CVPixelBuffer {
+        var buffer: CVPixelBuffer?
+        let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+        XCTAssertEqual(CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                                           attributes, &buffer), kCVReturnSuccess)
+        let pixels = try XCTUnwrap(buffer)
+        XCTAssertEqual(CVPixelBufferLockBaseAddress(pixels, []), kCVReturnSuccess)
+        defer { CVPixelBufferUnlockBaseAddress(pixels, []) }
+        let luma = try XCTUnwrap(CVPixelBufferGetBaseAddressOfPlane(pixels, 0))
+        let chroma = try XCTUnwrap(CVPixelBufferGetBaseAddressOfPlane(pixels, 1))
+        let lumaStride = CVPixelBufferGetBytesPerRowOfPlane(pixels, 0)
+        let chromaStride = CVPixelBufferGetBytesPerRowOfPlane(pixels, 1)
+        memset(chroma, 0x80, chromaStride * height / 2)
+        // Pan a textured scene rather than using independent noise frames,
+        // which can exceed the encoder's quantizer limits at either bitrate.
+        for y in 0..<height {
+            let row = luma.advanced(by: y * lumaStride).assumingMemoryBound(to: UInt32.self)
+            let yTile = (y + index * 3) / 8
+            for x in 0..<(width / 4) {
+                let xTile = x + index
+                var hash = UInt32((xTile << 16) | yTile) &* 0x45d9f3b
+                hash = (hash ^ (hash >> 16)) &* 0x45d9f3b
+                let value = UInt32(40) + (hash >> 25)
+                row[x] = value &* 0x0101_0101
+            }
+        }
+        return pixels
+    }
+
     func testRegionMapsToTheDisplayHoldingItsCentre() {
         let displays = [CGRect(x: 0, y: 0, width: 1920, height: 1080), CGRect(x: 1920, y: 0, width: 2560, height: 1440)]
         let region = CGRect(x: 1800, y: 100, width: 600, height: 300)
@@ -79,42 +301,156 @@ final class VideoStreamerTests: XCTestCase {
         for expected in 1...4 {
             XCTAssertTrue(flow.canFeed)
             flow.fed()
-            XCTAssertEqual(flow.emitted(now: 0), UInt32(expected))
+            flow.finishedEncoding()
+            flow.sent(bytes: 100, now: 0)
+            XCTAssertEqual(flow.lastSent, UInt32(expected))
         }
         XCTAssertFalse(flow.canFeed)
-        XCTAssertTrue(flow.ack(2, now: 1))
+        XCTAssertEqual(flow.ack(2, now: 1), .credited)
         XCTAssertEqual(flow.unacked, 2)
         XCTAssertTrue(flow.canFeed)
         // Stale and future acks change nothing.
-        XCTAssertFalse(flow.ack(1, now: 1))
-        XCTAssertFalse(flow.ack(9, now: 1))
+        XCTAssertEqual(flow.ack(1, now: 1), .ignored)
+        XCTAssertEqual(flow.ack(9, now: 1), .ignored)
         XCTAssertEqual(flow.unacked, 2)
     }
 
     func testFlowWindowCountsFramesStillEncoding() {
         var flow = VideoFlowWindow()
         flow.fed(); flow.fed(); flow.fed()
-        _ = flow.emitted(now: 0)
+        flow.finishedEncoding()
+        flow.sent(bytes: 100, now: 0)
         flow.fed()
         XCTAssertFalse(flow.canFeed)
-        flow.dropped()
+        flow.finishedEncoding()
         XCTAssertTrue(flow.canFeed)
+    }
+
+    func testOnlyValidFreshTimedAcksOptIn() {
+        var flow = VideoFlowWindow(fps: 60)
+        XCTAssertTrue(flow.canSend(bytes: VideoFlowWindow.byteLimit + 1), "Legacy has no byte cap")
+        for ms: Double? in [nil, -.infinity, .infinity, .nan, -1, 251] {
+            flow.sent(bytes: 50, now: 0)
+            XCTAssertEqual(flow.ack(flow.lastSent, viewerDelayMs: ms, now: 0.25), .credited)
+            XCTAssertFalse(flow.adaptive)
+            XCTAssertEqual(flow.limit, 4)
+            XCTAssertEqual(flow.unackedBytes, 0)
+        }
+        flow.sent(bytes: 200, now: 10)
+        for seq: UInt32 in [0, flow.lastAcked, flow.nextSeq] {
+            XCTAssertEqual(flow.ack(seq, viewerDelayMs: 0, now: 10.5), .ignored)
+            XCTAssertEqual(flow.unackedBytes, 200)
+            XCTAssertFalse(flow.adaptive)
+        }
+        // A cumulative ACK samples the named frame, not the oldest frame.
+        flow.sent(bytes: 300, now: 10.875)
+        XCTAssertEqual(flow.ack(flow.lastSent, viewerDelayMs: 125, now: 11), .timed(rtt: 0.125, viewerDelay: 0.125))
+        XCTAssertTrue(flow.adaptive)
+        XCTAssertEqual(flow.limit, 9) // ceil(60 * 0.125) + 1, even when corrected RTT is zero
+        XCTAssertFalse(flow.canSend(bytes: VideoFlowWindow.byteLimit + 1))
+        flow.sent(bytes: 100, now: 20)
+        XCTAssertEqual(flow.ack(flow.lastSent, now: 21), .credited)
+        XCTAssertEqual(flow.limit, 9, "Missing timing still retires credit without resizing")
+    }
+
+    func testWindowShrinksWithoutExpiringOutstandingFrames() {
+        var flow = VideoFlowWindow(fps: 60)
+        flow.sent(bytes: 80, now: 0)
+        flow.ack(1, viewerDelayMs: 0, now: 0.2)
+        XCTAssertEqual(flow.limit, 12)
+        for _ in 1...12 {
+            XCTAssertTrue(flow.canFeed)
+            flow.sent(bytes: 80, now: 1)
+        }
+        flow.ack(2, viewerDelayMs: 0, now: 1.001)
+        XCTAssertEqual(flow.limit, 11)
+        XCTAssertEqual(flow.unacked, 11)
+        flow.ack(3, viewerDelayMs: 0, now: 1.002)
+        XCTAssertEqual(flow.limit, 8)
+        XCTAssertEqual(flow.unacked, 10)
+        XCTAssertFalse(flow.canFeed)
+        XCTAssertFalse(flow.canSend(bytes: 1))
+        XCTAssertFalse(flow.timedOut(now: 1.5))
+        XCTAssertEqual(flow.unackedBytes, 800)
+        flow.ack(12, now: 1.6)
+        XCTAssertEqual(flow.unackedBytes, 80)
+        XCTAssertTrue(flow.canFeed)
+        for _ in 0..<24 {
+            flow.sent(bytes: 10, now: 2)
+            flow.ack(flow.lastSent, viewerDelayMs: 0, now: 2.001)
+        }
+        XCTAssertEqual(flow.limit, 4)
+    }
+
+    func testSerializedByteCapAndDeadlineBoundaries() {
+        var flow = VideoFlowWindow()
+        flow.sent(bytes: 100, now: 0)
+        flow.ack(1, viewerDelayMs: 0, now: 0.01)
+        let cap = VideoFlowWindow.byteLimit
+        let packet = VideoEncodedBacklog.Packet(message: Data(count: cap - 10), keyframe: true, encodedAt: 1)
+        XCTAssertEqual(packet.wireBytes, cap) // Includes the unmasked WebSocket header.
+        var backlog = VideoEncodedBacklog()
+        flow.sent(bytes: 1, now: 0.5)
+        guard case .wait = backlog.offer(packet, flow: flow, now: 1) else { return XCTFail("one byte over remaining credit") }
+        XCTAssertFalse(backlog.canEncode(flow))
+        XCTAssertEqual(flow.unackedBytes, 1, "Held bytes are not sent bytes")
+        flow.ack(2, now: 1.2)
+        guard case .send(let ready) = backlog.drain(flow: flow, now: 1.2) else { return XCTFail("200ms is still fresh") }
+        flow.sent(bytes: ready.wireBytes, now: 1.2)
+        XCTAssertEqual(flow.unackedBytes, cap)
+        XCTAssertFalse(flow.canFeed)
+        XCTAssertFalse(flow.canSend(bytes: 1))
+        flow.ack(3, now: 1.3)
+        let oversized = VideoEncodedBacklog.Packet(message: Data(count: cap - 9), keyframe: true, encodedAt: 2)
+        guard case .recover(backoff: true) = backlog.offer(oversized, flow: flow, now: 2)
+        else { return XCTFail("must reject a packet one byte too large even with full credit") }
+        XCTAssertEqual(flow.unacked, 0)
+    }
+
+    func testExpiredOrOverflowedBacklogDiscardsDependentChain() {
+        for overflow in [false, true] {
+            var flow = VideoFlowWindow()
+            flow.sent(bytes: 1, now: 0)
+            flow.ack(1, viewerDelayMs: 0, now: 0.01)
+            flow.sent(bytes: VideoFlowWindow.byteLimit - 1, now: 0.9)
+            var backlog = VideoEncodedBacklog()
+            let delta = VideoEncodedBacklog.Packet(message: Data(count: 30), keyframe: false, encodedAt: 1)
+            guard case .wait = backlog.offer(delta, flow: flow, now: 1) else { return XCTFail("must hold exactly one") }
+            let generation = backlog.generation
+            let action = overflow ? backlog.offer(delta, flow: flow, now: 1.05) : backlog.drain(flow: flow, now: 1.200001)
+            guard case .recover(backoff: false) = action else { return XCTFail("must recover") }
+            XCTAssertNotEqual(generation, backlog.generation, "Ignore encoder callbacks from the broken chain")
+            XCTAssertFalse(backlog.canEncode(flow))
+            XCTAssertEqual(flow.unackedBytes, VideoFlowWindow.byteLimit - 1)
+            flow.ack(2, now: 1.25)
+            guard case .none = backlog.drain(flow: flow, now: 1.25) else { return XCTFail("never replay the discarded delta") }
+            XCTAssertTrue(backlog.canEncode(flow))
+            flow.fed()
+            XCTAssertFalse(backlog.canEncode(flow), "Only one recovery encode until the IDR is sent")
+            flow.finishedEncoding()
+            let idr = VideoEncodedBacklog.Packet(message: Data(count: 40), keyframe: true, encodedAt: 1.3)
+            guard case .send = backlog.offer(idr, flow: flow, now: 1.3) else { return XCTFail("recovery IDR") }
+            XCTAssertFalse(backlog.recovering)
+        }
     }
 
     func testAckTimeoutOnlyWhileFramesAreUnacked() {
         var flow = VideoFlowWindow()
         XCTAssertFalse(flow.timedOut(now: 100))
         flow.fed()
-        _ = flow.emitted(now: 10)
+        flow.finishedEncoding()
+        flow.sent(bytes: 100, now: 10)
         XCTAssertFalse(flow.timedOut(now: 12.9))
         XCTAssertTrue(flow.timedOut(now: 13.1))
         flow.ack(1, now: 13)
         // A static screen sends nothing and owes nothing.
         XCTAssertFalse(flow.timedOut(now: 1000))
         flow.fed()
-        _ = flow.emitted(now: 2000)
+        flow.finishedEncoding()
+        flow.sent(bytes: 100, now: 2000)
         flow.fed()
-        _ = flow.emitted(now: 2002)
+        flow.finishedEncoding()
+        flow.sent(bytes: 100, now: 2002)
         flow.ack(2, now: 2002.5)
         XCTAssertFalse(flow.timedOut(now: 2005))
         XCTAssertTrue(flow.timedOut(now: 2005.6))

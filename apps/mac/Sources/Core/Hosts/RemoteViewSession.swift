@@ -174,6 +174,16 @@ final class RemoteViewSession: ObservableObject, Identifiable {
 
     // MARK: - Lifecycle
 
+    /// Compute delay at dispatch, including the startup hold and the hop to the main actor.
+    static func ackParams(_ id: UInt32, _ seq: UInt32, receivedAt: DispatchTime? = nil,
+                          now: DispatchTime = .now()) -> [String: Any] {
+        var params: [String: Any] = ["streamId": Int(id), "seq": Int(seq)]
+        if seq != 0, let receivedAt, now >= receivedAt {
+            params["viewerDelayMs"] = Double(now.uptimeNanoseconds - receivedAt.uptimeNanoseconds) / 1_000_000
+        }
+        return params
+    }
+
     func start() {
         guard connection == nil else { return }
         status = .connecting
@@ -200,13 +210,13 @@ final class RemoteViewSession: ObservableObject, Identifiable {
             }
         }
         let video = video
-        connection.onBinary = { data in video.receive(data) }
+        connection.onBinary = { data in video.receive(data, receivedAt: .now()) }
         video.configure(.init(
-            ack: { [weak self, weak connection] id, seq in
+            ack: { [weak self, weak connection] id, seq, receivedAt in
                 Task { @MainActor in
                     let sent = Date()
                     guard let self, let connection,
-                          let response = try? await connection.call("capture.stream.ack", params: ["streamId": Int(id), "seq": Int(seq)], timeout: 3),
+                          let response = try? await connection.call("capture.stream.ack", params: Self.ackParams(id, seq, receivedAt: receivedAt), timeout: 3),
                           self.connection === connection, self.streamID == id else { return }
                     self.acked(Date().timeIntervalSince(sent), response: response)
                 }
@@ -478,7 +488,7 @@ final class RemoteViewSession: ObservableObject, Identifiable {
                 // A still screen sends nothing, so quiet alone isn't a stall: a
                 // stale ack is a no-op that fails only once the stream is gone.
                 probed = Date()
-                let response = try? await connection.call("capture.stream.ack", params: ["streamId": Int(id), "seq": 0], timeout: 3)
+                let response = try? await connection.call("capture.stream.ack", params: Self.ackParams(id, 0), timeout: 3)
                 let alive = RemoteView.streamIsAlive(response)
                 if !Task.isCancelled, self.connection === connection, owns(), streamID == id {
                     acked(Date().timeIntervalSince(probed), response: response)

@@ -142,7 +142,7 @@ final class RemoteVideoStream: @unchecked Sendable {
     }
 
     struct Hooks {
-        var ack: @Sendable (_ streamID: UInt32, _ seq: UInt32) -> Void
+        var ack: @Sendable (_ streamID: UInt32, _ seq: UInt32, _ receivedAt: DispatchTime) -> Void
         var keyframe: @Sendable (_ streamID: UInt32) -> Void
         var shown: @Sendable (Picture) -> Void
     }
@@ -156,7 +156,7 @@ final class RemoteVideoStream: @unchecked Sendable {
     /// The stream just left, whose frames can trail its stop.
     private var retired: UInt32?
     private var starting = false
-    private var held: [RemoteVideoFrame] = []
+    private var held: [(frame: RemoteVideoFrame, receivedAt: DispatchTime)] = []
     private var lastKeyframeAsk = Date.distantPast
 
     /// Call on the main thread.
@@ -188,7 +188,7 @@ final class RemoteVideoStream: @unchecked Sendable {
             starting = false
             let waiting = held
             held.removeAll()
-            for frame in waiting where frame.streamID == id { process(frame) }
+            for (frame, receivedAt) in waiting where frame.streamID == id { process(frame, receivedAt: receivedAt) }
         }
     }
 
@@ -203,21 +203,21 @@ final class RemoteVideoStream: @unchecked Sendable {
     }
 
     /// On the connection's queue.
-    func receive(_ data: Data) {
+    func receive(_ data: Data, receivedAt: DispatchTime) {
         guard let frame = RemoteVideoFrame(data) else { return }
         lock.withLock {
             if starting, streamID == nil {
-                if frame.streamID != retired, held.count < 16 { held.append(frame) }
+                if frame.streamID != retired, held.count < 16 { held.append((frame, receivedAt)) }
                 return
             }
             guard frame.streamID == streamID else { return }
-            process(frame)
+            process(frame, receivedAt: receivedAt)
         }
     }
 
     /// Under `lock`. Every frame is acked, shown or not: the host counts them.
-    private func process(_ frame: RemoteVideoFrame) {
-        hooks?.ack(frame.streamID, frame.seq)
+    private func process(_ frame: RemoteVideoFrame, receivedAt: DispatchTime) {
+        hooks?.ack(frame.streamID, frame.seq, receivedAt)
         switch decoder.decode(frame) {
         case .shown(let size):
             hooks?.shown(Picture(streamID: frame.streamID, frame: frame.frame, size: size))

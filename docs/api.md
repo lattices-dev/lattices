@@ -356,7 +356,7 @@ under `aliases`. The CLI is `lats cua`; `lats computer` is an alias.
 | `capture.screenshotDisplay` | write | Capture one complete display as a run artifact and optional clipboard image |
 | `capture.still` | read | One inline JPEG of a display, window or region for remote viewers; nothing is saved |
 | `capture.stream.start` | read | Stream a display, window or region as H.264 binary frames on this connection |
-| `capture.stream.ack` | read | Acknowledge frames up to `seq`; the host keeps at most 4 unacknowledged |
+| `capture.stream.ack` | read | Acknowledge frames up to `seq`; optional viewer timing enables adaptive credit on macOS |
 | `capture.stream.keyframe` | read | Make the stream's next frame a keyframe |
 | `capture.stream.stop` | read | Stop a stream |
 | `capture.screenshotRegion` | write | Capture a screen region as a run artifact |
@@ -480,13 +480,16 @@ The result is `{streamId, codec, width, height, frame:{x,y,w,h}, display}`.
 `display` is `{index, name}` for a display target and null otherwise. Hosts
 that report capture activity also include `activity`, as described below.
 
-- `capture.stream.ack {streamId, seq}` acknowledges every frame up to `seq`.
-  Send one per frame received. Hosts limit the number of frames in flight.
-  With frames outstanding and no ack for 3 s, the host ends the stream.
-  An ack for an old `seq` changes
-  nothing and still answers `{ok:true}`, so viewers use it to check that a
-  quiet stream is alive. Hosts that report capture activity include the current
-  `activity` in successful ACK responses.
+- `capture.stream.ack {streamId, seq, viewerDelayMs?}` acknowledges every frame
+  through `seq`. Send one per frame received, before decoding. The optional
+  number `viewerDelayMs` measures time on the viewer's monotonic clock from
+  binary receipt to ACK dispatch, including any wait for the start reply.
+  Omit it on a `seq: 0` probe. A missing, nonnumeric, nonfinite, negative or
+  longer-than-round-trip delay still returns credit but supplies no timing sample.
+  An old or unknown sequence returns no credit. With a live stream, a probe
+  still answers `{ok:true}`; hosts that report activity include `activity` in
+  successful ACK responses. The host ends a stream after roughly 3 s without
+  ACK progress while frames remain outstanding.
 - `capture.stream.keyframe {streamId}` makes the next frame an IDR.
 - `capture.stream.stop {streamId}` stops the stream without an event.
 - Streams belong to their connection. Only that connection can ack, request a
@@ -495,6 +498,27 @@ that report capture activity also include `activity`, as described below.
   `{event:"capture.stream.ended", data:{streamId, reason}}` to the owning
   connection, whatever it subscribed to. Reasons are `ack-timeout`,
   `window-closed`, `encoder-failed: …` and, on a Mac, `capture-stopped: …`.
+
+**macOS flow control**
+
+A Mac starts each stream with four frame credits and a fixed encoder bitrate.
+The first valid timed ACK enables adaptive credit for that stream. The host
+uses the smoothed round trip, including viewer delay, to set the window:
+`ceil(fps × RTT in seconds) + 1`, clamped to 4–12 frames. A smaller window
+drains without canceling sent frames. Unacknowledged frames share a 4 MiB
+wire-byte budget, including LVF1 and WebSocket headers. At most one encoded
+frame can wait for credit, for up to 200 ms. If the backlog overflows or a
+frame expires, the host discards the dependent frames and resumes with an IDR.
+
+Set `LATTICES_VIDEO_ADAPTIVE_BITRATE=1` in the Mac host process environment
+to enable bitrate tuning for streams with timed ACKs. The starting rate comes
+from the encoded size and requested frame rate. The host subtracts viewer delay
+before comparing smoothed RTT with the lowest corrected RTT in the past 30 s.
+An excess above 30 ms for 500 ms cuts the bitrate by 20%. Below 10 ms of
+excess, it adds 5% of the starting rate per second of clean samples. The rate
+stays between 0.5 Mbps and the starting rate. With no new samples the host
+makes no change. If the encoder rejects an update, tuning stops for that
+encoder session. Neither timing nor the host flag changes input permissions.
 
 **Host activity and variable frame delivery**
 

@@ -424,7 +424,7 @@ test("audit metadata has a private bounded file and rejects linked targets", () 
 test("capture.stream keeps one private lattices socket per client and relays its binary frames", () => fixture(async f => {
   f.product.stop();
   const token = privateToken(f.local.tokenFile!);
-  const daemon = { opened: 0, closed: 0, acks: 0, socket: undefined as any };
+  const daemon = { opened: 0, closed: 0, acks: 0, lastAck: undefined as unknown, socket: undefined as any };
   const fake = Bun.serve({ unix: f.local.socketPath!, fetch(req, server) {
     if (req.headers.get("x-lattices-token") !== token) return new Response("no", { status: 403 });
     if (server.upgrade(req)) return; return new Response("upgrade", { status: 426 });
@@ -435,12 +435,16 @@ test("capture.stream keeps one private lattices socket per client and relays its
       const request = JSON.parse(String(raw));
       const reply = (result: unknown, error: string | null = null) => ws.send(JSON.stringify({ id: request.id, result, error }));
       if (request.method === "capture.stream.start") { reply({ streamId: 7, codec: "h264", width: 4, height: 2 }); ws.send(new Uint8Array([0x4c, 0x56, 0x46, 0x31, 7])); return; }
-      if (request.method === "capture.stream.ack") { daemon.acks++; reply({ ok: true }); return; }
+      if (request.method === "capture.stream.ack") { daemon.acks++; daemon.lastAck = request.params; reply({ ok: true }); return; }
       reply({ ok: true });
     },
   } });
   const { protectSocket } = await import("../../host-linux/src/private-ipc.ts"); const remove = protectSocket(f.local.socketPath!);
   try {
+    const screen = grantsForScope("lattices", "read", ["screen"]);
+    expect(authorizeMethod(grantsForScope("lattices", "read"), "lattices", "capture.stream.ack")).toContain("scope_denied");
+    expect(authorizeMethod(screen, "lattices", "capture.stream.ack")).toBeNull();
+    expect(authorizeMethod(screen, "lattices", "computer.click")).toContain("scope_denied");
     await f.pair(["lattices:capture.stream.start", "lattices:capture.stream.ack", "lattices:capture.stream.stop", "lattices:windows.list"]);
     const socket = await f.connect(f.signed());
     socket.binaryType = "arraybuffer";
@@ -451,6 +455,11 @@ test("capture.stream keeps one private lattices socket per client and relays its
     // Acks bypass the 600/min request budget.
     for (let seq = 1; seq <= 700; seq++) socket.send(JSON.stringify({ id: `a${seq}`, method: "capture.stream.ack", params: { streamId: 7, seq } }));
     await waitFor(() => daemon.acks === 700);
+    expect(daemon.lastAck).toEqual({ streamId: 7, seq: 700 });
+    const timed = { streamId: 7, seq: 701, viewerDelayMs: 12.75 };
+    expect((await rpc(socket, "capture.stream.ack", timed)).error).toBeNull();
+    expect(daemon.lastAck).toEqual(timed);
+    expect((await rpc(socket, "computer.click", { x: 0, y: 0 })).error).toContain("scope_denied");
     expect((await rpc(socket, "windows.list")).error).toBeNull();
     const ended = new Promise<any>(resolve => socket.addEventListener("message", (event: MessageEvent) => { if (typeof event.data === "string" && JSON.parse(event.data).event) resolve(JSON.parse(event.data)); }));
     daemon.socket.send(JSON.stringify({ event: "windows.changed", data: {} }));

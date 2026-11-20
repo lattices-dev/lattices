@@ -89,7 +89,7 @@ final class RemoteVideoFrameTests: XCTestCase {
         let encoded = try encodeOne(width: 320, height: 180)
         let stream = RemoteVideoStream()
         let log = Log()
-        stream.configure(.init(ack: { id, seq in log.add("ack \(id) \(seq)") },
+        stream.configure(.init(ack: { id, seq, received in log.add("ack \(id) \(seq) at \(received.uptimeNanoseconds)") },
                                keyframe: { id in log.add("key \(id)") },
                                shown: { picture in log.add("shown \(Int(picture.size.width))") }))
         func frame(_ id: UInt32, _ seq: UInt32, key: Bool) -> Data {
@@ -97,17 +97,34 @@ final class RemoteVideoFrameTests: XCTestCase {
                              frame: CGRect(x: 0, y: 0, width: 320, height: 180),
                              parameterSets: key ? encoded.sets : [], accessUnit: encoded.accessUnit).encoded()
         }
+        let first = DispatchTime(uptimeNanoseconds: 100_000_000)
+        let second = DispatchTime(uptimeNanoseconds: 110_000_000)
+        let live = DispatchTime(uptimeNanoseconds: 200_000_000)
         stream.begin()
-        stream.receive(frame(4, 1, key: false))
-        stream.receive(frame(5, 1, key: true))
+        stream.receive(frame(4, 1, key: true), receivedAt: first)
+        stream.receive(frame(5, 1, key: false), receivedAt: first)
+        stream.receive(frame(5, 2, key: true), receivedAt: second)
         XCTAssertEqual(log.lines, [])
         stream.attach(5)
-        stream.receive(frame(4, 2, key: false))
-        stream.receive(frame(5, 2, key: false))
-        XCTAssertEqual(log.lines, ["ack 5 1", "shown 320", "ack 5 2", "shown 320"])
+        stream.receive(frame(4, 2, key: false), receivedAt: live)
+        stream.receive(frame(5, 3, key: false), receivedAt: live)
+        XCTAssertEqual(log.lines, [
+            "ack 5 1 at \(first.uptimeNanoseconds)", "key 5",
+            "ack 5 2 at \(second.uptimeNanoseconds)", "shown 320",
+            "ack 5 3 at \(live.uptimeNanoseconds)", "shown 320",
+        ])
         stream.detach()
-        stream.receive(frame(5, 3, key: false))
-        XCTAssertEqual(log.lines.count, 4)
+        stream.receive(frame(5, 4, key: false), receivedAt: live)
+        XCTAssertEqual(log.lines.count, 6)
+    }
+
+    @MainActor
+    func testAckMeasuresThroughDispatchAndOmitsTimingForProbes() {
+        let received = DispatchTime(uptimeNanoseconds: 100_000_000)
+        let dispatch = DispatchTime(uptimeNanoseconds: 137_250_000)
+        let ack = RemoteViewSession.ackParams(7, 1, receivedAt: received, now: dispatch)
+        XCTAssertEqual(ack["viewerDelayMs"] as? Double, 37.25)
+        XCTAssertNil(RemoteViewSession.ackParams(7, 0, receivedAt: received, now: dispatch)["viewerDelayMs"])
     }
 
     private final class Log: @unchecked Sendable {

@@ -240,46 +240,204 @@ struct VideoFrameFeed {
     }
 }
 
-/// Flow control for one stream: at most `limit` frames encoding or sent but
-/// unacked. Encoded frames are never dropped, so the window gates what is fed
-/// to the encoder.
-struct VideoFlowWindow: Equatable {
-    var limit = 4
+/// Credits include encoder reservations. Only a valid timed ACK enables
+/// adaptive admission, so even the frames sent before opt-in need a ledger.
+struct VideoFlowWindow {
+    enum Ack: Equatable {
+        case ignored, credited
+        case timed(rtt: TimeInterval, viewerDelay: TimeInterval)
+    }
+
+    private struct Sent {
+        let seq: UInt32
+        let at: TimeInterval
+        let bytes: Int
+    }
+
+    static let byteLimit = 4 * 1024 * 1024
+    let fps: Int
+    private(set) var limit = 4
     private(set) var lastSent: UInt32 = 0
     private(set) var lastAcked: UInt32 = 0
     private(set) var encoding = 0
-    /// When unacked frames last made progress; nil when nothing is unacked.
-    private(set) var waitingSince: TimeInterval?
+    private(set) var unackedBytes = 0
+    private var ledger: [Sent] = []
+    private var rawRTT: TimeInterval?
+    private var waitingSince: TimeInterval?
 
-    var unacked: Int { Int(lastSent &- lastAcked) }
-    var canFeed: Bool { unacked + encoding < limit }
+    init(fps: Int = VideoStreamRequest.defaultFPS) { self.fps = fps }
 
-    mutating func fed() { encoding += 1 }
+    var adaptive: Bool { rawRTT != nil }
+    var nextSeq: UInt32 { lastSent == .max ? 1 : lastSent + 1 } // zero is a probe
+    var unacked: Int { ledger.count }
+    var canFeed: Bool { unacked + encoding < limit && (!adaptive || unackedBytes < Self.byteLimit) }
 
-    /// The encoder gave nothing back for a fed frame.
-    mutating func dropped() { encoding = max(0, encoding - 1) }
-
-    /// The next sequence number, for a frame about to be sent.
-    mutating func emitted(now: TimeInterval) -> UInt32 {
-        encoding = max(0, encoding - 1)
-        if unacked == 0 { waitingSince = now }
-        lastSent &+= 1
-        return lastSent
+    func canSend(bytes: Int) -> Bool {
+        unacked < limit && (!adaptive || bytes <= Self.byteLimit - unackedBytes)
     }
 
-    /// Acks are cumulative; stale or unknown ones change nothing.
+    mutating func fed() { encoding += 1 }
+    mutating func finishedEncoding() { encoding -= 1 }
+
+    /// Count the serialized frame at socket handoff, not at capture or encode time.
+    mutating func sent(bytes: Int, now: TimeInterval) {
+        if ledger.isEmpty { waitingSince = now }
+        lastSent = nextSeq
+        ledger.append(Sent(seq: lastSent, at: now, bytes: bytes))
+        unackedBytes += bytes
+    }
+
+    /// Only the named frame supplies a sample; the entire prefix returns credit.
     @discardableResult
-    mutating func ack(_ seq: UInt32, now: TimeInterval) -> Bool {
-        guard seq > lastAcked, seq <= lastSent else { return false }
+    mutating func ack(_ seq: UInt32, viewerDelayMs: Double? = nil, now: TimeInterval) -> Ack {
+        guard let i = ledger.firstIndex(where: { $0.seq == seq }), now >= ledger[i].at else { return .ignored }
+        let elapsed = now - ledger[i].at
+        for frame in ledger[...i] { unackedBytes -= frame.bytes }
+        ledger.removeFirst(i + 1)
         lastAcked = seq
-        waitingSince = unacked == 0 ? nil : now
-        return true
+        waitingSince = ledger.isEmpty ? nil : now
+        guard let ms = viewerDelayMs, ms.isFinite, ms >= 0, ms / 1000 <= elapsed else { return .credited }
+        let average = rawRTT.map { $0 + (elapsed - $0) / 4 } ?? elapsed
+        rawRTT = average
+        limit = Int(min(12, max(4, ceil(Double(fps) * average) + 1)))
+        return .timed(rtt: elapsed, viewerDelay: ms / 1000)
     }
 
     func timedOut(now: TimeInterval, after limit: TimeInterval = 3) -> Bool {
         guard let waitingSince else { return false }
         return now - waitingSince > limit
     }
+}
+
+/// At most one complete LVF1 message may wait for send credit. On loss,
+/// invalidate outstanding encoder callbacks, not the compression session.
+struct VideoEncodedBacklog {
+    struct Packet {
+        let message: Data
+        let keyframe: Bool
+        let encodedAt: TimeInterval
+        let wireBytes: Int
+
+        init(message: Data, keyframe: Bool, encodedAt: TimeInterval) {
+            self.message = message
+            self.keyframe = keyframe
+            self.encodedAt = encodedAt
+            wireBytes = message.count + WebSocketClient.frameHeader(opcode: 0x2, length: message.count).count
+        }
+    }
+
+    enum Action { case none, wait, send(Packet), recover(backoff: Bool) }
+    static let maximumAge: TimeInterval = 0.2
+    private var held: Packet?
+    private(set) var generation: UInt64 = 0
+    private(set) var recovering = false
+    private var blockedAtAck: UInt32?
+
+    func canEncode(_ flow: VideoFlowWindow) -> Bool {
+        guard held == nil, blockedAtAck != flow.lastAcked else { return false }
+        return !recovering || flow.encoding == 0
+    }
+
+    mutating func offer(_ packet: Packet, flow: VideoFlowWindow, now: TimeInterval) -> Action {
+        guard flow.adaptive else { return .send(packet) }
+        if held != nil {
+            // A reservation made before credit tightened has also completed.
+            // Neither frame may become the base for a later delta.
+            return discard(flow: flow, blocked: true, backoff: false)
+        }
+        if packet.wireBytes > VideoFlowWindow.byteLimit || (recovering && !packet.keyframe) {
+            return discard(flow: flow, blocked: !flow.canSend(bytes: packet.wireBytes), backoff: true)
+        }
+        held = packet
+        return drain(flow: flow, now: now)
+    }
+
+    mutating func drain(flow: VideoFlowWindow, now: TimeInterval) -> Action {
+        guard let packet = held else { return .none }
+        let fits = flow.canSend(bytes: packet.wireBytes)
+        guard now <= packet.encodedAt + Self.maximumAge else {
+            return discard(flow: flow, blocked: !fits, backoff: false)
+        }
+        guard fits else { return .wait }
+        held = nil
+        recovering = false
+        blockedAtAck = nil
+        return .send(packet)
+    }
+
+    private mutating func discard(flow: VideoFlowWindow, blocked: Bool, backoff: Bool) -> Action {
+        held = nil
+        generation &+= 1
+        recovering = true
+        blockedAtAck = blocked && flow.unacked > 0 ? flow.lastAcked : nil
+        return .recover(backoff: backoff)
+    }
+}
+
+/// Converts corrected, monotonic RTT samples into encoder bitrate proposals.
+/// A proposal isn't the current bitrate until the encoder accepts it.
+struct VideoBitRateController {
+    private let startingRate: Int
+    private(set) var acceptedRate: Int
+    private(set) var isEnabled = true
+    private var minima: [(at: TimeInterval, rtt: TimeInterval)] = []
+    private var smoothedRTT: TimeInterval?
+    private var lastSampleAt: TimeInterval?
+    private var highSince: TimeInterval?
+    private var wasClean = false
+
+    init(startingRate: Int) {
+        self.startingRate = startingRate
+        acceptedRate = startingRate
+    }
+
+    mutating func record(rtt: TimeInterval, viewerDelay: TimeInterval = 0, now: TimeInterval) -> Int? {
+        let correctedRTT = rtt - viewerDelay
+        guard isEnabled, correctedRTT.isFinite, correctedRTT >= 0, now.isFinite,
+              lastSampleAt.map({ now > $0 }) ?? true else { return nil }
+        let elapsed = lastSampleAt.map { now - $0 } ?? 0
+        if elapsed - rtt > 0.35 {
+            // A long gap before this frame was even sent is not sustained
+            // evidence. Time actually spent awaiting its ACK is not idle.
+            pause()
+        }
+        lastSampleAt = now
+        // Monotonic queue: an older sample >= this one will never be a minimum
+        // again. Keep the raw minimum independent from the smoothed signal.
+        while let first = minima.first, first.at < now - 30 { minima.removeFirst() }
+        while let last = minima.last, last.rtt >= correctedRTT { minima.removeLast() }
+        minima.append((now, correctedRTT))
+        let smoothed = smoothedRTT.map { $0 + 0.25 * (correctedRTT - $0) } ?? correctedRTT
+        smoothedRTT = smoothed
+        let excess = smoothed - minima[0].rtt
+        let nextRate: Int
+        if excess > 0.030 {
+            wasClean = false
+            let since = highSince ?? now
+            highSince = since
+            guard now - since >= 0.5 else { return nil }
+            highSince = now
+            nextRate = max(500_000, acceptedRate * 4 / 5)
+        } else {
+            highSince = nil
+            let remainedClean = wasClean && excess < 0.010
+            wasClean = excess < 0.010
+            guard remainedClean else { return nil }
+            let increase = Int((Double(startingRate) * 0.05 * elapsed).rounded())
+            nextRate = min(startingRate, acceptedRate + increase)
+        }
+        return nextRate == acceptedRate ? nil : nextRate
+    }
+
+    private mutating func pause() {
+        lastSampleAt = nil
+        smoothedRTT = nil
+        highSince = nil
+        wasClean = false
+    }
+
+    mutating func didAccept(_ rate: Int) { acceptedRate = rate }
+    mutating func didReject() { isEnabled = false }
 }
 
 // MARK: - Registry
@@ -315,9 +473,10 @@ final class VideoStreamer {
             handler: { try shared.start(params: $0) }
         ))
         api.register(Endpoint(
-            method: "capture.stream.ack", description: "Acknowledge frames up to seq; the host keeps at most 4 unacknowledged.",
+            method: "capture.stream.ack", description: "Acknowledge frames up to seq; optional viewer timing enables adaptive credit.",
             access: .read,
-            params: [streamID, Param(name: "seq", type: "int", required: true, description: "Highest frame received")],
+            params: [streamID, Param(name: "seq", type: "int", required: true, description: "Highest frame received"),
+                     Param(name: "viewerDelayMs", type: "double", required: false, description: "Milliseconds from receipt of this frame to ACK dispatch; omit for probes")],
             returns: .ok, handler: { try shared.ack(params: $0) }
         ))
         api.register(Endpoint(
@@ -390,7 +549,7 @@ final class VideoStreamer {
         // Acks still in flight when a stream ends are expected; drop them quietly.
         guard let stream = try? owned(params) else { return .object(["ok": .bool(false)]) }
         guard let seq = params?["seq"]?.intValue, seq >= 0, seq <= Int(UInt32.max) else { throw RouterError.missingParam("seq") }
-        stream.ack(UInt32(seq))
+        stream.ack(UInt32(seq), viewerDelayMs: params?["viewerDelayMs"]?.numericDouble)
         return .object(["ok": .bool(true), "activity": stream.activityInfo])
     }
 
@@ -530,8 +689,11 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     private let configuration = SCStreamConfiguration()
     private var capture: SCStream?
     private var session: VTCompressionSession?
+    private let adaptiveBitRate = ProcessInfo.processInfo.environment["LATTICES_VIDEO_ADAPTIVE_BITRATE"] == "1"
+    private var bitRateController: VideoBitRateController?
     private var sessionSize = (width: 0, height: 0)
-    private var flow = VideoFlowWindow()
+    private var flow: VideoFlowWindow
+    private var backlog = VideoEncodedBacklog()
     private var activity = VideoCaptureActivity()
     private var pixelSnapshot = VideoPixelSnapshot()
     // Request handling must not wait for this stream's capture/encoder/socket
@@ -557,6 +719,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         self.id = id
         self.owner = owner
         self.fps = fps
+        self.flow = VideoFlowWindow(fps: fps)
         self.maxWidth = maxWidth
         self.showsCursor = showsCursor
         self.windowID = plan.windowID
@@ -629,9 +792,17 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         ])))
     }
 
-    func ack(_ seq: UInt32) {
+    func ack(_ seq: UInt32, viewerDelayMs: Double?) {
+        let receivedAt = Self.now()
         queue.async { [self] in
-            guard !ended, flow.ack(seq, now: Self.now()), frameFeed.pendingFresh else { return }
+            guard !ended else { return }
+            switch flow.ack(seq, viewerDelayMs: viewerDelayMs, now: receivedAt) {
+            case .ignored: return
+            case .credited: break
+            case .timed(let rtt, let viewerDelay):
+                tuneBitRate(rtt: rtt, viewerDelay: viewerDelay, now: receivedAt)
+            }
+            handle(backlog.drain(flow: flow, now: Self.now()))
             feedLatest()
         }
     }
@@ -757,7 +928,7 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
     // MARK: Encode
 
     private func feedLatest() {
-        guard live, !ended, flow.canFeed, let latest, frameFeed.take(now: Self.now()) else { return }
+        guard live, !ended, flow.canFeed, backlog.canEncode(flow), let latest, frameFeed.take(now: Self.now()) else { return }
         encode(latest.buffer, frame: latest.frame)
     }
 
@@ -785,62 +956,116 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         lastPTS = pts
         let properties = keyframe ? [kVTEncodeFrameOptionKey_ForceKeyFrame: kCFBooleanTrue] as CFDictionary : nil
 
+        let generation = backlog.generation
         flow.fed()
         let status = VTCompressionSessionEncodeFrame(
             session, imageBuffer: pixels,
             presentationTimeStamp: CMTime(value: CMTimeValue(pts), timescale: 1_000_000),
             duration: .invalid, frameProperties: properties, infoFlagsOut: nil
         ) { [weak self] status, _, sample in
-            self?.queue.async { self?.emit(status: status, sample: sample, frame: frame) }
+            let encodedAt = Self.now()
+            self?.queue.async { self?.emit(status: status, sample: sample, frame: frame, generation: generation, encodedAt: encodedAt) }
         }
         if status != noErr {
-            flow.dropped()
+            flow.finishedEncoding()
             frameFeed.failed(now: Self.now())
             forceKeyframe = true
             DiagnosticLog.shared.warn("VideoStreamer: encode failed \(status)")
         }
     }
 
-    private func emit(status: OSStatus, sample: CMSampleBuffer?, frame: CGRect) {
+    private func emit(status: OSStatus, sample: CMSampleBuffer?, frame: CGRect, generation: UInt64, encodedAt: TimeInterval) {
         guard !ended else { return }
+        flow.finishedEncoding()
+        guard generation == backlog.generation else {
+            feedLatest() // Last dependent callback can release a recovery reservation.
+            return
+        }
         guard status == noErr, let sample, CMSampleBufferDataIsReady(sample),
               let encoded = Self.encodedFrame(sample) else {
-            flow.dropped()
             frameFeed.failed(now: Self.now())
             // A missing access unit may break inter-frame references. Recover
             // with an IDR, including when the failed attempt was a P-frame.
             forceKeyframe = true
             return
         }
-        frameFeed.succeeded()
-        let seq = flow.emitted(now: Self.now())
         let message = RemoteVideoFrame(
-            streamID: id, seq: seq, keyframe: encoded.keyframe, codec: .h264, pts: encoded.pts,
+            streamID: id, seq: flow.nextSeq, keyframe: encoded.keyframe, codec: .h264, pts: encoded.pts,
             width: UInt32(encoded.width), height: UInt32(encoded.height), frame: frame,
             parameterSets: encoded.parameterSets, accessUnit: encoded.accessUnit
         ).encoded()
-        // A failed write closes the socket; its close handler stops this stream.
-        owner.sendBinary(message)
+        let packet = VideoEncodedBacklog.Packet(message: message, keyframe: encoded.keyframe, encodedAt: encodedAt)
+        let now = Self.now()
+        let action = backlog.offer(packet, flow: flow, now: now)
+        if case .wait = action {
+            queue.asyncAfter(deadline: .now() + max(0, encodedAt + VideoEncodedBacklog.maximumAge - now)) { [weak self] in
+                guard let self, !self.ended else { return }
+                self.handle(self.backlog.drain(flow: self.flow, now: Self.now()))
+                self.feedLatest()
+            }
+        }
+        handle(action)
+        if flow.adaptive { feedLatest() }
+    }
+
+    private func handle(_ action: VideoEncodedBacklog.Action) {
+        switch action {
+        case .none, .wait: break
+        case .send(let packet):
+            flow.sent(bytes: packet.wireBytes, now: Self.now())
+            // A failed write closes the socket; its close handler stops this stream.
+            owner.sendBinary(packet.message)
+            frameFeed.succeeded()
+        case .recover(let backoff):
+            forceKeyframe = true
+            if backoff { frameFeed.failed(now: Self.now()) } else { frameFeed.request() }
+        }
     }
 
     private func makeSession(width: Int, height: Int) -> VTCompressionSession? {
+        let startingRate = VideoStreamMath.bitRate(width: width, height: height, fps: fps)
+        var encoder = Self.makeEncoderSession(width: width, height: height, fps: fps,
+                                              startingRate: startingRate, lowLatency: true)
+        if encoder.session == nil {
+            DiagnosticLog.shared.warn("VideoStreamer: low-latency encoder unavailable (\(encoder.status)); using the default encoder")
+            encoder = Self.makeEncoderSession(width: width, height: height, fps: fps,
+                                              startingRate: startingRate, lowLatency: false)
+        }
+        if adaptiveBitRate, encoder.initialRateAccepted {
+            bitRateController = VideoBitRateController(startingRate: startingRate)
+        }
+        return encoder.session
+    }
+
+    /// Called only for an opt-in timed ACK, on the capture/encoder queue.
+    private func tuneBitRate(rtt: TimeInterval, viewerDelay: TimeInterval, now: TimeInterval) {
+        guard let session,
+              let proposal = bitRateController?.record(rtt: rtt, viewerDelay: viewerDelay, now: now) else { return }
+        let status = Self.setEncoderBitRate(session, rate: proposal)
+        if status == noErr {
+            bitRateController?.didAccept(proposal)
+        } else {
+            bitRateController?.didReject()
+            DiagnosticLog.shared.warn("VideoStreamer: stream \(id) stopped bitrate tuning; encoder rejected update (\(status))")
+        }
+    }
+
+    static func setEncoderBitRate(_ session: VTCompressionSession, rate: Int) -> OSStatus {
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: rate as CFNumber)
+    }
+
+    static func makeEncoderSession(width: Int, height: Int, fps: Int, startingRate: Int, lowLatency: Bool)
+        -> (session: VTCompressionSession?, status: OSStatus, initialRateAccepted: Bool) {
         var session: VTCompressionSession?
-        let lowLatency = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: kCFBooleanTrue] as CFDictionary
-        var status = VTCompressionSessionCreate(
+        let specification = lowLatency
+            ? [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: kCFBooleanTrue] as CFDictionary
+            : nil
+        let status = VTCompressionSessionCreate(
             allocator: nil, width: Int32(width), height: Int32(height), codecType: kCMVideoCodecType_H264,
-            encoderSpecification: lowLatency, imageBufferAttributes: nil, compressedDataAllocator: nil,
+            encoderSpecification: specification, imageBufferAttributes: nil, compressedDataAllocator: nil,
             outputCallback: nil, refcon: nil, compressionSessionOut: &session
         )
-        let isLowLatency = status == noErr
-        if !isLowLatency {
-            DiagnosticLog.shared.warn("VideoStreamer: low-latency encoder unavailable (\(status)); using the default encoder")
-            status = VTCompressionSessionCreate(
-                allocator: nil, width: Int32(width), height: Int32(height), codecType: kCMVideoCodecType_H264,
-                encoderSpecification: nil, imageBufferAttributes: nil, compressedDataAllocator: nil,
-                outputCallback: nil, refcon: nil, compressionSessionOut: &session
-            )
-        }
-        guard status == noErr, let session else { return nil }
+        guard status == noErr, let session else { return (nil, status, false) }
 
         func set(_ key: CFString, _ value: CFTypeRef) {
             let result = VTSessionSetProperty(session, key: key, value: value)
@@ -849,19 +1074,21 @@ final class VideoStream: NSObject, SCStreamOutput, SCStreamDelegate {
         set(kVTCompressionPropertyKey_RealTime, kCFBooleanTrue)
         set(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse)
         // Low-latency rate control only does the constrained High profile (no B-frames, 4:2:0).
-        set(kVTCompressionPropertyKey_ProfileLevel, isLowLatency ? kVTProfileLevel_H264_ConstrainedHigh_AutoLevel : kVTProfileLevel_H264_Main_AutoLevel)
-        set(kVTCompressionPropertyKey_AverageBitRate, VideoStreamMath.bitRate(width: width, height: height, fps: fps) as CFNumber)
+        set(kVTCompressionPropertyKey_ProfileLevel, lowLatency ? kVTProfileLevel_H264_ConstrainedHigh_AutoLevel : kVTProfileLevel_H264_Main_AutoLevel)
+        let rateStatus = setEncoderBitRate(session, rate: startingRate)
+        if rateStatus != noErr { DiagnosticLog.shared.warn("VideoStreamer: initial average bitrate rejected (\(rateStatus))") }
         set(kVTCompressionPropertyKey_ExpectedFrameRate, fps as CFNumber)
         set(kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, Self.keyframeInterval as CFNumber)
         set(kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2)
         set(kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_ITU_R_709_2)
         set(kVTCompressionPropertyKey_YCbCrMatrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2)
-        VTCompressionSessionPrepareToEncodeFrames(session)
-        return session
+        let prepareStatus = VTCompressionSessionPrepareToEncodeFrames(session)
+        return (session, status, rateStatus == noErr && prepareStatus == noErr)
     }
 
     /// Flushes pending frames through `emit` first, so the flow window stays balanced.
     private func invalidateSession() {
+        bitRateController = nil
         guard let session else { return }
         VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
         VTCompressionSessionInvalidate(session)
