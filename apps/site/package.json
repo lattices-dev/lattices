@@ -22,7 +22,7 @@
     "content:prepare": "bun scripts/prepare-doc-content.ts",
     "preview:access": "bun scripts/serve-access.ts",
     "test:access": "bun test server/access.test.ts scripts/doc-access.test.ts",
-    "deploy:cloudflare": "bun run test:access && bun run check:analytics && wrangler deploy"
+    "deploy:cloudflare": "bun run check:analytics && bun run test:access && wrangler deploy"
   },
   "dependencies": {
     "@arach/arc": "^0.9.1",
