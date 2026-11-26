@@ -1,5 +1,5 @@
 {
-  "originHash" : "586d132c4701ac24dc33261e2bf0b9d36d77ca77275dd3d5b19606dfda2371a5",
+  "originHash" : "12f1a47164e5bd8dde0fbed640386a15c3c186affade9739ad464d76666d54ed",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -15,7 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:arach/hudson.git",
       "state" : {
-        "revision" : "57e71397163a097c8507a008426bfb5da6fed47b"
+        "revision" : "2224d1530dd41f606415afa8555f73ceac5a38d9"
       }
     },
     {

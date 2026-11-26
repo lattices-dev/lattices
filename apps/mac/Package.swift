@@ -9,7 +9,7 @@ import Foundation
 // (a worktree); its directory must be named `hudson`. HudsonVoice requires HUDSONKIT_WITH_VOICE=1 at build time.
 let hudsonSource = Context.environment["LATTICES_HUDSON_SOURCE"] ?? "path"
 let hudsonDependency: Package.Dependency = hudsonSource == "git"
-    ? .package(url: "git@github.com:arach/hudson.git", revision: "57e71397163a097c8507a008426bfb5da6fed47b")
+    ? .package(url: "git@github.com:arach/hudson.git", revision: "2224d1530dd41f606415afa8555f73ceac5a38d9")
     : .package(path: Context.environment["LATTICES_HUDSON_PATH"] ?? "../../../hudson")
 
 let voiceEnabled = Context.environment["HUDSONKIT_WITH_VOICE"] == "1"
