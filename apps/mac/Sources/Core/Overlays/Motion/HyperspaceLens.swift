@@ -261,7 +261,11 @@ final class LensGlassView: NSView {
         glass.style = .regular
         glass.tintColor = nil
         glass.cornerRadius = radius
-        if #available(macOS 27, *) { glass.effectIsInteractive = true }
+        // The release builds with the macOS 26 SDK. Enable interactive glass
+        // when the running AppKit supplies its macOS 27 property.
+        if glass.responds(to: NSSelectorFromString("setEffectIsInteractive:")) {
+            glass.setValue(true, forKey: "effectIsInteractive")
+        }
         interior.frame = bounds
         interior.autoresizingMask = [.width, .height]
         face.frame = bounds
