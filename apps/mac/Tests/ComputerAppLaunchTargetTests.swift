@@ -53,7 +53,7 @@ final class ComputerAppLaunchTargetTests: XCTestCase {
             let alias = url.deletingLastPathComponent().appendingPathComponent("Alias.app")
             try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: url)
             let target = try ComputerAppLaunchTarget(appName: "Different name", path: alias.path)
-            XCTAssertEqual(try target.applicationURL(lookup: { _ in nil }), url.resolvingSymlinksInPath())
+            XCTAssertEqual(try target.applicationURL(lookup: { _ in nil })?.path, url.resolvingSymlinksInPath().path)
             XCTAssertTrue(target.matches(name: "Target", bundleIdentifier: "com.example.Target", url: url))
         }
     }

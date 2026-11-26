@@ -91,7 +91,7 @@ final class DeskCanvasTests: XCTestCase {
 
     func testFeedsThisMacFirstAndSkipsUnkeyedDisplays() throws {
         let f = fixtures()
-        let hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines)
+        let hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines, builtinSize: { _ in nil })
         XCTAssertEqual(hosts.map(\.name), [MonitorInputs.here, "arts-mini", "archie"])
         XCTAssertEqual(hosts[0].displays.map(\.key), [dell, samsung, nil])
         XCTAssertEqual(hosts[0].displays[0].widthMm, 800)
@@ -108,7 +108,7 @@ final class DeskCanvasTests: XCTestCase {
         XCTAssertEqual(air.first?.builtin, true)
         XCTAssertNil(air.first?.key)
         let f = fixtures()
-        let hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines + [("air", air)])
+        let hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines + [("air", air)], builtinSize: { _ in nil })
         let desk = DeskLayout.stitch(hosts: hosts)
         let screen = try XCTUnwrap(desk.monitor(DeskCanvas.builtinKey("air")))
         XCTAssertEqual(screen.hosts, ["air"])
@@ -141,7 +141,7 @@ final class DeskCanvasTests: XCTestCase {
             NSColor(white: 0.5, alpha: 1).setFill(); NSRect(x: 0, y: 0, width: rect.width, height: 14).fill()
             return true
         }
-        var hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines)
+        var hosts = DeskCanvas.hosts(screens: f.screens, identities: f.identities, machines: f.machines, builtinSize: { _ in nil })
         // Archie has a monitor of its own below the Alienware; the second render pins the Samsung
         // where this Mac's arrangement disagrees.
         hosts[2].displays.append(.init(key: "lg 27gl850|abc", model: "LG 27GL850", frame: CGRect(x: 0, y: 1440, width: 2560, height: 1440)))

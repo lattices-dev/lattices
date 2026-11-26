@@ -22,7 +22,7 @@ struct ComputerAppLaunchTarget {
             guard path.hasPrefix("/"), URL(fileURLWithPath: path).pathExtension.lowercased() == "app" else {
                 throw RouterError.custom("App path must be an absolute .app bundle path")
             }
-            appURL = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            appURL = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
         } else {
             appURL = nil
         }
@@ -39,7 +39,7 @@ struct ComputerAppLaunchTarget {
     func matches(name: String?, bundleIdentifier: String?, url: URL?) -> Bool {
         if let expected = self.bundleIdentifier, bundleIdentifier != expected { return false }
         if let appURL {
-            return url?.standardizedFileURL.resolvingSymlinksInPath() == appURL
+            return url?.standardizedFileURL.resolvingSymlinksInPath().path == appURL.path
         }
         if self.bundleIdentifier != nil { return true }
         return name?.localizedCaseInsensitiveContains(appName) == true

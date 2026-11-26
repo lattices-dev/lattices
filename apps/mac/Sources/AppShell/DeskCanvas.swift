@@ -285,13 +285,14 @@ struct DeskCanvas: View {
     /// The desk's inputs: this Mac first (as `MonitorInputs.here`, so it
     /// anchors the layout), then each machine's reported monitors.
     static func hosts(screens: [VisitController.Screen], identities: [CGDirectDisplayID: MonitorIdentity],
-                      machines: [(name: String, monitors: [MachineArrangementStore.Monitor])]) -> [DeskLayout.Host] {
+                      machines: [(name: String, monitors: [MachineArrangementStore.Monitor])],
+                      builtinSize: (CGDirectDisplayID) -> CGSize? = MonitorIdentity.builtinSize) -> [DeskLayout.Host] {
         let here = DeskLayout.Host(name: MonitorInputs.here, displays: screens.map { screen in
             if let identity = identities[screen.displayID] {
                 return DeskLayout.Display(key: identity.key, model: identity.model, frame: screen.frame,
                                           widthMm: identity.widthMm, heightMm: identity.heightMm)
             }
-            let builtin = MonitorIdentity.builtinSize(screen.displayID)
+            let builtin = builtinSize(screen.displayID)
             return DeskLayout.Display(key: builtin == nil ? nil : builtinKey(MonitorInputs.here), model: builtin == nil ? nil : builtinModel,
                                       frame: screen.frame, widthMm: builtin.map { Int($0.width.rounded()) },
                                       heightMm: builtin.map { Int($0.height.rounded()) })

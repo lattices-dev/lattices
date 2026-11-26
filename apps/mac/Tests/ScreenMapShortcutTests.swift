@@ -4,14 +4,14 @@ import XCTest
 @testable import Lattices
 
 final class ScreenMapShortcutTests: XCTestCase {
-    func testDefaultDirectionalShortcutsMatchDesktopAndFreeControlOptionArrows() {
+    func testDefaultDirectionalShortcutsMatchDesktopControlOptionArrows() {
         let directions: [(UInt16, TilePosition)] = [(123, .left), (124, .right), (126, .top), (125, .bottom)]
         for (key, position) in directions {
             XCTAssertEqual(ScreenMapController.directionalTilePosition(
-                for: key, modifiers: [.command, .option, .shift], bindings: HotkeyStore.defaultBindings
+                for: key, modifiers: [.control, .option], bindings: HotkeyStore.defaultBindings
             ), position)
             XCTAssertNil(ScreenMapController.directionalTilePosition(
-                for: key, modifiers: [.control, .option], bindings: HotkeyStore.defaultBindings
+                for: key, modifiers: [.command, .option, .shift], bindings: HotkeyStore.defaultBindings
             ))
             XCTAssertNil(ScreenMapController.directionalTilePosition(
                 for: key, modifiers: [.command, .option], bindings: HotkeyStore.defaultBindings
@@ -27,7 +27,7 @@ final class ScreenMapShortcutTests: XCTestCase {
             for: 0, modifiers: [.control, .option], bindings: bindings
         ), .left)
         XCTAssertNil(ScreenMapController.directionalTilePosition(
-            for: 123, modifiers: [.command, .option, .shift], bindings: bindings
+            for: 123, modifiers: [.control, .option], bindings: bindings
         ))
         XCTAssertNil(ScreenMapController.directionalTilePosition(
             for: 0, modifiers: [.control, .option, .shift], bindings: bindings
