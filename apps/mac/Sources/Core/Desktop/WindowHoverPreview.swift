@@ -22,6 +22,13 @@ final class WindowHoverPreview {
     private var groupPlates: [CALayer] = []
     private var groupLabels: [CATextLayer] = []
 
+    struct LandingPlate {
+        let frame: CGRect
+        let title: String
+        var windowID: UInt32? = nil
+    }
+
+    private var visibleProposals: [LandingPlate] = []
     private let plateInset: CGFloat = 3
     private let shadowPad: CGFloat = 28
     private let morphDuration: CFTimeInterval = 0.10
@@ -54,22 +61,37 @@ final class WindowHoverPreview {
         case frosted
     }
 
+    /// Match the visible fill, front to back. Shadows and gaps expose the desktop.
+    func proposedWindow(at point: CGPoint, adjoiningDivider: ((UInt32) -> Bool)? = nil) -> UInt32? {
+        guard visuallyPresent, overlayWindow?.isVisible == true else { return nil }
+        for plate in visibleProposals.reversed() {
+            let rect = plate.frame.insetBy(dx: plateInset, dy: plateInset)
+            guard rect.contains(point) else { continue }
+            let radius = min(cornerRadius, rect.width / 2, rect.height / 2)
+            if CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil).contains(point) {
+                return plate.windowID
+            }
+        }
+        // Drag handles extend through the gutter between neighboring tiles.
+        guard let adjoiningDivider else { return nil }
+        return visibleProposals.reversed().first { plate in
+            plate.windowID.map(adjoiningDivider) == true && plate.frame.insetBy(dx: -7, dy: -7).contains(point)
+        }?.windowID
+    }
+
     /// Several landing spots at once. Hyperspace uses this for a split, and
     /// passes `held` once the drag has been released. Command-drag keeps the
     /// single morphing plate from `show(frame:)`.
-    func show(_ frames: [(CGRect, String)], held: Bool, guides: [(CGRect, String)] = []) {
+    func show(_ frames: [LandingPlate], held: Bool, guides: [(CGRect, String)] = []) {
         autoHideWork?.cancel()
         autoHideWork = nil
         stickyUntil = 0
         generation += 1
-        let spots = guides.filter {
-            $0.0.insetBy(dx: plateInset, dy: plateInset).width > 8
-                && $0.0.insetBy(dx: plateInset, dy: plateInset).height > 8
-        }.map { (rect: $0.0, title: $0.1, guide: true) }
-        let usable = spots + frames.filter {
-            $0.0.insetBy(dx: plateInset, dy: plateInset).width > 8
-                && $0.0.insetBy(dx: plateInset, dy: plateInset).height > 8
-        }.map { (rect: $0.0, title: $0.1, guide: false) }
+        let spots = guides.map { (plate: LandingPlate(frame: $0.0, title: $0.1), guide: true) }
+        let usable = (spots + frames.map { (plate: $0, guide: false) }).filter {
+            let rect = $0.plate.frame.insetBy(dx: plateInset, dy: plateInset)
+            return rect.width > 8 && rect.height > 8
+        }
         guard !usable.isEmpty else {
             clear()
             return
@@ -92,20 +114,21 @@ final class WindowHoverPreview {
                 groupPlates.forEach { host.addSublayer($0) }
             }
         }
+        visibleProposals = usable.map(\.plate).filter { $0.windowID != nil }
         let union = usable.reduce(CGRect.null) { partial, item in
-            partial.union(item.rect.insetBy(dx: plateInset, dy: plateInset))
+            partial.union(item.plate.frame.insetBy(dx: plateInset, dy: plateInset))
         }
         placeWindow(window, frame: paddedRect(union))
         let scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
         for index in usable.indices {
             let item = usable[index]
-            let target = item.rect.insetBy(dx: plateInset, dy: plateInset)
+            let target = item.plate.frame.insetBy(dx: plateInset, dy: plateInset)
             let plate = groupPlates[index]
             let label = groupLabels[index]
             plate.frame = layerRect(target, in: window)
             plate.contentsScale = scale
             applyGroupStyle(held && !item.guide, guide: item.guide, to: plate)
-            label.string = item.title
+            label.string = item.plate.title
             label.contentsScale = scale
             label.foregroundColor = NSColor.white.withAlphaComponent(item.guide ? 0.72 : (held ? 0.96 : 0.82)).cgColor
             label.frame = CGRect(x: 12, y: max(0, plate.bounds.height - 28), width: max(1, plate.bounds.width - 24), height: 16)
@@ -411,6 +434,7 @@ final class WindowHoverPreview {
     }
 
     private func removeGroupPlates() {
+        visibleProposals.removeAll()
         groupPlates.forEach { $0.removeFromSuperlayer() }
         groupPlates.removeAll()
         groupLabels.removeAll()

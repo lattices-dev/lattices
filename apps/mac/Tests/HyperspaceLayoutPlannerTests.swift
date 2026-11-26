@@ -172,6 +172,147 @@ final class HyperspaceLayoutPlannerTests: XCTestCase {
         XCTAssertEqual(b.minX - a.maxX, HyperspaceLayoutPlanner.gap, accuracy: 1)
     }
 
+    func testContinuousDividerResizesBothRowsAndPreservesTheirGutters() throws {
+        let tiles: [(UInt32, CGRect)] = [
+            (1, CGRect(x: -1200, y: 30, width: 590, height: 390)),
+            (2, CGRect(x: -602, y: 30, width: 450, height: 390)),
+            (3, CGRect(x: -1200, y: 428, width: 590, height: 360)),
+            (4, CGRect(x: -602, y: 428, width: 320, height: 360)),
+        ]
+        let seams = HyperspaceLayoutPlanner.dividers(tiles.reversed())
+        let divider = try XCTUnwrap(seams.first { $0.vertical })
+        XCTAssertEqual(seams.filter(\.vertical).count, 1)
+        XCTAssertEqual(divider.hitFrame.minY, 30)
+        XCTAssertEqual(divider.hitFrame.maxY, 788)
+        let plan = divider.plan(at: CGPoint(x: 100, y: 40), from: CGPoint(x: -603, y: 40))
+        XCTAssertEqual(Set(plan.frames.keys), [1, 2, 3, 4])
+        for (id, original) in tiles {
+            let frame = try XCTUnwrap(plan.frames[id])
+            XCTAssertEqual(frame.minY, original.minY)
+            XCTAssertEqual(frame.height, original.height)
+            if id == 1 || id == 3 {
+                XCTAssertEqual(frame.minX, original.minX)
+                XCTAssertEqual(frame.maxX, original.maxX + 40)
+            } else {
+                XCTAssertEqual(frame.minX, original.minX + 40)
+                XCTAssertEqual(frame.maxX, original.maxX)
+            }
+        }
+    }
+
+    func testHorizontalTJunctionAndDisconnectedParallelSeam() throws {
+        let tiles: [(UInt32, CGRect)] = [
+            (1, CGRect(x: 0, y: 0, width: 904, height: 500)),
+            (2, CGRect(x: 0, y: 500, width: 450, height: 300)),
+            (3, CGRect(x: 454, y: 500, width: 450, height: 300)),
+            (4, CGRect(x: 980, y: 0, width: 450, height: 500)),
+            (5, CGRect(x: 980, y: 500, width: 450, height: 300)),
+        ]
+        let seams = HyperspaceLayoutPlanner.dividers(tiles).filter { !$0.vertical }
+        XCTAssertEqual(seams.count, 2)
+        let seam = try XCTUnwrap(seams.first { $0.hitFrame.contains(CGPoint(x: 700, y: 500)) })
+        let plan = seam.plan(at: CGPoint(x: 700, y: 460))
+        XCTAssertEqual(Set(plan.frames.keys), [1, 2, 3])
+        XCTAssertEqual(plan.frames[1]?.maxY, 460)
+        XCTAssertEqual(plan.frames[2]?.minY, 460)
+        XCTAssertEqual(plan.frames[3]?.height, 340)
+    }
+
+    func testDesktopDragExchangesDiagonalSlotsAndPreservesEdgeSplit() throws {
+        let grid = try XCTUnwrap(HyperspaceLayoutPlanner.grid([1, 2, 3, 4], in: area))
+        let source = try XCTUnwrap(grid.frames[2]), destination = try XCTUnwrap(grid.frames[3])
+        let neighbors = grid.frames.filter { $0.key != 2 }.map { ($0.key, $0.value) }
+        let start = CGPoint(x: source.midX, y: source.midY)
+        let swap = HyperspaceLayoutPlanner.desktopDrop(2, original: source, start: start,
+            at: CGPoint(x: destination.midX, y: destination.midY), in: area, neighbors: neighbors)
+        XCTAssertEqual(swap.frames, [2: destination, 3: source])
+        let split = HyperspaceLayoutPlanner.desktopDrop(2, original: source, start: start,
+            at: CGPoint(x: destination.minX + 8, y: destination.midY), in: area, neighbors: neighbors)
+        XCTAssertEqual(split.title, "Share space")
+        // The remaining top tile takes the width that the dragged tile vacated.
+        XCTAssertEqual(split.frames[1]?.width, area.width)
+        XCTAssertEqual(split.frames[2]?.minX, destination.minX)
+        XCTAssertEqual(split.frames[3]?.maxX, destination.maxX)
+    }
+
+    func testEdgeDropCompactsThreeColumnsAndLeavesFloatingWindowAlone() throws {
+        let area = CGRect(x: -1200, y: 40, width: 1200, height: 800)
+        let columns = try XCTUnwrap(HyperspaceLayoutPlanner.columns([1, 2, 3], in: area))
+        let a = try XCTUnwrap(columns.frames[1])
+        let b = try XCTUnwrap(columns.frames[2])
+        let c = try XCTUnwrap(columns.frames[3])
+        let floating = CGRect(x: -350, y: 260, width: 300, height: 205)
+        let drag = HyperspaceLayoutPlanner.DesktopDrop(id: 1, original: a, start: a.origin, area: area,
+            neighbors: [(4, floating), (2, b), (3, c)])
+        let plan = drag.plan(at: CGPoint(x: b.midX, y: b.minY + 8))
+        XCTAssertEqual(Set(plan.frames.keys), [1, 2, 3])
+        let upper = try XCTUnwrap(plan.frames[1])
+        let lower = try XCTUnwrap(plan.frames[2])
+        let right = try XCTUnwrap(plan.frames[3])
+        XCTAssertEqual(upper.minX, area.minX)
+        XCTAssertEqual(upper.width, right.width, accuracy: 2)
+        XCTAssertEqual(upper.maxX, lower.maxX)
+        XCTAssertEqual(lower.maxY, area.maxY)
+        XCTAssertEqual(lower.minY - upper.maxY, HyperspaceLayoutPlanner.gap)
+        XCTAssertEqual(right.maxX, area.maxX)
+        XCTAssertEqual(right.height, area.height)
+        XCTAssertNil(plan.frames[4])
+        XCTAssertEqual(drag.plan(at: CGPoint(x: b.midX, y: b.midY)).frames, [1: b, 2: a])
+    }
+
+    func testSecondDropUsesStagedSiblingsAboveTheLiveDesktop() throws {
+        let area = CGRect(x: 0, y: 0, width: 1500, height: 900)
+        let columns = try XCTUnwrap(HyperspaceLayoutPlanner.columns([1, 2, 3], in: area))
+        let a = try XCTUnwrap(columns.frames[1])
+        let b = try XCTUnwrap(columns.frames[2])
+        let c = try XCTUnwrap(columns.frames[3])
+        let first = HyperspaceLayoutPlanner.desktopDrop(1, original: a, start: a.origin,
+            at: CGPoint(x: b.midX, y: b.minY + 8), in: area, neighbors: [(2, b), (3, c)])
+        let upper = try XCTUnwrap(first.frames[1])
+        let lower = try XCTUnwrap(first.frames[2])
+        let right = try XCTUnwrap(first.frames[3])
+        let drag = HyperspaceLayoutPlanner.DesktopDrop(id: 1, original: upper, start: upper.origin,
+            area: area, neighbors: [(90, right), (2, lower), (3, right)], prior: first)
+        let second = drag.plan(at: CGPoint(x: right.midX, y: right.maxY - 8))
+        XCTAssertEqual(Set(second.frames.keys), [1, 2, 3])
+        XCTAssertEqual(second.frames[2]?.minY, area.minY)
+        XCTAssertEqual(second.frames[2]?.height, area.height)
+        XCTAssertEqual(second.frames[1]?.maxY, area.maxY)
+        XCTAssertEqual(second.frames[3]?.minY, area.minY)
+    }
+
+    func testStagedPairDoesNotAbsorbAnAdjoiningUnstagedWindow() throws {
+        let columns = try XCTUnwrap(HyperspaceLayoutPlanner.columns([1, 2, 3], in: area))
+        let a = try XCTUnwrap(columns.frames[1])
+        let b = try XCTUnwrap(columns.frames[2])
+        let c = try XCTUnwrap(columns.frames[3])
+        let prior = HyperspaceLayoutPlan(title: "Pair", frames: [1: a, 2: b])
+        let drag = HyperspaceLayoutPlanner.DesktopDrop(id: 1, original: a, start: a.origin, area: area,
+            neighbors: [(2, b), (3, c)], prior: prior)
+        let plan = drag.plan(at: CGPoint(x: b.midX, y: b.maxY - 8))
+        XCTAssertEqual(Set(plan.frames.keys), [1, 2])
+        XCTAssertEqual(plan.frames[1]?.minX, a.minX)
+        XCTAssertEqual(plan.frames[1]?.maxX, b.maxX)
+    }
+
+    func testDesktopDropOnNarrowTileSwapsOnlyTheFrontmostOccupant() {
+        let source = CGRect(x: 0, y: 0, width: 400, height: 300)
+        let tile = CGRect(x: 404, y: 0, width: 400, height: 300)
+        let start = CGPoint(x: 200, y: 150)
+        let plan = HyperspaceLayoutPlanner.desktopDrop(1, original: source, start: start,
+            at: CGPoint(x: 410, y: 150), in: source.union(tile), neighbors: [(3, tile), (2, tile)])
+        XCTAssertEqual(plan.frames, [1: tile, 3: source])
+    }
+
+    func testDesktopDropPreservesFreeDragForOverlappingWindows() {
+        let source = CGRect(x: 400, y: 200, width: 600, height: 400)
+        let tile = source.offsetBy(dx: 150, dy: 0)
+        let point = CGPoint(x: tile.midX, y: tile.midY)
+        let plan = HyperspaceLayoutPlanner.desktopDrop(1, original: source, start: source.origin,
+            at: point, in: area, neighbors: [(2, tile)])
+        XCTAssertNil(plan.frames[2])
+    }
+
     func testNonAdjacentWindowsDoNotGetAResizeDivider() {
         XCTAssertTrue(HyperspaceLayoutPlanner.dividers([
             (1, CGRect(x: 0, y: 0, width: 600, height: 600)),

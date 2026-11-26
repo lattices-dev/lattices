@@ -266,6 +266,12 @@ final class ShapeRecognizer {
             )
         }
 
+        if let legs = downwardChevron(points) {
+            return ShapeRecognitionResult(shape: .vShape, segments: legs,
+                confidence: calculateConfidence(segments: legs, corners: 1, totalLength: totalLength),
+                pathLength: totalLength)
+        }
+
         // Direction runs work better for mouse gestures than strict corner
         // detection because real paths rarely contain one crisp corner sample.
         let runSegments = buildDirectionRunSegments(points: points)
@@ -287,6 +293,34 @@ final class ShapeRecognizer {
     }
 
     // MARK: - Corner Detection
+
+    /// At 45 degrees both legs can quantize to the same horizontal direction.
+    /// Fit the two arms at the lowest point before reducing samples to axis runs.
+    private func downwardChevron(_ points: [GesturePathPoint]) -> [DirectionSegment]? {
+        guard let tip = points.indices.max(by: { points[$0].y < points[$1].y }),
+              tip > 0, tip < points.count - 1 else { return nil }
+        let last = points.count - 1
+        let apex = points[tip]
+        let across = points[last].x > points[0].x ? CGFloat(1) : -1
+        var legs: [DirectionSegment] = []
+        for (start, end, direction) in [(0, tip, MouseGestureDirection.down), (tip, last, .up)] {
+            let a = points[start], b = points[end]
+            let dx = b.x - a.x, dy = b.y - a.y
+            let length = hypot(dx, dy)
+            let depth = apex.y - (direction == .down ? a.y : b.y)
+            guard length >= minSegmentLength, dx * across >= length * 0.20,
+                  depth >= max(minSegmentLength / 2, length * 0.35) else { return nil }
+            // Reject flat-bottomed U shapes, loops and retraced strokes.
+            let traveled = segmentLength(points: points, from: start, to: end)
+            guard traveled <= length * 1.20,
+                  points[start...end].allSatisfy({ point in
+                      let distance = abs(dx * (point.y - a.y) - dy * (point.x - a.x)) / length
+                      return distance <= max(6, length * 0.13)
+                  }) else { return nil }
+            legs.append(.init(direction: direction, startIndex: start, endIndex: end, length: traveled))
+        }
+        return legs
+    }
 
     private func detectCorners(points: [GesturePathPoint]) -> [Int] {
         guard points.count > cornerSmoothRadius * 2 else { return [] }

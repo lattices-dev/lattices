@@ -327,22 +327,6 @@ private final class PassThroughHostingView<Content: View>: NSHostingView<Content
 private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
     weak var panel: MotionPanel?
     var screen: NSScreen?
-    private var pointerTrackingArea: NSTrackingArea?
-    private var lastHoverSample: TimeInterval = 0
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let pointerTrackingArea { removeTrackingArea(pointerTrackingArea) }
-        let area = NSTrackingArea(
-            rect: .zero,
-            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        pointerTrackingArea = area
-    }
-
     override func hitTest(_ point: NSPoint) -> NSView? {
         // The open Grid, Layers, or Map card sits in front of the windows
         // underneath it. A click there must not start a desktop drag.
@@ -374,7 +358,7 @@ private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
             return
         }
         if panel.inPlaceCapturesDesktopClick(at: local, in: self, on: screen) {
-            panel.beginDesktopGesture(at: local, in: self, on: screen)
+            panel.beginDesktopGesture(at: local, in: self, on: screen, modifiers: event.modifierFlags)
             return
         }
         super.mouseDown(with: event)
@@ -385,29 +369,18 @@ private final class InPlaceHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func mouseUp(with event: NSEvent) {
+        panel?.moveDesktopGesture(at: convert(event.locationInWindow, from: nil), in: self)
         panel?.endDesktopGesture()
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        // CG window hit-testing is deliberately sampled rather than run at the
-        // display refresh rate. The affordance only needs to follow window changes.
-        let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastHoverSample >= 0.08 else { return }
-        lastHoverSample = now
-
-        let local = convert(event.locationInWindow, from: nil)
-        guard panel?.ownsDesktopPointer == true || super.hitTest(local) == nil else {
-            panel?.clearInPlaceDesktopHover()
+    func sampleHover(at screenPoint: NSPoint) {
+        guard let panel, let screen, let window else { return }
+        let local = convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        guard panel.ownsDesktopPointer || super.hitTest(local) == nil else {
+            panel.clearInPlaceDesktopHover()
             return
         }
-        guard let panel, let screen else { return }
         panel.performInPlaceDesktopHover(at: local, in: self, on: screen)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        NSCursor.arrow.set()
-        panel?.clearInPlaceDesktopHover()
-        super.mouseExited(with: event)
     }
 }
 
@@ -564,6 +537,7 @@ final class HyperspaceDrag: ObservableObject {
     @Published var hoverLayoutTitle: String? // layout card under the cursor (plan title)
     @Published var landingTarget: UInt32?    // proposal slot the dragged window would swap into
     @Published var placementPreview: HyperspaceLayoutPlan?
+    var placementDrop: HyperspaceLayoutPlanner.DesktopDrop?
     var placementAnchor: CGPoint?
     @Published var inspectLayer: String?     // pile under a plain mouse hover (no drag) — reveals its roster
     @Published var inspectScreen: String?    // which screen that hovered pile is on
@@ -618,6 +592,7 @@ final class HyperspaceDrag: ObservableObject {
         hoverLayoutTitle = nil
         landingTarget = nil
         placementPreview = nil
+        placementDrop = nil
         placementAnchor = nil
     }
 
@@ -684,6 +659,8 @@ private final class MotionPanel: NSPanel {
     private var thumbInFlight: Set<UInt32> = []          // de-dupe in-flight captures
     private let stackMargin: CGFloat = 24
     private var keyObserver: Any?
+    private var pointerTimer: Timer?
+    private var lastHoverPoint: NSPoint?
     private var layoutRefreshTimer: Timer?   // keep Current View frames live while surveying
     private var layoutFingerprintByScreen: [String: Int] = [:]
     private var captureRebuildWorkItemsByScreenID: [String: DispatchWorkItem] = [:]
@@ -742,7 +719,33 @@ private final class MotionPanel: NSPanel {
     private var desktopHUD: HyperspaceDesktopHUD?
     private let layoutPreview = WindowHoverPreview(level: NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 6))
     private let dividerHandles = HyperspaceDividerHandles()
-    private var pendingLayout: HyperspaceLayoutPlan?
+    private var dividerCache: [String: (surfaces: [HyperspaceLayoutPlanner.DividerSurface], viewport: CGRect,
+                                        dividers: [HyperspaceLayoutPlanner.Divider])] = [:]
+    private let gestureFeedback = HyperspaceGestureFeedback()
+    private var hoveredDivider: HyperspaceLayoutPlanner.Divider?
+    private var dividerHoverPoint: CGPoint?
+    private var pins: [UInt32: CGRect] = [:]
+    private var pinNotice: String?
+    private var stagedLayout: HyperspaceLayoutPlan?
+    private var pendingLayout: HyperspaceLayoutPlan? {
+        get { stagedLayout }
+        set {
+            pinNotice = nil
+            guard let candidate = newValue else {
+                stagedLayout = nil
+                if desktopGesture == nil { pins.removeAll() }
+                return
+            }
+            guard !pins.isEmpty, let screen = activeSurveyScreen else { stagedLayout = candidate; return }
+            let area = desktopArea(on: screen)
+            let relevant = pins.filter { candidate.frames[$0.key] != nil || area.intersects($0.value) }
+            if let constrained = HyperspaceLayoutPlanner.respectingPins(candidate, pins: relevant, in: area) {
+                stagedLayout = constrained
+            } else {
+                pinNotice = "Pinned window holds this space · ⌥ click to unpin"
+            }
+        }
+    }
     /// The landing drawn ahead of the pointer while a free drag is still short of it.
     private var landingCue: String?
     /// True once a drag has been released. The overlay fills in and waits for Apply.
@@ -755,18 +758,33 @@ private final class MotionPanel: NSPanel {
     private var layoutApplying = false
     private var keyboardBrowsing = false
     fileprivate var ownsDesktopPointer: Bool { !selectionOnly && inPlaceMode && !dragModel.isPlacing }
+    private enum DesktopHit {
+        case proposal(UInt32)
+        case window(UInt32)
+
+        var wid: UInt32 {
+            switch self {
+            case .proposal(let wid), .window(let wid): return wid
+            }
+        }
+    }
     private struct DesktopGesture {
-        let wid: UInt32?
+        let hit: DesktopHit?
+        var wid: UInt32? { hit?.wid }
         /// The dragged window alone, or the whole selection when that window is part of it.
         let ids: [UInt32]
-        let original: CGRect
         let originals: [UInt32: CGRect]
         let start: CGPoint
         let screen: NSScreen
+        let priorPlan: HyperspaceLayoutPlan?
         let divider: HyperspaceLayoutPlanner.Divider?
         let neighbors: [(UInt32, CGRect)]
+        let soloDrop: HyperspaceLayoutPlanner.DesktopDrop?
         var at: CGPoint
         var moved = false
+        var stroke: [CGPoint]? = nil
+        var snapTargets: [CGFloat] = []
+        var snap: CGFloat? = nil
     }
     private var desktopGesture: DesktopGesture?
     private var inPlaceHoverWid: UInt32?
@@ -1105,6 +1123,7 @@ private final class MotionPanel: NSPanel {
         captureRebuildWorkItemsByScreenID.removeAll()
         inPlaceHoverWid = nil
         desktopGesture = nil
+        gestureFeedback.clear()
         layoutPreview.clear()
         dividerHandles.clear()
         NSCursor.arrow.set()
@@ -1233,6 +1252,15 @@ private final class MotionPanel: NSPanel {
         let code = event.keyCode
         if exposed, handleClusterSearchKey(event) { return }
         if code == 53 {                                     // Esc — close inspector / placement stage first, else leave
+            if let gesture = desktopGesture {
+                pendingLayout = gesture.priorPlan
+                desktopGesture = nil
+                layoutLocked = pendingLayout != nil
+                landingCue = nil
+                refreshLayoutPreview()
+                updateDesktopHUD()
+                return
+            }
             if dragModel.selectedLayer != nil { dragModel.selectedLayer = nil; return }
             if dragModel.isPlacing { dragModel.endPlacing(); return }
             if !selectionOnly, let screen = activeSurveyScreen, canvasForScreen(screen).tool != nil {
@@ -1348,7 +1376,7 @@ private final class MotionPanel: NSPanel {
             case 49 where inPlaceMode && !selectionOnly && inPlaceHoverWid != nil: // Space — pick the aimed window
                 if let wid = inPlaceHoverWid, let entry = eligible.first(where: { $0.wid == wid }),
                    let screen = screen(for: entry) {
-                    exposeToggle(wid, on: screen)
+                    pickWindow(wid, on: screen)
                 }
                 return
             case 48:                                                         // Tab — move highlight
@@ -1359,7 +1387,7 @@ private final class MotionPanel: NSPanel {
                     let aim = exposeAimByScreen[id] ?? 0
                     if let wid = exposeOrderByScreen[id]?[safe: aim] {
                         if selectionOnly { completeWindowPick(wid) }
-                        else { exposeToggle(wid, on: eventScreen) }
+                        else { pickWindow(wid, on: eventScreen) }
                     }
                 }
                 return
@@ -1401,7 +1429,7 @@ private final class MotionPanel: NSPanel {
                 } else if let eventScreen, let id = screenID,
                           let ch, let wid = hintMapByScreen[id]?[ch] {
                     if selectionOnly { completeWindowPick(wid) }
-                    else { exposeToggle(wid, on: eventScreen) }              // a–z — pluck by hint
+                    else { pickWindow(wid, on: eventScreen) }              // a–z — pluck by hint
                 } else {
                     NSSound.beep()
                 }
@@ -2909,6 +2937,11 @@ private final class MotionPanel: NSPanel {
     /// Poll DesktopModel and refresh Current View outlines while the survey is open.
     private func startLayoutRefresh() {
         stopLayoutRefresh()
+        if inPlaceMode {
+            pointerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                self?.sampleDesktopPointer()
+            }
+        }
         let interval: TimeInterval = inPlaceMode ? 1.5 : 0.75
         layoutRefreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             self?.refreshLiveLayoutIfChanged()
@@ -2931,6 +2964,9 @@ private final class MotionPanel: NSPanel {
         if !changedScreens.isEmpty {
             rebuildExposeView(screens: changedScreens)
             if inPlaceMode { refreshBorders() }
+        } else if inPlaceMode {
+            // Untitled or newly opened windows can cover a seam without moving a survey member.
+            refreshDividerHandles()
         }
     }
 
@@ -2938,7 +2974,31 @@ private final class MotionPanel: NSPanel {
         layoutFingerprintByScreen.removeValue(forKey: MotionPanel.screenID(screen))
     }
 
+    // The desktop spans several nonactivating panels. Ordering a landing plate or
+    // outline can interrupt mouseMoved delivery to the hosting view. Resolve the
+    // screen position directly and only hit-test when the pointer actually moves.
+    private func sampleDesktopPointer() {
+        guard exposed, !dismissed, !layoutApplying, desktopGesture == nil,
+              !dragModel.isActive, !dragModel.isPlacing, NSEvent.pressedMouseButtons == 0,
+              commandPanel == nil, newLayerPanel == nil, rulePanel == nil else { return }
+        let point = NSEvent.mouseLocation
+        guard point != lastHoverPoint else { return }
+        lastHoverPoint = point
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }),
+              let host = exposeHostsByScreenID[MotionPanel.screenID(screen)] as? InPlaceHostingView<ExposeView>,
+              host.window?.isVisible == true else {
+            clearInPlaceDesktopHover()
+            return
+        }
+        host.sampleHover(at: point)
+    }
+
     private func stopLayoutRefresh() {
+        pointerTimer?.invalidate()
+        pointerTimer = nil
+        lastHoverPoint = nil
+        hoveredDivider = nil
+        dividerHoverPoint = nil
         layoutRefreshTimer?.invalidate()
         layoutRefreshTimer = nil
     }
@@ -3027,7 +3087,7 @@ private final class MotionPanel: NSPanel {
                     guard let self else { return }
                     self.keyboardBrowsing = false
                     if self.selectionOnly { self.completeWindowPick(wid) }
-                    else { self.exposeToggle(wid, on: screen) }
+                    else { self.pickWindow(wid, on: screen) }
                 },
                 onDrop: { [weak self] wid, spec in
                     guard let self, !self.selectionOnly else { return }
@@ -3237,7 +3297,7 @@ private final class MotionPanel: NSPanel {
         updateStack()
     }
 
-    private func exposeToggle(_ wid: UInt32, on screen: NSScreen, keepProposal: Bool = false) {
+    private func pickWindow(_ wid: UInt32, on screen: NSScreen, keepProposal: Bool = false, toggleSelected: Bool = true) {
         if !keepProposal {
             pendingLayout = nil
             layoutLocked = false
@@ -3245,8 +3305,8 @@ private final class MotionPanel: NSPanel {
         }
         aimWindow(wid, on: screen)
         let id = MotionPanel.screenID(screen)
-        if selection.toggle(wid, on: id),
-           let e = eligible.first(where: { $0.wid == wid }) { _ = ax(for: e) }
+        let added = toggleSelected ? selection.toggle(wid, on: id) : !selection.append([wid], on: id).isEmpty
+        if added, let entry = eligible.first(where: { $0.wid == wid }) { _ = ax(for: entry) }
         let memberIDs = Set(surveyMembers(on: screen).map(\.wid))
         selection.retainWindows(memberIDs, on: id)
         if activeSurveyScreen.map(MotionPanel.screenID) != id {
@@ -3498,7 +3558,7 @@ private final class MotionPanel: NSPanel {
                                              members: held.map(\.entry).filter { self.entry($0, isOn: screen) }.map(\.wid))
         }
         let model = HyperspaceCommandModel(windows: windows, groups: groups, layers: layers)
-        model.onPluckWindow = { [weak self] wid in self?.exposeToggle(wid, on: screen) }
+        model.onPluckWindow = { [weak self] wid in self?.pickWindow(wid, on: screen) }
         model.onPluckGroup  = { [weak self] cid in self?.exposeToggleCluster(cid, on: screen) }
         model.onRecallLayer = { [weak self] lid in self?.pluckLayer(lid, on: screen) }
         model.onTile        = { [weak self] gp  in self?.stageTileForSelection(gp, on: screen) }
@@ -3885,6 +3945,7 @@ private final class MotionPanel: NSPanel {
         refreshLayoutPreview()
         updateDesktopHUD()
         updateLegend()
+        if let pinNotice { return (false, pinNotice) }
         return (true, "\(plan.title) · ⏎ or :w applies, Esc drops it")
     }
 
@@ -4119,11 +4180,14 @@ private final class MotionPanel: NSPanel {
 
     // MARK: - In-place desktop click (Hyper+G)
 
-    /// Frontmost eligible window at a desktop click. Walks CGWindowList fresh so
-    /// z-order and bounds match what you see at click time — the open-time
-    /// `eligible` snapshot can be stale after raises.
-    private func topWindowAtDesktopClick(cg: CGPoint, on screen: NSScreen) -> WindowEntry? {
-        let selectable = Dictionary(uniqueKeysWithValues: surveyMembers(on: screen).map { ($0.wid, $0) })
+    private func desktopHit(cg: CGPoint, on screen: NSScreen,
+                            divider: HyperspaceLayoutPlanner.Divider? = nil) -> DesktopHit? {
+        let point = appKitFrame(fromAX: CGRect(origin: cg, size: .zero)).origin
+        if let wid = layoutPreview.proposedWindow(at: point, adjoiningDivider: divider.map { $0.touches }) {
+            return .proposal(wid)
+        }
+        // Native stacking order only applies to the uncovered desktop.
+        let selectable = Set(surveyMembers(on: screen).map(\.wid))
         guard !selectable.isEmpty,
               let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
             return nil
@@ -4138,8 +4202,14 @@ private final class MotionPanel: NSPanel {
 
             var rect = CGRect.zero
             guard CGRectMakeWithDictionaryRepresentation(boundsDict, &rect),
-                  rect.width >= 50, rect.height >= 50,
-                  rect.contains(cg) else { continue }
+                  rect.width >= 50, rect.height >= 50 else { continue }
+            var hitBounds = rect
+            if divider?.touches(wid) == true {
+                // The gutter belongs to the adjoining tiles, even when another
+                // application is visible through the gap underneath them.
+                hitBounds = hitBounds.insetBy(dx: -7, dy: -7)
+            }
+            guard hitBounds.contains(cg) else { continue }
 
             let isOnScreen = info[kCGWindowIsOnscreen as String] as? Bool ?? true
             guard isOnScreen else { continue }
@@ -4156,7 +4226,7 @@ private final class MotionPanel: NSPanel {
             // The first real window containing the click owns the click.  If it
             // is not in this in-place survey roster, do not fall through and pick
             // some eligible window hidden behind it.
-            return selectable[wid]
+            return selectable.contains(wid) ? .window(wid) : nil
         }
         return nil
     }
@@ -4184,17 +4254,71 @@ private final class MotionPanel: NSPanel {
                       width: visible.width, height: visible.height)
     }
 
-    private func desktopFrames(on screen: NSScreen, selectedOnly: Bool = false) -> [(UInt32, CGRect)] {
-        surveyMembers(on: screen).compactMap { entry in
-            if selectedOnly && !(pickOrderByScreen[MotionPanel.screenID(screen)] ?? []).contains(entry.wid) { return nil }
-            let rect = liveAppKitFrame(for: entry)
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-            return (entry.wid, CGRect(x: rect.minX, y: primaryHeight - rect.maxY, width: rect.width, height: rect.height))
-        }
+    private func desktopFrames(on screen: NSScreen) -> [(UInt32, CGRect)] {
+        eligible.compactMap { DesktopModel.shared.windows[$0.wid] }
+            .filter { $0.isOnScreen && entry($0, isOn: screen) }
+            .sorted { $0.zIndex < $1.zIndex }.map { entry in
+                let frame = entry.frame
+                return (entry.wid, pendingLayout?.frames[entry.wid] ?? CGRect(x: frame.x, y: frame.y,
+                                                                             width: frame.w, height: frame.h))
+            }
     }
 
-    private func desktopDivider(at point: CGPoint, on screen: NSScreen) -> HyperspaceLayoutPlanner.Divider? {
-        HyperspaceLayoutPlanner.dividers(desktopFrames(on: screen, selectedOnly: true)).first { $0.hitFrame.contains(point) }
+    private func desktopDividers(on screen: NSScreen) -> [HyperspaceLayoutPlanner.Divider] {
+        guard ownsDesktopPointer else { return [] }
+        let viewport = MotionPanel.axRect(of: screen)
+        let id = MotionPanel.screenID(screen)
+        let selectable = Set(eligible.map(\.wid))
+        let proposals = pendingLayout?.frames ?? [:]
+        let live = DesktopModel.shared.allWindows().filter {
+            $0.isOnScreen && $0.pid != ProcessInfo.processInfo.processIdentifier
+        }
+        let onScreen = Set(live.map(\.wid))
+        var surfaces = proposals.sorted { $0.key > $1.key }.compactMap { wid, frame -> HyperspaceLayoutPlanner.DividerSurface? in
+            guard onScreen.contains(wid), frame.intersects(viewport) else { return nil }
+            return .init(target: pins[wid] == nil ? wid : nil, frame: frame)
+        }
+        if let hud = desktopHUD, hud.isVisible {
+            let frame = hud.frame
+            let origin = cgPoint(fromAppKitScreen: CGPoint(x: frame.minX, y: frame.maxY))
+            surfaces.insert(.init(target: nil, frame: CGRect(origin: origin, size: frame.size)), at: 0)
+        }
+        if canvasForScreen(screen).tool != nil, let host = exposeHostsByScreenID[id],
+           let frame = dragModel.toolFrames[id], !frame.isEmpty, let window = host.window {
+            let rect = window.convertToScreen(host.convert(frame.insetBy(dx: -8, dy: -8), to: nil))
+            let origin = cgPoint(fromAppKitScreen: CGPoint(x: rect.minX, y: rect.maxY))
+            surfaces.insert(.init(target: nil, frame: CGRect(origin: origin, size: rect.size)), at: 0)
+        }
+        // A staged window still covers the desktop at its original location.
+        // Only its landing plate participates in a new resize.
+        for window in live {
+            let f = window.frame
+            let frame = CGRect(x: f.x, y: f.y, width: f.w, height: f.h)
+            guard frame.intersects(viewport), frame.width >= 50, frame.height >= 50 else { continue }
+            let wid = window.wid
+            let movable = selectable.contains(wid) && proposals[wid] == nil && pins[wid] == nil && entry(window, isOn: screen)
+            surfaces.append(.init(target: movable ? wid : nil, frame: frame))
+        }
+        if let cached = dividerCache[id], cached.surfaces == surfaces, cached.viewport == viewport { return cached.dividers }
+        let dividers = HyperspaceLayoutPlanner.dividers(surfaces: surfaces, in: viewport)
+        dividerCache[id] = (surfaces, viewport, dividers)
+        lastHoverPoint = nil
+        return dividers
+    }
+
+    private func desktopDivider(at point: CGPoint, on screen: NSScreen,
+                                among dividers: [HyperspaceLayoutPlanner.Divider]? = nil) -> HyperspaceLayoutPlanner.Divider? {
+        guard desktopGesture == nil else { return nil }
+        // Keep the current axis through a few points of jitter at a crossing.
+        func rank(_ divider: HyperspaceLayoutPlanner.Divider) -> CGFloat {
+            divider.distance(to: point) - (divider == hoveredDivider ? 4 : 0)
+        }
+        return (dividers ?? desktopDividers(on: screen)).filter { $0.contains(point) }
+            .sorted { rank($0) < rank($1) }
+            .first { divider in
+                guard let top = desktopHit(cg: point, on: screen, divider: divider) else { return false }
+                return divider.touches(top.wid)
+            }
     }
 
     private func updateDesktopHUD() {
@@ -4208,7 +4332,7 @@ private final class MotionPanel: NSPanel {
                 guard let self, !self.layoutApplying, let screen = self.activeSurveyScreen else { return }
                 self.keyboardBrowsing = false
                 self.layoutNotice = nil
-                self.exposeToggle(wid, on: screen, keepProposal: true)
+                self.pickWindow(wid, on: screen, keepProposal: true)
             }
             hud.onPickGroup = { [weak self] wids in
                 guard let self, !self.layoutApplying, let screen = self.activeSurveyScreen, !wids.isEmpty else { return }
@@ -4286,7 +4410,7 @@ private final class MotionPanel: NSPanel {
                          preview: pendingLayout,
                          held: layoutLocked,
                          cue: landingCue,
-                         notice: layoutNotice ?? (stagedIntents.isEmpty ? nil : "Placement staged · Done to apply"),
+                         notice: pinNotice ?? layoutNotice ?? (stagedIntents.isEmpty ? nil : "Placement staged · Done to apply"),
                          busy: layoutApplying, tool: canvasForScreen(screen).tool,
                          layouts: offeredLayouts(order, on: screen)), on: screen)
     }
@@ -4300,9 +4424,11 @@ private final class MotionPanel: NSPanel {
     }
 
     private func refreshLayoutPreview() {
+        refreshDividerHandles()
         guard inPlaceMode, let plan = pendingLayout, !dismissed else { layoutPreview.clear(); return }
         let frames = plan.frames.sorted { $0.key < $1.key }.map { wid, frame in
-            (appKitFrame(fromAX: frame), eligible.first(where: { $0.wid == wid })?.app ?? "Window")
+            WindowHoverPreview.LandingPlate(frame: appKitFrame(fromAX: frame),
+                title: eligible.first(where: { $0.wid == wid })?.app ?? "Window", windowID: wid)
         }
         layoutPreview.show(frames, held: layoutLocked, guides: landingGuideFrames())
     }
@@ -4403,6 +4529,7 @@ private final class MotionPanel: NSPanel {
             plan.frames[id] = frame
         }
         plan.title = update.title
+        plan.tileGroup = update.tileGroup
         let screenID = MotionPanel.screenID(screen)
         let missing = update.frames.keys.filter { !(pickOrderByScreen[screenID] ?? []).contains($0) }
         if !missing.isEmpty {
@@ -4442,64 +4569,113 @@ private final class MotionPanel: NSPanel {
         updateLegend()
     }
 
-    /// A click toggles selection. Dragging one selected window carries the rest
-    /// into the landing spot. A shared-edge drag still resizes those two windows.
-    fileprivate func beginDesktopGesture(at point: NSPoint, in view: NSView, on screen: NSScreen) {
+    /// A click picks a proposal or toggles a desktop window. Dragging a selected window carries the rest
+    /// into the landing spot. A divider drag resizes both sides of the seam.
+    fileprivate func beginDesktopGesture(at point: NSPoint, in view: NSView, on screen: NSScreen, modifiers: NSEvent.ModifierFlags) {
         guard !layoutApplying else { return }
         keyboardBrowsing = false
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: point, in: view))
         let divider = desktopDivider(at: cg, on: screen)
-        let window = topWindowAtDesktopClick(cg: cg, on: screen)
-        guard divider != nil || window != nil else { return }
+        let window = desktopHit(cg: cg, on: screen)
+        let order = pickOrderByScreen[MotionPanel.screenID(screen)] ?? []
+        let drawing = modifiers.contains(.shift) && order.count >= 2
+        guard drawing || divider != nil || window != nil else { return }
         if activeSurveyScreen.map(MotionPanel.screenID) != MotionPanel.screenID(screen) { setActiveSurveyScreen(screen) }
         let frames = desktopFrames(on: screen)
         let originals = Dictionary(frames, uniquingKeysWith: { first, _ in first })
         let original = window.flatMap { originals[$0.wid] } ?? .zero
-        let order = pickOrderByScreen[MotionPanel.screenID(screen)] ?? []
+        if !drawing, modifiers.contains(.option), let wid = window?.wid, let frame = originals[wid] {
+            let name = eligible.first { $0.wid == wid }?.app ?? "Window"
+            if pins.removeValue(forKey: wid) == nil {
+                var nextPins = pins
+                nextPins[wid] = frame
+                if let proposal = pendingLayout {
+                    let area = desktopArea(on: screen)
+                    let relevant = nextPins.filter { proposal.frames[$0.key] != nil || area.intersects($0.value) }
+                    guard let anchored = HyperspaceLayoutPlanner.respectingPins(proposal, pins: relevant, in: area) else {
+                        pinNotice = "This proposal overlaps that window · adjust the landing before pinning"
+                        updateDesktopHUD()
+                        return
+                    }
+                    stagedLayout = anchored
+                }
+                pins = nextPins
+                layoutNotice = "\(name) pinned"
+            } else { layoutNotice = "\(name) unpinned" }
+            pinNotice = nil
+            refreshLayoutPreview()
+            updateDesktopHUD()
+            return
+        }
         let ids: [UInt32]
-        if let wid = window?.wid, order.contains(wid), order.count >= 2 {
+        if drawing {
+            ids = order.filter { originals[$0] != nil }
+        } else if case .proposal(let wid) = window {
+            ids = [wid]
+        } else if let wid = window?.wid, order.contains(wid), order.count >= 2 {
             ids = order.filter { originals[$0] != nil }
         } else if let wid = window?.wid {
             ids = [wid]
         } else {
             ids = []
         }
-        desktopGesture = .init(wid: window?.wid, ids: ids, original: original, originals: originals,
-                               start: cg, screen: screen, divider: divider, neighbors: frames, at: cg)
+        var soloDrop: HyperspaceLayoutPlanner.DesktopDrop?
+        if !drawing, divider == nil, ids.count == 1, let wid = ids.first {
+            soloDrop = .init(id: wid, original: original, start: cg, area: desktopArea(on: screen),
+                             neighbors: frames.filter { $0.0 != wid }, prior: pendingLayout)
+        }
+        let targets = divider?.snapTargets(alongside: desktopDividers(on: screen)) ?? []
+        desktopGesture = .init(hit: drawing ? nil : window, ids: ids, originals: originals,
+                               start: cg, screen: screen, priorPlan: pendingLayout, divider: drawing ? nil : divider,
+                               neighbors: frames, soloDrop: soloDrop, at: cg, stroke: drawing ? [cg] : nil, snapTargets: targets)
         layoutNotice = nil
     }
 
     fileprivate func moveDesktopGesture(at point: NSPoint, in view: NSView) {
-        guard var gesture = desktopGesture, !layoutApplying else { return }
+        guard ownsDesktopPointer, var gesture = desktopGesture, !layoutApplying else { return }
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: point, in: view))
         guard gesture.moved || hypot(cg.x - gesture.start.x, cg.y - gesture.start.y) >= 6 else { return }
         let wasPreviewing = gesture.moved
+        let previousTitle = pendingLayout?.title
         let previousCue = landingCue
         gesture.moved = true
         gesture.at = cg
-        desktopGesture = gesture
         layoutLocked = false
-        if let divider = gesture.divider {
-            pendingLayout = divider.plan(at: cg)
+        var candidate: HyperspaceLayoutPlan?
+        if gesture.stroke != nil {
+            if gesture.stroke?.last != cg { gesture.stroke?.append(cg) }
+            candidate = HyperspaceLayoutPlanner.sketch(gesture.stroke ?? [], ids: gesture.ids, frames: gesture.originals,
+                                                        in: desktopArea(on: gesture.screen), prior: gesture.priorPlan)
+            layoutNotice = candidate == nil ? "Draw a horizontal or vertical divider" : nil
+            landingCue = nil
+        } else if let divider = gesture.divider {
+            let result = divider.snapped(at: cg, from: gesture.start, targets: gesture.snapTargets, held: gesture.snap)
+            candidate = result.plan
+            gesture.snap = result.snap
             landingCue = nil
         } else if let wid = gesture.wid {
             let area = desktopArea(on: gesture.screen)
             let others = gesture.neighbors.filter { !gesture.ids.contains($0.0) }
             if gesture.ids.count >= 2 {
-                pendingLayout = HyperspaceLayoutPlanner.dropGroup(gesture.ids, originals: gesture.originals,
+                candidate = HyperspaceLayoutPlanner.dropGroup(gesture.ids, originals: gesture.originals,
                     anchor: wid, start: gesture.start, at: cg, in: area, neighbors: others)
             } else {
-                pendingLayout = HyperspaceLayoutPlanner.drop(wid, original: gesture.original, start: gesture.start,
-                    at: cg, in: area, neighbors: others)
+                candidate = gesture.soloDrop?.plan(at: cg)
             }
             let ids = gesture.ids.count >= 2 ? gesture.ids : [wid]
-            let moving = pendingLayout?.title == "Move window" || pendingLayout?.title == "Move windows"
+            let moving = candidate?.title == "Move window" || candidate?.title == "Move windows"
             let occupied = others.map(\.1)
             landingCue = moving ? HyperspaceLayoutPlanner.approachGroup(ids, anchor: wid, at: cg, in: area, occupied: occupied)?.title : nil
         }
+        if let prior = gesture.priorPlan, var update = candidate {
+            update.frames = prior.frames.merging(update.frames) { _, new in new }
+            candidate = update
+        }
+        desktopGesture = gesture
+        pendingLayout = candidate ?? gesture.priorPlan
         clearInPlaceDesktopHover()
         refreshLayoutPreview()
-        if !wasPreviewing || landingCue != previousCue { updateDesktopHUD() }
+        if !wasPreviewing || pinNotice != nil || landingCue != previousCue || pendingLayout?.title != previousTitle { updateDesktopHUD() }
     }
 
     fileprivate func endDesktopGesture() {
@@ -4513,8 +4689,13 @@ private final class MotionPanel: NSPanel {
             updateDesktopHUD()
             updateLegend()
         }
-        else if let wid = gesture.wid, gesture.divider == nil {
-            exposeToggle(wid, on: gesture.screen, keepProposal: true)
+        else if let hit = gesture.hit {
+            switch hit {
+            case .proposal(let wid):
+                pickWindow(wid, on: gesture.screen, keepProposal: true, toggleSelected: false)
+            case .window(let wid):
+                pickWindow(wid, on: gesture.screen, keepProposal: true)
+            }
         }
         makeKey()
     }
@@ -4663,19 +4844,10 @@ private final class MotionPanel: NSPanel {
         guard exposed, inPlaceMode, !dismissed, !layoutApplying, !dragModel.isActive, !dragModel.isPlacing else { return false }
         guard commandPanel == nil, newLayerPanel == nil, rulePanel == nil else { return false }
         if inPlaceChromeBlocksClick(at: viewPoint, in: view, on: screen) { return false }
+        if (NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags).contains(.shift),
+           (pickOrderByScreen[MotionPanel.screenID(screen)] ?? []).count >= 2 { return true }
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
-        return desktopDivider(at: cg, on: screen) != nil || topWindowAtDesktopClick(cg: cg, on: screen) != nil
-    }
-
-    fileprivate func performInPlaceDesktopSelect(at viewPoint: NSPoint, in view: NSView, on screen: NSScreen) {
-        let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
-        guard let hit = topWindowAtDesktopClick(cg: cg, on: screen) else { return }
-        exposeToggle(hit.wid, on: screen)
-        DiagnosticLog.shared.info("In-place select — click wid=\(hit.wid) app=\(hit.app) fillAim=\(hit.wid)")
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.exposed, !self.isKeyWindow, self.commandPanel == nil else { return }
-            self.makeKey()
-        }
+        return desktopDivider(at: cg, on: screen) != nil || desktopHit(cg: cg, on: screen) != nil
     }
 
     /// Passive hover is an affordance only: it advertises that the real window is
@@ -4686,16 +4858,37 @@ private final class MotionPanel: NSPanel {
             return
         }
         let cg = cgPoint(fromAppKitScreen: appKitScreenPoint(from: viewPoint, in: view))
-        if let divider = desktopDivider(at: cg, on: screen) {
-            (divider.vertical ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+        if inPlaceChromeBlocksClick(at: viewPoint, in: view, on: screen) || toolChromeContains(viewPoint, in: view, on: screen) {
             clearInPlaceDesktopHover()
             return
         }
+        let dividers = desktopDividers(on: screen)
+        if let divider = desktopDivider(at: cg, on: screen, among: dividers) {
+            (divider.vertical ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+            let changed = hoveredDivider != divider
+            hoveredDivider = divider
+            dividerHoverPoint = cg
+            setInPlaceDesktopHover(nil)
+            if changed { refreshGestureFeedback(on: screen) }
+            showDividerHandles(dividers)
+            return
+        }
+        if hoveredDivider != nil {
+            hoveredDivider = nil
+            dividerHoverPoint = nil
+            refreshGestureFeedback(on: screen)
+            showDividerHandles(dividers)
+        }
         NSCursor.crosshair.set()
-        setInPlaceDesktopHover(topWindowAtDesktopClick(cg: cg, on: screen)?.wid)
+        setInPlaceDesktopHover(desktopHit(cg: cg, on: screen)?.wid)
     }
 
     fileprivate func clearInPlaceDesktopHover() {
+        if hoveredDivider != nil {
+            hoveredDivider = nil
+            dividerHoverPoint = nil
+            refreshDividerHandles()
+        }
         setInPlaceDesktopHover(nil)
     }
 
@@ -4933,6 +5126,41 @@ private final class MotionPanel: NSPanel {
         return entries
     }
 
+    private func refreshGestureFeedback(on screen: NSScreen) {
+        let gesture = desktopGesture
+        let highlights = (hoveredDivider?.affectedFrames ?? []).map { appKitFrame(fromAX: $0) }
+        let anchored = pins.values.map { appKitFrame(fromAX: $0) }.filter { $0.intersects(screen.frame) }
+        var ink = gesture?.stroke ?? []
+        if let divider = gesture?.divider, let snap = gesture?.snap, pinNotice == nil {
+            let hit = divider.hitFrame
+            ink = divider.vertical ? [CGPoint(x: snap, y: hit.minY), CGPoint(x: snap, y: hit.maxY)]
+                : [CGPoint(x: hit.minX, y: snap), CGPoint(x: hit.maxX, y: snap)]
+        }
+        let path = ink.map { appKitFrame(fromAX: CGRect(origin: $0, size: .zero)).origin }
+        gestureFeedback.show(on: screen, highlights: highlights, pins: anchored, path: path)
+    }
+
+    private func refreshDividerHandles() {
+        if exposed, ownsDesktopPointer, !dismissed, !layoutApplying, let screen = activeSurveyScreen {
+            refreshGestureFeedback(on: screen)
+        } else { gestureFeedback.clear() }
+        guard exposed, ownsDesktopPointer, desktopGesture?.moved != true, !dismissed, !layoutApplying,
+              let screen = activeSurveyScreen else {
+            dividerHandles.clear()
+            return
+        }
+        showDividerHandles(desktopDividers(on: screen))
+    }
+
+    private func showDividerHandles(_ dividers: [HyperspaceLayoutPlanner.Divider]) {
+        dividerHandles.show(dividers.map { divider in
+            if divider == hoveredDivider, let point = dividerHoverPoint {
+                return .init(frame: appKitFrame(fromAX: divider.handleFrame(near: point)), warmth: divider.warmth(at: point))
+            }
+            return .init(frame: appKitFrame(fromAX: divider.handleFrame), warmth: 0)
+        })
+    }
+
     private func refreshBorders() {
         guard let root = chromeHost?.layer else { return }
         borderLayers.forEach { $0.removeFromSuperlayer() }
@@ -4941,13 +5169,9 @@ private final class MotionPanel: NSPanel {
         // During the screenshot survey the SwiftUI spread (ExposeView) draws
         // everything; Hyper+G is the exception because its survey floats above the
         // live desktop and selected windows need an on-screen selected state.
-        if exposed && !inPlaceMode { dividerHandles.clear(); return }
+        if exposed && !inPlaceMode { dividerHandles.clear(); gestureFeedback.clear(); return }
 
-        if inPlaceMode, let screen = activeSurveyScreen {
-            dividerHandles.show(HyperspaceLayoutPlanner.dividers(desktopFrames(on: screen, selectedOnly: true)).map { divider in
-                (appKitFrame(fromAX: divider.hitFrame), divider.vertical)
-            })
-        } else { dividerHandles.clear() }
+        refreshDividerHandles()
 
         let activeWid = activeEntry.wid
 
@@ -9482,9 +9706,14 @@ struct ExposeView: View {
                 width: layoutArea.width * 0.44,
                 height: layoutArea.height * 0.56)
             let neighbors = (layoutPreview?.frames ?? [:]).filter { $0.key != wid }.map { ($0.key, $0.value) }
-            preview = HyperspaceLayoutPlanner.spot(wid, original: original, start: drag.placementAnchor ?? point,
-                                                   at: point, in: layoutArea, neighbors: neighbors,
-                                                   fraction: CGPoint(x: fx, y: fy))
+            if drag.placementDrop == nil, layoutPreview?.frames[wid] != nil {
+                drag.placementDrop = .init(id: wid, original: original, start: drag.placementAnchor ?? point,
+                                           area: layoutArea, neighbors: neighbors, prior: layoutPreview)
+            }
+            preview = drag.placementDrop?.occupiedLanding(at: point)
+                ?? HyperspaceLayoutPlanner.spot(wid, original: original, start: drag.placementAnchor ?? point,
+                                                at: point, in: layoutArea, neighbors: neighbors,
+                                                fraction: CGPoint(x: fx, y: fy))
         }
         if drag.placementPreview != preview { drag.placementPreview = preview }
     }

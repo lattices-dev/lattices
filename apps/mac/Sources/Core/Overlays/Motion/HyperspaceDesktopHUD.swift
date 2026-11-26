@@ -829,6 +829,10 @@ final class HyperspaceDesktopHUD: LensFloatPanel {
         item("Undo arrangement  ⌘Z", enabled: state.canUndo && !state.busy) { [weak self] in self?.onUndo() }
         item(state.hasChanges ? "Restore original positions and close" : "Close Hyperspace", enabled: !state.busy) { [weak self] in self?.onRestore() }
         menu.addItem(.separator())
+        if state.desktop {
+            item("Shift-drag to draw a divider between selected windows", enabled: false) {}
+            item("Option-click a window to pin or unpin its frame", enabled: false) {}
+        }
         item("Tab: browse   Space: select   E: switch view", enabled: false) {}
         item("G: layouts   Enter: apply / done", enabled: false) {}
         item("Escape: drop the suggestion, then close; applied changes stay", enabled: false) {}
@@ -1001,9 +1005,14 @@ final class HyperspacePassThroughView: NSView {
 }
 
 final class HyperspaceDividerHandles {
+    struct Grip: Equatable {
+        let frame: CGRect
+        let warmth: CGFloat
+    }
     private var panels: [NSPanel] = []
-    func clear() { panels.forEach { $0.orderOut(nil) }; panels.removeAll() }
-    func show(_ dividers: [(CGRect, Bool)]) {
+    private var displayed: [Grip] = []
+    func clear() { panels.forEach { $0.orderOut(nil) }; panels.removeAll(); displayed.removeAll() }
+    func show(_ dividers: [Grip]) {
         if panels.count != dividers.count {
             clear()
             for _ in dividers {
@@ -1015,19 +1024,91 @@ final class HyperspaceDividerHandles {
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
                 let view = NSView()
                 view.wantsLayer = true
-                view.layer?.backgroundColor = HyperspaceChrome.inkColor.withAlphaComponent(0.8).cgColor
-                view.layer?.cornerRadius = 2
                 panel.contentView = view
                 panels.append(panel)
             }
         }
-        for (panel, divider) in zip(panels, dividers) {
-            let hit = divider.0
-            let frame = divider.1
-                ? CGRect(x: hit.midX - 2, y: hit.midY - 24, width: 4, height: 48)
-                : CGRect(x: hit.midX - 24, y: hit.midY - 2, width: 48, height: 4)
-            panel.setFrame(frame, display: true)
-            panel.orderFrontRegardless()
+        for (index, grip) in dividers.enumerated() {
+            if displayed.indices.contains(index), displayed[index] == grip { continue }
+            let panel = panels[index], frame = grip.frame
+            if panel.frame != frame { panel.setFrame(frame, display: true) }
+            let base = HyperspaceChrome.inkColor
+            let color = base.blended(withFraction: grip.warmth, of: HyperspaceChrome.accentColor) ?? base
+            if let layer = panel.contentView?.layer {
+                layer.cornerRadius = min(frame.width, frame.height) / 2
+                layer.backgroundColor = color.withAlphaComponent(0.8 + 0.2 * grip.warmth).cgColor
+                layer.borderWidth = 1
+                layer.borderColor = NSColor.white.withAlphaComponent(0.35 + 0.4 * grip.warmth).cgColor
+            }
+            if !panel.isVisible { panel.orderFrontRegardless() }
         }
+        displayed = dividers
+    }
+}
+
+/// Mouse-transparent ink above the landing plates. All inputs use AppKit screen points.
+final class HyperspaceGestureFeedback {
+    private final class Ink: NSView {
+        var highlights: [CGRect] = []
+        var pins: [CGRect] = []
+        var points: [CGPoint] = []
+
+        override func draw(_ dirtyRect: NSRect) {
+            let ink = HyperspaceChrome.inkColor
+            for rect in highlights {
+                let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 3, dy: 3), xRadius: 7, yRadius: 7)
+                ink.withAlphaComponent(0.15).setFill()
+                outline.fill()
+                ink.withAlphaComponent(0.85).setStroke()
+                outline.lineWidth = 2
+                outline.stroke()
+            }
+            for rect in pins {
+                let badge = CGRect(x: rect.maxX - 34, y: rect.maxY - 34, width: 26, height: 26)
+                NSColor.black.withAlphaComponent(0.8).setFill()
+                NSBezierPath(ovalIn: badge).fill()
+                let icon = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned window")
+                icon?.withSymbolConfiguration(.init(paletteColors: [.white]))?.draw(in: badge.insetBy(dx: 6, dy: 6))
+            }
+            if let first = points.first {
+                let path = NSBezierPath()
+                path.move(to: first)
+                for point in points.dropFirst() { path.line(to: point) }
+                path.lineCapStyle = .round
+                path.lineJoinStyle = .round
+                NSColor.black.withAlphaComponent(0.6).setStroke()
+                path.lineWidth = 4
+                path.stroke()
+                ink.setStroke()
+                path.lineWidth = 2
+                path.stroke()
+            }
+        }
+    }
+
+    private var panel: NSPanel?
+    private let ink = Ink()
+    func clear() { panel?.orderOut(nil) }
+
+    func show(on screen: NSScreen, highlights: [CGRect], pins: [CGRect], path: [CGPoint]) {
+        guard !highlights.isEmpty || !pins.isEmpty || !path.isEmpty else { if panel?.isVisible == true { clear() }; return }
+        if panel == nil {
+            let p = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.hasShadow = false
+            p.ignoresMouseEvents = true
+            p.level = .init(rawValue: Int(CGShieldingWindowLevel()) + 7)
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+            p.contentView = ink
+            panel = p
+        }
+        guard let panel else { return }
+        if panel.frame != screen.frame { panel.setFrame(screen.frame, display: true) }
+        ink.highlights = highlights.map(panel.convertFromScreen)
+        ink.pins = pins.map(panel.convertFromScreen)
+        ink.points = path.map(panel.convertPoint(fromScreen:))
+        ink.needsDisplay = true
+        if !panel.isVisible { panel.orderFrontRegardless() }
     }
 }

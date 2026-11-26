@@ -34,7 +34,7 @@ describe("router", () => {
     r.register({ method: "computer.observe", description: "", access: "read", returns: "", handler: () => "seen" });
     expect(await r.dispatch("cua.observe", {})).toBe("seen");
     expect(r.lookup("cua.observe")?.method).toBe("computer.observe");
-    expect(r.schema().aliases["cua.observe"]).toBe("computer.observe");
+    expect(r.schema()).toMatchObject({ aliases: { "cua.observe": "computer.observe" } });
   });
 
   test("window.tile maps position to placement", () => {

@@ -23,9 +23,12 @@ export interface Delivery {
 
 /** A failed daemon call. `delivery` is set when the call was a mutation. */
 export class DaemonError extends Error {
-  constructor(message: string, readonly delivery?: Delivery) {
+  readonly delivery?: Delivery;
+
+  constructor(message: string, delivery?: Delivery) {
     super(message);
     this.name = "DaemonError";
+    this.delivery = delivery;
   }
 }
 

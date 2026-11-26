@@ -55,6 +55,25 @@ final class MouseGestureInkTests: XCTestCase {
         XCTAssertEqual(ideal, [CGPoint(x: 0, y: 0), CGPoint(x: 42, y: -100), CGPoint(x: 80, y: 6)])
     }
 
+    func testDiagonalDownwardVUsesTheTurnInEitherDrawingDirection() {
+        let recognizer = ShapeRecognizer()
+        let path = [CGPoint(x: 0, y: 0), CGPoint(x: 45, y: 34), CGPoint(x: 100, y: 75),
+                    CGPoint(x: 156, y: 40), CGPoint(x: 204, y: 4)]
+        for stroke in [path, Array(path.reversed())] {
+            let result = recognizer.recognize(points: stroke)
+            XCTAssertEqual(result.shape, .vShape)
+            XCTAssertEqual(result.segments.map(\.direction), [.down, .up])
+            XCTAssertEqual(result.segments.first?.endIndex, 2)
+        }
+        for other in [
+            [CGPoint.zero, CGPoint(x: 90, y: 8), CGPoint(x: 200, y: 0)],
+            [CGPoint.zero, CGPoint(x: 80, y: -80), CGPoint(x: 160, y: 0)],
+            [CGPoint.zero, CGPoint(x: 0, y: 80), CGPoint(x: 100, y: 80), CGPoint(x: 100, y: 0)],
+        ] {
+            XCTAssertNotEqual(recognizer.recognize(points: other).shape, .vShape)
+        }
+    }
+
     func testCircleIsFittedToTheStroke() {
         let path = (0...16).map { i -> CGPoint in
             let a = CGFloat(i) / 16 * 2 * .pi

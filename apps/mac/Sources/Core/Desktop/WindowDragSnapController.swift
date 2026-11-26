@@ -182,7 +182,7 @@ final class WindowDragSnapController {
             landingTitle = landing.title
             DiagnosticLog.shared.info("WindowDragSnap: \(landing.title)")
         }
-        WindowHoverPreview.shared.show([(Self.screenRect(fromAX: landing.frame), landing.title)], held: false)
+        WindowHoverPreview.shared.show([.init(frame: Self.screenRect(fromAX: landing.frame), title: landing.title)], held: false)
     }
 
     /// The Hyperspace landing under the pointer: an open half of a split quarter,

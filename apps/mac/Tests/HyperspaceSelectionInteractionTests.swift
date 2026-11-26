@@ -49,6 +49,31 @@ final class HyperspaceSelectionInteractionTests: XCTestCase {
         XCTAssertTrue(hud.isVisible)
     }
 
+    func testOnlyVisibleProposalPlatesOwnDesktopPoints() {
+        _ = NSApplication.shared
+        let preview = WindowHoverPreview()
+        defer { preview.clear() }
+        let back = WindowHoverPreview.LandingPlate(frame: CGRect(x: 100, y: 100, width: 100, height: 100),
+                                                   title: "Back", windowID: 12)
+        let front = WindowHoverPreview.LandingPlate(frame: back.frame.offsetBy(dx: 50, dy: 0),
+                                                    title: "Front", windowID: 8)
+        let guide = CGRect(x: 40, y: 100, width: 90, height: 80)
+        preview.show([back, front], held: true, guides: [(guide, "Guide")])
+
+        XCTAssertEqual(preview.proposedWindow(at: CGPoint(x: 125, y: 150)), 12)
+        XCTAssertEqual(preview.proposedWindow(at: CGPoint(x: 175, y: 150)), 8)
+        XCTAssertNil(preview.proposedWindow(at: CGPoint(x: 60, y: 150)), "A guide has no window to pick")
+        XCTAssertNil(preview.proposedWindow(at: CGPoint(x: 104, y: 104)), "The rounded corner exposes the desktop")
+        let edge = CGPoint(x: 101, y: 150)
+        XCTAssertNil(preview.proposedWindow(at: edge), "A click in the margin passes through")
+        XCTAssertEqual(preview.proposedWindow(at: edge, adjoiningDivider: { $0 == 12 }), 12)
+
+        preview.show([front, back], held: true)
+        XCTAssertEqual(preview.proposedWindow(at: CGPoint(x: 175, y: 150)), 12, "Follow the new paint order")
+        preview.clear()
+        XCTAssertNil(preview.proposedWindow(at: CGPoint(x: 175, y: 150)))
+    }
+
     private func windowButton(_ id: UInt32, in view: NSView?) -> NSButton? {
         guard let view else { return nil }
         if let button = view as? NSButton, button.identifier?.rawValue == "hud.window.\(id)" { return button }
